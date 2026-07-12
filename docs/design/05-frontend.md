@@ -30,8 +30,8 @@ Note when editing the fork: its `CLAUDE.md`/`AGENTS.md` warn that Next.js 16 has
 | Review queue | new | inbox cards with constrained one-click actions |
 | Library | adapt | saved/liked/read-later from vault data |
 | Settings | new | providers/keys, tier→model map, budget + AI spend panel, vault management (connect folder, export/import), companion chattiness |
-| **Companion** | **new** | persistent small mascot (corner of the shell, all screens); speech-bubble suggestions with action buttons + dismiss; subtle idle/celebration animations (framer-motion); personality carries the onboarding conversation too |
-| Spark | new | "Spark ideas" entry (global + per-project/topic); run progress view (phases visible — grounding → bottleneck → ideation → scoop-check → card); idea cards gallery reading from `wiki/ideas/`; idea page view with status, grounding links, scoop verdict, mini lit-review |
+| **Companion** | **new** | persistent small mascot (corner of the shell, all screens); text-only speech bubbles with action buttons + dismiss (no audio); subtle idle/celebration animations (framer-motion). **All chat surfaces in the app render as conversation with the companion** — onboarding, KB chat, select-to-ask, review discussions, spark sessions share one persona, one visual chat identity (the existing chat UI is re-skinned as companion conversation) |
+| Spark | new | "Spark ideas" entry (global + per-project/topic); **Quick Spark** = inline companion conversation returning 2–3 seeds with "develop fully" buttons; **Deep Spark** = confirmation with cost estimate → run progress view (phases visible — grounding → bottleneck → ideation → scoop-check → card); idea cards gallery reading from `wiki/ideas/`; idea page view with status, depth, grounding links, scoop verdict, mini lit-review |
 
 ## Component commitments
 

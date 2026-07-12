@@ -44,11 +44,15 @@ Researchers and research-adjacent professionals who need to stay current in one 
 3. **Read** — open the paper itself in-app (HTML full text or PDF). Highlight anything; select text → ask the AI or capture your own idea as a note.
 4. **Ingest** — "Add to knowledge base" → the agent integrates the paper across your wiki: pages created/updated, cross-linked, tagged, contradictions flagged. One-click undo per ingest.
 5. **Explore** — wiki browsing/editing, knowledge-base chat with citations, and the visualization dashboard (graph / timeline / citation flow / author network).
-6. **Spark** — generate research ideas grounded in your vault + fresh literature: bottleneck diagnosis → pattern-guided ideation → scoop-check → a reviewer-defensible idea card saved into your wiki, with a literature-review section attached.
+6. **Spark** — generate research ideas grounded in your vault, in two modes: **Quick Spark** (cheap, fast, vault-only brainstorm → 2–3 idea seeds; the companion offers these freely) and **Deep Spark** (the full pipeline: fresh retrieval → bottleneck diagnosis → pattern-guided ideation → scoop-check → reviewer-defensible idea card with mini lit-review; always user-confirmed with a cost estimate). Promising seeds graduate: "develop this fully" turns a Quick Spark seed into a Deep Spark run.
 
 ## The Research Companion
 
-A persistent, cute, **proactive** AI companion is the personality of the whole product (think "Codex pet") — the thing that makes SciSpark feel alive where other research tools feel like databases. It is the *voice of the skill system*, not a separate intelligence:
+A persistent, cute, **proactive** AI companion is the personality of the whole product (think "Codex pet") — the thing that makes SciSpark feel alive where other research tools feel like databases. It is text-only (no audio/voice): a small character floating in the shell, available to chat, occasionally popping a speech bubble to encourage action.
+
+**The companion IS the interface to the agent system.** Every conversation in the product — onboarding, knowledge-base chat, select-to-ask while reading, review-queue discussions, spark sessions — is a conversation *with the companion*. Skills are the invisible backend; the user only ever talks to one character, in one persona, with one continuous memory. (Architecturally: skills produce content; the companion persona layer renders every conversational surface.)
+
+It is the *voice of the skill system*, not a separate intelligence:
 
 - On app open: greets you and nudges toward what's new ("3 new papers in your feed look strong today — want a look?").
 - While reading a digest: proactively observes ("this looks related to [[closed-loop DBS]] in your wiki — import it?").
