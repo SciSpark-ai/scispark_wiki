@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sample Article &amp; Friends</title>
+  <style>
+    body { font-family: sans-serif; color: #333; }
+    .hidden { display: none; }
+  </style>
+  <script>
+    console.log("this script content must never appear in extracted text");
+    var x = 1 &lt; 2;
+  </script>
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/about">About</a>
+    </nav>
+    <h1>Site Header Should Be Removed</h1>
+  </header>
+  <main>
+    <article>
+      <h1>A Study of Widgets &amp; Gadgets</h1>
+      <p>This paper introduces a new method for widget analysis. The approach uses kernel smoothing and &quot;robust&quot; estimators, requiring that x &lt; y for all comparisons, achieving results that surpass prior work by a wide margin across every benchmark we tested, including several held-out datasets that were never seen during development or tuning.</p>
+      <p>We evaluate on three datasets and report results in Table 1. Our method consistently outperforms baselines,<br>with the largest gains observed on the noisiest data. This finding held across every random seed we tried, and the effect size was large enough to be practically significant, not merely statistically detectable at the usual thresholds researchers rely on.</p>
+      <div class="section">
+        <h2>Related Work</h2>
+        <p>Prior work by O&#39;Brien et al. explored similar territory using classical statistical techniques, but did not scale to the large datasets we consider here, nor did it address the noise characteristics we specifically target in this paper&#8217;s central contribution.</p>
+        <ul>
+          <li>First related approach, which used a simpler linear model.</li>
+          <li>Second related approach, which added regularization terms.</li>
+          <li>Third related approach, closest to ours but missing the kernel step entirely.</li>
+        </ul>
+      </div>
+      <script>
+        trackPageView("article-view");
+      </script>
+      <p>In conclusion, our widget-and-gadget framework offers a substantial improvement over the state of the art, and we release all code and data to support reproducibility efforts by the broader research community going forward.</p>
+    </article>
+  </main>
+  <footer>
+    <p>Copyright 2026. All rights reserved. Contact us for licensing.</p>
+  </footer>
+</body>
+</html>
