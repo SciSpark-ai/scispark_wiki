@@ -1,0 +1,84 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this project is
+
+**SciSpark Paper Manager** — an AI-agent-driven wiki / knowledge-base system with rich visualization, for researchers to track the fields they care about. It generalizes SciSpark (currently a clinical-evidence product) to all research domains and adds a persistent personal knowledge layer on top of SciSpark's recommendation feed.
+
+**Status: design phase — approved design docs exist, no application code yet.** The authoritative design lives in `docs/design/01-product.md` through `05-frontend.md` (product → system → backend → agent harness → frontend, per Tong's five-layer split); read those before this file's decision log when they conflict. This file records the decision history and where to find reusable assets.
+
+## Product concept (the core loop)
+
+Keep SciSpark's core logic, drop the clinical framing:
+
+1. **Home = personalized paper feed** ("news ingestion" style recommendations, learns from user behavior).
+2. **Click a paper card → paper-specific digest** (AI summary, lay summary vs. abstract, figure digest, key methods/results breakpoints, related papers).
+3. **NEW — "Add to knowledge base" button** on papers/digests. Ingesting a paper triggers LLM-wiki-style generation: automatic metadata retrieval, auto-tagging, and hierarchical organization into the user's personal wiki.
+4. **Wiki = LLM-maintained knowledge base** (Karpathy's LLM-wiki pattern): the agent integrates each new paper across existing wiki pages (entities, concepts, methods, syntheses), maintains cross-references/wikilinks, flags contradictions, keeps an index. Knowledge compounds instead of being re-derived per query.
+5. **In-app paper reader**: the user reads the full paper inside our app (web or desktop — never bounced out to a third-party viewer), and can highlight passages persistently. Highlights, digests, and wiki pages all support **highlight-to-ask**: select any text and talk to the AI assistant about it — ask questions or ingest the user's own ideas/notes into the knowledge base.
+6. **Visualization dashboard** over the wiki's derived data — four views in v1: knowledge graph (like `llm_wiki`'s Sigma.js graph), field chronology/timeline, citation/influence flow, author/team collaboration network.
+
+**Constraints set by the founder (Tong):**
+- No third-party knowledge apps (no Obsidian, no Zotero). Browser is the home first; desktop/mobile apps may follow.
+- General research audience, not clinicians. Remove clinical copy, medical-specialty taxonomies, and clinical onboarding.
+- The feed-first home experience is non-negotiable — it is SciSpark's identity.
+
+## Related repos (read these before designing or reusing code)
+
+| Path | What it is | What to take from it |
+|---|---|---|
+| `/Users/tongshan/Documents/scispark-app-frontend` | Frontend prototype (Next.js 16 App Router, React 19, Tailwind v4, Zustand 5, framer-motion 12). **All data is mocked; zero real AI/API calls** — chat streaming, reasoning animation, digests are pure UI over `src/lib/mock-data/`. State persists to localStorage. | The whole UI architecture is reusable: AppShell 3-column layout, feed (`src/hooks/useFeed.ts`, `FeedCard`), paper digest page (`src/app/paper/[id]/page.tsx`), chat with citations/sources panel, projects/notes/library, highlight-to-note. Clinical parts are content-only (mock papers, specialty colors, onboarding questions, copy). Its own CLAUDE.md warns Next.js 16 has post-training-data breaking changes — read its `AGENTS.md`/bundled docs before editing. |
+| `/Users/tongshan/Documents/scispark-landing` | Marketing site (Next.js 16, Tailwind v4, next-intl en/zh, Supabase waitlist, Vercel). | Brand/design system: warm cream/espresso palette (`#fefaf5` bg, `#2b180a` text, orange accent `#f97316`), Halant serif headings + Geist body, 28px card radii, grain texture. Tokens in its `src/app/globals.css` and `docs/claura-reference-tokens.md`. |
+| `/Users/tongshan/Documents/research-os-dev` | Tong's prior Python CLI ("Research OS"): local-first Markdown knowledge layer driven by coding agents. | The **OKF bundle model** (`src/research_os/okf.py`): Markdown + YAML frontmatter, path-as-ID concepts, link → graph-edge derivation, safe agent upserts via managed-section markers, confirmation gates before knowledge writes. Also `graph.py` (bundle → graph.json), `context.py` (query → context packet for agents), and the React Flow visual explorer (`visual-app/`). Zotero/Obsidian coupling is thin and isolated — the core model ports cleanly to a browser app. |
+| `/Users/tongshan/Documents/scispark_context` | Pitch deck + StartX application. | Product positioning, long-term vision ("expand beyond medicine to every field of research"), team, business phasing. |
+
+## External references
+
+- **LLM-wiki concept**: https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f — three layers (immutable raw sources → LLM-owned wiki pages → schema/convention doc); ingest/query/lint operations; a single ingested source may update 10–15 wiki pages.
+- **llm_wiki implementation**: https://github.com/nashsu/llm_wiki — Tauri + React desktop app; two-step ingest (analyze → generate); four-signal graph relevance (wikilinks ×3.0, shared sources ×4.0, Adamic-Adar ×1.5, type affinity ×1.0); Louvain community coloring; Purpose.md scoping; review panel for human-in-the-loop.
+- **SciSpark landing (live)**: https://landing.scispark.ai/
+
+- **Wiki schema (approved 2026-07-11)**: adopt llm_wiki's schema mechanism wholesale — user-editable `schema.md` as authoritative type→directory routing injected into ingest prompts; strict frontmatter contract (`type, title, created, updated, tags[], related[]` as bare slugs, mandatory `sources[]` provenance); wikilinks in body only; `index.md`/`log.md` maintained by the app deterministically, never by the model. **9 types**: `paper` (their `source` + structured IDs: doi/arxiv/openalex/authors/year/venue/`projects[]`), `concept`, `method`, `finding`, `comparison` (all ≈ theirs), `author` (split from their `entity`; OpenAlex ID), `topic` (their `synthesis`), `note` (ours: user ideas), `project` (ours: virtual index/context scope). Dropped for v1: `thesis`, `query`. Reserved files: `index.md`, `log.md`, `purpose.md`, `schema.md`. llm_wiki clone for reference is in the session scratchpad; re-clone from https://github.com/nashsu/llm_wiki if needed.
+
+- **Ingest pipeline (approved 2026-07-11)**: acquire full text (HTML/PDF via proxy; paywalled → metadata+abstract+digest with `full_text: false`) → deterministic pre-fill of structured frontmatter from API metadata (code, not LLM: DOI/IDs/authors/venue + author page skeletons) → assemble context (purpose.md, schema.md, index, existing digest reused, user highlights/questions as emphasis signals, target projects) → LLM Step 1 analysis (llm_wiki prompt near-verbatim) → LLM Step 2 generation via **structured output/tool-call** (not delimiter parsing): `{files[], reviews[]}` → validate against schema routing → apply as **one atomic changeset** (all-or-nothing) → app deterministically updates index.md/log.md/project indexes → REVIEW items to queue → derived views incrementally rebuild. Retry-once-with-error; final failure → draft in review queue (expected <1% with frontier models). Review queue is non-blocking, one-click constrained actions, every action itself an undoable changeset.
+
+- **Recommendation = AI-native agentic RecSys (Tong, 2026-07-11)**: keep the traditional funnel (retrieve → rank → re-rank) but every stage is LLM reasoning over assembled user context (onboarding questionnaire, save/like history, per-paper dwell time, chat memories) — no trained ML models, no collaborative filtering (v1), **no third-party embeddings (no SPECTER)**. Stage-1 retrieval is agent-formulated searches over the APIs' native tools (keyword/concept/author/citation-graph); if similarity search ever proves necessary, only a small on-device embedding model as a private tool. Re-rank stage produces per-card personalized "why this, why you, why now" explanations. Public side: a **trending agent** runs daily on SciSpark's end producing per-field trend surveys, cached for all users (fixed cost, user-independent) and feeding stage-1 candidates. Linjing's prior ML semantic recsys is reference, not foundation.
+- **Agent behaviors are versioned skill documents** ("Agentic Research Feed Skill" first): the harness executes standardized skill definitions (context → workflow → output contract), mirroring research-os `workflows/*.md` and llm_wiki skills. Layer-4 organizing principle: one harness, N skills (Feed, Trending, Ingest, Lint, Reading-Companion).
+
+- **User model = two-tier memory (approved 2026-07-11)**: Tier 1 append-only raw event log in the vault (`.scispark/events/`: views+dwell, highlights, saves/likes/dismissals, agent chats — local, exported with vault, ground truth, replayable). Tier 2: a Memory-Consolidation Skill periodically distills events into **user-readable/editable wiki pages** — `profile.md` (seeded by onboarding), `interests.md` (evidence-linked), `feedback.md` (standing instructions). Recommender agent receives Tier 2 + recent raw events. Editing the pages IS retraining; transparency is a product feature. Lint watches for summary-vs-log drift.
+
+- **Backend (approved 2026-07-11)**: one deployment — the web app and API are a single Next.js app on Vercel. Server surface: `/api/search/{arxiv|openalex|s2|pubmed}` (normalized passthrough, server-held keys, shared caching), `/api/resolve` (DOI→OA location via Unpaywall), `/api/fetch` (CORS relay for public PDFs/HTML, streaming, size-capped, IP rate-limited), `/api/trending/{field}` (serves daily trending-agent output from blob storage), one daily cron running the Trending Skill on SciSpark's own key (the only server-side LLM spend, fixed per day). No server LLM endpoint for users (BYOK goes client→provider directly). Proxy logs no query strings.
+- **Entry flow (Tong, 2026-07-11)**: anonymous visitors land on the **Trending page** (public, zero setup — doubles as live demo). "Personalized home" requires completing the conversational agent-style onboarding, which creates a **local profile only** (no server account — this is the "registration"). At the end of onboarding, **optionally** offer real account registration (email, Supabase) purely for marketing/user-info collection and future tiers — never required, gates nothing in v1. Trending remains a tab for onboarded users and feeds recommender stage-1 candidates.
+
+- **Agent harness (approved 2026-07-11)**: providers in v1 = Anthropic, OpenAI, Google, OpenRouter (all browser-BYOK-capable; Ollama v1.5). Skills declare **model tiers** (`fast`/`strong`) per step, never model names; user settings map tiers→models with sane defaults. Harness meters every skill run (tokens→estimated cost, visible "AI spend" panel) and enforces a **user-set daily budget** with graceful degradation (fewer candidates / cached trending / manual refresh). Budget enforcement is harness-level, not per-skill.
+
+- **Tool registry + safety contract (approved 2026-07-11)**: skills get per-manifest tool allowlists (`vault.read/search/list` all; `vault.propose_changeset` only Ingest/Lint/Memory-Consolidation; `papers.search/citations` Feed/Trending/Reading-Companion; `papers.fetch` Ingest/Reading-Companion; `events.query` Feed/Memory-Consolidation; `user.flag` all). Four harness-enforced rules: (1) no raw writes — only schema-validated atomic undoable changesets; (2) no open network — registered tools only, no arbitrary URL fetch in v1; (3) paper text is untrusted input (prompt-injection defense = rules 1+2, not prompt hygiene alone); (4) mandatory provenance — every changeset logs skill, model, sources.
+
+- **Frontend (approved 2026-07-11)**: fork `scispark-app-frontend` as the starting codebase — keep AppShell/feed/digest/chat/highlight architecture and design system; strip clinical content; replace mock hooks with real services behind the same interfaces. Wiki editor: **Milkdown** (llm_wiki-proven). Graph: **Sigma.js + graphology** (Louvain, Adamic-Adar). Timeline/citation/author views: custom D3 over derived data. Reader: **pdf.js** + quote/position-anchored highlight overlay; native HTML rendering for arXiv/PMC HTML full texts.
+
+## Architecture principles agreed so far
+
+- **Wiki layer follows the LLM-wiki three-layer split**: raw sources (papers) are immutable; the wiki is agent-owned and regenerable; a schema document governs page types, taxonomy, and agent behavior.
+- **Adopt Research OS's safety pattern**: agent writes to the knowledge layer go through structured proposals/managed sections rather than free-form overwrites; graph and index views are deterministic projections derived from the wiki content, never hand-maintained.
+- **The knowledge graph is derived, not stored**: nodes/edges come from wikilinks, shared-source relations, and typed frontmatter relations.
+
+## Decisions (Tong, 2026-07-11)
+
+- **Design is split into 5 layers, worked in this order**: (1) whole product, (2) system, (3) back-end system design, (4) agentic-AI harness / function design, (5) front-end design. Front-end is lowest priority initially — borrow `scispark-app-frontend`; the UI is expected to change once the product solidifies.
+- **Storage: local-first markdown (Obsidian-like) for MVP** — but SciSpark owns the markdown renderer via its web app (no Obsidian). Cloud persistence/sync is a future paid tier (v2.0, motivated by mobile apps), not free tier.
+- **Paper sources**: arXiv + OpenAlex + Semantic Scholar + PubMed (all-field coverage). If forced to prioritize one domain: biomedical.
+- **Real LLM calls from the start** — no mock-first phase for the new system.
+- **Accounts**: architecture must support an account system for future price tiers, but the MVP runs fully locally with no sign-up required.
+- **Product identity**: parallel exploration alongside the clinical SciSpark app (not an immediate replacement).
+- **Borrow llm_wiki's machinery, differentiate on the gap it left**: adopt its two-step ingest (analyze → generate), wiki file conventions, multi-signal graph relevance, and human-review queue. llm_wiki has **no in-app reading of original papers, no highlighting, no select-to-ask, and no discovery feed** (verified 2026-07-11) — those are exactly our additions: discover (feed) → read (in-app reader + highlights) → understand (digest + ask-AI) → retain (agent-maintained wiki). Reading highlights/questions double as personalization signals for what the wiki emphasizes.
+
+- **LLM access: BYOK now, proxy later (phased)**. MVP: user brings their own API key (stored locally, calls go direct to the provider — llm_wiki-style). When accounts/price tiers arrive, paid users get SciSpark-managed keys via a server proxy; BYOK remains the free/private tier. Build one `LLMProvider` interface from day one so the proxy is just a second implementation.
+
+- **Visualizations — all four views are in the vision**, built as pluggable views over the same derived data: knowledge graph (baseline, llm_wiki-style), field timeline/chronicle, citation/influence flow, author/team collaboration network.
+- **System architecture: Option 1** — local-first browser app; vault (markdown+PDFs+annotations) behind a `VaultStorage` interface (OPFS default + File System Access API folder on Chromium); agent harness runs client-side; one thin stateless serverless proxy for CORS/PDF-fetch/Unpaywall/feed aggregation (public data only, no accounts, no storage). Tauri wrapper and cloud/paid tier plug in later without rewrites.
+- **v1 scope (Tong, 2026-07-11)**: onboarding-lite interest profile; personalized feed; LLM-generated digest; in-app reader (HTML/pdf.js) with highlights + select-to-ask; add-to-KB → two-step agent ingest → wiki; wiki browse/edit; KB chat with citations; **visualization dashboard with all four views** (graph, timeline, citation flow, author network); **projects = virtual indexes, not physical folders**: a project is an index page (links to papers/notes/concepts + optional instructions) whose sole role is scoping agent context when chatting/working "in" that project; UI may render it as a folder tree, but the vault's physical layout stays fully agent-owned; **wiki lint**; slim async review queue (agent writes immediately; per-ingest changesets with one-click revert; LLM-flagged uncertainties + lint findings share one non-blocking inbox — llm_wiki's model plus undo, which llm_wiki lacks). Vault zip export. OUT of v1: Tauri wrapper, accounts/cloud sync, proxy-LLM tier, mobile.
+
+## Open questions (resolve with Tong before building)
+
+- Mechanism for local-first storage in a browser (File System Access API real folder vs. OPFS vs. Tauri-first) — being settled in the architecture-approaches proposal.
