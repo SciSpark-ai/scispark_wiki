@@ -81,6 +81,9 @@ export async function applyChangeset(storage: VaultStorage, cs: Changeset): Prom
       else await storage.write(ch.path, ch.after)
       applied.push(ch)
     }
+    // 4. Persist the audit record only after all page writes have succeeded.
+    // Must be inside the try so a failure here also triggers rollback.
+    await storage.write(recordPath, JSON.stringify(cs, null, 2))
   } catch (err) {
     let rolledBack = true
     for (const ch of applied.slice().reverse()) {
@@ -93,9 +96,6 @@ export async function applyChangeset(storage: VaultStorage, cs: Changeset): Prom
     }
     throw new ChangesetApplyError(err, applied.length, rolledBack)
   }
-
-  // 4. Persist the audit record only after all writes have succeeded.
-  await storage.write(recordPath, JSON.stringify(cs, null, 2))
 }
 
 export async function revertChangeset(

@@ -48,6 +48,33 @@ class ThrowingWriteStorage implements VaultStorage {
   }
 }
 
+/** Wraps MemoryVaultStorage and throws only when writing to `.scispark/changesets/` paths,
+ * to simulate an audit-record write failure (e.g. quota exhausted on the final write). */
+class ThrowOnChangesetPathStorage implements VaultStorage {
+  private inner = new MemoryVaultStorage()
+  async read(path: string): Promise<string | null> {
+    return this.inner.read(path)
+  }
+  async write(path: string, content: string): Promise<void> {
+    if (path.startsWith(".scispark/changesets/")) {
+      throw new Error("simulated changeset record write failure")
+    }
+    return this.inner.write(path, content)
+  }
+  async delete(path: string): Promise<void> {
+    return this.inner.delete(path)
+  }
+  async list(prefix?: string): Promise<string[]> {
+    return this.inner.list(prefix)
+  }
+  snapshot(): Map<string, string> {
+    return this.inner.snapshot()
+  }
+  async seed(path: string, content: string): Promise<void> {
+    return this.inner.write(path, content)
+  }
+}
+
 describe("applyChangeset", () => {
   it("applies create + modify atomically and persists the record", async () => {
     const s = new MemoryVaultStorage()
@@ -128,6 +155,37 @@ describe("applyChangeset", () => {
     expect(await s.read("wiki/concepts/c.md")).toBeNull()
 
     // The changeset JSON record must NOT be persisted for a failed apply.
+    expect(await loadChangeset(s, c.id)).toBeNull()
+  })
+
+  it("rolls back all changes when the audit-record write fails", async () => {
+    const s = new ThrowOnChangesetPathStorage()
+    await s.seed("wiki/concepts/a.md", "a-old")
+    await s.seed("wiki/concepts/b.md", "b-old")
+
+    const c = cs([
+      { path: "wiki/concepts/a.md", before: "a-old", after: "a-new" },
+      { path: "wiki/concepts/b.md", before: "b-old", after: "b-new" },
+    ])
+
+    let caught: unknown
+    try {
+      await applyChangeset(s, c)
+    } catch (err) {
+      caught = err
+    }
+
+    // Should throw ChangesetApplyError (not raw Error)
+    expect(caught).toBeInstanceOf(ChangesetApplyError)
+    const applyErr = caught as ChangesetApplyError
+    expect(applyErr.appliedCount).toBe(2)
+    expect(applyErr.rolledBack).toBe(true)
+
+    // All page changes must be rolled back to their pre-apply states
+    expect(await s.read("wiki/concepts/a.md")).toBe("a-old")
+    expect(await s.read("wiki/concepts/b.md")).toBe("b-old")
+
+    // No audit record should exist
     expect(await loadChangeset(s, c.id)).toBeNull()
   })
 })
