@@ -1,12 +1,36 @@
 import { describe, it, expect } from "vitest"
 import { z } from "zod"
+import type { VaultStorage } from "../../vault/storage"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { Meter } from "../../llm/metering"
 import { DEFAULT_SETTINGS, type LLMSettings } from "../../llm/settings"
-import { LLMAuthError, type LLMResult } from "../../llm/types"
+import { LLMAuthError, LLMTransientError, type LLMResult } from "../../llm/types"
 import { MockProvider } from "../../llm/mock-provider"
 import { defineSkill } from "../types"
 import { runSkill } from "../runner"
+
+/** Test double: forwards to `inner`, but throws on write() for any path starting with `failPrefix`. */
+class FailingWriteStorage implements VaultStorage {
+  constructor(
+    private inner: VaultStorage,
+    private failPrefix: string,
+  ) {}
+  read(path: string): Promise<string | null> {
+    return this.inner.read(path)
+  }
+  async write(path: string, content: string): Promise<void> {
+    if (path.startsWith(this.failPrefix)) {
+      throw new Error(`simulated write failure for ${path}`)
+    }
+    return this.inner.write(path, content)
+  }
+  delete(path: string): Promise<void> {
+    return this.inner.delete(path)
+  }
+  list(prefix?: string): Promise<string[]> {
+    return this.inner.list(prefix)
+  }
+}
 
 const NOW = () => new Date("2026-07-12T10:00:00.000Z")
 
@@ -185,5 +209,161 @@ describe("runSkill", () => {
     expect(records).toHaveLength(1)
     expect(records[0].skill).toBe("structured-test-skill")
     expect(records[0].runId).toBe(run.runId)
+  })
+
+  it("two concurrent runSkill calls sharing one storage: union of both runs' meter records is complete (no lost lines)", async () => {
+    const storage = new MemoryVaultStorage()
+
+    const makeSkill = (name: string) =>
+      defineSkill<void, string>({
+        name,
+        version: "1.0.0",
+        async run(ctx) {
+          const r = await ctx.llm("fast", { messages: [{ role: "user", content: "hi" }] })
+          return r.text
+        },
+      })
+
+    const providerA = new MockProvider([result({ text: "a-reply" })])
+    const providerB = new MockProvider([result({ text: "b-reply" })])
+
+    const [runA, runB] = await Promise.all([
+      runSkill({
+        skill: makeSkill("skill-a"),
+        input: undefined,
+        storage,
+        settings: settingsWithKeys(),
+        providerOverride: { fast: providerA },
+        now: NOW,
+      }),
+      runSkill({
+        skill: makeSkill("skill-b"),
+        input: undefined,
+        storage,
+        settings: settingsWithKeys(),
+        providerOverride: { fast: providerB },
+        now: NOW,
+      }),
+    ])
+
+    expect(runA.status).toBe("ok")
+    expect(runB.status).toBe("ok")
+
+    const meter = new Meter(storage, NOW)
+    const records = await meter.recordsForDay("2026-07-12")
+    const runIds = new Set(records.map((r) => r.runId))
+    expect(records).toHaveLength(2)
+    expect(runIds.has(runA.runId)).toBe(true)
+    expect(runIds.has(runB.runId)).toBe(true)
+  })
+
+  it("metering failure: meter.record write fails, run still returns ok with totals intact and a 'metering failed' log", async () => {
+    const inner = new MemoryVaultStorage()
+    const storage = new FailingWriteStorage(inner, ".scispark/usage/")
+    const provider = new MockProvider([
+      result({ text: "ok-reply", usage: { inputTokens: 9, outputTokens: 4 } }),
+    ])
+
+    const skill = defineSkill<void, string>({
+      name: "metering-fail-skill",
+      version: "1.0.0",
+      async run(ctx) {
+        const r = await ctx.llm("fast", { messages: [{ role: "user", content: "hi" }] })
+        return r.text
+      },
+    })
+
+    const run = await runSkill({
+      skill,
+      input: undefined,
+      storage,
+      settings: settingsWithKeys(),
+      providerOverride: { fast: provider },
+      now: NOW,
+    })
+
+    expect(run.status).toBe("ok")
+    expect(run.output).toBe("ok-reply")
+    expect(run.usage).toEqual({ inputTokens: 9, outputTokens: 4 })
+    expect(run.costUsd).toBeGreaterThan(0)
+    expect(run.logs.some((l) => l.startsWith("metering failed:"))).toBe(true)
+
+    // the run record itself still persists — only usage/ writes fail
+    const persisted = await inner.read(`.scispark/runs/${run.runId}.json`)
+    expect(persisted).not.toBeNull()
+    expect(JSON.parse(persisted as string).status).toBe("ok")
+  })
+
+  it("run-record persist failure: final storage.write fails, runSkill still returns a coherent ok result with a persist-failure log", async () => {
+    const inner = new MemoryVaultStorage()
+    const storage = new FailingWriteStorage(inner, ".scispark/runs/")
+    const provider = new MockProvider([result({ text: "ok-reply2" })])
+
+    const skill = defineSkill<void, string>({
+      name: "persist-fail-skill",
+      version: "1.0.0",
+      async run(ctx) {
+        const r = await ctx.llm("fast", { messages: [{ role: "user", content: "hi" }] })
+        return r.text
+      },
+    })
+
+    const run = await runSkill({
+      skill,
+      input: undefined,
+      storage,
+      settings: settingsWithKeys(),
+      providerOverride: { fast: provider },
+      now: NOW,
+    })
+
+    expect(run.status).toBe("ok")
+    expect(run.output).toBe("ok-reply2")
+    expect(run.logs.some((l) => l.startsWith("run record persist failed:"))).toBe(true)
+
+    // meter record still succeeded — only runs/ writes fail
+    const meter = new Meter(inner, NOW)
+    const records = await meter.recordsForDay("2026-07-12")
+    expect(records).toHaveLength(1)
+  })
+
+  it("ctx.llmStructured retries a transient provider error, same as ctx.llm (retry parity)", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([
+      new LLMTransientError("temporary blip"),
+      result({ text: JSON.stringify({ x: 7 }), usage: { inputTokens: 5, outputTokens: 2 } }),
+    ])
+
+    const schema = z.object({ x: z.number() })
+
+    const skill = defineSkill<void, { x: number }>({
+      name: "structured-retry-skill",
+      version: "1.0.0",
+      async run(ctx) {
+        return ctx.llmStructured(
+          "strong",
+          { messages: [{ role: "user", content: "give json" }] },
+          schema,
+        )
+      },
+    })
+
+    const run = await runSkill({
+      skill,
+      input: undefined,
+      storage,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      now: NOW,
+      retryOpts: { baseDelayMs: 1 },
+    })
+
+    expect(run.status).toBe("ok")
+    expect(run.output).toEqual({ x: 7 })
+    expect(provider.calls).toHaveLength(2)
+
+    const meter = new Meter(storage, NOW)
+    const records = await meter.recordsForDay("2026-07-12")
+    expect(records).toHaveLength(1)
   })
 })

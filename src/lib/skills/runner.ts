@@ -1,6 +1,6 @@
 import type { z } from "zod"
 import type { VaultStorage } from "../vault/storage"
-import type { LLMProvider, LLMUsage, Tier } from "../llm/types"
+import type { LLMProvider, LLMUsage, ProviderId, Tier } from "../llm/types"
 import { loadSettings, resolveTier, buildProvider, type LLMSettings } from "../llm/settings"
 import { Meter, checkBudget, BudgetExceededError } from "../llm/metering"
 import { withRetry } from "../llm/retry"
@@ -27,6 +27,8 @@ export async function runSkill<I, O>(opts: {
   settings?: LLMSettings
   providerOverride?: Partial<Record<Tier, LLMProvider>>
   now?: () => Date
+  /** Passed through to every `withRetry` call (both `ctx.llm` and `ctx.llmStructured`). Tests use this to shrink backoff delays. */
+  retryOpts?: { retries?: number; baseDelayMs?: number; sleep?: (ms: number) => Promise<void> }
 }): Promise<SkillRunResult<O>> {
   const now = opts.now ?? (() => new Date())
   const settings = opts.settings ?? (await loadSettings(opts.storage))
@@ -47,20 +49,35 @@ export async function runSkill<I, O>(opts: {
     return opts.providerOverride?.[tier] ?? buildProvider(settings, tier)
   }
 
+  async function meterAndContinue(entry: {
+    provider: ProviderId
+    model: string
+    usage: LLMUsage
+  }): Promise<void> {
+    // Accumulate BEFORE awaiting meter.record: a metering (storage) failure must
+    // not drop already-spent usage/cost from the run's totals, since the provider
+    // call already happened and already cost real money.
+    accumulate(entry.model, entry.usage)
+    try {
+      await meter.record({
+        skill: opts.skill.name,
+        runId,
+        provider: entry.provider,
+        model: entry.model,
+        usage: entry.usage,
+      })
+    } catch (e) {
+      logs.push(`metering failed: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
   const ctx: SkillContext = {
     async llm(tier, req) {
       await checkBudget(meter, settings)
       const provider = resolveProvider(tier)
       const model = resolveTier(settings, tier).model
-      const result = await withRetry(() => provider.complete(model, req))
-      await meter.record({
-        skill: opts.skill.name,
-        runId,
-        provider: provider.id,
-        model: result.model,
-        usage: result.usage,
-      })
-      accumulate(result.model, result.usage)
+      const result = await withRetry(() => provider.complete(model, req), opts.retryOpts)
+      await meterAndContinue({ provider: provider.id, model: result.model, usage: result.usage })
       return result
     },
     async llmStructured<T>(
@@ -69,17 +86,21 @@ export async function runSkill<I, O>(opts: {
       schema: z.ZodType<T>,
     ) {
       await checkBudget(meter, settings)
+      // NOTE: budget is checked once here, not inside completeStructured's internal
+      // validation-retry loop — a structured call can therefore spend up to ~2x a
+      // single call's cost before the next budget check catches it. Accepted
+      // soft-overrun per the "summed usage recorded once" contract.
       const provider = resolveProvider(tier)
       const model = resolveTier(settings, tier).model
-      const { value, usage } = await completeStructured(provider, model, req, schema)
-      await meter.record({
-        skill: opts.skill.name,
-        runId,
-        provider: provider.id,
-        model,
-        usage,
-      })
-      accumulate(model, usage)
+      // Wrap the provider in a retry-facade so transient/rate-limit errors during a
+      // structured call are retried with backoff, same as ctx.llm — completeStructured's
+      // own 2-attempt loop is for schema-validation retries only, not transient failures.
+      const retryingProvider: LLMProvider = {
+        id: provider.id,
+        complete: (m, r) => withRetry(() => provider.complete(m, r), opts.retryOpts),
+      }
+      const { value, usage } = await completeStructured(retryingProvider, model, req, schema)
+      await meterAndContinue({ provider: provider.id, model, usage })
       return value
     },
     log(msg) {
@@ -109,7 +130,14 @@ export async function runSkill<I, O>(opts: {
     logs,
   }
 
-  await opts.storage.write(`.scispark/runs/${runId}.json`, JSON.stringify(run, null, 2))
+  try {
+    await opts.storage.write(`.scispark/runs/${runId}.json`, JSON.stringify(run, null, 2))
+  } catch (e) {
+    // A storage failure here must not turn a completed run into a rejected
+    // promise: the caller still gets a coherent SkillRunResult (with whatever
+    // output/usage/cost was already computed), just noted as unpersisted.
+    logs.push(`run record persist failed: ${e instanceof Error ? e.message : String(e)}`)
+  }
 
   return run
 }

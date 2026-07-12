@@ -22,7 +22,18 @@ function utcDateString(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
+// Serializes .scispark/usage/*.jsonl read-modify-write cycles across every Meter
+// instance backed by the same VaultStorage — e.g. two concurrent runSkill() calls
+// each construct their own Meter over one shared storage, and both must not race
+// on the same day file. Keyed by storage instance identity, which in practice
+// means one queue per browser tab/process (each tab/process holds one storage
+// handle). Cross-tab/cross-process concurrency — separate storage instances
+// writing the same underlying files — is out of scope until the sync backend (v2).
+const usageWriteQueues = new WeakMap<VaultStorage, Promise<void>>()
+
 export class Meter {
+  private writeQueue: Promise<void> = Promise.resolve()
+
   constructor(
     private storage: VaultStorage,
     private now: () => Date = () => new Date(),
@@ -37,13 +48,29 @@ export class Meter {
     }
 
     const path = dayFilePath(utcDateString(nowDate))
-    // JSONL append = read existing file + append line + write back. This mirrors the
-    // M1 changeset serialization convention: there is a single writer (the harness
-    // serializes vault-mutating operations), so a plain read-modify-write is safe
-    // without an additional file lock.
-    const existing = await this.storage.read(path)
-    const next = (existing ?? "") + JSON.stringify(rec) + "\n"
-    await this.storage.write(path, next)
+
+    // JSONL append = read existing file + append line + write back. Route every
+    // read-modify-write through a promise-chain mutex (shared across Meter
+    // instances on the same storage, via `usageWriteQueues`) so concurrent
+    // record() calls append in order with zero lost records, instead of racing
+    // to read the same pre-write bytes and clobbering each other's line on write.
+    const previous = usageWriteQueues.get(this.storage) ?? this.writeQueue
+    const work = async (): Promise<void> => {
+      const existing = await this.storage.read(path)
+      const next = (existing ?? "") + JSON.stringify(rec) + "\n"
+      await this.storage.write(path, next)
+    }
+    const thatLink = previous.then(work)
+    // Swallow failures in the shared queue link itself so one failed write
+    // doesn't wedge every later record() call on this storage; the failure
+    // still propagates to *this* call's caller via `await thatLink` below.
+    const queueTail = thatLink.then(
+      () => undefined,
+      () => undefined,
+    )
+    this.writeQueue = queueTail
+    usageWriteQueues.set(this.storage, queueTail)
+    await thatLink
 
     return rec
   }
@@ -60,7 +87,7 @@ export class Meter {
         if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
           records.push(parsed as UsageRecord)
         }
-      } catch (e) {
+      } catch {
         // Skip unparseable lines (corrupted JSON)
         continue
       }

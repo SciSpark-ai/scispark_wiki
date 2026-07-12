@@ -184,6 +184,30 @@ describe("Meter", () => {
       expect(spent).toBeCloseTo(0.5, 6)
     })
   })
+
+  describe("concurrent writes", () => {
+    it("serializes 10 concurrent record() calls on the same Meter with zero lost records", async () => {
+      const storage = new MemoryVaultStorage()
+      const meter = new Meter(storage, () => new Date("2026-07-12T10:00:00.000Z"))
+
+      await Promise.all(
+        Array.from({ length: 10 }, (_, i) =>
+          meter.record({
+            skill: "concurrent-skill",
+            runId: `run-${i}`,
+            provider: "anthropic",
+            model: "claude-haiku-4-5",
+            usage: haikuUsage(100_000, 0), // $0.1 each
+          }),
+        ),
+      )
+
+      const records = await meter.recordsForDay("2026-07-12")
+      expect(records).toHaveLength(10)
+      expect(new Set(records.map((r) => r.runId)).size).toBe(10)
+      expect(await meter.spentTodayUsd()).toBeCloseTo(1.0, 6)
+    })
+  })
 })
 
 describe("checkBudget", () => {
