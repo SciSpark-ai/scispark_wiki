@@ -28,6 +28,8 @@ const SEARCH_CACHE_CONTROL = "public, s-maxage=600, stale-while-revalidate=3600"
 const BUCKET_RETRY_AFTER_SECONDS = "2"
 const UPSTREAM_RATE_LIMIT_RETRY_AFTER_SECONDS = "5"
 
+const MAX_QUERY_LENGTH = 512
+
 const defaultCache = new TtlCache<PaperRecord[]>({ ttlMs: CACHE_TTL_MS, maxEntries: CACHE_MAX_ENTRIES })
 
 const defaultBuckets: Record<SourceKey, TokenBucket> = {
@@ -142,6 +144,10 @@ export async function handleSearch(
   const q = nonEmpty(params.q)
   if (q === undefined) {
     return { status: 400, body: { error: "missing q" } }
+  }
+
+  if (q.length > MAX_QUERY_LENGTH) {
+    return { status: 400, body: { error: "query too long" } }
   }
 
   const limit = parseLimit(params.limit)

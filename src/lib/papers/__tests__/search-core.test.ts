@@ -271,4 +271,19 @@ describe("handleSearch", () => {
     expect(resultB.body).toEqual({ papers: papersB })
     expect(resultA.body).not.toEqual(resultB.body)
   })
+
+  it("returns 400 for a query longer than 512 characters", async () => {
+    const longQuery = "x".repeat(513)
+    const result = await handleSearch("arxiv", { q: longQuery }, freshDeps())
+    expect(result.status).toBe(400)
+    expect(result.body).toEqual({ error: "query too long" })
+  })
+
+  it("allows a query exactly 512 characters", async () => {
+    const exactQuery = "x".repeat(512)
+    const adapter = stubAdapter([])
+    const result = await handleSearch("arxiv", { q: exactQuery }, freshDeps({ adapters: { arxiv: adapter as unknown as typeof import("../arxiv").searchArxiv } }))
+    expect(result.status).toBe(200)
+    expect(adapter).toHaveBeenCalled()
+  })
 })

@@ -74,7 +74,8 @@ function parseUrl(raw: string | null): URL | null {
 /**
  * Validates a candidate URL (the original request, or a redirect hop)
  * against the relay's security rules. Returns the rejection status (403)
- * or null when the URL is allowed. Order: scheme -> userinfo -> allowlist.
+ * or null when the URL is allowed. Order: scheme -> userinfo -> allowlist ->
+ * port (only default ports; non-default ports are the unpinned SSRF class).
  */
 function rejectionStatus(url: URL): number | null {
   const isHttps = url.protocol === "https:"
@@ -82,6 +83,7 @@ function rejectionStatus(url: URL): number | null {
   if (!isHttps && !isHttpException) return 403
   if (url.username || url.password) return 403
   if (!isAllowedHost(url.hostname)) return 403
+  if (url.port !== "") return 403
   return null
 }
 

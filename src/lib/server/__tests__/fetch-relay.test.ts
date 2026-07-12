@@ -466,4 +466,44 @@ describe("handleFetchRelay - SSRF regression vectors", () => {
     expect(res.status).toBe(200)
     await expect(readAll(res.body)).rejects.toBeTruthy()
   })
+
+  it("rejects a non-default port (8443) with 403", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay("https://arxiv.org:8443/x", "port1", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it("rejects a redirect to a non-default port with 403", async () => {
+    const fetchFn = vi.fn(async () => redirectResponse("https://arxiv.org:8443/y"))
+    const res = await handleFetchRelay("https://arxiv.org/start", "port2", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+
+  it("allows default HTTPS port (443) which WHATWG normalizes to empty string", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["ok"]))
+    const res = await handleFetchRelay("https://arxiv.org:443/x", "port3", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(200)
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+
+  it("allows implicit default HTTPS port (no explicit port specified)", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["ok"]))
+    const res = await handleFetchRelay("https://arxiv.org/x", "port4", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(200)
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
 })
