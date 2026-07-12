@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-halant), Georgia, serif;
+  --font-body: var(--font-geist-sans), system-ui, sans-serif;
+
+  --color-page-bg: #fefaf5;
+  --color-page-warm: #f6f0e9;
+  --color-card-surface: #efe7dd;
+  --color-light-surface: #faf6f2;
+  --color-espresso: #2b180a;
+  --color-secondary-dark: #3e2407;
+  --color-muted-text: #94877c;
+  --color-orange: #f97316;
+  --color-orange-light: #fb923c;
+  --color-warm-tan: #dab697;
+  --color-border-warm: #e8d3c0;
+  --color-gold: #fde68a;
+
+  --tracking-heading-tight: -0.07em;
+  --tracking-heading: -0.06em;
+  --tracking-heading-card: -0.05em;
+  --tracking-body: -0.04em;
+
+  --radius-card: 28px;
+  --radius-badge: 8px;
+  --radius-btn: 12px;
+  --radius-pill: 50px;
+  --radius-faq: 16px;
+}
+
+@layer base {
+  body {
+    background-color: #fefaf5;
+    color: #2b180a;
+    font-family: var(--font-body);
+  }
+  html, body {
+    height: 100%;
+    scroll-behavior: smooth;
+  }
+  ::selection {
+    background-color: #e8d3c0;
+    color: #2b180a;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+}

@@ -1,0 +1,109 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - complementary [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: SciSpark
+        - button "Close sidebar" [ref=e8]:
+          - img [ref=e9]
+      - navigation [ref=e12]:
+        - link "Home" [ref=e13] [cursor=pointer]:
+          - /url: /
+          - img [ref=e14]
+          - text: Home
+        - link "New Chat" [ref=e17] [cursor=pointer]:
+          - /url: /chat
+          - img [ref=e18]
+          - text: New Chat
+        - link "Projects" [ref=e20] [cursor=pointer]:
+          - /url: /projects
+          - img [ref=e21]
+          - text: Projects
+        - link "Library" [ref=e23] [cursor=pointer]:
+          - /url: /library
+          - img [ref=e24]
+          - text: Library
+        - link "History" [ref=e26] [cursor=pointer]:
+          - /url: /history
+          - img [ref=e27]
+          - text: History
+      - separator [ref=e30]
+      - generic [ref=e31]:
+        - paragraph [ref=e32]: Recent Chats
+        - link "How effective is psilocybin therapy for treatment-resistant depression?" [ref=e33] [cursor=pointer]:
+          - /url: /chat/seed-psilocybin
+        - link "What are the latest DBS targets for treatment-resistant depression?" [ref=e34] [cursor=pointer]:
+          - /url: /chat/seed-dbs
+        - link "MDMA-assisted therapy PTSD outcomes" [ref=e35] [cursor=pointer]:
+          - /url: /chat/seed-mdma
+      - generic [ref=e36]:
+        - separator [ref=e37]
+        - link "T Tong tong@scispark.ai" [ref=e38] [cursor=pointer]:
+          - /url: /profile
+          - generic [ref=e39]: T
+          - generic [ref=e40]:
+            - paragraph [ref=e41]: Tong
+            - paragraph [ref=e42]: tong@scispark.ai
+    - main [ref=e43]:
+      - generic [ref=e44]:
+        - heading "Good evening, Tong" [level=1] [ref=e46]
+        - generic [ref=e49]:
+          - button "For You" [ref=e50]
+          - button "Trending" [ref=e51]
+          - button "By Specialty" [ref=e52]
+    - complementary [ref=e114]:
+      - button "Close panel" [ref=e116]:
+        - img [ref=e117]
+      - generic [ref=e120]:
+        - generic [ref=e121]:
+          - paragraph [ref=e122]: Your Week
+          - generic [ref=e123]:
+            - generic [ref=e124]:
+              - img [ref=e126]
+              - paragraph [ref=e129]: 18new in your interests
+            - generic [ref=e130]:
+              - img [ref=e132]
+              - paragraph [ref=e135]: 5trending in your fields
+            - generic [ref=e136]:
+              - img [ref=e138]
+              - paragraph [ref=e140]: 2saved & unread
+        - separator [ref=e141]
+        - generic [ref=e142]:
+          - paragraph [ref=e143]: Trending Topics
+          - generic [ref=e144]:
+            - generic [ref=e145] [cursor=pointer]:
+              - generic [ref=e146]: "1"
+              - paragraph [ref=e147]: Psychedelic Therapy
+              - generic [ref=e148]: "52"
+            - generic [ref=e149] [cursor=pointer]:
+              - generic [ref=e150]: "2"
+              - paragraph [ref=e151]: Deep Brain Stimulation
+              - generic [ref=e152]: "38"
+            - generic [ref=e153] [cursor=pointer]:
+              - generic [ref=e154]: "3"
+              - paragraph [ref=e155]: Ketamine/Esketamine
+              - generic [ref=e156]: "31"
+            - generic [ref=e157] [cursor=pointer]:
+              - generic [ref=e158]: "4"
+              - paragraph [ref=e159]: Gut-Brain Axis
+              - generic [ref=e160]: "24"
+            - generic [ref=e161] [cursor=pointer]:
+              - generic [ref=e162]: "5"
+              - paragraph [ref=e163]: Digital Phenotyping
+              - generic [ref=e164]: "19"
+        - separator [ref=e165]
+        - generic [ref=e166]:
+          - paragraph [ref=e167]: Reading Streak
+          - generic [ref=e168]:
+            - generic [ref=e169]: "4"
+            - generic [ref=e170]: day streak
+          - generic [ref=e171]:
+            - generic [ref=e173]: M
+            - generic [ref=e176]: T
+            - generic [ref=e179]: W
+            - generic [ref=e182]: T
+            - generic [ref=e185]: F
+            - generic [ref=e188]: S
+            - generic [ref=e191]: S
+  - button "Open Next.js Dev Tools" [ref=e198] [cursor=pointer]:
+    - img [ref=e199]
+  - alert [ref=e202]

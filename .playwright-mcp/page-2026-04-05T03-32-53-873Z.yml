@@ -1,0 +1,70 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - complementary [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: SciSpark
+        - button "Close sidebar" [ref=e8]:
+          - img [ref=e9]
+      - navigation [ref=e12]:
+        - link "Home" [ref=e13] [cursor=pointer]:
+          - /url: /
+          - img [ref=e14]
+          - text: Home
+        - link "New Chat" [ref=e17] [cursor=pointer]:
+          - /url: /chat
+          - img [ref=e18]
+          - text: New Chat
+        - link "Library" [ref=e20] [cursor=pointer]:
+          - /url: /library
+          - img [ref=e21]
+          - text: Library
+        - link "History" [ref=e23] [cursor=pointer]:
+          - /url: /history
+          - img [ref=e24]
+          - text: History
+      - separator [ref=e27]
+      - generic [ref=e28]:
+        - paragraph [ref=e29]: Recent Chats
+        - link "How effective is psilocybin therapy for treatment-resistant depression?" [ref=e30] [cursor=pointer]:
+          - /url: /chat/seed-psilocybin
+        - link "What are the latest DBS targets for treatment-resistant depression?" [ref=e31] [cursor=pointer]:
+          - /url: /chat/seed-dbs
+        - link "MDMA-assisted therapy PTSD outcomes" [ref=e32] [cursor=pointer]:
+          - /url: /chat/seed-mdma
+      - generic [ref=e33]:
+        - separator [ref=e34]
+        - link "T Tong tong@scispark.ai" [ref=e35] [cursor=pointer]:
+          - /url: /profile
+          - generic [ref=e36]: T
+          - generic [ref=e37]:
+            - paragraph [ref=e38]: Tong
+            - paragraph [ref=e39]: tong@scispark.ai
+    - main [ref=e40]:
+      - generic [ref=e42]:
+        - heading "SciSpark" [level=1] [ref=e43]
+        - paragraph [ref=e44]: AI-powered clinical evidence search
+        - generic [ref=e47]:
+          - generic [ref=e48]:
+            - img [ref=e49]
+            - textbox "Ask about clinical evidence, treatments, guidelines..." [ref=e52]
+          - generic [ref=e53]:
+            - button [ref=e55]:
+              - img [ref=e56]
+            - button [ref=e57]:
+              - img [ref=e58]
+        - generic [ref=e60]:
+          - button "Compare treatments" [ref=e61]:
+            - img [ref=e62]
+            - text: Compare treatments
+          - button "Summarize RCT" [ref=e67]:
+            - img [ref=e68]
+            - text: Summarize RCT
+          - button "Find guidelines" [ref=e71]:
+            - img [ref=e72]
+            - text: Find guidelines
+          - button "Risk vs benefit" [ref=e75]:
+            - img [ref=e76]
+            - text: Risk vs benefit
+  - button "Open Next.js Dev Tools" [ref=e85] [cursor=pointer]:
+    - img [ref=e86]
+  - alert [ref=e89]
