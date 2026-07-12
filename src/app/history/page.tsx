@@ -46,7 +46,7 @@ export default function HistoryPage() {
 
       {!hasAny ? (
         <EmptyState
-          message="No conversations yet. Start a new chat to ask clinical questions."
+          message="No conversations yet. Start a new chat to explore research."
           actionLabel="New Chat"
           actionHref="/chat"
         />

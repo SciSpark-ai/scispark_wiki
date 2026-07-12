@@ -34,7 +34,7 @@ export default function NewChatPage() {
           SciSpark
         </h1>
         <p className="text-[14px] text-muted-text tracking-body mt-1">
-          AI-powered clinical evidence assistant
+          AI-powered research assistant
         </p>
 
         {/* Search box */}
@@ -57,7 +57,7 @@ export default function NewChatPage() {
                       handleSubmit();
                     }
                   }}
-                  placeholder="Ask about clinical evidence, treatments, guidelines..."
+                  placeholder="Ask about papers, methods, or your research questions"
                   rows={2}
                   className="flex-1 text-[16px] text-espresso tracking-body placeholder:text-muted-text bg-transparent focus:outline-none resize-none"
                 />

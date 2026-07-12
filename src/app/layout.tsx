@@ -10,7 +10,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: "SciSpark",
-  description: "AI-powered clinical evidence workspace",
+  description: "AI-powered research radar and knowledge base. Personalized papers daily, AI-digested, grounded in sources.",
 };
 
 export default function RootLayout({
