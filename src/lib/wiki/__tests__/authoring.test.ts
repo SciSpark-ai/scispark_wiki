@@ -89,6 +89,11 @@ describe("paperSlug", () => {
     expect(paperSlug(p)).toBe("10-1038-nature123")
   })
 
+  it("lowercases uppercase DOI for stable slug generation", () => {
+    const p = paper({ ids: { doi: "10.1038/NatURE123" } })
+    expect(paperSlug(p)).toBe("10-1038-nature123")
+  })
+
   it("prefers arxiv over doi when both are present", () => {
     const p = paper({ ids: { arxiv: "2406.01234", doi: "10.1038/nature123" } })
     expect(paperSlug(p)).toBe("2406-01234")
@@ -312,6 +317,22 @@ describe("buildPaperPage", () => {
     expect(parsed.frontmatter).toEqual(draft.frontmatter)
     expect(parsed.body.trim()).toBe(draft.body.trim())
   })
+
+  it("round-trips a title with wikilink syntax [[Survey]]", () => {
+    const p = paper({ title: "Attention: A [[Survey]] --- Revisited" })
+    const draft = buildPaperPage(p, { fullText: false, today: "2026-07-11" })
+    const serialized = composePage(draft)
+    const parsed = parseDocument(serialized)
+    expect(parsed.frontmatter.title).toBe("Attention: A [[Survey]] --- Revisited")
+  })
+
+  it("round-trips a title starting with dash", () => {
+    const p = paper({ title: "-Starting with dash" })
+    const draft = buildPaperPage(p, { fullText: false, today: "2026-07-11" })
+    const serialized = composePage(draft)
+    const parsed = parseDocument(serialized)
+    expect(parsed.frontmatter.title).toBe("-Starting with dash")
+  })
 })
 
 describe("buildAuthorSkeletons", () => {
@@ -426,6 +447,39 @@ describe("buildAuthorSkeletons", () => {
       paperPageSlug: "attention-is-all-you-need",
     })
     expect(drafts).toEqual([])
+  })
+
+  it("handles duplicate author names by suffixing -2, -3, etc.", () => {
+    const p = paper({
+      authors: [
+        { name: "John Smith" },
+        { name: "John Smith" },
+        { name: "Jane Doe" },
+        { name: "John Smith" },
+      ],
+    })
+    const drafts = buildAuthorSkeletons(p, {
+      existingIds: new Set(),
+      today: "2026-07-11",
+      paperPageSlug: "test-paper",
+    })
+    expect(drafts).toHaveLength(4)
+    expect(drafts[0].path).toBe("wiki/authors/john-smith.md")
+    expect(drafts[1].path).toBe("wiki/authors/john-smith-2.md")
+    expect(drafts[2].path).toBe("wiki/authors/jane-doe.md")
+    expect(drafts[3].path).toBe("wiki/authors/john-smith-3.md")
+  })
+
+  it("includes CJK characters in wikilink to paper page", () => {
+    const p = paper({ authors: [{ name: "Noam Shazeer" }] })
+    const drafts = buildAuthorSkeletons(p, {
+      existingIds: new Set(),
+      today: "2026-07-11",
+      paperPageSlug: "深度学习-deep-learning",
+    })
+    expect(drafts[0].body).toBe(
+      "# Noam Shazeer\n\n## Papers\n\n- [[深度学习-deep-learning]]\n",
+    )
   })
 })
 

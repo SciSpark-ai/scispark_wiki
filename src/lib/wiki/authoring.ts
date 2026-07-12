@@ -157,16 +157,34 @@ export interface BuildAuthorSkeletonsOpts {
  * author whose page id (`wiki/authors/<slug>`, no extension — matching the
  * id shape a bundle's `pages` map uses) is already in `opts.existingIds`.
  * Slug is the author's `openalexId` (lowercased) when known, else
- * `slugifyTitle(name)`.
+ * `slugifyTitle(name)`. Handles duplicate author names within the same call
+ * by suffixing -2, -3, etc. on collision.
  */
 export function buildAuthorSkeletons(paper: PaperRecord, opts: BuildAuthorSkeletonsOpts): PageDraft[] {
   const drafts: PageDraft[] = []
+  const seenSlugs = new Set<string>()
 
   for (const author of paper.authors) {
-    const slug = author.openalexId ? author.openalexId.toLowerCase() : slugifyTitle(author.name)
-    const id = `wiki/authors/${slug}`
+    let baseSlug = author.openalexId ? author.openalexId.toLowerCase() : slugifyTitle(author.name)
+    let id = `wiki/authors/${baseSlug}`
+
+    // Skip if this exact id is already in existingIds (pre-existing page)
     if (opts.existingIds.has(id)) continue
 
+    // Handle collisions within this batch by suffixing -2, -3, etc.
+    let slug = baseSlug
+    if (seenSlugs.has(baseSlug)) {
+      let suffix = 2
+      let candidateSlug = `${baseSlug}-${suffix}`
+      while (seenSlugs.has(candidateSlug) || opts.existingIds.has(`wiki/authors/${candidateSlug}`)) {
+        suffix++
+        candidateSlug = `${baseSlug}-${suffix}`
+      }
+      slug = candidateSlug
+      id = `wiki/authors/${candidateSlug}`
+    }
+
+    seenSlugs.add(slug)
     const frontmatter: Frontmatter = {
       type: "author",
       title: author.name,
