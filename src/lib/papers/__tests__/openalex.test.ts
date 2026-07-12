@@ -95,7 +95,84 @@ describe("searchOpenAlex", () => {
     expect(paper.abstract).toBeUndefined()
   })
 
-  it("builds the request URL with per-page clamp, mailto, and filter when fromDate is set", async () => {
+  it("reconstructs the real Swin Transformer fixture abstract with duplicated words at correct positions", async () => {
+    const record = fixture.results[0]
+    const fetchFn = fakeFetch({ results: [record] })
+
+    const [paper] = await searchOpenAlex({ query: "transformer" }, { fetchFn })
+
+    // Verify abstract starts with the expected first ~8 words in order
+    expect(paper.abstract).toBeDefined()
+    expect(paper.abstract).toMatch(/^This paper presents a new vision Transformer/)
+
+    // Verify a duplicated word appears at multiple non-contiguous positions
+    // "a" appears at indices [3, 14, 64, 125, 172] in the abstract_inverted_index
+    const firstIndexOfA = paper.abstract!.indexOf(" a ")
+    const lastIndexOfA = paper.abstract!.lastIndexOf(" a ")
+    expect(firstIndexOfA).not.toBe(-1)
+    expect(lastIndexOfA).not.toBe(-1)
+    expect(firstIndexOfA).not.toBe(lastIndexOfA)
+  })
+
+  it("maps null author.id to openalexId undefined", async () => {
+    const fetchFn = fakeFetch({
+      results: [
+        {
+          id: "https://openalex.org/W1",
+          doi: null,
+          display_name: "Test Paper",
+          publication_year: 2020,
+          publication_date: "2020-01-01",
+          ids: null,
+          primary_location: null,
+          open_access: null,
+          authorships: [
+            {
+              author: {
+                id: null,
+                display_name: "Test Author",
+              },
+            },
+          ],
+          cited_by_count: 0,
+          topics: [],
+          abstract_inverted_index: null,
+        },
+      ],
+    })
+
+    const [paper] = await searchOpenAlex({ query: "test" }, { fetchFn })
+
+    expect(paper.authors).toHaveLength(1)
+    expect(paper.authors[0]).toEqual({ name: "Test Author", openalexId: undefined })
+  })
+
+  it("maps null display_name to title empty string", async () => {
+    const fetchFn = fakeFetch({
+      results: [
+        {
+          id: "https://openalex.org/W1",
+          doi: null,
+          display_name: null,
+          publication_year: 2020,
+          publication_date: "2020-01-01",
+          ids: null,
+          primary_location: null,
+          open_access: null,
+          authorships: [],
+          cited_by_count: 0,
+          topics: [],
+          abstract_inverted_index: null,
+        },
+      ],
+    })
+
+    const [paper] = await searchOpenAlex({ query: "test" }, { fetchFn })
+
+    expect(paper.title).toBe("")
+  })
+
+  it("builds the request URL with per_page clamp, mailto, and filter when fromDate is set", async () => {
     const fetchFn = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -113,7 +190,7 @@ describe("searchOpenAlex", () => {
     expect(url.origin + url.pathname).toBe("https://api.openalex.org/works")
     expect(url.searchParams.get("search")).toBe("quantum computing")
     // limit clamped to max 50 even though 500 was requested
-    expect(url.searchParams.get("per-page")).toBe("50")
+    expect(url.searchParams.get("per_page")).toBe("50")
     expect(url.searchParams.get("mailto")).toBe("me@example.com")
     expect(url.searchParams.get("filter")).toBe("from_publication_date:2023-01-01")
   })
@@ -129,10 +206,10 @@ describe("searchOpenAlex", () => {
 
     const calledUrl = (fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
     const url = new URL(calledUrl.toString())
-    expect(url.searchParams.get("per-page")).toBe("1")
+    expect(url.searchParams.get("per_page")).toBe("1")
   })
 
-  it("defaults per-page to 20 when no limit is given", async () => {
+  it("defaults per_page to 20 when no limit is given", async () => {
     const fetchFn = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -143,7 +220,7 @@ describe("searchOpenAlex", () => {
 
     const calledUrl = (fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
     const url = new URL(calledUrl.toString())
-    expect(url.searchParams.get("per-page")).toBe("20")
+    expect(url.searchParams.get("per_page")).toBe("20")
   })
 
   it("omits mailto and filter params when not provided", async () => {

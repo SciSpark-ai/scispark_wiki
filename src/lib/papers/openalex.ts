@@ -160,7 +160,7 @@ function clampLimit(limit: number | undefined): number {
 function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps): string {
   const url = new URL(OPENALEX_WORKS_URL)
   url.searchParams.set("search", q.query)
-  url.searchParams.set("per-page", String(clampLimit(q.limit)))
+  url.searchParams.set("per_page", String(clampLimit(q.limit)))
   if (deps.mailto) {
     url.searchParams.set("mailto", deps.mailto)
   }
