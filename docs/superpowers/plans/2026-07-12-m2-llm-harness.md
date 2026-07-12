@@ -1,5 +1,19 @@
 # M2: LLM Harness Implementation Plan
 
+> ## STATUS (2026-07-12): implementation COMPLETE on branch `m2-llm-harness`, merge deferred by Tong
+>
+> All 11 tasks done; final whole-branch review verdict **READY TO MERGE** at commit `9c9f127` (123/123 tests, tsc/eslint clean). In-loop reviews caught and fixed 5 serious defects: 429 retry-storm, Gemini `$ref` schema corruption, meter write race, **vault export leaking BYOK keys** (settings.json now excluded from export+import), budget bypass via provider-echoed model ids.
+>
+> ### Remaining before/at merge
+> 1. **Manual real-key gate (Tong)** — `npm run dev`, open `/debug/llm`, paste a real key per provider (Anthropic / OpenAI / Google / OpenRouter), run "Test completion" + "Test structured"; confirm usage/cost render, `.scispark/usage/*.jsonl` grows, and the budget-exceeded path by setting dailyBudgetUsd to 0.001. This doubles as the browser-CORS check for OpenAI/Google BYOK — **if a provider blocks browser calls, do NOT silently proxy keys through our server; bring the decision back to design** (03-backend privacy stance).
+> 2. **Spot-check OpenAI/Google prices** in `src/lib/llm/pricing.ts` against live pricing pages (they were sourced via WebFetch summaries; Anthropic rows are verified).
+> 3. Merge `m2-llm-harness` → main (fast-forward expected), re-run suite, push.
+>
+> ### Ride-class Minors (fix opportunistically, tracked from final review + ledger)
+> - Normalize zip entry paths on vault import (defense-in-depth for the sensitive-path skip-list).
+> - Decide whether `.scispark/usage/` + `.scispark/runs/` belong in shared vault exports (privacy question, non-blocking).
+> - Refusal-detection asymmetry across providers; 16-hex runId collision window; UTC budget-day boundary; Gemini keyword-stripper walks enum/default data values; vestigial `Meter.writeQueue` field.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the client-side LLM harness every skill runs on: a 4-provider BYOK `LLMProvider` layer, tier→model mapping, zod-validated structured output with retry, per-call metering with a daily budget, the skill-runner primitives, and a `/debug/llm` verification page.
