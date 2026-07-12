@@ -85,7 +85,7 @@ TDD; commit `feat(wiki): deterministic paper/author page authoring`.
 **Contracts:**
 - `DigestResult` zod schema: `{summary: string; laySummary: string; keyPoints: string[]; methods: string; limitations: string; fieldContext: string}` (export schema + type).
 - `digestSkill = defineSkill<{paper: PaperRecord; fullText?: string}, DigestResult>` — one `strong` `llmStructured` call; prompt: paper metadata + abstract + (truncated ≤40k chars) full text; instructions per design (general-audience laySummary, precise summary, concrete keyPoints ≤6).
-- `generateDigest(storage, paper, opts: {fullText?: string; settings?; providerOverride?}): Promise<{digest: DigestResult; runId: string} | {cached: DigestResult}>` — checks cache `.scispark/digests/<paperSlug>.json` first; on run, persists cache. Cache read tolerant of corruption (re-generate).
+- `generateDigest(storage, paper, opts: {fullText?: string; settings?; providerOverride?}): Promise<{digest: DigestResult; fromCache: boolean; runId?: string; costUsd?: number}>` — checks cache `.scispark/digests/<paperSlug>.json` first; on run, persists cache. Cache read tolerant of corruption (re-generate).
 
 TDD (cache hit short-circuit, cache write, schema shape); commit `feat(skills): digest skill with cache`.
 
