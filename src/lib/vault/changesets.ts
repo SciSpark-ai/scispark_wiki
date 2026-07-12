@@ -1,5 +1,21 @@
 import type { VaultStorage } from "./storage"
 import type { Changeset, FileChange } from "./types"
+import { RESERVED_FILES } from "./types"
+
+const CHANGESET_AUDIT_PREFIX = ".scispark/changesets/"
+
+function findProtectedPaths(changes: FileChange[]): string[] {
+  const protectedPaths = new Set<string>()
+  for (const ch of changes) {
+    if (
+      (RESERVED_FILES as readonly string[]).includes(ch.path) ||
+      ch.path.startsWith(CHANGESET_AUDIT_PREFIX)
+    ) {
+      protectedPaths.add(ch.path)
+    }
+  }
+  return [...protectedPaths]
+}
 
 export class ChangesetConflictError extends Error {
   constructor(public conflicts: string[]) {
@@ -50,6 +66,13 @@ function changesetRecordPath(id: string): string {
 
 export async function applyChangeset(storage: VaultStorage, cs: Changeset): Promise<void> {
   // 1. Structural validation — before any write or conflict check.
+  const protectedPaths = findProtectedPaths(cs.changes)
+  if (protectedPaths.length) {
+    throw new ChangesetInvalidError(
+      `changeset targets protected path(s): ${protectedPaths.join(", ")}`,
+    )
+  }
+
   const dupes = findDuplicatePaths(cs.changes)
   if (dupes.length) {
     throw new ChangesetInvalidError(
@@ -103,6 +126,8 @@ export async function revertChangeset(
   cs: Changeset,
   opts: { force?: boolean } = {},
 ): Promise<void> {
+  // No protected-path guard needed here: revert only writes paths already present
+  // in `cs.changes`, and applyChangeset now guarantees those are all unprotected.
   if (!opts.force) {
     const conflicts: string[] = []
     for (const ch of cs.changes) {

@@ -111,6 +111,22 @@ describe("applyChangeset", () => {
     expect(await s.read("wiki/concepts/a.md")).toBeNull()
   })
 
+  it("rejects a changeset touching a reserved root file, before any write", async () => {
+    const s = new MemoryVaultStorage()
+    await expect(applyChangeset(s, cs([
+      { path: "index.md", before: null, after: "hacked" },
+    ]))).rejects.toThrow(ChangesetInvalidError)
+    expect(await s.read("index.md")).toBeNull()
+  })
+
+  it("rejects a changeset touching the changeset audit namespace, before any write", async () => {
+    const s = new MemoryVaultStorage()
+    await expect(applyChangeset(s, cs([
+      { path: ".scispark/changesets/cs-x.json", before: null, after: "{}" },
+    ]))).rejects.toThrow(ChangesetInvalidError)
+    expect(await s.read(".scispark/changesets/cs-x.json")).toBeNull()
+  })
+
   it("rejects applying a changeset whose id already has a persisted record, before applying any changes", async () => {
     const s = new MemoryVaultStorage()
     const c = cs([{ path: "wiki/concepts/new.md", before: null, after: "content" }])
