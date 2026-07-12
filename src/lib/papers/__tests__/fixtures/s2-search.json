@@ -1,0 +1,68 @@
+{
+  "_fixtureNote": "CONSTRUCTED FROM DOCUMENTED EXAMPLES, NOT A LIVE CAPTURE. Live GET https://api.semanticscholar.org/graph/v1/paper/search?query=transformer&limit=2&fields=... returned 429 (Too Many Requests) on first attempt and again after a 30s retry, per the drift-guard fallback instruction. Response shape (PaperRelevanceSearchBatch: total/offset/next/data) and field names/casing (paperId, externalIds.DOI/ArXiv/PubMed, openAccessPdf.url, fieldsOfStudy, publicationDate) were verified against the live swagger spec at https://api.semanticscholar.org/graph/v1/swagger.json (fetched successfully, HTTP 200). data[0] values (paperId, title, abstract, venue, year, citationCount, openAccessPdf, authors[0]) are taken verbatim from the FullPaper/AuthorInPaper schema 'example' fields in that swagger doc (the officially documented example paper 'Construction of the Literature Graph in Semantic Scholar'). data[1] is a constructed second record (not from docs) added to exercise externalIds.ArXiv/PubMed mapping, a null abstract, zero citationCount, and an absent openAccessPdf -- none of which appear in the single documented example.",
+  "total": 15117,
+  "offset": 0,
+  "next": 2,
+  "data": [
+    {
+      "paperId": "5c5751d45e298cea054f32b392c12c61027d2fe7",
+      "title": "Construction of the Literature Graph in Semantic Scholar",
+      "abstract": "We describe a deployed scalable system for organizing published scientific literature into a heterogeneous graph to facilitate algorithmic manipulation and discovery.",
+      "venue": "Annual Meeting of the Association for Computational Linguistics",
+      "year": 1997,
+      "citationCount": 453,
+      "publicationDate": "2018-05-01",
+      "externalIds": {
+        "MAG": "3015453090",
+        "DBLP": "conf/acl/LoWNKW20",
+        "ACL": "2020.acl-main.447",
+        "DOI": "10.18653/V1/2020.ACL-MAIN.447",
+        "CorpusId": 215416146
+      },
+      "openAccessPdf": {
+        "url": "https://www.aclweb.org/anthology/2020.acl-main.447.pdf",
+        "status": "HYBRID",
+        "license": "CCBY",
+        "disclaimer": "Notice: This snippet is extracted from the open access paper or abstract available at https://aclanthology.org/2020.acl-main.447, which is subject to the license by the author or copyright owner provided with this content. Please go to the source to verify the license and copyright information for your use."
+      },
+      "fieldsOfStudy": [
+        "Computer Science"
+      ],
+      "authors": [
+        {
+          "authorId": "1741101",
+          "name": "Oren Etzioni"
+        }
+      ]
+    },
+    {
+      "paperId": "9f1b1c5e2e6b4d7c8a9f0e1d2c3b4a5968778695",
+      "title": "Attention Is All You Need",
+      "abstract": null,
+      "venue": "Neural Information Processing Systems",
+      "year": 2017,
+      "citationCount": 0,
+      "publicationDate": null,
+      "externalIds": {
+        "ArXiv": "1706.03762",
+        "PubMed": "34567890",
+        "DBLP": "conf/nips/VaswaniSPUJGKP17"
+      },
+      "openAccessPdf": null,
+      "fieldsOfStudy": [
+        "Computer Science",
+        "Mathematics"
+      ],
+      "authors": [
+        {
+          "authorId": "40348417",
+          "name": "Ashish Vaswani"
+        },
+        {
+          "authorId": "1748671",
+          "name": "Noam M. Shazeer"
+        }
+      ]
+    }
+  ]
+}
