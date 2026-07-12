@@ -29,7 +29,9 @@ Note when editing the fork: its `CLAUDE.md`/`AGENTS.md` warn that Next.js 16 has
 | Chat | adapt | global or project-scoped; citations open vault pages |
 | Review queue | new | inbox cards with constrained one-click actions |
 | Library | adapt | saved/liked/read-later from vault data |
-| Settings | new | providers/keys, tier→model map, budget + AI spend panel, vault management (connect folder, export/import) |
+| Settings | new | providers/keys, tier→model map, budget + AI spend panel, vault management (connect folder, export/import), companion chattiness |
+| **Companion** | **new** | persistent small mascot (corner of the shell, all screens); speech-bubble suggestions with action buttons + dismiss; subtle idle/celebration animations (framer-motion); personality carries the onboarding conversation too |
+| Spark | new | "Spark ideas" entry (global + per-project/topic); run progress view (phases visible — grounding → bottleneck → ideation → scoop-check → card); idea cards gallery reading from `wiki/ideas/`; idea page view with status, grounding links, scoop verdict, mini lit-review |
 
 ## Component commitments
 

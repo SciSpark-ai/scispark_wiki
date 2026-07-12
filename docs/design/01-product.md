@@ -19,6 +19,7 @@ The product covers the full research-tracking loop, which no existing tool does 
 | **Understand** | LLM digest per paper, grounded Q&A with citations | Elicit/scite partially |
 | **Retain** | LLM-wiki: agent-maintained, cross-linked, compounding knowledge base | llm_wiki (no discovery, no reading), Obsidian (manual) |
 | **See** | knowledge graph, field timeline, citation flow, author networks | Connected Papers (papers only, not *your* knowledge) |
+| **Spark** | idea generation grounded in *your* vault + literature, with scoop-checking — this is the "Spark" in SciSpark | ResearchStudio-Idea (cold-start only — no personal knowledge base behind it) |
 
 Key differentiators vs. llm_wiki (our closest architectural relative, verified from its source):
 1. llm_wiki starts *after* you found a paper; we own discovery (the feed is SciSpark's identity).
@@ -43,10 +44,22 @@ Researchers and research-adjacent professionals who need to stay current in one 
 3. **Read** — open the paper itself in-app (HTML full text or PDF). Highlight anything; select text → ask the AI or capture your own idea as a note.
 4. **Ingest** — "Add to knowledge base" → the agent integrates the paper across your wiki: pages created/updated, cross-linked, tagged, contradictions flagged. One-click undo per ingest.
 5. **Explore** — wiki browsing/editing, knowledge-base chat with citations, and the visualization dashboard (graph / timeline / citation flow / author network).
+6. **Spark** — generate research ideas grounded in your vault + fresh literature: bottleneck diagnosis → pattern-guided ideation → scoop-check → a reviewer-defensible idea card saved into your wiki, with a literature-review section attached.
+
+## The Research Companion
+
+A persistent, cute, **proactive** AI companion is the personality of the whole product (think "Codex pet") — the thing that makes SciSpark feel alive where other research tools feel like databases. It is the *voice of the skill system*, not a separate intelligence:
+
+- On app open: greets you and nudges toward what's new ("3 new papers in your feed look strong today — want a look?").
+- While reading a digest: proactively observes ("this looks related to [[closed-loop DBS]] in your wiki — import it?").
+- After an ingest: celebrates progress, surfaces flagged review items conversationally.
+- Ambiently: notices sparkable clusters ("your last 4 papers circle one unsolved problem… want me to spark ideas on it?") and idle moments.
+
+Anti-Clippy rules (product-level commitments): never modal, never blocks, always dismissible; proactivity budget (max interventions per session + cooldowns); chattiness setting (quiet / normal / chatty); dismissals are Tier-1 events the memory system learns from, so the companion gets less annoying over time, not more. The companion suggests expensive actions (e.g., a Spark run) but never auto-spends meaningful budget.
 
 ## v1 scope
 
-**IN:** conversational onboarding → local profile; personalized agentic feed; trending page (public + tab); LLM digest; in-app reader (HTML + pdf.js) with persistent highlights and select-to-ask; add-to-KB two-step agent ingest; wiki browse/edit (Milkdown); projects as virtual indexes; KB chat with citations; visualization dashboard with **all four views** (graph, timeline, citation flow, author network); wiki lint; slim async review queue; per-ingest changeset undo; vault zip export; AI spend meter + daily budget; optional marketing account capture.
+**IN:** conversational onboarding → local profile; personalized agentic feed; trending page (public + tab); LLM digest; in-app reader (HTML + pdf.js) with persistent highlights and select-to-ask; add-to-KB two-step agent ingest; wiki browse/edit (Milkdown); projects as virtual indexes; KB chat with citations; visualization dashboard with **all four views** (graph, timeline, citation flow, author network); wiki lint; slim async review queue; per-ingest changeset undo; vault zip export; AI spend meter + daily budget; optional marketing account capture; **the Research Companion** (proactive, always-present); **the Spark Skill** (vault-grounded idea generation with scoop-check, adapted from MIT-licensed ResearchStudio-Idea).
 
 **OUT (v1.5+):** Tauri desktop wrapper; cloud sync (paid tier); SciSpark-managed LLM keys (paid tier); mobile apps; general web search / deep research for agents; Ollama/local models; collaborative filtering; multi-user/team features.
 

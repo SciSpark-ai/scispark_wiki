@@ -41,7 +41,7 @@ vault/
   index.md            # app-maintained catalog (never written by the model)
   log.md              # app-maintained chronological operation record
   wiki/
-    papers/ concepts/ methods/ findings/ comparisons/ authors/ topics/ notes/ projects/
+    papers/ concepts/ methods/ findings/ comparisons/ authors/ topics/ notes/ ideas/ projects/
   sources/            # immutable originals: PDFs, HTML snapshots
   highlights/         # anchored annotations, one file per paper
   .scispark/
@@ -52,7 +52,7 @@ vault/
     settings.json     # provider keys (local only), tier→model map, budget
 ```
 
-### Page types (9)
+### Page types (10)
 
 | type | dir | notes |
 |---|---|---|
@@ -64,6 +64,7 @@ vault/
 | `author` | `wiki/authors/` | OpenAlex-ID-backed; skeleton created deterministically at ingest |
 | `topic` | `wiki/topics/` | living state-of-the-field synthesis; timeline view hangs off these |
 | `note` | `wiki/notes/` | user ideas (from highlight-to-ask or manual) |
+| `idea` | `wiki/ideas/` | Spark Skill output: structured idea cards (bottleneck, mechanism, falsification plan, scoop-check verdict, mini lit-review); frontmatter `status: sparked\|in-progress\|scooped\|abandoned` + links to grounding papers |
 | `project` | `wiki/projects/` | **virtual index only**: links + optional instructions; scopes agent context; never a physical container |
 
 Frontmatter contract (llm_wiki's, extended): `type`, `title`, `created`, `updated`, `tags[]`, `related[]` (bare slugs), `sources[]` (mandatory provenance). Wikilinks in body only. `schema.md` is injected into ingest prompts as authoritative routing; users may define custom types there.

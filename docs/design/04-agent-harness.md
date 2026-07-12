@@ -16,6 +16,15 @@ A skill is a versioned document + manifest defining: purpose, workflow steps, co
 | **KB-Chat** | chat UI (global or project-scoped) | retrieve wiki pages (index + links; project scope if set) → answer with page citations (strong) | cited answer |
 | **Lint** | manual / weekly | scan bundle: orphans, broken links, stale claims, tier-drift, contradiction candidates (fast; strong for judgment calls) | review-queue items + fix-changeset proposals |
 | **Memory-Consolidation** | every N events / nightly | Tier-1 events → update `profile.md`, `interests.md`, `feedback.md` (fast) | changeset to user-model pages |
+| **Spark** | user prompt / companion suggestion (always user-confirmed — most expensive skill) | ground in vault + fresh retrieval → bottleneck diagnosis (strong) → pattern-guided candidate generation using the 15-pattern/31-sub-pattern cards (strong) → scoop-check: signature-terms (recent window) + alias-terms (long window) collision search over papers APIs → 5-check audit incl. falsification structure; honest `do_not_generate` refusal preserved (strong) → idea card | `idea` page changeset (card + mini lit-review + scoop verdict) |
+| **Companion** | proactivity-engine triggers | trigger context + user-model pages → one short in-persona utterance + suggested action (fast; template fallback at zero budget) | companion bubble content; deep-links into other skills |
+
+**Spark Skill lineage:** adapted from MIT-licensed [ResearchStudio-Idea](https://github.com/microsoft/ResearchStudio) (attribution required). We bundle their ideation-pattern cards as skill references and keep their core discipline: locked kill-switch fields (falsification plan), two-channel scoop-check, corpus-anchored audit, isolated per-phase contexts with artifacts on disk (which maps 1:1 onto our changeset model). Our deltas: grounding starts **warm from the user's vault** (their Phase 0 is cold retrieval-only); output is a wiki `idea` page, not a standalone PDF; retrieval uses our proxy APIs (arXiv/OpenAlex/S2/PubMed; OpenReview connector = v1.5 gap for ML-venue coverage). Known caveat: their pattern cards are mined from ICLR/ICML/NeurIPS — excellent for AI/CS ideas, imperfect fit for biomedical; field-specific pattern mining is a v2 opportunity.
+
+**The Companion is not a skill like the others** — it is the *presentation layer* of the whole skill system plus a **proactivity engine**:
+- **Triggers are deterministic and free** (no LLM): app-open + fresh feed, digest-open + vault-relevance hit, post-ingest completion, review-queue items pending, idle-in-reader, vault milestones, sparkable-cluster detection (N recent ingests sharing concepts without a linked `idea` page).
+- **Utterances are fast-tier** one-liners in persona, generated with trigger context + `feedback.md`; below-budget fallback = static templates.
+- **Anti-Clippy contract (harness-enforced):** proactivity budget (max interventions/session, per-trigger cooldowns), chattiness setting, always dismissible, dismissals logged as Tier-1 events → Memory-Consolidation learns what not to suggest. The companion proposes; it never runs vault-mutating or expensive skills without an explicit user click.
 
 The Research Feed Skill is the reference implementation ("Agentic Research Feed Skill") — the standard for how skills encode traditional-workflow structure (RecSys funnel) executed by LLM reasoning. **No trained ML models, no third-party embeddings** anywhere in the system; a small on-device embedding model is the only permitted fallback if agentic retrieval proves insufficient.
 
@@ -30,6 +39,8 @@ The Research Feed Skill is the reference implementation ("Agentic Research Feed 
 | `trending.get` | ✓ | – | – | – | – | – | – | – |
 | `events.query` | ✓ | – | – | – | – | – | – | ✓ |
 | `user.flag` (→ review queue) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+Additions for the two new skills: **Spark** gets `vault.read/search/list`, `papers.search/citations`, `vault.propose_changeset` (idea pages), `user.flag`. **Companion** gets `vault.read/search/list`, `events.query`, `trending.get`, `user.flag` — read-only + flagging; it deep-links to other skills rather than invoking them itself.
 
 ## Safety contract (harness-enforced, never prompt-trusted)
 
