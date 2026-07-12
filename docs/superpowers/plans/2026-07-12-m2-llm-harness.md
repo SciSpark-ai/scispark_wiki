@@ -4,7 +4,10 @@
 >
 > All 11 tasks done; final whole-branch review verdict **READY TO MERGE** at commit `9c9f127` (123/123 tests, tsc/eslint clean). In-loop reviews caught and fixed 5 serious defects: 429 retry-storm, Gemini `$ref` schema corruption, meter write race, **vault export leaking BYOK keys** (settings.json now excluded from export+import), budget bypass via provider-echoed model ids.
 >
-> ### Update 2026-07-12 (later): GMI Cloud support added, live gate BLOCKED by network filter
+> ### ✅ GATE PASSED 2026-07-12: live end-to-end verification via GMI Cloud (anthropic/claude-sonnet-5)
+> After Tong unblocked api.gmi-serving.com (Xfinity Advanced Security), the env-gated live gate passed 4/4 on first run — no fixes required: plain completion ("pong", usage 18/4 tokens), zod-structured output (validated first try), full runSkill (status ok, metered, run record persisted, **costUsd $0.000114 exactly matching sonnet-5 rates via prefix-fallback pricing**). Browser CORS to GMI confirmed open (preflight passes; 401 with dummy token visible to JS), so the /debug/llm BYOK path is viable. Remaining merge items below are now reduced to: optional price spot-check for the OpenAI/Google default rows (only matter if those defaults are used), and the one-time /debug/llm click-through if Tong wants to see it in the UI (the same code paths are now live-verified headlessly).
+>
+> ### (superseded) Update 2026-07-12: GMI Cloud support added, live gate was BLOCKED by network filter
 > Commit `c50e090` adds `baseUrls` overrides in settings (+ /debug/llm field) so any OpenAI-compatible endpoint works under the "openai"/"openrouter" provider ids, and an env-gated live test (`src/lib/llm/__tests__/live-openai-compat.test.ts`) that runs the full gate (plain completion, structured+zod, runSkill with budget/metering/run-record) in one command. Tong's GMI Cloud key was tested, but **api.gmi-serving.com is TLS-blocked machine-wide by the local network's security filter (Xfinity xFi Advanced Security — safebrowse.io warn pages)**; curl/Node/browser all fail before any HTTP. Once the domain is allowed (or on another network), run:
 > `LIVE_LLM_BASE_URL=https://api.gmi-serving.com/v1 LIVE_LLM_API_KEY=<key> LIVE_LLM_MODEL=claude-sonnet-5 npx vitest run src/lib/llm/__tests__/live-openai-compat.test.ts`
 >
