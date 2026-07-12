@@ -77,7 +77,14 @@ export async function runSkill<I, O>(opts: {
       const provider = resolveProvider(tier)
       const model = resolveTier(settings, tier).model
       const result = await withRetry(() => provider.complete(model, req), opts.retryOpts)
-      await meterAndContinue({ provider: provider.id, model: result.model, usage: result.usage })
+      // Meter/price on the REQUESTED model (`model`), not the provider-echoed
+      // `result.model`: pricing.ts's PRICES table is keyed by requested ids, but
+      // providers commonly echo back dated/versioned snapshot ids (e.g. OpenAI's
+      // "gpt-...-2026-xx-xx", Anthropic/Gemini alias resolution) that don't match
+      // any PRICES key — an unmatched model silently prices as null/$0 and defeats
+      // the daily budget check. Matches ctx.llmStructured below. `result.model` is
+      // left untouched in the returned LLMResult for display purposes.
+      await meterAndContinue({ provider: provider.id, model, usage: result.usage })
       return result
     },
     async llmStructured<T>(

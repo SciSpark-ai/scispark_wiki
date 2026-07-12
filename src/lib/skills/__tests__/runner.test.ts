@@ -327,6 +327,42 @@ describe("runSkill", () => {
     expect(records).toHaveLength(1)
   })
 
+  it("meters ctx.llm on the requested model, not a provider-echoed dated snapshot id (budget regression)", async () => {
+    const storage = new MemoryVaultStorage()
+    // Settings resolve "fast" to "claude-haiku-4-5" (DEFAULT_SETTINGS), but the
+    // provider echoes back a dated snapshot id, as real providers do in production.
+    const provider = new MockProvider([
+      result({ model: "claude-haiku-4-5-20990101", usage: { inputTokens: 10, outputTokens: 5 } }),
+    ])
+
+    const skill = defineSkill<void, string>({
+      name: "echoed-model-skill",
+      version: "1.0.0",
+      async run(ctx) {
+        const r = await ctx.llm("fast", { messages: [{ role: "user", content: "hi" }] })
+        return r.text
+      },
+    })
+
+    const run = await runSkill({
+      skill,
+      input: undefined,
+      storage,
+      settings: settingsWithKeys(),
+      providerOverride: { fast: provider },
+      now: NOW,
+    })
+
+    expect(run.status).toBe("ok")
+
+    const meter = new Meter(storage, NOW)
+    const records = await meter.recordsForDay("2026-07-12")
+    expect(records).toHaveLength(1)
+    expect(records[0].model).toBe("claude-haiku-4-5")
+    expect(records[0].costUsd).not.toBeNull()
+    expect(await meter.spentTodayUsd()).toBeGreaterThan(0)
+  })
+
   it("ctx.llmStructured retries a transient provider error, same as ctx.llm (retry parity)", async () => {
     const storage = new MemoryVaultStorage()
     const provider = new MockProvider([

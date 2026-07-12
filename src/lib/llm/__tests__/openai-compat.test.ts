@@ -50,7 +50,7 @@ describe("OpenAICompatProvider", () => {
     expect(result.stopReason).toBe("stop")
   })
 
-  it("sends response_format json_schema shape when jsonSchema is set, and parses json", async () => {
+  it("sends response_format json_schema shape with strict:false and strips top-level $schema, when jsonSchema is set", async () => {
     const { fn, captured } = fakeFetch(200, {
       ...OK_RESPONSE,
       choices: [{ index: 0, message: { role: "assistant", content: '{"a":1}' }, finish_reason: "stop" }],
@@ -58,7 +58,13 @@ describe("OpenAICompatProvider", () => {
     const p = new OpenAICompatProvider("openai", "sk-test", "https://api.openai.com/v1", fn)
     const result = await p.complete("gpt-4o", {
       messages: [{ role: "user", content: "extract" }],
-      jsonSchema: { type: "object", properties: { a: { type: "number" } }, required: ["a"], additionalProperties: false },
+      jsonSchema: {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        type: "object",
+        properties: { a: { type: "number" } },
+        required: ["a"],
+        additionalProperties: false,
+      },
       schemaName: "extraction",
     })
 
@@ -67,10 +73,11 @@ describe("OpenAICompatProvider", () => {
       type: "json_schema",
       json_schema: {
         name: "extraction",
-        strict: true,
+        strict: false,
         schema: { type: "object", properties: { a: { type: "number" } }, required: ["a"], additionalProperties: false },
       },
     })
+    expect(sent.response_format.json_schema.schema).not.toHaveProperty("$schema")
     expect(result.json).toEqual({ a: 1 })
   })
 

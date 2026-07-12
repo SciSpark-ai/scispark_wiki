@@ -20,7 +20,17 @@ export class OpenAICompatProvider implements LLMProvider {
         ? {
             response_format: {
               type: "json_schema",
-              json_schema: { name: req.schemaName ?? "result", strict: true, schema: req.jsonSchema },
+              json_schema: {
+                name: req.schemaName ?? "result",
+                // strict: false — client-side zod validation in completeStructured
+                // (with its own mismatch-retry) is the real enforcement layer here.
+                // OpenAI's strict:true requires every key in `properties` to also
+                // appear in `required`, but zod v4's `z.toJSONSchema` legitimately
+                // emits optional fields outside `required`; strict:true would 400 on
+                // any schema using `.optional()`.
+                strict: false,
+                schema: stripSchemaKeyword(req.jsonSchema),
+              },
             },
           }
         : {}),
@@ -90,6 +100,15 @@ interface ChatCompletionResponse {
 
 function safeParse(text: string): unknown {
   try { return JSON.parse(text) } catch { return undefined }
+}
+
+// Removes a top-level "$schema" keyword (e.g. from zod v4's z.toJSONSchema output)
+// before sending to OpenAI, which doesn't expect JSON Schema meta-keywords in the
+// request body. Returns a shallow copy; does not mutate the caller's schema.
+function stripSchemaKeyword(schema: Record<string, unknown>): Record<string, unknown> {
+  const copy = { ...schema }
+  delete copy.$schema
+  return copy
 }
 
 export const openAIProvider = (key: string, fetchFn?: typeof fetch) =>
