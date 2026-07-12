@@ -221,4 +221,42 @@ describe("validateFilesAgainstRouting", () => {
   it("returns an empty array for an empty file list", () => {
     expect(validateFilesAgainstRouting([], DEFAULT_ROUTING)).toEqual([])
   })
+
+  it("accepts mixed-case type like 'Paper' and resolves to lowercase routing", () => {
+    const errors = validateFilesAgainstRouting(
+      [{ path: "wiki/papers/example.md", type: "Paper" }],
+      DEFAULT_ROUTING,
+    )
+    expect(errors).toEqual([])
+  })
+
+  it("accepts uppercase type like 'PAPER' and resolves to lowercase routing", () => {
+    const errors = validateFilesAgainstRouting(
+      [{ path: "wiki/papers/example.md", type: "PAPER" }],
+      DEFAULT_ROUTING,
+    )
+    expect(errors).toEqual([])
+  })
+
+  it("flags directory mismatch for mixed-case type with incorrect directory", () => {
+    const errors = validateFilesAgainstRouting(
+      [{ path: "wiki/concepts/example.md", type: "PAPER" }],
+      DEFAULT_ROUTING,
+    )
+    expect(errors).toEqual([`type "PAPER" pages belong in wiki/papers/ — got wiki/concepts/example.md`])
+  })
+})
+
+describe("parseSchemaRouting", () => {
+  it("documents that last row wins when same type is defined twice", () => {
+    const md = `## Page Types
+
+| type | directory |
+|---|---|
+| paper | wiki/papers |
+| paper | wiki/papers-v2 |
+`
+    const routing = parseSchemaRouting(md)
+    expect(routing.paper).toBe("wiki/papers-v2")
+  })
 })

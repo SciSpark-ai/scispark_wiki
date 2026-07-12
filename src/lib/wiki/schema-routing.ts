@@ -112,6 +112,10 @@ function isValidSlug(slug: string): boolean {
  * segment (minus `.md`) is a valid slug (kebab-case, or containing CJK
  * characters). All applicable errors across all files are returned — this
  * never stops at the first failure.
+ *
+ * Note: Type matching is case-insensitive; routing keys are stored lowercase
+ * (by parseSchemaRouting), so the input type is normalized to lowercase for
+ * lookup. The original type casing is preserved in error messages.
  */
 export function validateFilesAgainstRouting(
   files: Array<{ path: string; type: string }>,
@@ -120,7 +124,7 @@ export function validateFilesAgainstRouting(
   const errors: string[] = []
 
   for (const { path, type } of files) {
-    const dir = routing[type]
+    const dir = routing[type.toLowerCase()]
     if (dir === undefined) {
       errors.push(`unknown type "${type}" for ${path}`)
     } else if (dirOf(path) !== dir) {
