@@ -1,5 +1,5 @@
 import { XMLParser } from "fast-xml-parser"
-import { PaperSourceError, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
+import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
 
 // Drift-verified 2026-07-12 against info.arxiv.org/help/api/user-manual.html and a
 // live call to export.arxiv.org: https works (200, correct Atom body), even though
@@ -142,10 +142,10 @@ function mapEntry(entry: ArxivEntry): PaperRecord {
     authors: mapAuthors(entry.author),
     year,
     date,
-    venue: entry["arxiv:journal_ref"] ?? undefined,
+    venue: nonEmpty(entry["arxiv:journal_ref"]),
     citationCount: undefined,
-    htmlUrl: findLink(entry.link, (l) => l["@_rel"] === "alternate"),
-    pdfUrl: findLink(entry.link, (l) => l["@_title"] === "pdf" || (l["@_rel"] === "related" && l["@_type"] === "application/pdf")),
+    htmlUrl: nonEmpty(findLink(entry.link, (l) => l["@_rel"] === "alternate")),
+    pdfUrl: nonEmpty(findLink(entry.link, (l) => l["@_title"] === "pdf" || (l["@_rel"] === "related" && l["@_type"] === "application/pdf"))),
     fields: mapFields(entry.category),
     source: "arxiv",
   }

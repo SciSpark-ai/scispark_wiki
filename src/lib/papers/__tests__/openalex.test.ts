@@ -51,6 +51,46 @@ describe("searchOpenAlex", () => {
     expect(paper.venue).toBe(record.primary_location.source?.display_name)
   })
 
+  it("maps empty-string oa_url to undefined oaUrl", async () => {
+    const record = {
+      id: "https://openalex.org/W1",
+      display_name: "Test Paper",
+      publication_year: 2020,
+      ids: null,
+      primary_location: null,
+      open_access: { oa_url: "" },
+      authorships: [],
+      cited_by_count: 0,
+      topics: [],
+      abstract_inverted_index: null,
+    }
+    const fetchFn = fakeFetch({ results: [record] })
+
+    const [paper] = await searchOpenAlex({ query: "test" }, { fetchFn })
+
+    expect(paper.oaUrl).toBeUndefined()
+  })
+
+  it("maps empty-string pdf_url to undefined pdfUrl", async () => {
+    const record = {
+      id: "https://openalex.org/W1",
+      display_name: "Test Paper",
+      publication_year: 2020,
+      ids: null,
+      primary_location: { source: null, pdf_url: "  " },
+      open_access: null,
+      authorships: [],
+      cited_by_count: 0,
+      topics: [],
+      abstract_inverted_index: null,
+    }
+    const fetchFn = fakeFetch({ results: [record] })
+
+    const [paper] = await searchOpenAlex({ query: "test" }, { fetchFn })
+
+    expect(paper.pdfUrl).toBeUndefined()
+  })
+
   it("reconstructs the abstract from abstract_inverted_index (hand-checkable case)", async () => {
     const fetchFn = fakeFetch({
       results: [

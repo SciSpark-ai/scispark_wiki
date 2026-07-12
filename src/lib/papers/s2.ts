@@ -1,4 +1,4 @@
-import { PaperSourceError, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
+import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
 
 // Drift-verified 2026-07-12 against the live Semantic Scholar Academic Graph
 // OpenAPI spec at https://api.semanticscholar.org/graph/v1/swagger.json
@@ -100,7 +100,7 @@ function mapPaper(paper: S2Paper): PaperRecord {
     date: paper.publicationDate ?? undefined,
     venue: paper.venue ?? undefined,
     citationCount: paper.citationCount ?? undefined,
-    pdfUrl: paper.openAccessPdf?.url ?? undefined,
+    pdfUrl: nonEmpty(paper.openAccessPdf?.url),
     fields: paper.fieldsOfStudy ?? [],
     source: "s2",
   }

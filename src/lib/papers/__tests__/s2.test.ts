@@ -214,4 +214,18 @@ describe("searchS2", () => {
     const url = new URL(calledUrl.toString())
     expect(url.searchParams.get("limit")).toBe("20")
   })
+
+  it("maps empty-string openAccessPdf.url to undefined pdfUrl", async () => {
+    const record = {
+      paperId: "test-123",
+      title: "Test Paper",
+      openAccessPdf: { url: "", status: null },
+      fieldsOfStudy: null,
+    }
+    const fetchFn = fakeFetch({ data: [record] })
+
+    const [paper] = await searchS2({ query: "test" }, { fetchFn })
+
+    expect(paper.pdfUrl).toBeUndefined()
+  })
 })

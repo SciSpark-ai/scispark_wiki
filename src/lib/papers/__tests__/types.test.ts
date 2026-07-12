@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { normalizeDoi, paperKey, mergeRecords, PaperSourceError, type PaperRecord } from "../types"
+import { nonEmpty, normalizeDoi, paperKey, mergeRecords, PaperSourceError, type PaperRecord } from "../types"
 
 function makeRecord(overrides: Partial<PaperRecord> = {}): PaperRecord {
   return {
@@ -11,6 +11,31 @@ function makeRecord(overrides: Partial<PaperRecord> = {}): PaperRecord {
     ...overrides,
   }
 }
+
+describe("nonEmpty", () => {
+  it("returns undefined for null", () => {
+    expect(nonEmpty(null)).toBeUndefined()
+  })
+
+  it("returns undefined for undefined", () => {
+    expect(nonEmpty(undefined)).toBeUndefined()
+  })
+
+  it("returns undefined for empty string", () => {
+    expect(nonEmpty("")).toBeUndefined()
+  })
+
+  it("returns undefined for whitespace-only string", () => {
+    expect(nonEmpty("  ")).toBeUndefined()
+    expect(nonEmpty("\t\n")).toBeUndefined()
+  })
+
+  it("returns trimmed string for non-empty input", () => {
+    expect(nonEmpty("url")).toBe("url")
+    expect(nonEmpty("  url  ")).toBe("url")
+    expect(nonEmpty("\thttps://example.com\n")).toBe("https://example.com")
+  })
+})
 
 describe("normalizeDoi", () => {
   it("strips the https://doi.org/ prefix", () => {

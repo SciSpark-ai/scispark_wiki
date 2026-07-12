@@ -39,6 +39,18 @@ export class PaperSourceError extends Error {
 const DOI_PREFIX_PATTERN = /^(?:https?:\/\/doi\.org\/|doi:)/i
 
 /**
+ * Filters empty strings (including whitespace-only) and nullish values to
+ * undefined. Trims and returns undefined if the trimmed result is empty,
+ * null, or undefined. Otherwise returns the trimmed string.
+ */
+export function nonEmpty(s: string | null | undefined): string | undefined {
+  if (s == null) return undefined
+  const trimmed = s.trim()
+  if (trimmed === "") return undefined
+  return trimmed
+}
+
+/**
  * Normalizes a DOI: strips leading https://doi.org/, http://doi.org/, or
  * doi: prefixes (case-insensitively), lowercases, and trims. Returns
  * undefined for empty, whitespace-only, null, or undefined input.

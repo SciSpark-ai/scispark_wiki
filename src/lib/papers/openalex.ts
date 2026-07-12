@@ -1,4 +1,4 @@
-import { PaperSourceError, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
+import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
 
 const OPENALEX_WORKS_URL = "https://api.openalex.org/works"
 const MIN_LIMIT = 1
@@ -145,8 +145,8 @@ function mapWork(work: OpenAlexWork): PaperRecord {
     date: work.publication_date ?? undefined,
     venue: work.primary_location?.source?.display_name ?? undefined,
     citationCount: work.cited_by_count ?? undefined,
-    oaUrl: work.open_access?.oa_url ?? undefined,
-    pdfUrl: work.primary_location?.pdf_url ?? undefined,
+    oaUrl: nonEmpty(work.open_access?.oa_url),
+    pdfUrl: nonEmpty(work.primary_location?.pdf_url),
     fields: mapFields(work.topics),
     source: "openalex",
   }

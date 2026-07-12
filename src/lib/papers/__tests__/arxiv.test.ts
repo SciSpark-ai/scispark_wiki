@@ -274,4 +274,26 @@ describe("searchArxiv", () => {
 
     expect(paper.pdfUrl).toBe("https://arxiv.org/pdf/2401.00004v1")
   })
+
+  it("maps empty-string arxiv:journal_ref to undefined venue", async () => {
+    const emptyVenueAtom = `<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2401.00005v1</id>
+    <title>Empty Venue Paper</title>
+    <summary>Abstract.</summary>
+    <published>2024-01-01T00:00:00Z</published>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <link href="https://arxiv.org/abs/2401.00005v1" rel="alternate" type="text/html"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <author><name>Test Author</name></author>
+    <arxiv:journal_ref>   </arxiv:journal_ref>
+  </entry>
+</feed>`
+    const fetchFn = fakeFetch(emptyVenueAtom)
+
+    const [paper] = await searchArxiv({ query: "x" }, { fetchFn })
+
+    expect(paper.venue).toBeUndefined()
+  })
 })
