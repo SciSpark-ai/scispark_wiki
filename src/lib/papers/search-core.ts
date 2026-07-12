@@ -147,7 +147,7 @@ export async function handleSearch(
   const limit = parseLimit(params.limit)
   const from = nonEmpty(params.from)
 
-  const cacheKey = `${source}:${q}:${limit}:${from ?? ""}`
+  const cacheKey = JSON.stringify([source, q, limit, from ?? null])
 
   const cache = deps.cache ?? defaultCache
   const cached = cache.get(cacheKey)
@@ -158,6 +158,7 @@ export async function handleSearch(
   const adapters: AdapterMap = { ...defaultAdapters, ...deps.adapters }
 
   let inflight = inFlight.get(cacheKey)
+  const isOwner = !inflight
   if (!inflight) {
     const buckets = { ...defaultBuckets, ...deps.buckets }
     const bucket = buckets[source]
@@ -179,7 +180,9 @@ export async function handleSearch(
 
   try {
     const result = await inflight
-    cache.set(cacheKey, result)
+    if (isOwner) {
+      cache.set(cacheKey, result)
+    }
     return { status: 200, body: { papers: result }, headers: { "Cache-Control": SEARCH_CACHE_CONTROL } }
   } catch (err) {
     if (err instanceof PaperSourceError && err.status === 429) {

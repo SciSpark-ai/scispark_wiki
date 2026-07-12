@@ -238,4 +238,37 @@ describe("handleSearch", () => {
     expect(result2.status).toBe(200)
     expect(result1.body).toEqual(result2.body)
   })
+
+  it("collision-proof cache key: different queries produce different keys even with colons in q/from", async () => {
+    // Reproduces the exact collision from the review:
+    // Request A: source=arxiv, q="x", limit="99" (clamps to 50), from="1:y" → old key arxiv:x:50:1:y
+    // Request B: source=arxiv, q="x:50", limit="1", from="y" → old key arxiv:x:50:1:y (collision!)
+    const papersA = [makePaper("Result from Query A")]
+    const papersB = [makePaper("Result from Query B")]
+
+    const adapterA = stubAdapter(papersA)
+    const adapterB = stubAdapter(papersB)
+    const deps = freshDeps({
+      adapters: { arxiv: adapterA as unknown as typeof import("../arxiv").searchArxiv },
+    })
+
+    // First query: q="x", limit clamps "99" → 50, from="1:y"
+    const resultA = await handleSearch("arxiv", { q: "x", limit: "99", from: "1:y" }, deps)
+
+    // Second query: q="x:50", limit="1", from="y" (would collide with old key format)
+    const deps2 = freshDeps({
+      cache: deps.cache, // Reuse same cache to verify no cross-contamination
+      adapters: { arxiv: adapterB as unknown as typeof import("../arxiv").searchArxiv },
+    })
+    const resultB = await handleSearch("arxiv", { q: "x:50", limit: "1", from: "y" }, deps2)
+
+    // Both should have called their adapters (adapter called exactly twice, not once due to collision)
+    expect(adapterA).toHaveBeenCalledTimes(1)
+    expect(adapterB).toHaveBeenCalledTimes(1)
+
+    // Results must NOT be identical (proving no cache collision)
+    expect(resultA.body).toEqual({ papers: papersA })
+    expect(resultB.body).toEqual({ papers: papersB })
+    expect(resultA.body).not.toEqual(resultB.body)
+  })
 })
