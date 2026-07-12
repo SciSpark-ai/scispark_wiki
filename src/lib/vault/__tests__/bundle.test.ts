@@ -27,6 +27,7 @@ describe("loadBundle", () => {
     expect(b.pages.get("wiki/concepts/saint-protocol")!.frontmatter.title).toBe("SAINT Protocol")
     expect(b.errors).toHaveLength(1)
     expect(b.errors[0].path).toBe("wiki/broken.md")
+    expect(b.errors[0].kind).toBe("parse")
   })
   it("derives link edges from wikilinks", async () => {
     const b = await loadBundle(storage)
@@ -59,7 +60,11 @@ describe("resolveLink with path-qualified and ambiguous slugs", () => {
     const b = await loadBundle(dup)
     expect(resolveLink(b, "x")!.id).toBe("wiki/concepts/x")
     expect(b.errors.filter((e) => e.path === "wiki/notes/linker.md")).toEqual([
-      { path: "wiki/notes/linker.md", message: "ambiguous wikilink [[x]]: wiki/concepts/x, wiki/methods/x" },
+      {
+        path: "wiki/notes/linker.md",
+        message: "ambiguous wikilink [[x]]: wiki/concepts/x, wiki/methods/x",
+        kind: "ambiguity",
+      },
     ])
   })
 })

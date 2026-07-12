@@ -32,4 +32,30 @@ export function storageContractTests(name: string, make: () => Promise<VaultStor
     expect(await s.read("a.md")).toBeNull()
     await s.delete("a.md") // must not throw
   })
+  it(`${name}: readBinary of missing path returns null`, async () => {
+    const s = await make()
+    expect(await s.readBinary("assets/none.bin")).toBeNull()
+  })
+  it(`${name}: writeBinary then readBinary round-trips every byte value exactly`, async () => {
+    const s = await make()
+    const bytes = new Uint8Array(256)
+    for (let i = 0; i < 256; i++) bytes[i] = i
+    await s.writeBinary("assets/blob.bin", bytes)
+    const read = await s.readBinary("assets/blob.bin")
+    expect(read).not.toBeNull()
+    expect(Array.from(read as Uint8Array)).toEqual(Array.from(bytes))
+  })
+  it(`${name}: binary path appears in list()`, async () => {
+    const s = await make()
+    await s.writeBinary("assets/blob.bin", new Uint8Array([1, 2, 3]))
+    expect(await s.list("assets/")).toEqual(["assets/blob.bin"])
+    expect(await s.list()).toContain("assets/blob.bin")
+  })
+  it(`${name}: delete removes a binary path`, async () => {
+    const s = await make()
+    await s.writeBinary("assets/blob.bin", new Uint8Array([1, 2, 3]))
+    await s.delete("assets/blob.bin")
+    expect(await s.readBinary("assets/blob.bin")).toBeNull()
+    expect(await s.list()).not.toContain("assets/blob.bin")
+  })
 }

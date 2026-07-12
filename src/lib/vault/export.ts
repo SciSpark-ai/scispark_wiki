@@ -1,4 +1,4 @@
-import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate"
+import { zipSync, unzipSync } from "fflate"
 import type { VaultStorage } from "./storage"
 
 // Paths that must never leave the device via vault export, and must never be
@@ -13,8 +13,11 @@ export async function exportVaultZip(storage: VaultStorage): Promise<Uint8Array>
   const entries: Record<string, Uint8Array> = {}
   for (const path of await storage.list()) {
     if (SENSITIVE_PATHS.includes(path)) continue
-    const content = await storage.read(path)
-    if (content !== null) entries[path] = strToU8(content)
+    // Read every path as raw bytes — text files round-trip identically as
+    // their UTF-8 encoding, and this is the only way to move binary paths
+    // (e.g. images, PDFs) through the zip losslessly.
+    const content = await storage.readBinary(path)
+    if (content !== null) entries[path] = content
   }
   return zipSync(entries)
 }
@@ -28,7 +31,7 @@ export async function importVaultZip(
   for (const [path, bytes] of Object.entries(entries)) {
     if (path.endsWith("/")) continue // directory entries
     if (SENSITIVE_PATHS.includes(path)) continue
-    await storage.write(path, strFromU8(bytes))
+    await storage.writeBinary(path, bytes)
     files++
   }
   return { files }

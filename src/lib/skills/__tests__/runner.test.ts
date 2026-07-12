@@ -24,6 +24,12 @@ class FailingWriteStorage implements VaultStorage {
     }
     return this.inner.write(path, content)
   }
+  readBinary(path: string): Promise<Uint8Array | null> {
+    return this.inner.readBinary(path)
+  }
+  writeBinary(path: string, data: Uint8Array): Promise<void> {
+    return this.inner.writeBinary(path, data)
+  }
   delete(path: string): Promise<void> {
     return this.inner.delete(path)
   }

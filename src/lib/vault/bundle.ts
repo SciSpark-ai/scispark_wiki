@@ -6,7 +6,7 @@ import { extractWikilinks } from "./wikilinks"
 export interface Bundle {
   pages: Map<string, WikiPage>
   links: Array<{ from: string; to: string }>
-  errors: Array<{ path: string; message: string }>
+  errors: Array<{ path: string; message: string; kind: "parse" | "ambiguity" }>
 }
 
 export async function loadBundle(storage: VaultStorage): Promise<Bundle> {
@@ -22,7 +22,7 @@ export async function loadBundle(storage: VaultStorage): Promise<Bundle> {
       const id = path.slice(0, -3)
       pages.set(id, { id, path, frontmatter, body })
     } catch (e) {
-      errors.push({ path, message: (e as Error).message })
+      errors.push({ path, message: (e as Error).message, kind: "parse" })
     }
   }
 
@@ -42,6 +42,7 @@ export async function loadBundle(storage: VaultStorage): Promise<Bundle> {
           errors.push({
             path: page.path,
             message: `ambiguous wikilink [[${slug}]]: ${candidates.join(", ")}`,
+            kind: "ambiguity",
           })
         }
       }

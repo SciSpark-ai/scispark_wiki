@@ -43,6 +43,27 @@ export class OpfsVaultStorage implements VaultStorage {
     await w.close()
   }
 
+  async readBinary(path: string): Promise<Uint8Array | null> {
+    const loc = await this.dirFor(path, false)
+    if (!loc) return null
+    try {
+      const fh = await loc.dir.getFileHandle(loc.name)
+      const buf = await (await fh.getFile()).arrayBuffer()
+      return new Uint8Array(buf)
+    } catch {
+      return null
+    }
+  }
+
+  async writeBinary(path: string, data: Uint8Array): Promise<void> {
+    const loc = await this.dirFor(path, true)
+    if (!loc) throw new Error(`cannot create directories for ${path}`)
+    const fh = await loc.dir.getFileHandle(loc.name, { create: true })
+    const w = await fh.createWritable()
+    await w.write(data as Uint8Array<ArrayBuffer>)
+    await w.close()
+  }
+
   async delete(path: string): Promise<void> {
     const loc = await this.dirFor(path, false)
     if (!loc) return

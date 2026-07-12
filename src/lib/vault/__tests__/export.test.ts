@@ -15,7 +15,29 @@ describe("vault zip round-trip", () => {
     const { files } = await importVaultZip(dst, zip)
 
     expect(files).toBe(3)
-    expect(dst.snapshot()).toEqual(src.snapshot())
+    const paths = await src.list()
+    expect(await dst.list()).toEqual(paths)
+    for (const path of paths) {
+      expect(await dst.read(path)).toBe(await src.read(path))
+    }
+  })
+
+  it("round-trips a binary file (all 256 byte values) and a text file losslessly", async () => {
+    const src = new MemoryVaultStorage()
+    const bytes = new Uint8Array(256)
+    for (let i = 0; i < 256; i++) bytes[i] = i
+    await src.writeBinary("assets/blob.bin", bytes)
+    await src.write("purpose.md", "# Purpose\nhello\n")
+
+    const zip = await exportVaultZip(src)
+    const dst = new MemoryVaultStorage()
+    const { files } = await importVaultZip(dst, zip)
+
+    expect(files).toBe(2)
+    const roundTripped = await dst.readBinary("assets/blob.bin")
+    expect(roundTripped).not.toBeNull()
+    expect(Array.from(roundTripped as Uint8Array)).toEqual(Array.from(bytes))
+    expect(await dst.read("purpose.md")).toBe("# Purpose\nhello\n")
   })
 
   it("export excludes .scispark/settings.json (BYOK keys) but includes the rest of the vault", async () => {

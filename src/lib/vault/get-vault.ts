@@ -1,6 +1,7 @@
 import type { VaultStorage } from "./storage"
 import { MemoryVaultStorage } from "./memory-storage"
 import { OpfsVaultStorage } from "./opfs-storage"
+import { openVault } from "./scaffold"
 
 let vaultPromise: Promise<VaultStorage> | null = null
 
@@ -16,4 +17,18 @@ export function getVault(): Promise<VaultStorage> {
     }
   }
   return vaultPromise
+}
+
+let openVaultPromise: Promise<VaultStorage> | null = null
+
+/** App entry point: resolves the storage backend and ensures the vault is
+ * bootstrapped (schema.md etc. exist), running openVault exactly once. */
+export function getOpenVault(): Promise<VaultStorage> {
+  if (!openVaultPromise) {
+    openVaultPromise = getVault().then(async (storage) => {
+      await openVault(storage)
+      return storage
+    })
+  }
+  return openVaultPromise
 }

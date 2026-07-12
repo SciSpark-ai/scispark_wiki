@@ -33,6 +33,12 @@ class ThrowingWriteStorage implements VaultStorage {
     }
     return this.inner.write(path, content)
   }
+  async readBinary(path: string): Promise<Uint8Array | null> {
+    return this.inner.readBinary(path)
+  }
+  async writeBinary(path: string, data: Uint8Array): Promise<void> {
+    return this.inner.writeBinary(path, data)
+  }
   async delete(path: string): Promise<void> {
     return this.inner.delete(path)
   }
@@ -60,6 +66,12 @@ class ThrowOnChangesetPathStorage implements VaultStorage {
       throw new Error("simulated changeset record write failure")
     }
     return this.inner.write(path, content)
+  }
+  async readBinary(path: string): Promise<Uint8Array | null> {
+    return this.inner.readBinary(path)
+  }
+  async writeBinary(path: string, data: Uint8Array): Promise<void> {
+    return this.inner.writeBinary(path, data)
   }
   async delete(path: string): Promise<void> {
     return this.inner.delete(path)
