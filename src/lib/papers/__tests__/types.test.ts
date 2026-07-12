@@ -118,6 +118,14 @@ describe("mergeRecords", () => {
     expect(mergeRecords(makeRecord({ citationCount: undefined }), makeRecord({ citationCount: undefined })).citationCount).toBeUndefined()
   })
 
+  it("preserves citationCount=0 when merged with undefined", () => {
+    expect(mergeRecords(makeRecord({ citationCount: 0 }), makeRecord({ citationCount: undefined })).citationCount).toBe(0)
+  })
+
+  it("preserves citationCount=0 from b when a is undefined", () => {
+    expect(mergeRecords(makeRecord({ citationCount: undefined }), makeRecord({ citationCount: 0 })).citationCount).toBe(0)
+  })
+
   it("dedupes fields into a union that preserves order", () => {
     const a = makeRecord({ fields: ["ml", "nlp"] })
     const b = makeRecord({ fields: ["nlp", "cv"] })
