@@ -72,6 +72,17 @@ src/
     └── mock-data/          # papers.ts, projects.ts, chat-responses.ts, seed-chat.ts
 ```
 
+## Environment variables
+
+Server-only proxy backend for the paper search/resolve/fetch relay (`/api/search/[source]`, `/api/resolve`, `/api/fetch`). Copy `.env.example` to `.env.local` and fill in what you need — none are exposed to the client bundle.
+
+| Variable          | Required?                       | Purpose                                                              |
+| ------------------ | -------------------------------- | --------------------------------------------------------------------- |
+| `OPENALEX_MAILTO`  | Recommended                      | OpenAlex "polite pool" contact email — faster/more reliable rate limits |
+| `UNPAYWALL_EMAIL`  | Required for `/api/resolve`      | Unpaywall requires a contact email on every request; missing it returns 503 |
+| `S2_API_KEY`       | Optional                         | Semantic Scholar API key — better rate limits on `/api/search/s2`   |
+| `NCBI_API_KEY`     | Optional                         | NCBI/PubMed API key — better rate limits on `/api/search/pubmed`    |
+
 ## Persistence
 
 The following data is mirrored to `localStorage` and survives reloads:
