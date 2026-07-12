@@ -69,6 +69,8 @@ export interface BuildPaperPageOpts {
   projects?: string[]
   today: string
   sources?: string[]
+  /** Directory the paper page is written under. Defaults to "wiki/papers" — callers with schema-routed vaults should pass `loadRouting(storage)["paper"]`. */
+  dir?: string
 }
 
 function buildDigestSection(digest: DigestLike): string {
@@ -112,7 +114,8 @@ function buildLinksSection(paper: PaperRecord): string | null {
  */
 export function buildPaperPage(paper: PaperRecord, opts: BuildPaperPageOpts): PageDraft {
   const slug = paperSlug(paper)
-  const path = `wiki/papers/${slug}.md`
+  const dir = opts.dir ?? "wiki/papers"
+  const path = `${dir}/${slug}.md`
 
   const frontmatter: Frontmatter = {
     type: "paper",
@@ -150,12 +153,14 @@ export interface BuildAuthorSkeletonsOpts {
   existingIds: Set<string>
   today: string
   paperPageSlug: string
+  /** Directory author pages are written under. Defaults to "wiki/authors" — callers with schema-routed vaults should pass `loadRouting(storage)["author"]`. */
+  dir?: string
 }
 
 /**
  * Builds one skeleton page draft per author on the paper, skipping any
- * author whose page id (`wiki/authors/<slug>`, no extension — matching the
- * id shape a bundle's `pages` map uses) is already in `opts.existingIds`.
+ * author whose page id (`<dir>/<slug>`, no extension — matching the id
+ * shape a bundle's `pages` map uses) is already in `opts.existingIds`.
  * Slug is the author's `openalexId` (lowercased) when known, else
  * `slugifyTitle(name)`. Handles duplicate author names within the same call
  * by suffixing -2, -3, etc. on collision.
@@ -163,10 +168,11 @@ export interface BuildAuthorSkeletonsOpts {
 export function buildAuthorSkeletons(paper: PaperRecord, opts: BuildAuthorSkeletonsOpts): PageDraft[] {
   const drafts: PageDraft[] = []
   const seenSlugs = new Set<string>()
+  const dir = opts.dir ?? "wiki/authors"
 
   for (const author of paper.authors) {
     let baseSlug = author.openalexId ? author.openalexId.toLowerCase() : slugifyTitle(author.name)
-    let id = `wiki/authors/${baseSlug}`
+    let id = `${dir}/${baseSlug}`
 
     // Skip if this exact id is already in existingIds (pre-existing page)
     if (opts.existingIds.has(id)) continue
@@ -176,12 +182,12 @@ export function buildAuthorSkeletons(paper: PaperRecord, opts: BuildAuthorSkelet
     if (seenSlugs.has(baseSlug)) {
       let suffix = 2
       let candidateSlug = `${baseSlug}-${suffix}`
-      while (seenSlugs.has(candidateSlug) || opts.existingIds.has(`wiki/authors/${candidateSlug}`)) {
+      while (seenSlugs.has(candidateSlug) || opts.existingIds.has(`${dir}/${candidateSlug}`)) {
         suffix++
         candidateSlug = `${baseSlug}-${suffix}`
       }
       slug = candidateSlug
-      id = `wiki/authors/${candidateSlug}`
+      id = `${dir}/${candidateSlug}`
     }
 
     seenSlugs.add(slug)

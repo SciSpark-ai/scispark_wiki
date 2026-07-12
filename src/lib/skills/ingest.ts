@@ -94,20 +94,41 @@ interface ComposedFile {
 
 /**
  * Sanitizes an LLM-provided tag/related list into lowercase kebab (or CJK-preserving)
- * slugs: each value through slugifyTitle, empties/punctuation-only values dropped
+ * slugs: path-shaped entries (containing "/", e.g. "wiki/concepts/foo") reduce to their
+ * final path segment FIRST — slugifying the whole path would mangle it into a
+ * nonexistent "wiki-concepts-foo" slug instead of the real "foo" page id — then each
+ * value goes through slugifyTitle, empties/punctuation-only values dropped
  * (slugifyTitle's "untitled" fallback marks those), order-preserving dedupe.
  */
 function sanitizeSlugList(values: string[]): string[] {
   const out: string[] = []
   const seen = new Set<string>()
   for (const value of values) {
-    const slug = slugifyTitle(value)
+    const lastSegment = value.includes("/") ? value.slice(value.lastIndexOf("/") + 1) : value
+    const slug = slugifyTitle(lastSegment)
     // slugifyTitle falls back to "untitled" when a value has no usable slug characters
     // (empty or punctuation-only) — drop those instead of tagging pages "untitled".
-    if (slug === "untitled" && value.trim().toLowerCase() !== "untitled") continue
+    if (slug === "untitled" && lastSegment.trim().toLowerCase() !== "untitled") continue
     if (seen.has(slug)) continue
     seen.add(slug)
     out.push(slug)
+  }
+  return out
+}
+
+/**
+ * Unions two string lists order-stably: `existing` values first (in their original
+ * order), then any `incoming` values not already present. Used to merge
+ * sources/tags/related on update instead of letting the new generation replace them
+ * outright (see `composeLlmFile`).
+ */
+function unionStable(existing: string[] | undefined, incoming: string[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const value of [...(existing ?? []), ...incoming]) {
+    if (seen.has(value)) continue
+    seen.add(value)
+    out.push(value)
   }
   return out
 }
@@ -212,35 +233,50 @@ function buildRetryMessage(errors: string[]): string {
 }
 
 /**
- * Composes one LLM-authored file into a full on-disk document: frontmatter is built by
- * CODE from the LLM's type/title/tags/related — `created` comes from the existing page at
- * that path when one parses (update case), otherwise today; `updated` is always today;
- * `sources` is always the caller-provided list (snapshot path or paper id).
+ * Composes one LLM-authored file into a full on-disk document. Frontmatter is a MERGE
+ * of the existing page's frontmatter (when one parses at this path — the update case)
+ * and the LLM's type/title/tags/related, not a blind rebuild:
+ *
+ *   - `created` is preserved from the existing page (today for a new page).
+ *   - `updated` is always today.
+ *   - any custom frontmatter key the new frontmatter doesn't set (e.g. a hand-added
+ *     `doi`) survives from the existing page — code composes only the fields below,
+ *     so everything else in the existing object passes through untouched.
+ *   - `tags`/`related`/`sources` are UNIONED (existing values first, then new,
+ *     order-stable dedupe) rather than replaced, so a second paper touching a shared
+ *     page never destroys curation/provenance a prior ingest added.
+ *
+ * The BODY, in contrast, is always a full replacement — the generation model never
+ * sees the existing body (only the index's `slug — title` line), matching llm_wiki's
+ * own generation-prompt shape. Feeding `pagesToUpdate` targets' current bodies into
+ * the generation prompt so the model can incrementally edit prose (rather than
+ * regenerate it from the paper alone) is future design work, not implemented here.
  */
 async function composeLlmFile(
   storage: VaultStorage,
   file: GenerationFile,
   opts: { today: string; sources: string[] },
 ): Promise<ComposedFile> {
-  let created = opts.today
+  let existingFrontmatter: Frontmatter | null = null
   const existing = await storage.read(file.path)
   if (existing !== null) {
     try {
-      created = parseDocument(existing).frontmatter.created
+      existingFrontmatter = parseDocument(existing).frontmatter
     } catch {
-      // Existing file doesn't parse — treat as fresh, stamped today.
+      // Existing file doesn't parse — treat as fresh, stamped today, nothing to merge.
     }
   }
 
   const type = file.type.trim().toLowerCase()
   const frontmatter: Frontmatter = {
+    ...(existingFrontmatter ?? {}),
     type,
     title: file.title,
-    created,
+    created: existingFrontmatter?.created ?? opts.today,
     updated: opts.today,
-    tags: sanitizeSlugList(file.tags),
-    related: sanitizeSlugList(file.related),
-    sources: opts.sources,
+    tags: unionStable(existingFrontmatter?.tags, sanitizeSlugList(file.tags)),
+    related: unionStable(existingFrontmatter?.related, sanitizeSlugList(file.related)),
+    sources: unionStable(existingFrontmatter?.sources, opts.sources),
   }
 
   return { path: file.path, type, content: composePage({ path: file.path, frontmatter, body: file.body }) }
@@ -311,6 +347,9 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
   async run(ctx, input) {
     const { storage, paper } = input
     const today = input.today ?? new Date().toISOString().slice(0, 10)
+    // Review createdAt / changeset timestamp: derive from the injected `today` when
+    // given (deterministic for callers/tests), otherwise fall back to wall-clock now.
+    const nowIso = input.today !== undefined ? `${input.today}T00:00:00.000Z` : new Date().toISOString()
 
     // ── 1. Analysis ─────────────────────────────────────────────────────────
     const analysisContext = await buildAnalysisContext(storage, {
@@ -328,7 +367,11 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
     // ── 2. Generation ───────────────────────────────────────────────────────
     const routing = await loadRouting(storage)
     const slug = paperSlug(paper)
-    const paperPagePath = `wiki/papers/${slug}.md`
+    // Deterministic-file directories come from schema.md routing, not hardcoded paths —
+    // a custom-routed vault (e.g. paper -> wiki/articles) must not brick ingest.
+    const paperDir = routing["paper"] ?? "wiki/papers"
+    const authorDir = routing["author"] ?? "wiki/authors"
+    const paperPagePath = `${paperDir}/${slug}.md`
     const sources = [input.fullText?.snapshotPath ?? paperKey(paper)]
 
     const messages = [
@@ -348,14 +391,16 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
       projects: input.projects,
       today,
       sources,
+      dir: paperDir,
     })
     // Re-ingest of a known paper: keep the original created date, only bump updated.
-    const existingPaperPage = bundle.pages.get(`wiki/papers/${slug}`)
+    const existingPaperPage = bundle.pages.get(`${paperDir}/${slug}`)
     if (existingPaperPage) paperDraft.frontmatter.created = existingPaperPage.frontmatter.created
     const authorDrafts = buildAuthorSkeletons(paper, {
       existingIds: new Set(bundle.pages.keys()),
       today,
       paperPageSlug: slug,
+      dir: authorDir,
     })
     const deterministic = [paperDraft, ...authorDrafts]
 
@@ -391,7 +436,7 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
       // (settings/tier resolution) and deliberately not exposed on SkillContext, so the
       // audit record captures the tier request itself rather than a guessed model id.
       model: "tier:strong",
-      timestamp: new Date().toISOString(),
+      timestamp: nowIso,
       changes,
     }
     await applyChangeset(storage, changeset)
@@ -405,7 +450,7 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
       await storage.write(
         `.scispark/review/${id}.json`,
         JSON.stringify(
-          { id, createdAt: new Date().toISOString(), changesetId: changeset.id, ...review },
+          { id, createdAt: nowIso, changesetId: changeset.id, ...review },
           null,
           2,
         ),

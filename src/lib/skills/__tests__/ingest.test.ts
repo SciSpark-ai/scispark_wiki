@@ -420,6 +420,106 @@ describe("ingestSkill validation retry", () => {
   })
 })
 
+describe("ingestSkill update path — frontmatter merge (I-1)", () => {
+  it("preserves custom frontmatter keys and unions sources/tags/related instead of clobbering them", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedVault(storage)
+    await storage.write(
+      CONCEPT_PATH,
+      composePage({
+        path: CONCEPT_PATH,
+        frontmatter: {
+          type: "concept",
+          title: "Sparse Attention",
+          created: "2026-06-01",
+          updated: "2026-06-01",
+          tags: ["t1"],
+          related: [],
+          sources: ["a"],
+          doi: "10.1234/example",
+        },
+        body: "# Sparse Attention\n\nAn older stub.\n",
+      }),
+    )
+    const gen = sampleGeneration()
+    gen.files[0].tags = ["t2"]
+    const provider = new MockProvider([llmResult(SAMPLE_ANALYSIS), llmResult(gen)])
+
+    const run = await runIngest(storage, provider, {
+      fullText: { kind: "abstract", text: "abstract text", snapshotPath: "b" },
+    })
+
+    expectOk(run.output)
+    const concept = parseDocument((await storage.read(CONCEPT_PATH)) as string)
+    // Custom key the LLM never set survives from the existing page.
+    expect(concept.frontmatter.doi).toBe("10.1234/example")
+    // sources/tags unioned (existing first, then new), not replaced.
+    expect(concept.frontmatter.sources).toEqual(["a", "b"])
+    expect(concept.frontmatter.tags).toEqual(["t1", "t2"])
+    // created preserved, updated bumped (already-covered behavior, re-asserted here).
+    expect(concept.frontmatter.created).toBe("2026-06-01")
+    expect(concept.frontmatter.updated).toBe(TODAY)
+  })
+})
+
+describe("ingestSkill routing-aware deterministic paths (I-2)", () => {
+  it("writes the deterministic paper page under a rerouted schema.md directory and validates cleanly", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedVault(storage)
+    const schema = (await storage.read("schema.md")) as string
+    expect(schema).toContain("| paper | wiki/papers |")
+    await storage.write("schema.md", schema.replace("| paper | wiki/papers |", "| paper | wiki/articles |"))
+
+    const provider = new MockProvider([llmResult(SAMPLE_ANALYSIS), llmResult(sampleGeneration())])
+    const run = await runIngest(storage, provider)
+
+    expectOk(run.output)
+    // No validation retry burned — the deterministic page routed correctly the first time.
+    expect(provider.calls).toHaveLength(2)
+    const reroutedPath = `wiki/articles/${PAPER_SLUG}.md`
+    expect(await storage.read(reroutedPath)).not.toBeNull()
+    expect(await storage.read(PAPER_PAGE_PATH)).toBeNull()
+    expect(run.output.pages.created).toContain(reroutedPath)
+  })
+})
+
+describe("sanitizeSlugList path-shaped entries (M-1)", () => {
+  it("reduces a path-shaped related entry to its final segment before slugifying", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedVault(storage)
+    const gen = sampleGeneration()
+    gen.files[0].related = ["wiki/concepts/foo", "Bar Baz"]
+    const provider = new MockProvider([llmResult(SAMPLE_ANALYSIS), llmResult(gen)])
+
+    const run = await runIngest(storage, provider)
+
+    expectOk(run.output)
+    const concept = parseDocument((await storage.read(CONCEPT_PATH)) as string)
+    expect(concept.frontmatter.related).toEqual(["foo", "bar-baz"])
+  })
+})
+
+describe("ingestSkill injected clock (M-3)", () => {
+  it("stamps the changeset timestamp and review createdAt from input.today, not wall-clock", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedVault(storage)
+    const provider = new MockProvider([llmResult(SAMPLE_ANALYSIS), llmResult(sampleGeneration())])
+
+    const run = await runIngest(storage, provider)
+
+    expectOk(run.output)
+    const cs = JSON.parse(
+      (await storage.read(`.scispark/changesets/${run.output.changesetId}.json`)) as string,
+    )
+    expect(cs.timestamp).toBe(`${TODAY}T00:00:00.000Z`)
+
+    const review = JSON.parse(
+      (await storage.read(`.scispark/review/${run.output.changesetId}-0.json`)) as string,
+    )
+    expect(review.createdAt).toBe(`${TODAY}T00:00:00.000Z`)
+  })
+})
+
 describe("ingestSkill deterministic-page ownership", () => {
   it("silently drops an LLM file at the paper page path — code's page wins", async () => {
     const storage = new MemoryVaultStorage()
