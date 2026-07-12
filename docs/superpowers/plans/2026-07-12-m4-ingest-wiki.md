@@ -53,7 +53,7 @@ TDD (scaffold's generated schema.md parses to exactly DEFAULT_ROUTING; custom ex
 **Files:** create `src/lib/wiki/acquire.ts` (+tests, fixture HTML)
 
 **Contracts:**
-- `acquireFullText(paper: PaperRecord, deps: {fetchFn?: typeof fetch; apiBase?: string}): Promise<{kind: "html" | "abstract"; text: string; snapshotPath?: string; sourceUrl?: string}>`
+- `acquireFullText(paper: PaperRecord, deps: {fetchFn?: typeof fetch; apiBase?: string}): Promise<{kind: "html" | "abstract"; text: string; html?: string; sourceUrl?: string}>` (caller snapshots via `snapshotSource` — acquisition stays storage-free)
   - Candidate order: arXiv HTML (`https://arxiv.org/html/<id>` when `ids.arxiv`) → `htmlUrl` → `oaUrl` (resolving via `/api/resolve?doi=` when only a DOI, using `oaUrl`/landing) — every remote fetch goes through `/api/fetch?url=` (the relay; `apiBase` prefixes for tests). PDF-only candidates are SKIPPED in M4 (comment: extraction lands M6).
   - HTML → text: DOMParser when available, else regex strip (tests run in Node: implement a small tag-stripper — remove script/style blocks, tags, collapse whitespace; keep paragraph breaks). Guard: extracted text < 500 chars → treat as failure, try next candidate.
   - Success → `{kind: "html", text, sourceUrl}`; all candidates fail → `{kind: "abstract", text: paper.abstract ?? ""}`.
