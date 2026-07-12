@@ -51,10 +51,21 @@ export class Meter {
   async recordsForDay(date: string): Promise<UsageRecord[]> {
     const raw = await this.storage.read(dayFilePath(date))
     if (raw == null) return []
-    return raw
-      .split("\n")
-      .filter((line) => line.trim().length > 0)
-      .map((line) => JSON.parse(line) as UsageRecord)
+    const records: UsageRecord[] = []
+    for (const line of raw.split("\n")) {
+      if (line.trim().length === 0) continue
+      try {
+        const parsed = JSON.parse(line)
+        // Skip non-object values (null, string, number, array, etc.)
+        if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+          records.push(parsed as UsageRecord)
+        }
+      } catch (e) {
+        // Skip unparseable lines (corrupted JSON)
+        continue
+      }
+    }
+    return records
   }
 
   async spentTodayUsd(): Promise<number> {

@@ -106,6 +106,84 @@ describe("Meter", () => {
       expect(day[0].costUsd).toBeNull()
     })
   })
+
+  describe("corrupted usage log lines", () => {
+    it("skips unparseable and non-object lines, summing only valid records", async () => {
+      const storage = new MemoryVaultStorage()
+      const meter = new Meter(storage, () => new Date("2026-07-12T10:00:00.000Z"))
+
+      // Manually write a usage file with one valid line, one corrupted, one valid line
+      const record1 = {
+        ts: "2026-07-12T09:00:00.000Z",
+        skill: "digest",
+        runId: "run-1",
+        provider: "anthropic" as const,
+        model: "claude-haiku-4-5",
+        usage: haikuUsage(1_000_000, 0),
+        costUsd: 1.0,
+      }
+      const record2 = {
+        ts: "2026-07-12T11:00:00.000Z",
+        skill: "digest",
+        runId: "run-2",
+        provider: "anthropic" as const,
+        model: "claude-haiku-4-5",
+        usage: haikuUsage(2_000_000, 0),
+        costUsd: 2.0,
+      }
+
+      const lines = [
+        JSON.stringify(record1),
+        "{not json", // corrupted line
+        JSON.stringify(record2),
+      ].join("\n") + "\n"
+
+      await storage.write(".scispark/usage/2026-07-12.jsonl", lines)
+
+      // recordsForDay should skip the corrupted line and return 2 valid records
+      const records = await meter.recordsForDay("2026-07-12")
+      expect(records).toHaveLength(2)
+      expect(records[0].runId).toBe("run-1")
+      expect(records[1].runId).toBe("run-2")
+
+      // spentTodayUsd should sum only the 2 valid records without throwing
+      const spent = await meter.spentTodayUsd()
+      expect(spent).toBeCloseTo(3.0, 6)
+    })
+
+    it("skips parsed non-object values (e.g., null, string, number)", async () => {
+      const storage = new MemoryVaultStorage()
+      const meter = new Meter(storage, () => new Date("2026-07-12T10:00:00.000Z"))
+
+      const record1 = {
+        ts: "2026-07-12T09:00:00.000Z",
+        skill: "digest",
+        runId: "run-1",
+        provider: "anthropic" as const,
+        model: "claude-haiku-4-5",
+        usage: haikuUsage(500_000, 0),
+        costUsd: 0.5,
+      }
+
+      const lines = [
+        JSON.stringify(record1),
+        "null",
+        '"just a string"',
+        "123",
+      ].join("\n") + "\n"
+
+      await storage.write(".scispark/usage/2026-07-12.jsonl", lines)
+
+      // Should skip the non-object values and return only the valid record
+      const records = await meter.recordsForDay("2026-07-12")
+      expect(records).toHaveLength(1)
+      expect(records[0].runId).toBe("run-1")
+
+      // spentTodayUsd should sum only the valid record
+      const spent = await meter.spentTodayUsd()
+      expect(spent).toBeCloseTo(0.5, 6)
+    })
+  })
 })
 
 describe("checkBudget", () => {
