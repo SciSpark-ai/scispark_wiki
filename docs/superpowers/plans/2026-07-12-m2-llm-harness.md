@@ -532,8 +532,10 @@ export class OpenAICompatProvider implements LLMProvider {
       const text = await res.text().catch(() => "")
       if (res.status === 401 || res.status === 403) throw new LLMAuthError(text || `HTTP ${res.status}`)
       if (res.status === 429) {
-        const ra = Number(res.headers.get("retry-after"))
-        throw new LLMRateLimitError(text || "rate limited", Number.isFinite(ra) ? ra * 1000 : undefined)
+        // NB: header absent → get() returns null and Number(null) === 0 — must not become a 0ms hint
+        const raw = res.headers.get("retry-after")
+        const ra = raw != null ? Number(raw) : NaN
+        throw new LLMRateLimitError(text || "rate limited", Number.isFinite(ra) && ra > 0 ? ra * 1000 : undefined)
       }
       if (res.status >= 500) throw new LLMTransientError(text || `HTTP ${res.status}`)
       throw new LLMBadRequestError(text || `HTTP ${res.status}`)

@@ -1,15 +1,15 @@
 import { describe, it, expect } from "vitest"
 import { AnthropicProvider } from "../providers/anthropic"
-import { LLMAuthError } from "../types"
+import { LLMAuthError, LLMRateLimitError, LLMTransientError } from "../types"
 
-function fakeFetch(status: number, body: unknown): { fn: typeof fetch; captured: { url?: string; init?: RequestInit } } {
+function fakeFetch(status: number, body: unknown, responseHeaders?: Record<string, string>): { fn: typeof fetch; captured: { url?: string; init?: RequestInit } } {
   const captured: { url?: string; init?: RequestInit } = {}
   const fn = (async (url: RequestInfo | URL, init?: RequestInit) => {
     captured.url = String(url)
     captured.init = init
     return new Response(JSON.stringify(body), {
       status,
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...responseHeaders },
     })
   }) as typeof fetch
   return { fn, captured }
@@ -59,5 +59,36 @@ describe("AnthropicProvider", () => {
     const sent = JSON.parse(String(captured.init?.body))
     expect(sent.output_config?.format?.type).toBe("json_schema")
     expect(result.json).toEqual({ a: 1 })
+  })
+
+  it("maps 429 with retry-after header to LLMRateLimitError with retryAfterMs", async () => {
+    const { fn } = fakeFetch(429, { type: "error", error: { type: "rate_limit_error", message: "rate limited" } }, { "retry-after": "3" })
+    const p = new AnthropicProvider("sk-test", fn)
+    await expect(p.complete("claude-haiku-4-5", { messages: [{ role: "user", content: "hi" }] }))
+      .rejects.toThrow(LLMRateLimitError)
+    try {
+      await p.complete("claude-haiku-4-5", { messages: [{ role: "user", content: "hi" }] })
+    } catch (e) {
+      expect(e).toBeInstanceOf(LLMRateLimitError)
+      expect((e as LLMRateLimitError).retryAfterMs).toBe(3000)
+    }
+  })
+
+  it("maps 429 without retry-after header to LLMRateLimitError with undefined retryAfterMs", async () => {
+    const { fn } = fakeFetch(429, { type: "error", error: { type: "rate_limit_error", message: "rate limited" } })
+    const p = new AnthropicProvider("sk-test", fn)
+    try {
+      await p.complete("claude-haiku-4-5", { messages: [{ role: "user", content: "hi" }] })
+    } catch (e) {
+      expect(e).toBeInstanceOf(LLMRateLimitError)
+      expect((e as LLMRateLimitError).retryAfterMs).toBeUndefined()
+    }
+  })
+
+  it("maps 500 to LLMTransientError", async () => {
+    const { fn } = fakeFetch(500, { type: "error", error: { type: "internal_server_error", message: "server error" } })
+    const p = new AnthropicProvider("sk-test", fn)
+    await expect(p.complete("claude-haiku-4-5", { messages: [{ role: "user", content: "hi" }] }))
+      .rejects.toThrow(LLMTransientError)
   })
 })

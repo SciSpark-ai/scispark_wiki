@@ -65,8 +65,9 @@ function mapError(e: unknown): unknown {
     return new LLMAuthError(e.message)
   }
   if (e instanceof Anthropic.RateLimitError) {
-    const retryAfter = Number(e.headers?.get?.("retry-after"))
-    return new LLMRateLimitError(e.message, Number.isFinite(retryAfter) ? retryAfter * 1000 : undefined)
+    const raw = e.headers?.get?.("retry-after")
+    const ra = raw != null ? Number(raw) : NaN
+    return new LLMRateLimitError(e.message, Number.isFinite(ra) && ra > 0 ? ra * 1000 : undefined)
   }
   if (e instanceof Anthropic.InternalServerError || e instanceof Anthropic.APIConnectionError) {
     return new LLMTransientError(e instanceof Error ? e.message : "connection error")
