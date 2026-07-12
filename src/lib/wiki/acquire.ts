@@ -122,10 +122,14 @@ export async function acquireFullText(
   const fetchFn = deps.fetchFn ?? fetch
   const apiBase = deps.apiBase ?? ""
 
-  const candidates: string[] = []
-  if (paper.ids.arxiv) candidates.push(`https://arxiv.org/html/${paper.ids.arxiv}`)
-  if (paper.htmlUrl) candidates.push(paper.htmlUrl)
-  if (paper.oaUrl) candidates.push(paper.oaUrl)
+  const rawCandidates: string[] = []
+  if (paper.ids.arxiv) rawCandidates.push(`https://arxiv.org/html/${paper.ids.arxiv}`)
+  if (paper.htmlUrl) rawCandidates.push(paper.htmlUrl)
+  if (paper.oaUrl) rawCandidates.push(paper.oaUrl)
+  // Dedupe (order-preserving): htmlUrl and oaUrl are sometimes the same
+  // landing page, and a Set over the URL strings avoids a wasted relay
+  // round-trip fetching the identical target twice.
+  const candidates = Array.from(new Set(rawCandidates))
 
   for (const target of candidates) {
     const result = await tryCandidate(target, fetchFn, apiBase)
@@ -144,11 +148,34 @@ export async function acquireFullText(
   return { kind: "abstract", text: paper.abstract ?? "" }
 }
 
-const BLOCK_CONTAINER_TAGS = /<(script|style|nav|header|footer)\b[^>]*>[\s\S]*?<\/\1>/gi
-const BLOCK_BOUNDARY_OPEN = /<\s*(p|div|li|h[1-6])\b[^>]*>/gi
+// Block removal is start-marker-to-close-marker-or-end-of-string, so it
+// never needs to identify where the *opening* tag ends - attribute values
+// containing a literal `>` (legal HTML5) can't confuse it, and an unclosed
+// block (e.g. truncated by a flaky upstream fetch) masks to end-of-string
+// instead of falling through to per-tag stripping and leaking its raw
+// content (same shape of fix as the vault's code-fence hardening).
+const BLOCK_CONTAINER_TAGS = /<(script|style|nav|header|footer)\b[\s\S]*?(?:<\/\1\s*>|$)/gi
+
+// HTML comments and bang declarations (<!DOCTYPE ...>) aren't "tags" per
+// ANY_TAG's `<\/?[a-zA-Z]...>` shape (they start with `<!`), so they need
+// their own removal pass - matches the old catch-all ANY_TAG's behavior of
+// silently dropping them too.
+const HTML_COMMENT = /<!--[\s\S]*?-->/g
+const DOCTYPE_DECLARATION = /<![^>]*>/g
+
+// Quoted-attribute-aware tag tail: consumes non->/quote chars, or a fully
+// quoted attribute value (which may itself contain `>`), repeated, so a
+// `>` inside a quoted attribute value doesn't truncate the match early and
+// leak the rest of the tag (and any trailing content up to the next real
+// `>`) into the output.
+const ATTR_AWARE_TAIL = String.raw`[^>"']*(?:"[^"]*"[^>"']*|'[^']*'[^>"']*)*`
+const BLOCK_BOUNDARY_OPEN = new RegExp(
+  String.raw`<\s*(?:p|div|li|h[1-6])\b${ATTR_AWARE_TAIL}>`,
+  "gi",
+)
 const BLOCK_BOUNDARY_CLOSE = /<\s*\/\s*(p|div|li|h[1-6])\s*>/gi
 const LINE_BREAK_TAG = /<\s*br\s*\/?\s*>/gi
-const ANY_TAG = /<[^>]+>/g
+const ANY_TAG = new RegExp(String.raw`<\/?[a-zA-Z]${ATTR_AWARE_TAIL}>`, "g")
 
 const NAMED_ENTITIES: Record<string, string> = {
   amp: "&",
@@ -178,24 +205,92 @@ function decodeEntities(text: string): string {
   })
 }
 
+const BLOCK_TEXT_SELECTOR = "p, br, div, li, h1, h2, h3, h4, h5, h6, tr"
+const STRIP_SELECTOR = "script, style, nav, header, footer"
+
 /**
- * Converts raw HTML into plain readable text. Pure regex/string
- * manipulation (no DOMParser) so it runs identically in Node tests and in
- * the browser: (1) drop entire <script>/<style>/<nav>/<header>/<footer>
- * blocks, including their content; (2) turn block-level element boundaries
- * (<p> <div> <li> <h1..h6> <br>) into newlines so paragraph structure
- * survives tag stripping; (3) strip all remaining tags; (4) decode basic
- * HTML entities; (5) collapse intra-line whitespace and cap blank-line runs
- * at one blank line (i.e. at most two consecutive newlines).
+ * Converts raw HTML into plain readable text. Output contract (shared by
+ * both engines below): paragraph/heading/list-item/row breaks are preserved
+ * as newlines, script/style/nav/header/footer content is fully absent,
+ * entities are decoded, intra-line whitespace is collapsed, and blank-line
+ * runs are capped at one blank line.
+ *
+ * Browser-primary: when `globalThis.DOMParser` exists, use it -
+ * `extractReadableTextDom` is not vulnerable to either of the regex
+ * fallback's failure modes (a quoted attribute containing a literal `>`, or
+ * an unclosed block tag), since a real HTML parser resolves tag boundaries
+ * correctly regardless of attribute content or malformed markup.
+ *
+ * Node fallback (and any environment without DOMParser):
+ * `extractReadableTextRegex`, hardened per the two reviewer-reported
+ * corruptions - see its own doc comment.
  */
 export function extractReadableText(html: string): string {
-  let text = html.replace(BLOCK_CONTAINER_TAGS, "")
+  if (typeof globalThis.DOMParser !== "undefined") {
+    return extractReadableTextDom(html)
+  }
+  return extractReadableTextRegex(html)
+}
+
+/**
+ * Browser-primary DOM-based extraction. Parses `html` as text/html, removes
+ * script/style/nav/header/footer elements outright, then inserts a newline
+ * text node at the end of every block-level element (p, br, div, li,
+ * h1-h6, tr) before reading `body.textContent`, so paragraph/row boundaries
+ * survive as line breaks the same way the regex path's boundary markers do.
+ * A real parser means attribute values containing `>` and malformed/
+ * unclosed tags can't corrupt the output the way the regex fallback's naive
+ * tag-matching can.
+ */
+function extractReadableTextDom(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html")
+  doc.querySelectorAll(STRIP_SELECTOR).forEach((el) => el.remove())
+  doc.querySelectorAll(BLOCK_TEXT_SELECTOR).forEach((el) => {
+    el.appendChild(doc.createTextNode("\n"))
+  })
+  return collapseWhitespace(doc.body?.textContent ?? "")
+}
+
+/**
+ * Hardened regex/string fallback (Node + any DOMParser-less environment).
+ * This is the path exercised directly by tests in a plain Node vitest
+ * environment (no jsdom/happy-dom in devDeps), so it must be correct on its
+ * own, not just "good enough until DOMParser is available":
+ * 1. Strips entire <script>/<style>/<nav>/<header>/<footer> blocks
+ *    including their content. Matching is "open tag -> matching close tag
+ *    -or- end of string", not "open tag -> next occurrence of the tag
+ *    name's own close tag with a bounded attribute scanner" - so an
+ *    unclosed block (upstream truncation, malformed source) masks
+ *    everything through end-of-string instead of leaking raw script/style
+ *    source as if it were readable text.
+ * 2. Converts <br> and the open/close boundaries of <p>/<div>/<li>/
+ *    <h1..h6> into newlines *before* stripping tags, so paragraph/heading/
+ *    list-item structure survives as line breaks. The opening-tag boundary
+ *    matcher is quoted-attribute-aware (see ATTR_AWARE_TAIL) so a literal
+ *    `>` inside a quoted attribute value doesn't truncate the match early.
+ * 3. Strips all remaining tags, using the same quoted-attribute-aware
+ *    tail so an unescaped `>` inside a quoted attribute doesn't leak the
+ *    attribute tail (and everything up to the next real `>`) into the
+ *    output.
+ * 4. Decodes entities in a single combined regex pass (numeric `&#NNN;`/
+ *    `&#xHHH;` plus the five named entities) to avoid double-decoding a
+ *    chained entity like `&amp;lt;` into `<` instead of the correct `&lt;`.
+ * 5. Collapses intra-line whitespace and caps blank-line runs at one blank
+ *    line.
+ */
+export function extractReadableTextRegex(html: string): string {
+  let text = html.replace(HTML_COMMENT, "")
+  text = text.replace(DOCTYPE_DECLARATION, "")
+  text = text.replace(BLOCK_CONTAINER_TAGS, "")
   text = text.replace(LINE_BREAK_TAG, "\n")
   text = text.replace(BLOCK_BOUNDARY_OPEN, "\n")
   text = text.replace(BLOCK_BOUNDARY_CLOSE, "\n")
   text = text.replace(ANY_TAG, "")
   text = decodeEntities(text)
+  return collapseWhitespace(text)
+}
 
+function collapseWhitespace(text: string): string {
   const collapsedLines = text
     .split("\n")
     .map((line) => line.replace(/[ \t]+/g, " ").trim())

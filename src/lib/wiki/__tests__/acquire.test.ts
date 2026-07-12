@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
-import { acquireFullText, extractReadableText, snapshotSource } from "../acquire"
+import { acquireFullText, extractReadableText, extractReadableTextRegex, snapshotSource } from "../acquire"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import type { PaperRecord } from "../../papers/types"
 
@@ -226,6 +226,24 @@ describe("acquireFullText", () => {
 
     expect(result).toEqual({ kind: "abstract", text: "abs" })
   })
+
+  it("dedupes candidate URLs so htmlUrl === oaUrl is fetched only once", async () => {
+    const calls: string[] = []
+    const fetchFn = vi.fn(async (url: string) => {
+      calls.push(url)
+      return htmlResponse(SHORT_HTML)
+    })
+
+    const paper = basePaper({
+      htmlUrl: "https://example.org/same",
+      oaUrl: "https://example.org/same",
+    })
+
+    await acquireFullText(paper, { fetchFn: fetchFn as unknown as typeof fetch })
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toBe(`/api/fetch?url=${encodeURIComponent("https://example.org/same")}`)
+  })
 })
 
 describe("extractReadableText", () => {
@@ -266,6 +284,38 @@ describe("extractReadableText", () => {
 
   it("has no leftover angle-bracket tags", () => {
     expect(extracted).not.toMatch(/<[a-zA-Z!/][^>]*>/)
+  })
+})
+
+// Reviewer repro (m4-task-3-report.md, Finding 1): the regex fallback path
+// (exercised directly here, and via extractReadableText in this Node test
+// environment since globalThis.DOMParser is undefined) must not corrupt
+// realistic/malformed HTML. A DOMParser-based browser path also exists in
+// acquire.ts and is preferred at runtime when globalThis.DOMParser is
+// defined; it is not unit-tested here for lack of jsdom/happy-dom in
+// devDeps, and is instead intended to be exercised via the /debug page or
+// the browser-driven Task 9-11 gates.
+describe("extractReadableTextRegex (hardened regex fallback)", () => {
+  it("does not leak a quoted attribute's unescaped > into extracted text (reviewer repro a)", () => {
+    const html = `<div data-x="a > b">text</div>`
+    expect(extractReadableTextRegex(html)).toBe("text")
+  })
+
+  it("does not emit an unclosed <script> block's body as readable text (reviewer repro b)", () => {
+    const html = `<script>var x=1;`
+    const extracted = extractReadableTextRegex(html)
+    expect(extracted).not.toContain("var x=1")
+    expect(extracted).not.toContain("script")
+  })
+
+  it("removes adjacent well-formed <script> blocks and keeps interstitial text", () => {
+    const html = `<script>a</script>keep<script>b</script>`
+    expect(extractReadableTextRegex(html)).toBe("keep")
+  })
+
+  it("extractReadableText delegates to the regex path in this Node test environment", () => {
+    const html = `<div data-x="a > b">text</div>`
+    expect(extractReadableText(html)).toBe("text")
   })
 })
 
