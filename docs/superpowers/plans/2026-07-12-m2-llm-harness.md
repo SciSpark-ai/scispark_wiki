@@ -1,5 +1,26 @@
 # M2: LLM Harness Implementation Plan
 
+> ## STATUS (2026-07-12): implementation COMPLETE on branch `m2-llm-harness`, merge deferred by Tong
+>
+> All 11 tasks done; final whole-branch review verdict **READY TO MERGE** at commit `9c9f127` (123/123 tests, tsc/eslint clean). In-loop reviews caught and fixed 5 serious defects: 429 retry-storm, Gemini `$ref` schema corruption, meter write race, **vault export leaking BYOK keys** (settings.json now excluded from export+import), budget bypass via provider-echoed model ids.
+>
+> ### ✅ GATE PASSED 2026-07-12: live end-to-end verification via GMI Cloud (anthropic/claude-sonnet-5)
+> After Tong unblocked api.gmi-serving.com (Xfinity Advanced Security), the env-gated live gate passed 4/4 on first run — no fixes required: plain completion ("pong", usage 18/4 tokens), zod-structured output (validated first try), full runSkill (status ok, metered, run record persisted, **costUsd $0.000114 exactly matching sonnet-5 rates via prefix-fallback pricing**). Browser CORS to GMI confirmed open (preflight passes; 401 with dummy token visible to JS), so the /debug/llm BYOK path is viable. Remaining merge items below are now reduced to: optional price spot-check for the OpenAI/Google default rows (only matter if those defaults are used), and the one-time /debug/llm click-through if Tong wants to see it in the UI (the same code paths are now live-verified headlessly).
+>
+> ### (superseded) Update 2026-07-12: GMI Cloud support added, live gate was BLOCKED by network filter
+> Commit `c50e090` adds `baseUrls` overrides in settings (+ /debug/llm field) so any OpenAI-compatible endpoint works under the "openai"/"openrouter" provider ids, and an env-gated live test (`src/lib/llm/__tests__/live-openai-compat.test.ts`) that runs the full gate (plain completion, structured+zod, runSkill with budget/metering/run-record) in one command. Tong's GMI Cloud key was tested, but **api.gmi-serving.com is TLS-blocked machine-wide by the local network's security filter (Xfinity xFi Advanced Security — safebrowse.io warn pages)**; curl/Node/browser all fail before any HTTP. Once the domain is allowed (or on another network), run:
+> `LIVE_LLM_BASE_URL=https://api.gmi-serving.com/v1 LIVE_LLM_API_KEY=<key> LIVE_LLM_MODEL=claude-sonnet-5 npx vitest run src/lib/llm/__tests__/live-openai-compat.test.ts`
+>
+> ### Remaining before/at merge
+> 1. **Manual real-key gate (Tong)** — `npm run dev`, open `/debug/llm`, paste a real key per provider (Anthropic / OpenAI / Google / OpenRouter), run "Test completion" + "Test structured"; confirm usage/cost render, `.scispark/usage/*.jsonl` grows, and the budget-exceeded path by setting dailyBudgetUsd to 0.001. This doubles as the browser-CORS check for OpenAI/Google BYOK — **if a provider blocks browser calls, do NOT silently proxy keys through our server; bring the decision back to design** (03-backend privacy stance).
+> 2. **Spot-check OpenAI/Google prices** in `src/lib/llm/pricing.ts` against live pricing pages (they were sourced via WebFetch summaries; Anthropic rows are verified).
+> 3. Merge `m2-llm-harness` → main (fast-forward expected), re-run suite, push.
+>
+> ### Ride-class Minors (fix opportunistically, tracked from final review + ledger)
+> - Normalize zip entry paths on vault import (defense-in-depth for the sensitive-path skip-list).
+> - Decide whether `.scispark/usage/` + `.scispark/runs/` belong in shared vault exports (privacy question, non-blocking).
+> - Refusal-detection asymmetry across providers; 16-hex runId collision window; UTC budget-day boundary; Gemini keyword-stripper walks enum/default data values; vestigial `Meter.writeQueue` field.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the client-side LLM harness every skill runs on: a 4-provider BYOK `LLMProvider` layer, tier→model mapping, zod-validated structured output with retry, per-call metering with a daily budget, the skill-runner primitives, and a `/debug/llm` verification page.
@@ -532,8 +553,10 @@ export class OpenAICompatProvider implements LLMProvider {
       const text = await res.text().catch(() => "")
       if (res.status === 401 || res.status === 403) throw new LLMAuthError(text || `HTTP ${res.status}`)
       if (res.status === 429) {
-        const ra = Number(res.headers.get("retry-after"))
-        throw new LLMRateLimitError(text || "rate limited", Number.isFinite(ra) ? ra * 1000 : undefined)
+        // NB: header absent → get() returns null and Number(null) === 0 — must not become a 0ms hint
+        const raw = res.headers.get("retry-after")
+        const ra = raw != null ? Number(raw) : NaN
+        throw new LLMRateLimitError(text || "rate limited", Number.isFinite(ra) && ra > 0 ? ra * 1000 : undefined)
       }
       if (res.status >= 500) throw new LLMTransientError(text || `HTTP ${res.status}`)
       throw new LLMBadRequestError(text || `HTTP ${res.status}`)
