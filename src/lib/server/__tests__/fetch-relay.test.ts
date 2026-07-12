@@ -1,0 +1,316 @@
+import { describe, it, expect, vi } from "vitest"
+import { handleFetchRelay, RELAY_ALLOWED_HOSTS } from "../fetch-relay"
+import { TokenBucket } from "../rate-limit"
+
+function freshBucket(capacity = 100, refillPerSec = 100) {
+  return new TokenBucket({ capacity, refillPerSec })
+}
+
+function textStreamResponse(
+  chunks: string[],
+  init: { status?: number; headers?: Record<string, string> } = {},
+): Response {
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk))
+      controller.close()
+    },
+  })
+  const headers = new Headers({ "content-type": "text/html", ...(init.headers ?? {}) })
+  return new Response(stream, { status: init.status ?? 200, headers })
+}
+
+function redirectResponse(location: string): Response {
+  return new Response(null, { status: 302, headers: { location } })
+}
+
+async function readAll(body: ReadableStream<Uint8Array> | null): Promise<string> {
+  if (!body) return ""
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let out = ""
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    out += decoder.decode(value, { stream: true })
+  }
+  return out
+}
+
+describe("RELAY_ALLOWED_HOSTS", () => {
+  it("lists the six allowed publisher/OA domains", () => {
+    expect(RELAY_ALLOWED_HOSTS).toEqual([
+      "arxiv.org",
+      "europepmc.org",
+      "ncbi.nlm.nih.gov",
+      "biorxiv.org",
+      "medrxiv.org",
+      "openalex.org",
+    ])
+  })
+})
+
+describe("handleFetchRelay", () => {
+  it("passes through an allowlisted https URL with the body intact", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["hello ", "world"]))
+    const res = await handleFetchRelay("https://arxiv.org/abs/1234.5678", "ip1", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(200)
+    expect(await readAll(res.body)).toBe("hello world")
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    expect(fetchFn).toHaveBeenCalledWith("https://arxiv.org/abs/1234.5678", { redirect: "manual" })
+  })
+
+  it("allows a subdomain of an allowlisted host", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["ok"]))
+    const res = await handleFetchRelay("https://www.arxiv.org/abs/1234.5678", "ip2", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(200)
+  })
+
+  it("rejects a lookalike host (evil-arxiv.org) with 403", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay("https://evil-arxiv.org/x", "ip3", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it("rejects a suffix-attack host (arxiv.org.evil.com) with 403", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay("https://arxiv.org.evil.com/x", "ip4", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it("rejects a URL with userinfo (403)", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay("https://user:pass@arxiv.org/x", "ip5", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it("rejects http for a non-export.arxiv.org host (403)", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay("http://arxiv.org/x", "ip6", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it("allows http specifically for export.arxiv.org", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["ok"]))
+    const res = await handleFetchRelay("http://export.arxiv.org/api/query", "ip7", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(200)
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+
+  it("rejects null url with 400", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay(null, "ip8", { fetchFn, ipBuckets: freshBucket() })
+    expect(res.status).toBe(400)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it("rejects an unparseable url with 400", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay("not a url", "ip9", { fetchFn, ipBuckets: freshBucket() })
+    expect(res.status).toBe(400)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it("follows a redirect to a non-allowlisted host and rejects with 403", async () => {
+    const fetchFn = vi.fn(async () => redirectResponse("https://evil.com/steal"))
+    const res = await handleFetchRelay("https://arxiv.org/abs/1", "ip10", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+
+  it("rejects after more than 3 redirect hops with 403", async () => {
+    const fetchFn = vi.fn(async () => redirectResponse("https://arxiv.org/next"))
+    const res = await handleFetchRelay("https://arxiv.org/start", "ip11", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    // Initial fetch + 3 followed hops = 4 calls; the 4th response is itself
+    // a redirect, which exceeds the hop budget and is rejected without a
+    // 5th network call.
+    expect(fetchFn).toHaveBeenCalledTimes(4)
+  })
+
+  it("follows up to 3 valid redirect hops and returns the final response", async () => {
+    let call = 0
+    const fetchFn = vi.fn(async () => {
+      call += 1
+      if (call <= 3) return redirectResponse("https://arxiv.org/next" + call)
+      return textStreamResponse(["final"])
+    })
+    const res = await handleFetchRelay("https://arxiv.org/start", "ip12", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(200)
+    expect(await readAll(res.body)).toBe("final")
+    expect(fetchFn).toHaveBeenCalledTimes(4)
+  })
+
+  it("rejects an unsupported content-type with 415", async () => {
+    const fetchFn = vi.fn(async () =>
+      textStreamResponse(["alert(1)"], { headers: { "content-type": "text/javascript" } }),
+    )
+    const res = await handleFetchRelay("https://arxiv.org/x.js", "ip13", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(415)
+  })
+
+  it("strips upstream Set-Cookie from the response", async () => {
+    const fetchFn = vi.fn(async () =>
+      textStreamResponse(["hi"], { headers: { "set-cookie": "sess=abc123; HttpOnly" } }),
+    )
+    const res = await handleFetchRelay("https://arxiv.org/x", "ip14", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(200)
+    expect(res.headers.get("set-cookie")).toBeNull()
+  })
+
+  it("sets Cache-Control and passes through content-type on success", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["hi"], { headers: { "content-type": "application/pdf" } }))
+    const res = await handleFetchRelay("https://arxiv.org/x.pdf", "ip15", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.headers.get("cache-control")).toBe("public, s-maxage=3600")
+    expect(res.headers.get("content-type")).toBe("application/pdf")
+  })
+
+  it("returns 429 with Retry-After once the IP bucket is drained", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["ok"]))
+    const bucket = new TokenBucket({ capacity: 1, refillPerSec: 0 })
+    const first = await handleFetchRelay("https://arxiv.org/x", "shared-ip", { fetchFn, ipBuckets: bucket })
+    expect(first.status).toBe(200)
+
+    const second = await handleFetchRelay("https://arxiv.org/x", "shared-ip", { fetchFn, ipBuckets: bucket })
+    expect(second.status).toBe(429)
+    expect(second.headers.get("retry-after")).toBe("5")
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+
+  it("isolates the rate limit per clientKey", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["ok"]))
+    const bucket = new TokenBucket({ capacity: 1, refillPerSec: 0 })
+    const a = await handleFetchRelay("https://arxiv.org/x", "ip-a", { fetchFn, ipBuckets: bucket })
+    const b = await handleFetchRelay("https://arxiv.org/x", "ip-b", { fetchFn, ipBuckets: bucket })
+    expect(a.status).toBe(200)
+    expect(b.status).toBe(200)
+  })
+
+  it("terminates the stream once the byte cap is exceeded", async () => {
+    const bigChunk = "x".repeat(40)
+    const fetchFn = vi.fn(async () => textStreamResponse([bigChunk, bigChunk, bigChunk]))
+    const res = await handleFetchRelay("https://arxiv.org/big", "ip16", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+      maxBytes: 50,
+    })
+    expect(res.status).toBe(200)
+    await expect(readAll(res.body)).rejects.toBeTruthy()
+  })
+
+  it("does not exceed the cap when the body is under it", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["short"]))
+    const res = await handleFetchRelay("https://arxiv.org/small", "ip17", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+      maxBytes: 50,
+    })
+    expect(res.status).toBe(200)
+    expect(await readAll(res.body)).toBe("short")
+  })
+
+  it("never echoes the input URL in rejection bodies (400)", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay("not a url with secret-marker-xyz", "ip18", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    const text = await res.text()
+    expect(text).not.toContain("secret-marker-xyz")
+  })
+
+  it("never echoes the input URL in rejection bodies (403 host)", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay("https://evil-arxiv-secret-marker-xyz.org/x", "ip19", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    const text = await res.text()
+    expect(text).not.toContain("secret-marker-xyz")
+  })
+
+  it("never echoes the input URL in rejection bodies (403 userinfo)", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay("https://secret-marker-xyz:pw@arxiv.org/x", "ip20", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    const text = await res.text()
+    expect(text).not.toContain("secret-marker-xyz")
+  })
+
+  it("never echoes the input URL in rejection bodies (415)", async () => {
+    const fetchFn = vi.fn(async () =>
+      textStreamResponse(["nope"], { headers: { "content-type": "text/javascript" } }),
+    )
+    const res = await handleFetchRelay("https://arxiv.org/secret-marker-xyz.js", "ip21", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    const text = await res.text()
+    expect(text).not.toContain("secret-marker-xyz")
+  })
+
+  it("returns a generic 502 when the upstream fetch itself throws", async () => {
+    const fetchFn = vi.fn(async () => {
+      throw new Error("ECONNRESET")
+    })
+    const res = await handleFetchRelay("https://arxiv.org/x", "ip22", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(502)
+    const text = await res.text()
+    expect(text).not.toContain("ECONNRESET")
+  })
+
+  it("uses the module-level default bucket when none is injected", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["ok"]))
+    const res = await handleFetchRelay("https://arxiv.org/default-bucket-check", "unique-default-ip", { fetchFn })
+    expect(res.status).toBe(200)
+  })
+})
