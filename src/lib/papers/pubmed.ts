@@ -4,14 +4,7 @@ import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperR
 // Drift-verified 2026-07-12 against the live E-utilities "in-depth" manual
 // (https://www.ncbi.nlm.nih.gov/books/NBK25499/) plus live esearch/efetch
 // calls against eutils.ncbi.nlm.nih.gov (both HTTP 200). See
-// .superpowers/sdd/m3-task-6-report.md for the full drift-guard writeup,
-// including a flagged param quirk: sort=date (the value used by this
-// module, per the task contract) is accepted by esearch but produces
-// warninglist.outputmessages: ["Unknown sort schema 'date' ignored"] in the
-// live response -- the call still succeeds and returns idlist normally, it
-// just doesn't actually sort by date server-side. Kept as specified since
-// this adapter doesn't promise date-sorted results and the param is
-// harmless; flagged for awareness.
+// .superpowers/sdd/m3-task-6-report.md for the full drift-guard writeup.
 const ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 const EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 const MIN_LIMIT = 1
@@ -315,7 +308,7 @@ function buildEsearchUrl(q: PubmedQuery, apiKey: string | undefined): string {
   url.searchParams.set("term", q.query)
   url.searchParams.set("retmax", String(clampLimit(q.limit)))
   url.searchParams.set("retmode", "json")
-  url.searchParams.set("sort", "date")
+  url.searchParams.set("sort", "pub_date")
   if (apiKey) url.searchParams.set("api_key", apiKey)
   return url.toString()
 }

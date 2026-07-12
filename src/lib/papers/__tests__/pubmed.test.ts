@@ -246,7 +246,7 @@ describe("searchPubmed", () => {
       expect(url.searchParams.get("term")).toBe("quantum biology")
       expect(url.searchParams.get("retmax")).toBe("5")
       expect(url.searchParams.get("retmode")).toBe("json")
-      expect(url.searchParams.get("sort")).toBe("date")
+      expect(url.searchParams.get("sort")).toBe("pub_date")
     })
 
     it("clamps a limit above 50 down to 50, and below 1 up to 1", async () => {
