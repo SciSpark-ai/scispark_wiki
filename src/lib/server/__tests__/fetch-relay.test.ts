@@ -313,4 +313,157 @@ describe("handleFetchRelay", () => {
     const res = await handleFetchRelay("https://arxiv.org/default-bucket-check", "unique-default-ip", { fetchFn })
     expect(res.status).toBe(200)
   })
+
+  it("does not copy the upstream Content-Length onto the relayed response", async () => {
+    const fetchFn = vi.fn(async () =>
+      textStreamResponse(["hi"], { headers: { "content-length": "2" } }),
+    )
+    const res = await handleFetchRelay("https://arxiv.org/x", "ip-cl", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(200)
+    expect(res.headers.get("content-length")).toBeNull()
+  })
+})
+
+// Pinned regression tests for SSRF vectors that the M3 Task 9 security
+// review probe-verified as SAFE but were not part of the committed suite
+// (see "## Review" in .superpowers/sdd/m3-task-9-report.md). These lock the
+// behavior in so a future change (e.g. swapping WHATWG `new URL` for a
+// hand-rolled parser, or adding header passthrough) can't silently reopen
+// the hole with a green suite.
+describe("handleFetchRelay - SSRF regression vectors", () => {
+  it("rejects a punycode lookalike host (403)", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay("https://xn--arxv-4qa.org/x", "ssrf1", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it("rejects a Cyrillic homoglyph host (403 - WHATWG punycode-encodes it, no allowlist match)", async () => {
+    // The host below uses Cyrillic "а" (U+0430), not Latin "a" - it looks
+    // like "arxiv.org" but WHATWG URL parsing punycode-encodes it to
+    // "xn--rxiv-43d.org", which does not match the allowlist.
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay("https://аrxiv.org/x", "ssrf2", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it("rejects the IPv4 loopback literal over http and https (403)", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const httpRes = await handleFetchRelay("http://127.0.0.1/", "ssrf3a", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    const httpsRes = await handleFetchRelay("https://127.0.0.1/", "ssrf3b", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(httpRes.status).toBe(403)
+    expect(httpsRes.status).toBe(403)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it("rejects the cloud metadata IP literal (169.254.169.254) with 403", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay("https://169.254.169.254/", "ssrf4", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it("rejects the IPv6 loopback literal ([::1]) with 403", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay("https://[::1]/", "ssrf5", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it("rejects a protocol-relative redirect Location (//evil.com/x) with 403", async () => {
+    const fetchFn = vi.fn(async () => redirectResponse("//evil.com/x"))
+    const res = await handleFetchRelay("https://arxiv.org/start", "ssrf6", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+
+  it("rejects an https-to-http downgrade redirect Location with 403 (http only allowed for export.arxiv.org)", async () => {
+    const fetchFn = vi.fn(async () => redirectResponse("http://arxiv.org/x"))
+    const res = await handleFetchRelay("https://arxiv.org/start", "ssrf7", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+
+  it("SAFE: allows an uppercase host (ARXIV.ORG) - WHATWG lowercases it", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["ok"]))
+    const res = await handleFetchRelay("https://ARXIV.ORG/x", "ssrf8", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(200)
+    expect(fetchFn).toHaveBeenCalledWith("https://arxiv.org/x", { redirect: "manual" })
+  })
+
+  it("SAFE: rejects real userinfo pointed at a non-allowlisted host (arxiv.org@evil.com) with 403", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["nope"]))
+    const res = await handleFetchRelay("https://arxiv.org@evil.com/x", "ssrf9", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(403)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it("SAFE: sends no headers to the upstream fetch (no client cookie/authorization forwarding)", async () => {
+    let capturedInit: RequestInit | undefined
+    const fetchFn = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      capturedInit = init
+      return textStreamResponse(["ok"])
+    })
+    const res = await handleFetchRelay("https://arxiv.org/x", "ssrf10", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(200)
+    // No headers property at all, or an empty header set - either way,
+    // nothing from the inbound request (cookies, auth) is forwarded upstream.
+    const headers = capturedInit?.headers
+    if (headers === undefined) {
+      expect(headers).toBeUndefined()
+    } else {
+      expect([...new Headers(headers).keys()]).toHaveLength(0)
+    }
+  })
+
+  it("SAFE: a lying Content-Length (5) on an oversized streamed body still errors at the byte cap", async () => {
+    const bigChunk = "x".repeat(40)
+    const fetchFn = vi.fn(async () =>
+      textStreamResponse([bigChunk, bigChunk, bigChunk], { headers: { "content-length": "5" } }),
+    )
+    const res = await handleFetchRelay("https://arxiv.org/big", "ssrf11", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+      maxBytes: 50,
+    })
+    expect(res.status).toBe(200)
+    await expect(readAll(res.body)).rejects.toBeTruthy()
+  })
 })

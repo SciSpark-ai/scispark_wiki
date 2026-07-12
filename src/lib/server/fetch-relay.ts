@@ -119,8 +119,9 @@ function capStream(maxBytes: number): TransformStream<Uint8Array, Uint8Array> {
  *    and re-validated against the same rules, up to 3 hops.
  * 4. The final response's Content-Type must be one of a small allowlist;
  *    the body is streamed through a byte-capped TransformStream; response
- *    headers are rebuilt from scratch (Content-Type, Content-Length when
- *    present, Cache-Control) so upstream Set-Cookie is never forwarded.
+ *    headers are rebuilt from scratch (Content-Type, Cache-Control - never
+ *    the upstream Content-Length, which the byte cap can invalidate) so
+ *    upstream Set-Cookie is never forwarded.
  *
  * No part of this function logs the requested URL, and no rejection body
  * echoes it back to the caller.
@@ -195,8 +196,10 @@ export async function handleFetchRelay(
 
   const outHeaders = new Headers()
   outHeaders.set("Content-Type", contentType)
-  const contentLength = response.headers.get("content-length")
-  if (contentLength) outHeaders.set("Content-Length", contentLength)
+  // Deliberately NOT copying upstream Content-Length: the byte cap can abort
+  // the stream mid-body, which would make an advertised length wrong (and an
+  // upstream could lie about it in the first place). Chunked transfer
+  // encoding (the default when no Content-Length is set) handles this fine.
   outHeaders.set("Cache-Control", RELAY_CACHE_CONTROL)
 
   const body = response.body ? response.body.pipeThrough(capStream(maxBytes)) : null
