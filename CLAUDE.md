@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **SciSpark Paper Manager** — an AI-agent-driven wiki / knowledge-base system with rich visualization, for researchers to track the fields they care about. It generalizes SciSpark (currently a clinical-evidence product) to all research domains and adds a persistent personal knowledge layer on top of SciSpark's recommendation feed.
 
-**Status: design approved, implementation starting (M1).** The authoritative design lives in `docs/design/01-product.md` through `05-frontend.md` (product → system → backend → agent harness → frontend, per Tong's five-layer split); `docs/design/06-roadmap.md` is the 11-milestone build order; implementation plans live in `docs/superpowers/plans/` (one per milestone — M1 = bootstrap + vault core). Read the design docs before this file's decision log when they conflict.
+**Status: implementation in progress — M1 (vault core) merged to main; M2 (LLM harness) underway.** The authoritative design lives in `docs/design/01-product.md` through `05-frontend.md` (product → system → backend → agent harness → frontend, per Tong's five-layer split); `docs/design/06-roadmap.md` is the 11-milestone build order; implementation plans live in `docs/superpowers/plans/` (one per milestone — M1 = bootstrap + vault core). Read the design docs before this file's decision log when they conflict.
 
 ## Product concept (the core loop)
 
