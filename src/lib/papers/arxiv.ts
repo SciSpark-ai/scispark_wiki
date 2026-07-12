@@ -62,6 +62,16 @@ export interface ArxivDeps {
 }
 
 /**
+ * Decodes numeric character references (&#NNN; and &#xHHH;) in text.
+ * Named entities are preserved by the XML parser already.
+ */
+function decodeNumericEntities(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (match, code) => String.fromCharCode(parseInt(code, 10)))
+    .replace(/&#x([0-9A-Fa-f]+);/g, (match, code) => String.fromCharCode(parseInt(code, 16)))
+}
+
+/**
  * Collapses all runs of whitespace (including the newlines/indentation Atom
  * pads title and summary text with) into single spaces and trims the ends.
  */
@@ -119,20 +129,23 @@ function mapEntry(entry: ArxivEntry): PaperRecord {
   const date = published ? published.slice(0, 10) : undefined
   const year = date ? Number(date.slice(0, 4)) : undefined
 
+  const title = decodeNumericEntities(collapseWhitespace(entry.title))
+  const abstract = entry.summary != null ? decodeNumericEntities(collapseWhitespace(entry.summary)) : undefined
+
   return {
     ids: {
       arxiv: extractArxivId(entry.id),
       doi: normalizeDoi(entry["arxiv:doi"]),
     },
-    title: collapseWhitespace(entry.title),
-    abstract: entry.summary != null ? collapseWhitespace(entry.summary) : undefined,
+    title,
+    abstract,
     authors: mapAuthors(entry.author),
     year,
     date,
     venue: entry["arxiv:journal_ref"] ?? undefined,
     citationCount: undefined,
     htmlUrl: findLink(entry.link, (l) => l["@_rel"] === "alternate"),
-    pdfUrl: findLink(entry.link, (l) => l["@_title"] === "pdf" || l["@_type"] === "application/pdf"),
+    pdfUrl: findLink(entry.link, (l) => l["@_title"] === "pdf" || (l["@_rel"] === "related" && l["@_type"] === "application/pdf")),
     fields: mapFields(entry.category),
     source: "arxiv",
   }

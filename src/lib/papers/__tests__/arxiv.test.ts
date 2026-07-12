@@ -53,6 +53,56 @@ const WHITESPACE_PADDED_ATOM = `<?xml version='1.0' encoding='UTF-8'?>
   </entry>
 </feed>`
 
+const JOURNAL_REF_ATOM = `<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2401.00002v1</id>
+    <title>A Published Paper</title>
+    <summary>Abstract of a published paper.</summary>
+    <published>2024-01-01T00:00:00Z</published>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <link href="https://arxiv.org/abs/2401.00002v1" rel="alternate" type="text/html"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <author>
+      <name>Journal Author</name>
+    </author>
+    <arxiv:journal_ref>Nature 123, 45-67 (2024)</arxiv:journal_ref>
+  </entry>
+</feed>`
+
+const NUMERIC_ENTITY_ATOM = `<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2401.00003v1</id>
+    <title>Erd&#337;s Graph Theory: &#233; and &#xE9;</title>
+    <summary>A paper about Erd&#337;s numbers and &#x201C;quotes&#x201D;.</summary>
+    <published>2024-01-01T00:00:00Z</published>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <link href="https://arxiv.org/abs/2401.00003v1" rel="alternate" type="text/html"/>
+    <category term="cs.DM" scheme="http://arxiv.org/schemas/atom"/>
+    <author>
+      <name>Test Author</name>
+    </author>
+  </entry>
+</feed>`
+
+const PDF_LINK_WITH_REL_ATOM = `<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2401.00004v1</id>
+    <title>PDF Link Test</title>
+    <summary>Testing PDF link detection with rel attribute.</summary>
+    <published>2024-01-01T00:00:00Z</published>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <link href="https://arxiv.org/abs/2401.00004v1" rel="alternate" type="text/html"/>
+    <link href="https://arxiv.org/pdf/2401.00004v1" rel="related" type="application/pdf" title="pdf"/>
+    <category term="cs.AI" scheme="http://arxiv.org/schemas/atom"/>
+    <author>
+      <name>PDF Tester</name>
+    </author>
+  </entry>
+</feed>`
+
 describe("searchArxiv", () => {
   it("maps entries from the real fixture (titles, id version-strip, authors, categories, pdf link)", async () => {
     const fetchFn = fakeFetch(fixtureXml)
@@ -191,5 +241,37 @@ describe("searchArxiv", () => {
       expect(err).toBeInstanceOf(PaperSourceError)
       expect((err as PaperSourceError).status).toBeUndefined()
     }
+  })
+
+  it("maps arxiv:journal_ref to venue when populated", async () => {
+    const fetchFn = fakeFetch(JOURNAL_REF_ATOM)
+
+    const [paper] = await searchArxiv({ query: "x" }, { fetchFn })
+
+    expect(paper.venue).toBe("Nature 123, 45-67 (2024)")
+  })
+
+  it("decodes numeric character entities in title and summary", async () => {
+    const fetchFn = fakeFetch(NUMERIC_ENTITY_ATOM)
+
+    const [paper] = await searchArxiv({ query: "x" }, { fetchFn })
+
+    // Check decoded Erdos with ogonek (&#337; = U+0151 = ő)
+    const erdos = String.fromCharCode(0x0151) // ő
+    expect(paper.title).toContain(`Erd${erdos}s`)
+    expect(paper.abstract).toContain(`Erd${erdos}s`)
+    // Check decoded e-acute (&#233; = U+00E9 = é)
+    expect(paper.title).toContain("e")
+    // Check decoded left double quote (&#x201C; = U+201C = ")
+    const leftQuote = String.fromCharCode(0x201c)
+    expect(paper.abstract).toContain(leftQuote)
+  })
+
+  it("correctly identifies pdf link with rel and type attributes", async () => {
+    const fetchFn = fakeFetch(PDF_LINK_WITH_REL_ATOM)
+
+    const [paper] = await searchArxiv({ query: "x" }, { fetchFn })
+
+    expect(paper.pdfUrl).toBe("https://arxiv.org/pdf/2401.00004v1")
   })
 })
