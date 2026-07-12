@@ -116,6 +116,44 @@ describe("settings", () => {
       expect(provider.id).toBe("openai")
     })
 
+    it("honors a baseUrls.openai override by routing requests to the custom endpoint", async () => {
+      let capturedUrl = ""
+      const fakeFetch = (async (url: unknown) => {
+        capturedUrl = String(url)
+        return new Response(
+          JSON.stringify({
+            model: "claude-sonnet-5",
+            choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        )
+      }) as typeof fetch
+      const settings = {
+        ...DEFAULT_SETTINGS,
+        keys: { openai: "gmi-key" },
+        baseUrls: { openai: "https://api.gmi-serving.com/v1/" }, // trailing slash on purpose
+        tierModels: {
+          ...DEFAULT_SETTINGS.tierModels,
+          fast: { provider: "openai" as const, model: "claude-sonnet-5" },
+        },
+      }
+      const provider = buildProvider(settings, "fast", fakeFetch)
+      expect(provider).toBeInstanceOf(OpenAICompatProvider)
+      await provider.complete("claude-sonnet-5", { messages: [{ role: "user", content: "hi" }] })
+      expect(capturedUrl).toBe("https://api.gmi-serving.com/v1/chat/completions")
+    })
+
+    it("round-trips baseUrls through save/load", async () => {
+      const storage = new MemoryVaultStorage()
+      await saveSettings(storage, {
+        ...DEFAULT_SETTINGS,
+        baseUrls: { openai: "https://api.gmi-serving.com/v1" },
+      })
+      const loaded = await loadSettings(storage)
+      expect(loaded.baseUrls?.openai).toBe("https://api.gmi-serving.com/v1")
+    })
+
     it("constructs a GoogleProvider for a google tier mapping", () => {
       const settings = {
         ...DEFAULT_SETTINGS,

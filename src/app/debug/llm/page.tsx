@@ -159,6 +159,31 @@ export default function LlmDebugPage() {
             </div>
           ))}
 
+          <h3>Base URL overrides (OpenAI-compatible endpoints, e.g. GMI Cloud)</h3>
+          {(["openai", "openrouter"] as const).map((provider) => (
+            <div key={provider} style={{ marginBottom: 8 }}>
+              <label>
+                {provider} base URL:{" "}
+                <input
+                  type="text"
+                  placeholder={provider === "openai" ? "https://api.gmi-serving.com/v1 (blank = api.openai.com)" : "blank = openrouter.ai"}
+                  value={settings.baseUrls?.[provider] ?? ""}
+                  onChange={(e) =>
+                    setSettings((s) => {
+                      const value = e.target.value.trim()
+                      const baseUrls = { ...(s.baseUrls ?? {}) }
+                      if (value) baseUrls[provider] = value
+                      else delete baseUrls[provider]
+                      return { ...s, ...(Object.keys(baseUrls).length ? { baseUrls } : { baseUrls: undefined }) }
+                    })
+                  }
+                  style={{ width: 420 }}
+                  autoComplete="off"
+                />
+              </label>
+            </div>
+          ))}
+
           <h3>Tier models</h3>
           {TIERS.map((tier) => (
             <div key={tier} style={{ marginBottom: 8 }}>
