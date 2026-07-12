@@ -39,3 +39,40 @@ describe("loadBundle", () => {
     expect(backlinks(b, "wiki/methods/tms")).toEqual(["wiki/concepts/saint-protocol"])
   })
 })
+
+describe("resolveLink with path-qualified and ambiguous slugs", () => {
+  let dup: MemoryVaultStorage
+  beforeEach(async () => {
+    dup = new MemoryVaultStorage()
+    await dup.write("wiki/concepts/x.md", serializeDocument(fm("concept", "X Concept"), "A concept page."))
+    await dup.write("wiki/methods/x.md", serializeDocument(fm("method", "X Method"), "A method page."))
+  })
+
+  it("resolves path-qualified slugs by id-suffix, disambiguating same-named pages", async () => {
+    const b = await loadBundle(dup)
+    expect(resolveLink(b, "concepts/x")!.id).toBe("wiki/concepts/x")
+    expect(resolveLink(b, "methods/x")!.id).toBe("wiki/methods/x")
+  })
+
+  it("resolves an ambiguous plain slug to the alphabetically smallest id and records the collision once", async () => {
+    await dup.write("wiki/notes/linker.md", serializeDocument(fm("note", "Linker"), "See [[x]] for details."))
+    const b = await loadBundle(dup)
+    expect(resolveLink(b, "x")!.id).toBe("wiki/concepts/x")
+    expect(b.errors.filter((e) => e.path === "wiki/notes/linker.md")).toEqual([
+      { path: "wiki/notes/linker.md", message: "ambiguous wikilink [[x]]: wiki/concepts/x, wiki/methods/x" },
+    ])
+  })
+})
+
+describe("self-links", () => {
+  it("produce no edge and no self-backlink", async () => {
+    const selfStorage = new MemoryVaultStorage()
+    await selfStorage.write(
+      "wiki/concepts/self.md",
+      serializeDocument(fm("concept", "Self"), "See [[self]] for more."),
+    )
+    const b = await loadBundle(selfStorage)
+    expect(b.links).toEqual([])
+    expect(backlinks(b, "wiki/concepts/self")).toEqual([])
+  })
+})

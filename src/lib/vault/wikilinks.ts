@@ -1,4 +1,7 @@
-const FENCE_RE = /```[\s\S]*?```/g
+// Matches a closed fence (```...```) OR an unterminated fence that runs to
+// end-of-string (```... with no closing ```), so a stray/mid-edit opening
+// fence still masks everything after it instead of leaking wikilinks.
+const FENCE_RE = /```[\s\S]*?(?:```|$)/g
 const INLINE_CODE_RE = /`[^`\n]*`/g
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g
 
