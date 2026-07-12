@@ -66,4 +66,31 @@ describe("TtlCache", () => {
     cache.set("a", 1)
     expect(cache.get("a")).toBe(1)
   })
+
+  it("handles backward clock skew: entry remains valid when time rewinds before expiry", () => {
+    const clock = makeClock(1000)
+    const cache = new TtlCache<number>({ ttlMs: 100, maxEntries: 10, now: clock.now })
+    // Set entry at t=1000, expires at t=1100.
+    cache.set("a", 42)
+    // Advance to t=1050 (still valid, 50ms left).
+    clock.advance(50)
+    expect(cache.get("a")).toBe(42)
+    // Rewind clock to t=900 (before the entry was set).
+    // The entry's expiresAt is still 1100, and 900 < 1100, so it's still valid.
+    clock.advance(-150)
+    expect(cache.get("a")).toBe(42)
+  })
+
+  it("does not crash on backward clock skew; expired entries remain expired", () => {
+    const clock = makeClock(1000)
+    const cache = new TtlCache<number>({ ttlMs: 100, maxEntries: 10, now: clock.now })
+    cache.set("a", 42)
+    // Advance past expiry.
+    clock.advance(200) // t=1200, expired
+    expect(cache.get("a")).toBeUndefined()
+    // Rewind to before expiry (t=1050).
+    clock.advance(-150)
+    // Once an entry is expired and removed, rewinding doesn't resurrect it.
+    expect(cache.get("a")).toBeUndefined()
+  })
 })

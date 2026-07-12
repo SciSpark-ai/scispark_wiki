@@ -63,6 +63,9 @@ export class TokenBucket {
 
   /** Attempts to take `n` tokens (default 1) from `key`'s bucket. No partial takes. */
   take(key: string, n = 1): boolean {
+    // Defensive: guard against non-positive n (developer-supplied, but this
+    // is the security boundary). Treat zero, negative, or NaN as a no-op success.
+    if (!(n > 0)) return true
     const bucket = this.touch(key)
     if (bucket.tokens < n) return false
     bucket.tokens -= n

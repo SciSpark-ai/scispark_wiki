@@ -86,4 +86,39 @@ describe("TokenBucket", () => {
     const bucket = new TokenBucket({ capacity: 1, refillPerSec: 0 })
     expect(bucket.take("only-key")).toBe(true)
   })
+
+  it("handles backward clock skew: tokens do not increase when time rewinds", () => {
+    const clock = makeClock(1000)
+    const bucket = new TokenBucket({ capacity: 5, refillPerSec: 1, now: clock.now })
+    // Drain to capacity - 2.
+    expect(bucket.take("k", 3)).toBe(true) // balance: 2
+    clock.advance(1000)
+    // Now we have 2 + 1 second * 1 token/sec = 3 tokens. Take 3.
+    expect(bucket.take("k", 3)).toBe(true) // balance: 0
+    expect(bucket.take("k")).toBe(false) // no tokens left
+    // Move clock backward (simulating NTP skew or system clock adjustment).
+    clock.advance(-500)
+    // The next take should still fail. Backward skew clamps elapsed to 0, so no refill.
+    expect(bucket.take("k")).toBe(false) // still 0, unchanged
+  })
+
+  it("take(0) is a no-op: returns true and does not mutate balance", () => {
+    const bucket = new TokenBucket({ capacity: 5, refillPerSec: 0 })
+    expect(bucket.take("k", 3)).toBe(true) // balance: 2
+    expect(bucket.take("k", 0)).toBe(true) // no-op success
+    // Balance should still be exactly 2.
+    expect(bucket.take("k", 1)).toBe(true)
+    expect(bucket.take("k", 1)).toBe(true)
+    expect(bucket.take("k")).toBe(false)
+  })
+
+  it("take() with negative n is a no-op: returns true and does not mutate balance", () => {
+    const bucket = new TokenBucket({ capacity: 5, refillPerSec: 0 })
+    expect(bucket.take("k", 3)).toBe(true) // balance: 2
+    expect(bucket.take("k", -5)).toBe(true) // no-op success despite negative n
+    // Balance should still be exactly 2 (not increased by the negative amount).
+    expect(bucket.take("k", 1)).toBe(true)
+    expect(bucket.take("k", 1)).toBe(true)
+    expect(bucket.take("k")).toBe(false)
+  })
 })
