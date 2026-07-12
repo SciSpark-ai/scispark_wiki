@@ -22,13 +22,21 @@ export function getVault(): Promise<VaultStorage> {
 let openVaultPromise: Promise<VaultStorage> | null = null
 
 /** App entry point: resolves the storage backend and ensures the vault is
- * bootstrapped (schema.md etc. exist), running openVault exactly once. */
+ * bootstrapped (schema.md etc. exist), running openVault exactly once on success.
+ * On rejection, clears the memoized promise so the next call retries (transient
+ * failures like OPFS quota or Web Locks issues should not permanently brick the app). */
 export function getOpenVault(): Promise<VaultStorage> {
   if (!openVaultPromise) {
-    openVaultPromise = getVault().then(async (storage) => {
-      await openVault(storage)
-      return storage
-    })
+    openVaultPromise = getVault()
+      .then(async (storage) => {
+        await openVault(storage)
+        return storage
+      })
+      .catch((err) => {
+        // On rejection, clear memoization so next call retries, not returns cached error.
+        openVaultPromise = null
+        throw err
+      })
   }
   return openVaultPromise
 }

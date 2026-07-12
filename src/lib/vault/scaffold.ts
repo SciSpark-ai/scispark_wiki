@@ -57,6 +57,8 @@ function withBootstrapMutex<T>(fn: () => Promise<T>): Promise<T> {
  * (schema.md missing), otherwise no-ops. Concurrent callers are serialized —
  * via navigator.locks when available (browser), otherwise via an in-process
  * mutex (Node/tests) — so only one caller ever runs createVault.
+ * Partial vaults (schema.md present but log.md missing/corrupted) are treated as initialized here;
+ * log.md self-heals on next write via appendLog's ?? fallback, so no repair is needed.
  */
 export async function openVault(
   storage: VaultStorage,
