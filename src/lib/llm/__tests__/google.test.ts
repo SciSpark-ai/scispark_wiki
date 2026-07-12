@@ -215,4 +215,94 @@ describe("GoogleProvider", () => {
     const p = new GoogleProvider("key-test")
     expect(p.id).toBe("google")
   })
+
+  it("inlines reused (non-recursive) $ref against $defs at every reference site, leaving no $ref/$defs behind", async () => {
+    const { fn, captured } = fakeFetch(200, OK_RESPONSE)
+    const p = new GoogleProvider("key-test", fn)
+    const schema = {
+      type: "object",
+      properties: {
+        a: { $ref: "#/$defs/Point" },
+        b: { $ref: "#/$defs/Point" },
+      },
+      $defs: {
+        Point: {
+          type: "object",
+          properties: { x: { type: "number" } },
+          additionalProperties: false,
+        },
+      },
+    }
+    await p.complete("gemini-test", {
+      messages: [{ role: "user", content: "extract" }],
+      jsonSchema: schema,
+    })
+
+    const sent = JSON.parse(String(captured.init?.body))
+    const responseSchema = sent.generationConfig.responseSchema
+    expect(responseSchema).toEqual({
+      type: "object",
+      properties: {
+        a: { type: "object", properties: { x: { type: "number" } } },
+        b: { type: "object", properties: { x: { type: "number" } } },
+      },
+    })
+    const serialized = JSON.stringify(responseSchema)
+    expect(serialized).not.toContain("$ref")
+    expect(serialized).not.toContain("$defs")
+  })
+
+  it("rejects recursive schemas with LLMBadRequestError mentioning recursive", async () => {
+    const { fn } = fakeFetch(200, OK_RESPONSE)
+    const p = new GoogleProvider("key-test", fn)
+    const schema = {
+      $ref: "#/$defs/Node",
+      $defs: {
+        Node: {
+          type: "object",
+          properties: {
+            value: { type: "string" },
+            items: { $ref: "#/$defs/Node" },
+          },
+        },
+      },
+    }
+    await expect(
+      p.complete("gemini-test", {
+        messages: [{ role: "user", content: "extract" }],
+        jsonSchema: schema,
+      }),
+    ).rejects.toThrow(LLMBadRequestError)
+    await expect(
+      p.complete("gemini-test", {
+        messages: [{ role: "user", content: "extract" }],
+        jsonSchema: schema,
+      }),
+    ).rejects.toThrow(/recursive/)
+  })
+
+  it("does not mutate the caller's schema object", async () => {
+    const { fn } = fakeFetch(200, OK_RESPONSE)
+    const p = new GoogleProvider("key-test", fn)
+    const schema = {
+      type: "object",
+      properties: {
+        a: { $ref: "#/$defs/Point" },
+        b: { $ref: "#/$defs/Point" },
+      },
+      $defs: {
+        Point: {
+          type: "object",
+          properties: { x: { type: "number" } },
+          additionalProperties: false,
+        },
+      },
+    }
+    const before = JSON.parse(JSON.stringify(schema))
+    await p.complete("gemini-test", {
+      messages: [{ role: "user", content: "extract" }],
+      jsonSchema: schema,
+    })
+    expect(schema).toEqual(before)
+  })
 })

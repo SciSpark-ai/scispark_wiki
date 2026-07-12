@@ -24,7 +24,7 @@ export class GoogleProvider implements LLMProvider {
       ...(req.jsonSchema
         ? {
             responseMimeType: "application/json",
-            responseSchema: stripUnsupportedSchemaKeywords(req.jsonSchema),
+            responseSchema: stripUnsupportedSchemaKeywords(resolveRefs(req.jsonSchema)),
           }
         : {}),
     }
@@ -97,10 +97,12 @@ function safeParse(text: string): unknown {
 //   properties, required, minProperties, maxProperties, minLength, maxLength,
 //   pattern, example, anyOf, propertyOrdering, default, items, minimum, maximum.
 // Keywords produced by our JSON-Schema callers but NOT in that list — notably
-// `additionalProperties` (also `$ref`, `oneOf`, `allOf`, `patternProperties`,
+// `additionalProperties` (also `oneOf`, `allOf`, `patternProperties`,
 // `const`, `multipleOf`, `uniqueItems`, `exclusiveMinimum`/`exclusiveMaximum`,
 // `contains`, `if`/`then`/`else`) — are stripped recursively so requests don't
-// get rejected by the stricter dialect.
+// get rejected by the stricter dialect. `$ref` is *not* stripped here — it is
+// resolved (inlined) by `resolveRefs` before this runs; `$ref` is kept in this
+// set only as a defensive backstop in case one somehow survives resolution.
 const UNSUPPORTED_SCHEMA_KEYWORDS = new Set([
   "additionalProperties", "$ref", "oneOf", "allOf", "patternProperties",
   "const", "multipleOf", "uniqueItems", "exclusiveMinimum", "exclusiveMaximum",
@@ -114,6 +116,59 @@ function stripUnsupportedSchemaKeywords(schema: unknown): unknown {
   for (const [key, value] of Object.entries(schema as Record<string, unknown>)) {
     if (UNSUPPORTED_SCHEMA_KEYWORDS.has(key)) continue
     out[key] = stripUnsupportedSchemaKeywords(value)
+  }
+  return out
+}
+
+// zod v4's `toJSONSchema()` (and other JSON-Schema generators) emit `$ref`
+// pointers into a top-level `$defs` (or legacy `definitions`) bag whenever a
+// sub-schema is recursive or reused by reference. Gemini's `Schema` dialect
+// has no `$ref`/`$defs` support at all, so refs must be resolved (inlined)
+// before the schema is sent — silently deleting `$ref` (the previous
+// behavior) corrupts the schema instead of erroring.
+const REF_POINTER = /^#\/(?:\$defs|definitions)\/(.+)$/
+
+function resolveRefs(schema: unknown): unknown {
+  const defs = collectDefs(schema)
+  return resolveRefNode(schema, defs, new Set())
+}
+
+function collectDefs(schema: unknown): Record<string, unknown> {
+  const defs: Record<string, unknown> = {}
+  if (schema === null || typeof schema !== "object" || Array.isArray(schema)) return defs
+  const obj = schema as Record<string, unknown>
+  if (obj.$defs !== undefined && typeof obj.$defs === "object" && obj.$defs !== null) {
+    Object.assign(defs, obj.$defs as Record<string, unknown>)
+  }
+  if (obj.definitions !== undefined && typeof obj.definitions === "object" && obj.definitions !== null) {
+    Object.assign(defs, obj.definitions as Record<string, unknown>)
+  }
+  return defs
+}
+
+function resolveRefNode(node: unknown, defs: Record<string, unknown>, path: ReadonlySet<string>): unknown {
+  if (Array.isArray(node)) return node.map((item) => resolveRefNode(item, defs, path))
+  if (node === null || typeof node !== "object") return node
+
+  const obj = node as Record<string, unknown>
+  if (typeof obj.$ref === "string") {
+    const match = REF_POINTER.exec(obj.$ref)
+    if (!match || !(match[1] in defs)) {
+      throw new LLMBadRequestError(`unsupported $ref: ${obj.$ref}`)
+    }
+    const name = match[1]
+    if (path.has(name)) {
+      throw new LLMBadRequestError("recursive schemas are not supported by the Google provider")
+    }
+    const nextPath = new Set(path)
+    nextPath.add(name)
+    return resolveRefNode(defs[name], defs, nextPath)
+  }
+
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(obj)) {
+    if (key === "$defs" || key === "definitions") continue
+    out[key] = resolveRefNode(value, defs, path)
   }
   return out
 }
