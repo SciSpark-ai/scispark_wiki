@@ -1,0 +1,195 @@
+import { readFileSync } from "node:fs"
+import { describe, it, expect, vi } from "vitest"
+import { searchArxiv } from "../arxiv"
+import { PaperSourceError } from "../types"
+
+const fixtureXml = readFileSync(new URL("./fixtures/arxiv-atom.xml", import.meta.url), "utf-8")
+const singleFixtureXml = readFileSync(new URL("./fixtures/arxiv-atom-single.xml", import.meta.url), "utf-8")
+
+function fakeFetch(body: string, status = 200) {
+  return vi.fn(async () => ({
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => body,
+  })) as unknown as typeof fetch
+}
+
+const LEGACY_ID_ATOM = `<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/math/0211159v1</id>
+    <title>A Legacy-Format Paper</title>
+    <summary>A short abstract for a legacy-id paper.</summary>
+    <published>2002-11-15T00:00:00Z</published>
+    <updated>2002-11-15T00:00:00Z</updated>
+    <link href="https://arxiv.org/abs/math/0211159v1" rel="alternate" type="text/html"/>
+    <category term="math.AG" scheme="http://arxiv.org/schemas/atom"/>
+    <author>
+      <name>Some Author</name>
+    </author>
+  </entry>
+</feed>`
+
+const WHITESPACE_PADDED_ATOM = `<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2401.00001v1</id>
+    <title>
+      A Title
+      Padded Across Lines
+    </title>
+    <summary>
+      An abstract
+      that spans
+      multiple lines with   extra   spaces.
+    </summary>
+    <published>2024-01-01T00:00:00Z</published>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <link href="https://arxiv.org/abs/2401.00001v1" rel="alternate" type="text/html"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <author>
+      <name>Whitespace Author</name>
+    </author>
+  </entry>
+</feed>`
+
+describe("searchArxiv", () => {
+  it("maps entries from the real fixture (titles, id version-strip, authors, categories, pdf link)", async () => {
+    const fetchFn = fakeFetch(fixtureXml)
+
+    const papers = await searchArxiv({ query: "transformer" }, { fetchFn })
+
+    expect(papers).toHaveLength(2)
+    const [first] = papers
+    expect(first.title).toBe(
+      "ARDY: Autoregressive Diffusion with Hybrid Representation for Interactive Human Motion Generation"
+    )
+    expect(first.ids.arxiv).toBe("2607.08741")
+    expect(first.authors).toHaveLength(6)
+    expect(first.authors[0]).toEqual({ name: "Kaifeng Zhao" })
+    expect(first.fields).toEqual(["cs.GR", "cs.CV", "cs.LG", "cs.RO"])
+    expect(first.pdfUrl).toBe("https://arxiv.org/pdf/2607.08741v1")
+    expect(first.htmlUrl).toBe("https://arxiv.org/abs/2607.08741v1")
+    expect(first.date).toBe("2026-07-09")
+    expect(first.year).toBe(2026)
+    expect(first.ids.doi).toBe("10.1145/3811284")
+    expect(first.citationCount).toBeUndefined()
+    expect(first.source).toBe("arxiv")
+    expect(first.venue).toBeUndefined()
+  })
+
+  it("leaves doi and venue undefined when arxiv:doi / arxiv:journal_ref are absent (second fixture entry)", async () => {
+    const fetchFn = fakeFetch(fixtureXml)
+
+    const papers = await searchArxiv({ query: "transformer" }, { fetchFn })
+
+    const second = papers[1]
+    expect(second.ids.doi).toBeUndefined()
+    expect(second.venue).toBeUndefined()
+    expect(second.authors).toHaveLength(2)
+    expect(second.fields).toEqual(["cs.CV", "cs.AI", "cs.LG"])
+  })
+
+  it("collapses whitespace in a real multi-line summary (Atom pads with newlines/indent)", async () => {
+    const fetchFn = fakeFetch(fixtureXml)
+
+    const papers = await searchArxiv({ query: "transformer" }, { fetchFn })
+
+    const second = papers[1]
+    expect(second.abstract).not.toMatch(/\n/)
+    expect(second.abstract).not.toMatch(/ {2,}/)
+    expect(second.abstract).toContain(
+      "interpretable motion analysis. To train and evaluate BioModule, we construct"
+    )
+  })
+
+  it("collapses whitespace-padded title and summary (synthetic)", async () => {
+    const fetchFn = fakeFetch(WHITESPACE_PADDED_ATOM)
+
+    const [paper] = await searchArxiv({ query: "x" }, { fetchFn })
+
+    expect(paper.title).toBe("A Title Padded Across Lines")
+    expect(paper.abstract).toBe("An abstract that spans multiple lines with extra spaces.")
+  })
+
+  it("still returns an array when the Atom feed has a single entry", async () => {
+    const fetchFn = fakeFetch(singleFixtureXml)
+
+    const papers = await searchArxiv({ query: "transformer" }, { fetchFn })
+
+    expect(Array.isArray(papers)).toBe(true)
+    expect(papers).toHaveLength(1)
+    expect(papers[0].ids.arxiv).toBe("2607.08741")
+    expect(papers[0].authors).toHaveLength(6)
+  })
+
+  it("strips the version suffix from a legacy-format arxiv id (synthetic, e.g. math/0211159v1)", async () => {
+    const fetchFn = fakeFetch(LEGACY_ID_ATOM)
+
+    const [paper] = await searchArxiv({ query: "x" }, { fetchFn })
+
+    expect(paper.ids.arxiv).toBe("math/0211159")
+    expect(paper.title).toBe("A Legacy-Format Paper")
+  })
+
+  it("builds the request URL with search_query, max_results clamp, sortBy, and sortOrder", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    await searchArxiv({ query: "quantum computing", limit: 500 }, { fetchFn })
+
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    const calledUrl = (fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
+    const url = new URL(calledUrl.toString())
+    expect(url.protocol).toBe("https:")
+    expect(url.origin + url.pathname).toBe("https://export.arxiv.org/api/query")
+    expect(url.searchParams.get("search_query")).toBe("all:quantum computing")
+    // limit clamped to max 50 even though 500 was requested
+    expect(url.searchParams.get("max_results")).toBe("50")
+    expect(url.searchParams.get("sortBy")).toBe("submittedDate")
+    expect(url.searchParams.get("sortOrder")).toBe("descending")
+  })
+
+  it("clamps a limit below 1 up to 1 and defaults to 20 when omitted", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    await searchArxiv({ query: "x", limit: 0 }, { fetchFn })
+    let url = new URL((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string)
+    expect(url.searchParams.get("max_results")).toBe("1")
+
+    await searchArxiv({ query: "x" }, { fetchFn })
+    url = new URL((fetchFn as ReturnType<typeof vi.fn>).mock.calls[1][0] as string)
+    expect(url.searchParams.get("max_results")).toBe("20")
+  })
+
+  it("returns [] for an empty Atom feed (no entries)", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    const papers = await searchArxiv({ query: "x" }, { fetchFn })
+
+    expect(papers).toEqual([])
+  })
+
+  it("throws PaperSourceError with status on a non-200 response", async () => {
+    const fetchFn = fakeFetch("", 500)
+
+    await expect(searchArxiv({ query: "x" }, { fetchFn })).rejects.toMatchObject({
+      name: "PaperSourceError",
+      status: 500,
+    })
+  })
+
+  it("wraps a network-level throw in PaperSourceError without a status", async () => {
+    const fetchFn = vi.fn(async () => {
+      throw new Error("network down")
+    }) as unknown as typeof fetch
+
+    await expect(searchArxiv({ query: "x" }, { fetchFn })).rejects.toBeInstanceOf(PaperSourceError)
+    try {
+      await searchArxiv({ query: "x" }, { fetchFn })
+      expect.unreachable()
+    } catch (err) {
+      expect(err).toBeInstanceOf(PaperSourceError)
+      expect((err as PaperSourceError).status).toBeUndefined()
+    }
+  })
+})

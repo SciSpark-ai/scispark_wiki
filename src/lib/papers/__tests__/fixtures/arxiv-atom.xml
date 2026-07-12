@@ -1,0 +1,66 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <id>https://arxiv.org/api/p9J6ediO5Z0zhJ1Mxg9GYeO+Wxo</id>
+  <title>arXiv Query: search_query=all:transformer&amp;id_list=&amp;start=0&amp;max_results=2</title>
+  <updated>2026-07-12T13:34:46Z</updated>
+  <link href="https://arxiv.org/api/query?search_query=all:transformer&amp;start=0&amp;max_results=2&amp;id_list=" type="application/atom+xml"/>
+  <opensearch:itemsPerPage>2</opensearch:itemsPerPage>
+  <opensearch:totalResults>172874</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <entry>
+    <id>http://arxiv.org/abs/2607.08741v1</id>
+    <title>ARDY: Autoregressive Diffusion with Hybrid Representation for Interactive Human Motion Generation</title>
+    <updated>2026-07-09T17:41:49Z</updated>
+    <link href="https://arxiv.org/abs/2607.08741v1" rel="alternate" type="text/html"/>
+    <link href="https://arxiv.org/pdf/2607.08741v1" rel="related" type="application/pdf" title="pdf"/>
+    <summary>Generating realistic 3D human motions in real-time within interactive applications is key for animation, simulation, and humanoid robotics. While recent offline motion generation approaches offer precise control via text and kinematic constraints, they lack the inference speed required for interactive settings. Conversely, existing online methods enable real-time synthesis but often sacrifice controllability or struggle with complex text semantics and long-horizon goals due to limited context windows. In this work, we introduce ARDY, a streaming generation framework that bridges this gap by enabling high-fidelity motion generation controllable via online text prompts and flexible kinematic constraints. ARDY employs a hybrid representation that combines explicit root features with a latent body embedding, balancing precise trajectory control with efficient generative learning. We propose a two-stage autoregressive transformer denoiser that features variable history context and supports conditioning on flexible, long-horizon kinematic constraints. By training on a large-scale motion capture dataset and being directly conditioned on text labels and kinematic constraints sampled from ground truth poses, ARDY natively learns controllable generation that supports online prompting and flexible long-horizon goals. Extensive evaluations on the HumanML3D benchmark and the large-scale, high-fidelity Bones Rigplay dataset demonstrate ARDY's high motion quality and constraint adherence, validating the efficacy of our key architectural decisions. Finally, we demonstrate the method's practical versatility through an interactive demo featuring dynamic text control, diverse keyframe pose constraints, path following, and interactive locomotion control via mouse and keyboard. Supplementary video results, code, and model releases can be found at https://research.nvidia.com/labs/sil/projects/ardy/.</summary>
+    <category term="cs.GR" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.CV" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.RO" scheme="http://arxiv.org/schemas/atom"/>
+    <published>2026-07-09T17:41:49Z</published>
+    <arxiv:comment>ACM Transactions on Graphics (SIGGRAPH 2026)</arxiv:comment>
+    <arxiv:primary_category term="cs.GR"/>
+    <author>
+      <name>Kaifeng Zhao</name>
+    </author>
+    <author>
+      <name>Mathis Petrovich</name>
+    </author>
+    <author>
+      <name>Haotian Zhang</name>
+    </author>
+    <author>
+      <name>Tingwu Wang</name>
+    </author>
+    <author>
+      <name>Siyu Tang</name>
+    </author>
+    <author>
+      <name>Davis Rempe</name>
+    </author>
+    <arxiv:doi>10.1145/3811284</arxiv:doi>
+    <link rel="related" href="https://doi.org/10.1145/3811284" title="doi"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2607.08725v1</id>
+    <title>Pose-to-Biomechanics: Bridging 3D Human Pose Estimation and Biomechanical Attribute Prediction</title>
+    <updated>2026-07-09T17:31:16Z</updated>
+    <link href="https://arxiv.org/abs/2607.08725v1" rel="alternate" type="text/html"/>
+    <link href="https://arxiv.org/pdf/2607.08725v1" rel="related" type="application/pdf" title="pdf"/>
+    <summary>Recent progress in 3D human pose estimation has made markerless recovery of skeletal motion increasingly accurate and scalable. However, most pose estimators remain optimized for geometric keypoint accuracy, while many real-world applications in rehabilitation, sports science, ergonomics, and clinical movement analysis require biomechanical quantities that describe how the body moves, loads, and activates. In this work, we propose BioModule, a lightweight plug-in temporal transformer that attaches downstream of any 3D pose estimator and predicts biomechanical attributes from standard 17-joint 3D skeletons. BioModule is estimator-agnostic and requires no modification of the upstream pose model, enabling existing pose estimators to be extended toward physically interpretable motion analysis.
+  To train and evaluate BioModule, we construct a large-scale aligned dataset pairing Human3.6M video and 3D keypoints with the biomechanical label space of Human3.6Mplus. We establish and verify anatomical correspondence between coordinate systems of the two datasets, enabling frame-accurate cross-modal supervision. Using this aligned supervision, BioModule predicts biomechanical quantities. We further benchmark BioModule across seven state-of-the-art 3D pose estimators, providing the first systematic analysis of how upstream pose estimation quality propagates to downstream biomechanical prediction fidelity. The results position BioModule as a compact, modular bridge between vision-based pose estimation and biomechanically meaningful human motion analysis.</summary>
+    <category term="cs.CV" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.AI" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <published>2026-07-09T17:31:16Z</published>
+    <arxiv:comment>23 pages, 2 figures</arxiv:comment>
+    <arxiv:primary_category term="cs.CV"/>
+    <author>
+      <name>Ayda Eghbalian</name>
+    </author>
+    <author>
+      <name>Kevin Desai</name>
+    </author>
+  </entry>
+</feed>
