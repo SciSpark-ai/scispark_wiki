@@ -18,7 +18,7 @@ const MAX_FULL_TEXT_EXCERPT_CHARS = 30_000
  * pages, paper abstracts, or LLM-authored prose, unlike single/double angle brackets or
  * `---` which do show up in normal text.
  */
-function wikiDataFence(section: string, content: string): string {
+export function wikiDataFence(section: string, content: string): string {
   return `<<<WIKI-DATA section="${section}">>>\n${content}\n<<<END-WIKI-DATA>>>`
 }
 
@@ -169,7 +169,7 @@ async function pageTypesSection(storage: VaultStorage): Promise<string> {
  * slugs, so this fallback must match or `pageId` values are ambiguous between full ids and
  * slugs depending on which path built the section.
  */
-async function indexSection(storage: VaultStorage): Promise<string> {
+export async function indexSection(storage: VaultStorage): Promise<string> {
   const index = await storage.read("index.md")
   const trimmed = index?.trim() ?? ""
   const hasEntries = /^-\s/m.test(trimmed)
@@ -185,7 +185,7 @@ async function indexSection(storage: VaultStorage): Promise<string> {
     .join("\n")
 }
 
-function paperSection(paper: PaperRecord): string {
+export function paperSection(paper: PaperRecord): string {
   const lines = [`Title: ${paper.title}`]
   const authorNames = paper.authors.map((a) => a.name).join(", ")
   lines.push(`Authors: ${authorNames || "Unknown"}`)
