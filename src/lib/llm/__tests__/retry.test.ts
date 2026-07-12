@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { withRetry } from "../retry"
 import { MockProvider } from "../mock-provider"
-import { LLMTransientError, LLMAuthError, type LLMResult } from "../types"
+import { LLMTransientError, LLMAuthError, LLMRateLimitError, type LLMResult } from "../types"
 
 const ok = (text: string): LLMResult => ({
   text, usage: { inputTokens: 1, outputTokens: 1 },
@@ -30,5 +30,24 @@ describe("withRetry", () => {
     ])
     await expect(withRetry(() => p.complete("m", { messages: [] }), { retries: 2, sleep: async () => {} }))
       .rejects.toThrow("3")
+  })
+  it("honors retryAfterMs hint from LLMRateLimitError", async () => {
+    const p = new MockProvider([new LLMRateLimitError("slow", 2500), ok("success")])
+    const sleeps: number[] = []
+    const result = await withRetry(() => p.complete("m", { messages: [] }), {
+      sleep: async (ms) => { sleeps.push(ms) },
+    })
+    expect(result.text).toBe("success")
+    expect(sleeps).toEqual([2500])
+  })
+  it("falls back to exponential backoff when retryAfterMs is absent", async () => {
+    const p = new MockProvider([new LLMRateLimitError("slow"), ok("success")])
+    const sleeps: number[] = []
+    const result = await withRetry(() => p.complete("m", { messages: [] }), {
+      baseDelayMs: 100,
+      sleep: async (ms) => { sleeps.push(ms) },
+    })
+    expect(result.text).toBe("success")
+    expect(sleeps).toEqual([100])
   })
 })

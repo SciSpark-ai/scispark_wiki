@@ -4,7 +4,7 @@ export async function withRetry<T>(
   fn: () => Promise<T>,
   opts: { retries?: number; baseDelayMs?: number; sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<T> {
-  const retries = opts.retries ?? 2
+  const retries = Math.max(0, opts.retries ?? 2)
   const base = opts.baseDelayMs ?? 1000
   const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)))
 
