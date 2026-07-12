@@ -23,6 +23,22 @@ const inFlightDigests = new Map<
 /** Cap on how much of the paper's full text goes into the prompt (characters, not tokens). */
 const MAX_FULL_TEXT_CHARS = 40_000
 
+/**
+ * Truncates `text` to at most `limit` characters, preferring to cut at the last run of
+ * whitespace within the final 200 characters of the hard cut so the result doesn't end
+ * mid-word or mid-number (see m4-task-6-report.md Review finding 4). Falls back to a hard
+ * cut exactly at `limit` when no whitespace exists in that trailing window.
+ */
+function truncateAtWhitespace(text: string, limit: number): string {
+  if (text.length <= limit) return text
+  const hardCut = text.slice(0, limit)
+  const searchFloor = Math.max(0, hardCut.length - 200)
+  for (let i = hardCut.length - 1; i >= searchFloor; i--) {
+    if (/\s/.test(hardCut[i])) return hardCut.slice(0, i)
+  }
+  return hardCut
+}
+
 export const DigestSchema = z.object({
   /** One precise, technical paragraph summarizing the paper for a researcher in the field. */
   summary: z.string(),
@@ -67,9 +83,9 @@ function buildPrompt(input: DigestSkillInput): { system: string; user: string } 
 
   if (fullText && fullText.trim() !== "") {
     const isTruncated = fullText.length > MAX_FULL_TEXT_CHARS
-    const text = isTruncated ? fullText.slice(0, MAX_FULL_TEXT_CHARS) : fullText
+    const text = isTruncated ? truncateAtWhitespace(fullText, MAX_FULL_TEXT_CHARS) : fullText
     const label = isTruncated
-      ? `Full text (truncated to the first ${MAX_FULL_TEXT_CHARS.toLocaleString("en-US")} characters of a longer document):`
+      ? `Full text (truncated to fit the ${MAX_FULL_TEXT_CHARS.toLocaleString("en-US")}-character limit of a longer document):`
       : "Full text:"
     sections.push(`${label}\n${text}`)
   }

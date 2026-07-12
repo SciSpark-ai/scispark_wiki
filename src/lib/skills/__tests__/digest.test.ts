@@ -206,6 +206,51 @@ describe("generateDigest", () => {
     expect(xRunLength).toBeLessThanOrEqual(40_000)
   })
 
+  it("truncation with no whitespace near the boundary falls back to a hard cut at exactly 40,000 characters", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structuredResult()])
+    // No whitespace anywhere, so there's nothing to cut back to — must hard-cut at the limit.
+    const longFullText = "x".repeat(45_000)
+
+    await generateDigest(storage, PAPER, {
+      fullText: longFullText,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+
+    const { messages } = provider.calls[0].req
+    const fullTextMessage = messages.find((m) => m.content.includes("x".repeat(100)))
+    expect(fullTextMessage).toBeDefined()
+    // Longest run of "x" (the label text itself contains a lone "x" in the word "text").
+    const xRunLength = Math.max(0, ...[...fullTextMessage!.content.matchAll(/x+/g)].map((m) => m[0].length))
+    expect(xRunLength).toBe(40_000)
+  })
+
+  it("truncation cuts at the last whitespace before the boundary, not mid-word", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structuredResult()])
+    // A space sits just inside the final-200-chars search window before the 40,000 limit,
+    // followed by a run of "z"s that would otherwise get cut mid-word by a raw slice(0, 40000).
+    const longFullText = "a".repeat(39_990) + " " + "z".repeat(100)
+
+    await generateDigest(storage, PAPER, {
+      fullText: longFullText,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+
+    const { messages } = provider.calls[0].req
+    const fullTextMessage = messages.find((m) => m.content.includes("a".repeat(100)))
+    expect(fullTextMessage).toBeDefined()
+    // The trailing "z" word was cut entirely — none of it should leak into the prompt.
+    expect(fullTextMessage!.content).not.toContain("z")
+    // Longest run of "a" (other prose in the prompt — "Ada Lovelace", "a longer document" — has short "a" runs too).
+    const aRunLength = Math.max(0, ...[...fullTextMessage!.content.matchAll(/a+/g)].map((m) => m[0].length))
+    expect(aRunLength).toBe(39_990)
+  })
+
   it("prompt with short full text does not mention truncation", async () => {
     const storage = new MemoryVaultStorage()
     const provider = new MockProvider([structuredResult()])
