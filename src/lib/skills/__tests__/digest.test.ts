@@ -3,8 +3,9 @@ import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { MockProvider } from "../../llm/mock-provider"
 import { DEFAULT_SETTINGS, type LLMSettings } from "../../llm/settings"
 import { Meter } from "../../llm/metering"
-import type { LLMResult } from "../../llm/types"
+import type { LLMResult, LLMProvider, LLMRequest } from "../../llm/types"
 import type { PaperRecord } from "../../papers/types"
+import type { VaultStorage } from "../../vault/storage"
 import { paperSlug } from "../../wiki/authoring"
 import { DigestSchema, generateDigest } from "../digest"
 
@@ -219,5 +220,153 @@ describe("generateDigest", () => {
     const { messages } = provider.calls[0].req
     const allContent = messages.map((m) => m.content).join("\n")
     expect(allContent.toLowerCase()).not.toContain("truncat")
+  })
+
+  it("cache write failure: digest is still returned with cacheWriteFailed: true", async () => {
+    // A storage wrapper that throws only for digest cache paths
+    class FailingDigestStorage implements VaultStorage {
+      constructor(private delegate: MemoryVaultStorage) {}
+      async read(path: string): Promise<string | null> {
+        return this.delegate.read(path)
+      }
+      async write(path: string, content: string): Promise<void> {
+        if (path.includes(".scispark/digests/")) {
+          throw new Error("Storage quota exceeded for digests")
+        }
+        return this.delegate.write(path, content)
+      }
+      async readBinary(path: string): Promise<Uint8Array | null> {
+        return this.delegate.readBinary(path)
+      }
+      async writeBinary(path: string, data: Uint8Array): Promise<void> {
+        return this.delegate.writeBinary(path, data)
+      }
+      async delete(path: string): Promise<void> {
+        return this.delegate.delete(path)
+      }
+      async list(prefix = ""): Promise<string[]> {
+        return this.delegate.list(prefix)
+      }
+    }
+
+    const delegate = new MemoryVaultStorage()
+    const storage = new FailingDigestStorage(delegate)
+    const provider = new MockProvider([structuredResult()])
+
+    const result = await generateDigest(storage, PAPER, {
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+
+    // Despite cache write failure, the digest is returned with the flag set
+    expect(result.digest).toEqual(SAMPLE_DIGEST)
+    expect(result.fromCache).toBe(false)
+    expect(result.cacheWriteFailed).toBe(true)
+    expect(result.runId).toBeDefined()
+    expect(result.costUsd).toBeGreaterThan(0)
+    expect(provider.calls).toHaveLength(1)
+
+    // Cache file was not written (attempt failed)
+    const cachePath = `.scispark/digests/${paperSlug(PAPER)}.json`
+    const cached = await delegate.read(cachePath)
+    expect(cached).toBeNull()
+  })
+
+  it("concurrent calls for the same paper share a single provider call (single-flight)", async () => {
+    // A storage wrapper that delays the read operation to ensure concurrency
+    class SlowReadStorage implements VaultStorage {
+      constructor(private delegate: MemoryVaultStorage, private delayMs = 100) {}
+      async read(path: string): Promise<string | null> {
+        // Delay the read to allow the second call to arrive while the first is pending
+        if (path.includes(".scispark/digests")) {
+          await new Promise((resolve) => setTimeout(resolve, this.delayMs))
+        }
+        return this.delegate.read(path)
+      }
+      async write(path: string, content: string): Promise<void> {
+        return this.delegate.write(path, content)
+      }
+      async readBinary(path: string): Promise<Uint8Array | null> {
+        return this.delegate.readBinary(path)
+      }
+      async writeBinary(path: string, data: Uint8Array): Promise<void> {
+        return this.delegate.writeBinary(path, data)
+      }
+      async delete(path: string): Promise<void> {
+        return this.delegate.delete(path)
+      }
+      async list(prefix = ""): Promise<string[]> {
+        return this.delegate.list(prefix)
+      }
+    }
+
+    // A deferred mock provider that only responds after a signal
+    class DeferredMockProvider implements LLMProvider {
+      readonly id = "anthropic" as const
+      calls: Array<{ model: string; req: LLMRequest }> = []
+      private resolveNext: ((result: LLMResult) => void) | null = null
+      private deferred: Promise<LLMResult> | null = null
+
+      async complete(model: string, req: LLMRequest): Promise<LLMResult> {
+        this.calls.push({ model, req })
+        // For the first call, create a deferred promise that waits for resolution
+        if (!this.deferred) {
+          this.deferred = new Promise((resolve) => {
+            this.resolveNext = resolve
+          })
+        }
+        return this.deferred
+      }
+
+      resolve(result: LLMResult): void {
+        if (this.resolveNext) {
+          this.resolveNext(result)
+        }
+      }
+    }
+
+    const delegate = new MemoryVaultStorage()
+    const storage = new SlowReadStorage(delegate, 20)
+    const provider = new DeferredMockProvider()
+
+    // Start two concurrent generateDigest calls for the same paper.
+    // The first call will start, check the map, create a promise, and start the IIFE.
+    // Before the storage.read completes, the second call will start, check the map,
+    // and find the first call's promise already there.
+    const call1Promise = generateDigest(storage, PAPER, {
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider as any },
+      now: NOW,
+    })
+
+    // Immediately start the second call (before the first call's storage.read completes)
+    const call2Promise = generateDigest(storage, PAPER, {
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider as any },
+      now: NOW,
+    })
+
+    // Give the first call time to complete its storage.read and reach the provider call.
+    // Storage delay is 20ms, so wait a bit longer to ensure runSkill has been called.
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    // At this point, only one provider call should have been made (the first one).
+    // The second call should be awaiting the same in-flight promise.
+    expect(provider.calls).toHaveLength(1)
+
+    // Resolve the deferred provider
+    provider.resolve(structuredResult())
+
+    // Both concurrent calls should resolve with the same digest
+    const result1 = await call1Promise
+    const result2 = await call2Promise
+
+    expect(result1.digest).toEqual(SAMPLE_DIGEST)
+    expect(result2.digest).toEqual(SAMPLE_DIGEST)
+    // Both should have the same runId since they shared the single flight
+    expect(result1.runId).toBe(result2.runId)
+    // Still only one provider call total
+    expect(provider.calls).toHaveLength(1)
   })
 })

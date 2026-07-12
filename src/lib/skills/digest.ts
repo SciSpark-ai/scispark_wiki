@@ -7,6 +7,19 @@ import { paperSlug } from "../wiki/authoring"
 import { defineSkill } from "./types"
 import { runSkill } from "./runner"
 
+/**
+ * Module-level map of in-flight generateDigest calls, keyed by cache path.
+ * Ensures concurrent calls for the same paper share a single runSkill call
+ * and avoid duplicate LLM charges. Entries are cleared when the promise settles
+ * (whether resolved or rejected).
+ *
+ * Single-flight scope: per module (per tab/session in browser; per process in Node.js).
+ */
+const inFlightDigests = new Map<
+  string,
+  Promise<{ digest: DigestResult; fromCache: boolean; runId?: string; costUsd?: number; cacheWriteFailed?: boolean }>
+>()
+
 /** Cap on how much of the paper's full text goes into the prompt (characters, not tokens). */
 const MAX_FULL_TEXT_CHARS = 40_000
 
@@ -116,6 +129,20 @@ function digestCachePath(paper: PaperRecord): string {
  * On a miss, runs `digestSkill` through the M2 harness (`runSkill`), which handles budget
  * checks, retries, and metering. A non-"ok" run status (error or budget_exceeded) throws an
  * Error carrying the run's error message, so callers can render it directly.
+ *
+ * **Concurrency**: concurrent calls for the same paper (same cache path) share a single
+ * `runSkill` invocation via module-level single-flight tracking. Only the first call triggers
+ * the LLM; subsequent concurrent calls await the same promise and receive the same result.
+ * This prevents duplicate LLM charges when multiple requests arrive before the first cache
+ * write completes.
+ *
+ * **Cache write failures**: if `storage.write()` throws after a successful digest generation,
+ * the digest is still returned with `cacheWriteFailed: true` — the digest is not lost.
+ * Callers can log the error, but the generated digest is usable.
+ *
+ * **costUsd semantics**: `costUsd` is passed through from `runSkill` and reflects the actual
+ * LLM provider cost. For models with no pricing information (e.g., unknown model prefixes),
+ * the harness meters them as $0.00; null-priced runs are included but contribute $0.
  */
 export async function generateDigest(
   storage: VaultStorage,
@@ -126,35 +153,85 @@ export async function generateDigest(
     providerOverride?: Partial<Record<Tier, LLMProvider>>
     now?: () => Date
   },
-): Promise<{ digest: DigestResult; fromCache: boolean; runId?: string; costUsd?: number }> {
+): Promise<{ digest: DigestResult; fromCache: boolean; runId?: string; costUsd?: number; cacheWriteFailed?: boolean }> {
   const path = digestCachePath(paper)
-  const cachedRaw = await storage.read(path)
 
-  if (cachedRaw !== null) {
-    try {
-      const parsed = DigestSchema.safeParse(JSON.parse(cachedRaw))
-      if (parsed.success) {
-        return { digest: parsed.data, fromCache: true }
-      }
-    } catch {
-      // Corrupt JSON — fall through to regenerate.
-    }
+  // Single-flight: if another call for this same paper is already in flight,
+  // return that promise instead of issuing another runSkill.
+  const existing = inFlightDigests.get(path)
+  if (existing) {
+    return existing
   }
 
-  const run = await runSkill({
-    skill: digestSkill,
-    input: { paper, fullText: opts?.fullText },
-    storage,
-    settings: opts?.settings,
-    providerOverride: opts?.providerOverride,
-    now: opts?.now,
+  // Create the promise for this call and track it immediately.
+  let resolvePromise: ((result: any) => void) | undefined
+  let rejectPromise: ((error: any) => void) | undefined
+
+  const promise = new Promise<{
+    digest: DigestResult
+    fromCache: boolean
+    runId?: string
+    costUsd?: number
+    cacheWriteFailed?: boolean
+  }>((resolve, reject) => {
+    resolvePromise = resolve
+    rejectPromise = reject
   })
 
-  if (run.status !== "ok" || run.output === undefined) {
-    throw new Error(run.error ?? `digest skill run finished with unexpected status "${run.status}"`)
-  }
+  inFlightDigests.set(path, promise)
 
-  await storage.write(path, JSON.stringify(run.output, null, 2))
+  // Execute the actual work asynchronously, but the promise is already tracked.
+  ;(async () => {
+    try {
+      const cachedRaw = await storage.read(path)
 
-  return { digest: run.output, fromCache: false, runId: run.runId, costUsd: run.costUsd }
+      if (cachedRaw !== null) {
+        try {
+          const parsed = DigestSchema.safeParse(JSON.parse(cachedRaw))
+          if (parsed.success) {
+            resolvePromise!({ digest: parsed.data, fromCache: true })
+            return
+          }
+        } catch {
+          // Corrupt JSON — fall through to regenerate.
+        }
+      }
+
+      const run = await runSkill({
+        skill: digestSkill,
+        input: { paper, fullText: opts?.fullText },
+        storage,
+        settings: opts?.settings,
+        providerOverride: opts?.providerOverride,
+        now: opts?.now,
+      })
+
+      if (run.status !== "ok" || run.output === undefined) {
+        throw new Error(run.error ?? `digest skill run finished with unexpected status "${run.status}"`)
+      }
+
+      // Try to write cache, but don't let write failures lose the digest.
+      let cacheWriteFailed = false
+      try {
+        await storage.write(path, JSON.stringify(run.output, null, 2))
+      } catch {
+        cacheWriteFailed = true
+      }
+
+      resolvePromise!({
+        digest: run.output,
+        fromCache: false,
+        runId: run.runId,
+        costUsd: run.costUsd,
+        cacheWriteFailed,
+      })
+    } catch (error) {
+      rejectPromise!(error)
+    } finally {
+      // Always clear the in-flight entry when this promise settles.
+      inFlightDigests.delete(path)
+    }
+  })()
+
+  return promise
 }
