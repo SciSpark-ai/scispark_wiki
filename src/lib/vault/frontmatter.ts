@@ -6,12 +6,16 @@ export class FrontmatterError extends Error {}
 const REQUIRED_KEYS = ["type", "title", "created", "updated", "tags", "related", "sources"] as const
 const ARRAY_KEYS = ["tags", "related", "sources"] as const
 
+const TERMINATOR_RE = /\n---[ \t]*(?:\n|$)/
+
 export function parseDocument(raw: string): { frontmatter: Frontmatter; body: string } {
-  if (!raw.startsWith("---\n")) throw new FrontmatterError("document must start with ---")
-  const end = raw.indexOf("\n---", 4)
-  if (end === -1) throw new FrontmatterError("unterminated frontmatter block")
-  const yamlSrc = raw.slice(4, end)
-  const body = raw.slice(end + 4).replace(/^\r?\n/, "")
+  const normalized = raw.replace(/\r\n/g, "\n")
+  if (!normalized.startsWith("---\n")) throw new FrontmatterError("document must start with ---")
+  const match = TERMINATOR_RE.exec(normalized.slice(3))
+  if (!match) throw new FrontmatterError("unterminated frontmatter block")
+  const end = 3 + match.index
+  const yamlSrc = normalized.slice(4, end)
+  const body = normalized.slice(end + match[0].length)
 
   let data: unknown
   try {
