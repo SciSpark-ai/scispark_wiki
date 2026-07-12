@@ -4,6 +4,10 @@
 >
 > All 11 tasks done; final whole-branch review verdict **READY TO MERGE** at commit `9c9f127` (123/123 tests, tsc/eslint clean). In-loop reviews caught and fixed 5 serious defects: 429 retry-storm, Gemini `$ref` schema corruption, meter write race, **vault export leaking BYOK keys** (settings.json now excluded from export+import), budget bypass via provider-echoed model ids.
 >
+> ### Update 2026-07-12 (later): GMI Cloud support added, live gate BLOCKED by network filter
+> Commit `c50e090` adds `baseUrls` overrides in settings (+ /debug/llm field) so any OpenAI-compatible endpoint works under the "openai"/"openrouter" provider ids, and an env-gated live test (`src/lib/llm/__tests__/live-openai-compat.test.ts`) that runs the full gate (plain completion, structured+zod, runSkill with budget/metering/run-record) in one command. Tong's GMI Cloud key was tested, but **api.gmi-serving.com is TLS-blocked machine-wide by the local network's security filter (Xfinity xFi Advanced Security — safebrowse.io warn pages)**; curl/Node/browser all fail before any HTTP. Once the domain is allowed (or on another network), run:
+> `LIVE_LLM_BASE_URL=https://api.gmi-serving.com/v1 LIVE_LLM_API_KEY=<key> LIVE_LLM_MODEL=claude-sonnet-5 npx vitest run src/lib/llm/__tests__/live-openai-compat.test.ts`
+>
 > ### Remaining before/at merge
 > 1. **Manual real-key gate (Tong)** — `npm run dev`, open `/debug/llm`, paste a real key per provider (Anthropic / OpenAI / Google / OpenRouter), run "Test completion" + "Test structured"; confirm usage/cost render, `.scispark/usage/*.jsonl` grows, and the budget-exceeded path by setting dailyBudgetUsd to 0.001. This doubles as the browser-CORS check for OpenAI/Google BYOK — **if a provider blocks browser calls, do NOT silently proxy keys through our server; bring the decision back to design** (03-backend privacy stance).
 > 2. **Spot-check OpenAI/Google prices** in `src/lib/llm/pricing.ts` against live pricing pages (they were sourced via WebFetch summaries; Anthropic rows are verified).
