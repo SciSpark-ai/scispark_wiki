@@ -31,6 +31,8 @@ A skill is a versioned document + manifest defining: purpose, workflow steps, co
 
 The Research Feed Skill is the reference implementation ("Agentic Research Feed Skill") — the standard for how skills encode traditional-workflow structure (RecSys funnel) executed by LLM reasoning. **No trained ML models, no third-party embeddings** anywhere in the system; a small on-device embedding model is the only permitted fallback if agentic retrieval proves insufficient.
 
+**Blessed pattern (M5): skills are pure LLM-calling units. Storage access belongs to orchestrator functions (`generateDigest`, `runIngest`, `runFeed`, `runConsolidation`). A skill may carry storage in its input only when it must read/write mid-run (Ingest is the one current case), and that access must be declared in the skill's tool manifest.**
+
 ## Tool registry (per-skill allowlists)
 
 | Tool | Feed | Trending | Digest | Ingest | Read-Comp | KB-Chat | Lint | Mem-Consol |

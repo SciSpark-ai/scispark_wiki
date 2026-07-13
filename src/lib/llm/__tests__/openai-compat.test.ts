@@ -81,6 +81,52 @@ describe("OpenAICompatProvider", () => {
     expect(result.json).toEqual({ a: 1 })
   })
 
+  it("strips constraint keywords (minItems/maximum/etc.) recursively from the wire schema, but never property NAMES", async () => {
+    const { fn, captured } = fakeFetch(200, {
+      ...OK_RESPONSE,
+      choices: [{ index: 0, message: { role: "assistant", content: '{"queries":[]}' }, finish_reason: "stop" }],
+    })
+    const p = new OpenAICompatProvider("openai", "sk-test", "https://api.openai.com/v1", fn)
+    await p.complete("gpt-4o", {
+      messages: [{ role: "user", content: "x" }],
+      jsonSchema: {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        type: "object",
+        properties: {
+          queries: {
+            minItems: 1,
+            maxItems: 8,
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                score: { type: "number", minimum: 0, maximum: 100 },
+                // A property legitimately NAMED like a constraint keyword must survive.
+                pattern: { type: "string", minLength: 2 },
+              },
+              required: ["score", "pattern"],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ["queries"],
+        additionalProperties: false,
+      },
+      schemaName: "result",
+    })
+
+    const sent = JSON.parse(String(captured.init?.body))
+    const wire = sent.response_format.json_schema.schema
+    expect(wire.properties.queries).not.toHaveProperty("minItems")
+    expect(wire.properties.queries).not.toHaveProperty("maxItems")
+    const item = wire.properties.queries.items
+    expect(item.properties.score).toEqual({ type: "number" })
+    // Property named "pattern" survives; its own constraint keyword is stripped.
+    expect(item.properties.pattern).toEqual({ type: "string" })
+    expect(item.required).toEqual(["score", "pattern"])
+    expect(item.additionalProperties).toBe(false)
+  })
+
   it("maps usage from prompt_tokens/completion_tokens", async () => {
     const { fn } = fakeFetch(200, { ...OK_RESPONSE, usage: { prompt_tokens: 42, completion_tokens: 7, total_tokens: 49 } })
     const p = new OpenAICompatProvider("openai", "sk-test", "https://api.openai.com/v1", fn)

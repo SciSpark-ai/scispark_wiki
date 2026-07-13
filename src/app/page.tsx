@@ -1,101 +1,155 @@
-"use client";
+"use client"
 
-import { useState, useEffect } from "react";
-import { useFeed } from "@/hooks/useFeed";
-import { useUserStore } from "@/stores/user-store";
-import { FeedTabs } from "@/components/feed/FeedTabs";
-import { FeedCard } from "@/components/feed/FeedCard";
-import { YourWeekWidget } from "@/components/feed/YourWeekWidget";
-import { TrendingTopicsWidget } from "@/components/feed/TrendingTopicsWidget";
-import { ReadingStreakWidget } from "@/components/feed/ReadingStreakWidget";
-import { SkeletonCard } from "@/components/shared/SkeletonCard";
+import { useCallback, useEffect, useRef, useState } from "react"
+import Link from "next/link"
+import { getOpenVault } from "@/lib/vault/get-vault"
+import { isOnboarded } from "@/lib/usermodel/pages"
+import { loadFeed, FEED_CACHE_PATH, type FeedResult } from "@/lib/skills/feed"
+import { paperKey } from "@/lib/papers/types"
+import type { VaultStorage } from "@/lib/vault/storage"
+import { RealFeedCard } from "@/components/feed/RealFeedCard"
+import { FeedRefreshBar } from "@/components/feed/FeedRefreshBar"
+
+type PageState =
+  | { status: "checking" }
+  | { status: "not-onboarded" }
+  | { status: "ready"; feed: FeedResult | null }
+  | { status: "error"; message: string }
 
 function getGreeting(): string {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
+  const h = new Date().getHours()
+  if (h < 12) return "Good morning"
+  if (h < 17) return "Good afternoon"
+  return "Good evening"
+}
+
+function formatUpdatedAt(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString()
+  } catch {
+    return iso
+  }
 }
 
 export default function HomePage() {
-  const user = useUserStore((s) => s.user);
-
-  const {
-    papers,
-    isLoading,
-    activeTab,
-    setActiveTab,
-    specialtyFilter,
-    setSpecialtyFilter,
-    specialties,
-    toggleAction,
-  } = useFeed();
-
-  const [greeting, setGreeting] = useState("Welcome back");
+  const [storage, setStorage] = useState<VaultStorage | null>(null)
+  const [state, setState] = useState<PageState>({ status: "checking" })
+  const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    setGreeting(getGreeting());
-  }, []);
+    let cancelled = false
+    ;(async () => {
+      try {
+        const vault = await getOpenVault()
+        if (cancelled) return
+        setStorage(vault)
+        if (!(await isOnboarded(vault))) {
+          setState({ status: "not-onboarded" })
+          return
+        }
+        const feed = await loadFeed(vault)
+        if (cancelled) return
+        setState({ status: "ready", feed })
+      } catch (err) {
+        if (!cancelled) setState({ status: "error", message: err instanceof Error ? err.message : String(err) })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleFeedUpdated = useCallback((feed: FeedResult) => {
+    setState({ status: "ready", feed })
+  }, [])
+
+  const handleSave = useCallback((key: string) => {
+    setSavedKeys((prev) => {
+      const next = new Set(prev)
+      next.add(key)
+      return next
+    })
+  }, [])
+
+  // Serializes cache rewrites so rapid successive dismissals can't land out of
+  // order and resurrect a dismissed card on the next reload.
+  const cacheWriteChain = useRef<Promise<void>>(Promise.resolve())
+
+  const handleDismiss = useCallback(
+    (key: string) => {
+      if (!storage) return
+      setState((prev) => {
+        if (prev.status !== "ready" || !prev.feed) return prev
+        const nextFeed: FeedResult = { ...prev.feed, items: prev.feed.items.filter((it) => paperKey(it.paper) !== key) }
+        cacheWriteChain.current = cacheWriteChain.current
+          .then(() => storage.write(FEED_CACHE_PATH, JSON.stringify(nextFeed, null, 2)))
+          .catch(() => undefined)
+        return { status: "ready", feed: nextFeed }
+      })
+    },
+    [storage],
+  )
 
   return (
-    <div className="pb-10">
-      <div className="sticky top-0 z-10 bg-page-bg border-b border-border-warm/60 px-7 py-2.5">
-        <FeedTabs
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          specialties={specialties}
-          specialtyFilter={specialtyFilter}
-          onSpecialtyChange={setSpecialtyFilter}
-        />
-      </div>
+    <div className="p-7">
+      <h1 className="font-heading text-[28px] text-espresso tracking-heading">{getGreeting()}</h1>
 
-      <div className="px-7">
-        <h1 className="font-heading text-[32px] text-espresso tracking-heading pt-7">
-          {greeting}, <span className="text-orange">{user?.name ?? "there"}</span>
-        </h1>
+      {state.status === "checking" && <p className="mt-6 text-[14px] text-muted-text">Loading…</p>}
 
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="rounded-[18px] bg-white/70 border border-border-warm/60 p-5">
-            <YourWeekWidget />
-          </div>
-          <div className="rounded-[18px] bg-white/70 border border-border-warm/60 p-5 md:col-span-2">
-            <TrendingTopicsWidget />
-          </div>
-          <div className="rounded-[18px] bg-white/70 border border-border-warm/60 p-5">
-            <ReadingStreakWidget />
-          </div>
+      {state.status === "error" && <p className="mt-6 text-[13px] text-red-600">Error: {state.message}</p>}
+
+      {state.status === "not-onboarded" && (
+        <div className="mt-8 border border-border-warm rounded-card px-5 py-6 bg-light-surface max-w-lg">
+          <h2 className="font-heading text-[18px] text-espresso tracking-heading-card">
+            Set up your research profile to get a personalized feed
+          </h2>
+          <p className="mt-2 text-[13px] text-muted-text tracking-body">
+            A short conversational setup tells SciSpark what you work on, so your feed can be tailored to you from
+            the first refresh.
+          </p>
+          <Link
+            href="/onboarding"
+            className="mt-4 inline-block text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium"
+          >
+            Set up my profile →
+          </Link>
         </div>
+      )}
 
-        <h2 className="mt-10 font-heading text-[22px] text-espresso tracking-heading flex items-center gap-2 cursor-pointer hover:text-orange transition-colors group">
-          New research
-          <span className="text-orange transition-transform group-hover:translate-x-1">→</span>
-        </h2>
+      {state.status === "ready" && storage && (
+        <>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-[13px] text-muted-text tracking-body">
+              {state.feed ? `Updated ${formatUpdatedAt(state.feed.generatedAt)}` : "No feed generated yet."}
+            </div>
+            <FeedRefreshBar storage={storage} onUpdated={handleFeedUpdated} />
+          </div>
 
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-[14px]">
-          {isLoading ? (
-            <>
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
-            </>
-          ) : papers.length === 0 ? (
-            <p className="col-span-full text-[15px] text-muted-text tracking-body py-12 text-center">
-              No papers match your filters.
-            </p>
+          {!state.feed || state.feed.items.length === 0 ? (
+            <div className="mt-8 border border-border-warm rounded-card px-5 py-6 bg-light-surface max-w-lg">
+              <h2 className="font-heading text-[18px] text-espresso tracking-heading-card">
+                Your feed is empty
+              </h2>
+              <p className="mt-2 text-[13px] text-muted-text tracking-body">
+                Refresh to have the agent search for papers matching your profile and interests.
+              </p>
+            </div>
           ) : (
-            papers.map((paper) => (
-              <FeedCard
-                key={paper.id}
-                paper={paper}
-                onToggleAction={toggleAction}
-              />
-            ))
+            <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {state.feed.items.map((item) => (
+                <RealFeedCard
+                  key={paperKey(item.paper)}
+                  item={item}
+                  storage={storage}
+                  saved={savedKeys.has(paperKey(item.paper))}
+                  onSave={handleSave}
+                  onDismiss={handleDismiss}
+                />
+              ))}
+            </div>
           )}
-        </div>
-      </div>
+        </>
+      )}
     </div>
-  );
+  )
 }
