@@ -1,0 +1,339 @@
+import { describe, it, expect } from "vitest"
+import { MemoryVaultStorage } from "../../vault/memory-storage"
+import { logEvent } from "../../events/log"
+import { composePage } from "../../wiki/authoring"
+import type { PaperRecord } from "../../papers/types"
+import { MockProvider } from "../../llm/mock-provider"
+import { DEFAULT_SETTINGS, type LLMSettings } from "../../llm/settings"
+import type { LLMResult } from "../../llm/types"
+import { runSkill } from "../runner"
+import {
+  StrategySchema,
+  feedStrategySkill,
+  browserSearchFn,
+  retrieveCandidates,
+  vaultPaperKeys,
+  type FeedStrategy,
+  type SearchFn,
+} from "../feed"
+
+const NOW = () => new Date("2026-07-12T10:00:00.000Z")
+
+const settingsWithKeys = (overrides?: Partial<LLMSettings>): LLMSettings => ({
+  ...DEFAULT_SETTINGS,
+  keys: { anthropic: "sk-test" },
+  ...overrides,
+})
+
+function paper(overrides: Partial<PaperRecord> & { title: string }): PaperRecord {
+  return {
+    ids: {},
+    authors: [],
+    fields: [],
+    source: "arxiv",
+    ...overrides,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// StrategySchema
+// ---------------------------------------------------------------------------
+
+describe("StrategySchema", () => {
+  it("accepts a well-formed strategy with 1-8 queries", () => {
+    const value = {
+      queries: [{ source: "arxiv", query: "cat:cs.LG sparse attention", rationale: "core topic" }],
+    }
+    expect(StrategySchema.safeParse(value).success).toBe(true)
+  })
+
+  it("rejects zero queries", () => {
+    expect(StrategySchema.safeParse({ queries: [] }).success).toBe(false)
+  })
+
+  it("rejects more than 8 queries", () => {
+    const queries = Array.from({ length: 9 }, (_, i) => ({
+      source: "arxiv",
+      query: `q${i}`,
+      rationale: "r",
+    }))
+    expect(StrategySchema.safeParse({ queries }).success).toBe(false)
+  })
+
+  it("rejects an unknown source", () => {
+    const value = { queries: [{ source: "google-scholar", query: "x", rationale: "r" }] }
+    expect(StrategySchema.safeParse(value).success).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// feedStrategySkill
+// ---------------------------------------------------------------------------
+
+describe("feedStrategySkill", () => {
+  it("runs as a strong-tier structured call and returns a validated strategy", async () => {
+    const storage = new MemoryVaultStorage()
+    const output: FeedStrategy = {
+      queries: [{ source: "openalex", query: "protein folding diffusion models", rationale: "core interest" }],
+    }
+    const result: LLMResult = {
+      text: JSON.stringify(output),
+      json: output,
+      usage: { inputTokens: 400, outputTokens: 100 },
+      model: "claude-opus-4-8",
+      provider: "anthropic",
+      stopReason: "end_turn",
+    }
+    const provider = new MockProvider([result])
+
+    const run = await runSkill({
+      skill: feedStrategySkill,
+      input: { userContextText: "<<<PROFILE>>>\nPhD student.\n<<<END>>>" },
+      storage,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+
+    expect(run.status).toBe("ok")
+    expect(run.output).toEqual(output)
+    expect(provider.calls).toHaveLength(1)
+    expect(provider.calls[0].req.maxTokens).toBe(4096)
+    expect(provider.calls[0].req.messages[0].role).toBe("system")
+    expect(provider.calls[0].req.messages[1].content).toContain("PhD student")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// browserSearchFn
+// ---------------------------------------------------------------------------
+
+describe("browserSearchFn", () => {
+  it("builds the expected GET URL and returns the papers array on success", async () => {
+    const calls: string[] = []
+    const fakeFetch = (async (url: string | URL) => {
+      calls.push(String(url))
+      return {
+        ok: true,
+        json: async () => ({ papers: [paper({ title: "Found Paper" })] }),
+      } as Response
+    }) as typeof fetch
+
+    const searchFn = browserSearchFn(fakeFetch)
+    const results = await searchFn("arxiv", "sparse attention", 25)
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toBe("/api/search/arxiv?q=sparse%20attention&limit=25")
+    expect(results).toEqual([paper({ title: "Found Paper" })])
+  })
+
+  it("returns [] on a non-OK response", async () => {
+    const fakeFetch = (async () => ({ ok: false, json: async () => ({ error: "rate limited" }) })) as unknown as typeof fetch
+    const searchFn = browserSearchFn(fakeFetch)
+    expect(await searchFn("arxiv", "x", 25)).toEqual([])
+  })
+
+  it("returns [] when fetch throws", async () => {
+    const fakeFetch = (async () => {
+      throw new Error("network down")
+    }) as unknown as typeof fetch
+    const searchFn = browserSearchFn(fakeFetch)
+    expect(await searchFn("arxiv", "x", 25)).toEqual([])
+  })
+
+  it("returns [] when the body has no papers array", async () => {
+    const fakeFetch = (async () => ({ ok: true, json: async () => ({ nope: true }) })) as unknown as typeof fetch
+    const searchFn = browserSearchFn(fakeFetch)
+    expect(await searchFn("arxiv", "x", 25)).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// vaultPaperKeys
+// ---------------------------------------------------------------------------
+
+describe("vaultPaperKeys", () => {
+  it("builds keys from paper-type pages' frontmatter ids, ignoring non-paper pages", async () => {
+    const storage = new MemoryVaultStorage()
+    await storage.write(
+      "wiki/papers/foo.md",
+      composePage({
+        path: "wiki/papers/foo.md",
+        frontmatter: {
+          type: "paper",
+          title: "Foo Paper",
+          created: "2026-07-01",
+          updated: "2026-07-01",
+          tags: [],
+          related: [],
+          sources: [],
+          doi: "10.1234/FOO",
+        },
+        body: "# Foo Paper\n",
+      }),
+    )
+    await storage.write(
+      "wiki/concepts/bar.md",
+      composePage({
+        path: "wiki/concepts/bar.md",
+        frontmatter: {
+          type: "concept",
+          title: "Bar Concept",
+          created: "2026-07-01",
+          updated: "2026-07-01",
+          tags: [],
+          related: [],
+          sources: [],
+        },
+        body: "# Bar Concept\n",
+      }),
+    )
+    const { loadBundle } = await import("../../vault/bundle")
+    const bundle = await loadBundle(storage)
+    const keys = vaultPaperKeys(bundle)
+    expect(keys.size).toBe(1)
+    expect(keys.has("doi:10.1234/foo")).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// retrieveCandidates
+// ---------------------------------------------------------------------------
+
+describe("retrieveCandidates", () => {
+  const STRATEGY: FeedStrategy = {
+    queries: [
+      { source: "arxiv", query: "sparse attention", rationale: "core" },
+      { source: "openalex", query: "sparse attention transformers", rationale: "adjacent" },
+    ],
+  }
+
+  it("merges duplicate results across queries via mergeRecords (union of ids)", async () => {
+    const storage = new MemoryVaultStorage()
+    const searchFn: SearchFn = async (source) => {
+      if (source === "arxiv") {
+        return [paper({ title: "Shared Paper", ids: { arxiv: "2406.00001" }, abstract: "short" })]
+      }
+      return [
+        paper({
+          title: "Shared Paper",
+          ids: { arxiv: "2406.00001", openalex: "W123" },
+          abstract: "a much longer abstract than before",
+        }),
+      ]
+    }
+
+    const candidates = await retrieveCandidates(storage, STRATEGY, searchFn)
+
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0].ids).toEqual({ arxiv: "2406.00001", openalex: "W123" })
+    expect(candidates[0].abstract).toBe("a much longer abstract than before")
+  })
+
+  it("a rejecting query contributes [] and doesn't lose other queries' results", async () => {
+    const storage = new MemoryVaultStorage()
+    const searchFn: SearchFn = async (source) => {
+      if (source === "arxiv") throw new Error("upstream exploded")
+      return [paper({ title: "Survivor", ids: { openalex: "W999" } })]
+    }
+
+    const candidates = await retrieveCandidates(storage, STRATEGY, searchFn)
+
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0].title).toBe("Survivor")
+  })
+
+  it("excludes a candidate already present as a vault paper page", async () => {
+    const storage = new MemoryVaultStorage()
+    await storage.write(
+      "wiki/papers/existing.md",
+      composePage({
+        path: "wiki/papers/existing.md",
+        frontmatter: {
+          type: "paper",
+          title: "Existing Paper",
+          created: "2026-07-01",
+          updated: "2026-07-01",
+          tags: [],
+          related: [],
+          sources: [],
+          doi: "10.5555/existing",
+        },
+        body: "# Existing Paper\n",
+      }),
+    )
+    const searchFn: SearchFn = async (source) => {
+      if (source === "arxiv") return [paper({ title: "Existing Paper", ids: { doi: "10.5555/existing" } })]
+      return [paper({ title: "New Paper", ids: { openalex: "W1" } })]
+    }
+
+    const candidates = await retrieveCandidates(storage, STRATEGY, searchFn)
+
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0].title).toBe("New Paper")
+  })
+
+  it("excludes a candidate matching a dismissed-event key from the last 200 events", async () => {
+    const storage = new MemoryVaultStorage()
+    const dismissed = paper({ title: "Dismissed Paper", ids: { arxiv: "2406.00002" } })
+    await logEvent(storage, { type: "feed_dismiss", paperKey: "arxiv:2406.00002", title: "Dismissed Paper" }, NOW)
+
+    const searchFn: SearchFn = async (source) => {
+      if (source === "arxiv") return [dismissed]
+      return [paper({ title: "Fresh Paper", ids: { openalex: "W2" } })]
+    }
+
+    const candidates = await retrieveCandidates(storage, STRATEGY, searchFn)
+
+    expect(candidates.map((c) => c.title)).toEqual(["Fresh Paper"])
+  })
+
+  it("excludes a candidate matching a saved-event key", async () => {
+    const storage = new MemoryVaultStorage()
+    const saved = paper({ title: "Saved Paper", ids: { arxiv: "2406.00003" } })
+    await logEvent(storage, { type: "feed_save", paperKey: "arxiv:2406.00003", title: "Saved Paper" }, NOW)
+
+    const searchFn: SearchFn = async (source) => {
+      if (source === "arxiv") return [saved]
+      return []
+    }
+
+    const candidates = await retrieveCandidates(storage, STRATEGY, searchFn)
+
+    expect(candidates).toEqual([])
+  })
+
+  it("preserves first-seen query order and respects the cap", async () => {
+    const storage = new MemoryVaultStorage()
+    const searchFn: SearchFn = async (source) => {
+      if (source === "arxiv") {
+        return [
+          paper({ title: "A", ids: { arxiv: "1" } }),
+          paper({ title: "B", ids: { arxiv: "2" } }),
+        ]
+      }
+      return [
+        paper({ title: "C", ids: { openalex: "3" } }),
+        paper({ title: "D", ids: { openalex: "4" } }),
+      ]
+    }
+
+    const all = await retrieveCandidates(storage, STRATEGY, searchFn)
+    expect(all.map((c) => c.title)).toEqual(["A", "B", "C", "D"])
+
+    const capped = await retrieveCandidates(storage, STRATEGY, searchFn, { cap: 2 })
+    expect(capped.map((c) => c.title)).toEqual(["A", "B"])
+  })
+
+  it("passes perQueryLimit through to searchFn", async () => {
+    const storage = new MemoryVaultStorage()
+    const limits: number[] = []
+    const searchFn: SearchFn = async (_source, _query, limit) => {
+      limits.push(limit)
+      return []
+    }
+
+    await retrieveCandidates(storage, STRATEGY, searchFn, { perQueryLimit: 7 })
+    expect(limits).toEqual([7, 7])
+  })
+})
