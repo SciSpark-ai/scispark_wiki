@@ -14,10 +14,15 @@ describe("COMPANION", () => {
     expect(COMPANION.systemFragment.trim().length).toBeGreaterThan(0)
   })
 
-  it("systemFragment mentions grounding/accuracy so tone can never override substance", () => {
+  it("systemFragment carries a substantive accuracy-first directive tone can never override", () => {
     const fragment = COMPANION.systemFragment.toLowerCase()
-    const mentionsAccuracy = /accura|ground/.test(fragment)
-    expect(mentionsAccuracy).toBe(true)
+    // Require an actual precedence statement, not just an incidental "ground"/"accura"
+    // substring (e.g. "background") — so the fragment can't be gutted into pure fluff
+    // while still passing. Match "accuracy … wins/first/always" or "never invent facts".
+    const hasPrecedence =
+      /accura\w*[^.]*\b(wins|first|comes first|always|over)\b/.test(fragment) ||
+      /never (invent|fabricate|make up)\b/.test(fragment)
+    expect(hasPrecedence).toBe(true)
   })
 })
 
