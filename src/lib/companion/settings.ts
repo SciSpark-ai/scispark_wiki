@@ -53,6 +53,22 @@ async function readJsonFile(storage: VaultStorage): Promise<Record<string, unkno
   }
 }
 
+/**
+ * Cleans a user-supplied companion name for safe interpolation into a system
+ * prompt: drops C0 control chars + DEL and collapses whitespace to a single
+ * space so the name stays one line and can't start a fresh instruction line.
+ * (Self-set in a single-user vault — hygiene, not a security boundary.)
+ */
+function sanitizeName(v: unknown): string {
+  if (typeof v !== "string") return ""
+  let out = ""
+  for (const ch of v) {
+    const code = ch.codePointAt(0) ?? 0
+    out += code < 0x20 || code === 0x7f ? " " : ch
+  }
+  return out.replace(/\s+/g, " ").trim()
+}
+
 export async function loadCompanionSettings(storage: VaultStorage): Promise<CompanionSettings> {
   const file = await readJsonFile(storage)
   const companion =
@@ -64,7 +80,11 @@ export async function loadCompanionSettings(storage: VaultStorage): Promise<Comp
   // an unknown chattiness (stale schema, typo, hand-edit) must fall back to the
   // default, or SESSION_BUDGET[chattiness] would be undefined and silently mute
   // the companion forever.
-  const rawName = typeof companion.companionName === "string" ? companion.companionName.trim() : ""
+  // The name is interpolated into a conversational skill's system prompt
+  // (`You are ${name}, …`), so strip newlines/control chars to keep it a single
+  // clean line — a name can't start a fresh instruction line. (Self-set in a
+  // single-user vault, so this is hygiene, not a security boundary.)
+  const rawName = sanitizeName(companion.companionName)
   const companionName =
     rawName.length > 0 && rawName.length <= MAX_NAME_LENGTH ? rawName : DEFAULT_COMPANION_SETTINGS.companionName
 
