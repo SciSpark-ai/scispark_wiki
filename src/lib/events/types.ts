@@ -13,5 +13,8 @@ export type SciSparkEvent =
   | { type: "highlight_add"; paperKey: string; title: string }
   | { type: "reading_ask"; paperKey: string }
   | { type: "idea_captured"; paperKey: string; changesetId: string }
+  | { type: "companion_shown"; trigger: string }
+  | { type: "companion_dismiss"; trigger: string }
+  | { type: "companion_action"; trigger: string }
 
 export type LoggedEvent = SciSparkEvent & { ts: string } // ISO timestamp
