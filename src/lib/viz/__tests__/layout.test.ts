@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
-import { topLanes, yearColumns, OTHER_LANE_ID } from "../layout"
+import { topLanes, yearColumns, topAuthorsByPaperCount, OTHER_LANE_ID } from "../layout"
 import type { TimelineLane } from "../timeline"
+import type { AuthorNode } from "../authors"
 
 describe("topLanes", () => {
   it("returns all lanes unchanged (sorted) when there are <= n", () => {
@@ -139,5 +140,46 @@ describe("yearColumns", () => {
     ])
     expect(result.map((c) => c.year)).toEqual([1995, 2023, 0])
     expect(result[2].ids).toEqual(["undated"])
+  })
+})
+
+function author(key: string, paperCount: number): AuthorNode {
+  return { key, name: key, paperCount, pageId: null }
+}
+
+describe("topAuthorsByPaperCount", () => {
+  it("sorts by paperCount descending", () => {
+    const result = topAuthorsByPaperCount([author("a", 1), author("b", 5), author("c", 3)], 10)
+    expect(result.map((a) => a.key)).toEqual(["b", "c", "a"])
+  })
+
+  it("caps at n", () => {
+    const result = topAuthorsByPaperCount([author("a", 1), author("b", 5), author("c", 3)], 2)
+    expect(result.map((a) => a.key)).toEqual(["b", "c"])
+  })
+
+  it("ties broken by key ascending", () => {
+    const result = topAuthorsByPaperCount([author("zed", 3), author("amy", 3)], 10)
+    expect(result.map((a) => a.key)).toEqual(["amy", "zed"])
+  })
+
+  it("empty input -> empty output", () => {
+    expect(topAuthorsByPaperCount([], 10)).toEqual([])
+  })
+
+  it("n = 0 -> empty output", () => {
+    expect(topAuthorsByPaperCount([author("a", 1)], 0)).toEqual([])
+  })
+
+  it("n larger than the list -> returns all, sorted", () => {
+    const result = topAuthorsByPaperCount([author("a", 1), author("b", 2)], 200)
+    expect(result.map((a) => a.key)).toEqual(["b", "a"])
+  })
+
+  it("does not mutate the input array", () => {
+    const input = [author("a", 1), author("b", 5)]
+    const copy = [...input]
+    topAuthorsByPaperCount(input, 10)
+    expect(input).toEqual(copy)
   })
 })

@@ -1,4 +1,5 @@
 import type { TimelineLane } from "./timeline"
+import type { AuthorNode } from "./authors"
 
 // Synthetic lane id for the merged overflow row `topLanes` produces when
 // there are more lanes than the requested top-N.
@@ -59,4 +60,18 @@ export function yearColumns(papers: { id: string; year: number }[]): YearColumn[
   return [...groups.entries()]
     .sort(([a], [b]) => orderKey(a) - orderKey(b))
     .map(([year, ids]) => ({ year, ids }))
+}
+
+/**
+ * Top `n` authors ranked by `paperCount` descending (ties broken by `key`
+ * ascending for determinism). `AuthorNetworkView` calls this twice for two
+ * purposes from one sorted list: once with the render cap (~200) to decide
+ * which nodes/edges to draw at all, then again by taking a further prefix
+ * of that same result (already sorted) to decide which of the rendered
+ * nodes get an on-canvas label (~20) — avoiding label soup.
+ */
+export function topAuthorsByPaperCount(nodes: AuthorNode[], n: number): AuthorNode[] {
+  return [...nodes]
+    .sort((a, b) => b.paperCount - a.paperCount || a.key.localeCompare(b.key))
+    .slice(0, Math.max(0, n))
 }

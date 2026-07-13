@@ -9,10 +9,12 @@ import type { VaultStorage } from "@/lib/vault/storage"
 import { deriveKnowledgeGraph, type KnowledgeGraph } from "@/lib/viz/graph"
 import { deriveTimeline, type Timeline } from "@/lib/viz/timeline"
 import { deriveCitationFlow, loadCitationRefs, type CitationFlow } from "@/lib/viz/citations"
+import { deriveAuthorNetwork, type AuthorNetwork } from "@/lib/viz/authors"
 import type { CitationRef } from "@/lib/papers/citations-core"
 import { VizTabs, type VizTab } from "@/components/viz/VizTabs"
 import TimelineView from "@/components/viz/TimelineView"
 import CitationFlowView, { type CitationPaper } from "@/components/viz/CitationFlowView"
+import AuthorNetworkView from "@/components/viz/AuthorNetworkView"
 
 // Sigma.js touches WebGL/canvas at import time — loaded client-only, same
 // discipline as PdfSurface (src/components/reader/ReaderView.tsx).
@@ -95,6 +97,10 @@ export default function VizPage() {
     () => (bundle && refsByPageId ? deriveCitationFlow(bundle, refsByPageId) : null),
     [bundle, refsByPageId],
   )
+  const authorNetwork = useMemo<AuthorNetwork | null>(
+    () => (bundle ? deriveAuthorNetwork(bundle) : null),
+    [bundle],
+  )
   const citationPapers = useMemo<CitationPaper[]>(() => {
     if (!bundle) return []
     return [...bundle.pages.values()]
@@ -160,7 +166,8 @@ export default function VizPage() {
             ) : (
               <ComingSoon label="Citations" />
             ))}
-          {tab === "authors" && <ComingSoon label="Authors" />}
+          {tab === "authors" &&
+            (authorNetwork ? <AuthorNetworkView network={authorNetwork} /> : <ComingSoon label="Authors" />)}
         </div>
       )}
     </div>

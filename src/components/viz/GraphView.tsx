@@ -47,6 +47,9 @@ function clampedScale(value: number, min: number, max: number, outMin: number, o
   return outMin + Math.max(0, Math.min(1, t)) * (outMax - outMin)
 }
 
+// Mirrors Tree.tsx / index-builder.ts's TYPE_HEADINGS (kept in sync
+// manually, same as schema-routing.ts mirrors scaffold.ts's TYPE_DIRS
+// elsewhere in this repo).
 const TYPE_LABELS: Record<PageType, string> = {
   paper: "Papers",
   concept: "Concepts",
@@ -126,14 +129,21 @@ export default function GraphView({ graph }: GraphViewProps) {
   // always read the latest filter state without rebuilding the graph.
   useEffect(() => {
     visibleTypesRef.current = visibleTypes
+    // A node whose type was just toggled off never fires "leaveNode" (it's
+    // hidden, not un-hovered) — without this, the reducers would keep
+    // dimming its former neighborhood forever. Clearing on every filter
+    // change is simpler than tracking the hovered node's type and always
+    // safe.
+    hoveredNodeRef.current = null
     sigmaRef.current?.refresh()
   }, [visibleTypes])
 
-  const isEmpty = graph.nodes.length === 0
-
   useEffect(() => {
     const container = containerRef.current
-    if (!container || isEmpty) return
+    // `graph.nodes.length === 0` never reaches this component: the parent
+    // page (`src/app/viz/page.tsx`) gates the empty case with its own
+    // "Nothing to visualize yet" card before mounting GraphView at all.
+    if (!container) return
 
     const g = new Graph({ type: "undirected" })
 
@@ -235,23 +245,15 @@ export default function GraphView({ graph }: GraphViewProps) {
       sigmaInstance.kill()
       sigmaRef.current = null
     }
-    // `graph` and `isEmpty` fully determine the instance; `router` is stable
-    // for the component's lifetime (Next.js router identity).
+    // `graph` fully determines the instance; `router` is stable for the
+    // component's lifetime (Next.js router identity).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, isEmpty])
+  }, [graph])
 
   const stats = useMemo(
     () => `${graph.nodes.length} node${graph.nodes.length === 1 ? "" : "s"} · ${graph.edges.length} edge${graph.edges.length === 1 ? "" : "s"} · ${graph.communities} communit${graph.communities === 1 ? "y" : "ies"}`,
     [graph],
   )
-
-  if (isEmpty) {
-    return (
-      <div className="border border-dashed border-border-warm rounded-card px-5 py-10 text-center bg-light-surface">
-        <p className="text-[14px] text-muted-text tracking-body">No connected pages yet — the graph fills in as your wiki grows.</p>
-      </div>
-    )
-  }
 
   return (
     <div>
