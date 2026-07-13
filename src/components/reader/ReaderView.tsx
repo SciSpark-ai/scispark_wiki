@@ -106,6 +106,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
   const [surfaceRoot, setSurfaceRoot] = useState<HTMLElement | null>(null)
   const [highlights, setHighlights] = useState<Highlight[]>([])
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null)
+  const [askTarget, setAskTarget] = useState<PendingSelection | null>(null)
   const [sourcePageId, setSourcePageId] = useState<string | undefined>(undefined)
   const addingHighlightRef = useRef(false)
   const [askState, setAskState] = useState<AskState>({ status: "idle" })
@@ -199,14 +200,28 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
     setHighlights(await listHighlights(storage, key))
   }
 
-  async function handleAsk(question: string) {
+  // Snapshot the passage the user invoked "Ask" on into a target that persists
+  // independently of the live selection. Clicking into the Ask panel's question
+  // box dismisses the native selection (clearing pendingSelection), so the
+  // typed-question flow must not depend on pendingSelection still being set.
+  function beginAsk() {
     if (!pendingSelection) return
+    setAskTarget(pendingSelection)
+    void runAsk(pendingSelection, "")
+  }
+
+  function submitAskQuestion(question: string) {
+    if (!askTarget) return
+    void runAsk(askTarget, question)
+  }
+
+  async function runAsk(target: PendingSelection, question: string) {
     setAskState({ status: "loading" })
     try {
       const context = await buildAskContext(storage, {
         paper,
-        selection: pendingSelection.text,
-        surroundingText: computeSurroundingText(surfaceTextRef.current, pendingSelection.start, pendingSelection.end),
+        selection: target.text,
+        surroundingText: computeSurroundingText(surfaceTextRef.current, target.start, target.end),
         userQuestion: question,
       })
       const settings = await loadSettings(storage)
@@ -312,7 +327,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
 
         <SelectionBubble
           selection={pendingSelection}
-          onAsk={() => void handleAsk("")}
+          onAsk={beginAsk}
           onHighlight={() => void handleHighlight()}
           onCapture={() => void handleCapture()}
         />
@@ -328,7 +343,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
       </div>
 
       <div className="w-[340px] flex-shrink-0">
-        <AskPanel selectionText={pendingSelection?.text ?? null} state={askState} onAsk={handleAsk} />
+        <AskPanel selectionText={askTarget?.text ?? null} state={askState} onAsk={submitAskQuestion} />
       </div>
     </div>
   )
