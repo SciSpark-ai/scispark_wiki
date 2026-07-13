@@ -63,7 +63,12 @@ export function OnboardingFlow({ onSubmit, submitting = false }: OnboardingFlowP
   function handleNext() {
     if (!canAdvance || submitting) return
     if (isLast) {
-      onSubmit(answers)
+      onSubmit({
+        role: answers.role.trim(),
+        fields: answers.fields.trim(),
+        topics: answers.topics.trim(),
+        feedPrefs: answers.feedPrefs.trim(),
+      })
     } else {
       setStep((s) => s + 1)
     }
@@ -88,9 +93,10 @@ export function OnboardingFlow({ onSubmit, submitting = false }: OnboardingFlowP
       </div>
 
       <div className="bg-light-surface border border-border-warm rounded-card px-8 py-10">
-        <h1 className="font-heading text-[24px] text-espresso tracking-heading mb-6">{question.prompt}</h1>
+        <h1 id={`onboarding-q-${question.key}`} className="font-heading text-[24px] text-espresso tracking-heading mb-6">{question.prompt}</h1>
         <textarea
           key={question.key}
+          aria-labelledby={`onboarding-q-${question.key}`}
           autoFocus
           value={value}
           onChange={(e) => handleChange(e.target.value)}
