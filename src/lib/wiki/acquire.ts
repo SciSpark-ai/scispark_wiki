@@ -305,7 +305,7 @@ function collapseWhitespace(text: string): string {
  * trimmed, then capped at 100 characters (re-trimming any "-" left dangling
  * by the truncation).
  */
-function sanitizeSlug(key: string): string {
+export function sanitizeSlug(key: string): string {
   const collapsed = key
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
