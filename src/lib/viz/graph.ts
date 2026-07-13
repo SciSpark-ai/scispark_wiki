@@ -1,0 +1,254 @@
+import Graph from "graphology"
+import louvain from "graphology-communities-louvain"
+import type { Bundle } from "../vault/bundle"
+import { resolveLink } from "../vault/bundle"
+import type { WikiPage } from "../vault/types"
+
+/**
+ * Relative weights for the four graph-relevance signals, taken verbatim
+ * from llm_wiki (docs/design/02). An edge's combined `weight` is the
+ * weighted sum of its four raw signal values below.
+ */
+export const SIGNAL_WEIGHTS = {
+  wikilink: 3.0,
+  sharedSource: 4.0,
+  adamicAdar: 1.5,
+  typeAffinity: 1.0,
+} as const
+
+export interface GraphNode {
+  id: string // bundle page id, e.g. "wiki/concepts/foo"
+  title: string
+  type: string // frontmatter type
+  community: number // Louvain community index
+  degree: number // weighted degree (for sizing)
+}
+
+export interface GraphEdge {
+  source: string
+  target: string
+  weight: number // combined signal score
+  signals: { wikilink: number; sharedSource: number; adamicAdar: number; typeAffinity: number }
+}
+
+export interface KnowledgeGraph {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+  communities: number
+}
+
+// Deviation from llm_wiki (uncapped): one blockbuster shared source (e.g. a
+// survey paper cited everywhere) would otherwise dwarf every other signal.
+// Capping at 3 keeps sharedSource's contribution comparable in scale to a
+// single strong wikilink relationship. Revisit if graphs look under-connected.
+const SHARED_SOURCE_CAP = 3
+
+// Starting heuristic pair table (easy to tune later). Same-type affinity is
+// only defined for concept<->concept; every other same-type pair is 0.
+const TYPE_AFFINITY_PAIRS = new Set<string>([
+  "concept|paper",
+  "method|paper",
+  "finding|paper",
+  "concept|topic",
+  "comparison|finding",
+  "concept|concept",
+])
+
+function typeAffinity(typeA: string, typeB: string): number {
+  const key = [typeA, typeB].sort().join("|")
+  return TYPE_AFFINITY_PAIRS.has(key) ? 1 : 0
+}
+
+/**
+ * Undirected wikilink+related[] adjacency for every page in the bundle.
+ * `bundle.links` already captures body `[[wikilinks]]`; `related[]`
+ * frontmatter entries are resolved the same way the bundle resolves body
+ * wikilinks (bare-slug suffix matching via `resolveLink`) and folded into
+ * the same adjacency. Both directions of a link collapse into one
+ * undirected edge. Shared by `deriveKnowledgeGraph` below (wikilink signal
+ * + Adamic-Adar neighbor sets) and reusable by later derivation modules
+ * (e.g. timeline lane membership) that need the same notion of "linked".
+ */
+export function neighborSets(bundle: Bundle): Map<string, Set<string>> {
+  const neighbors = new Map<string, Set<string>>()
+  const ensure = (id: string) => {
+    let set = neighbors.get(id)
+    if (!set) {
+      set = new Set()
+      neighbors.set(id, set)
+    }
+    return set
+  }
+  const link = (a: string, b: string) => {
+    if (a === b) return
+    ensure(a).add(b)
+    ensure(b).add(a)
+  }
+
+  for (const id of bundle.pages.keys()) ensure(id)
+  for (const l of bundle.links) link(l.from, l.to)
+  for (const page of bundle.pages.values()) {
+    for (const slug of page.frontmatter.related ?? []) {
+      const target = resolveLink(bundle, slug)
+      if (target) link(page.id, target.id)
+    }
+  }
+  return neighbors
+}
+
+/**
+ * Adamic-Adar similarity of `a` and `b` over a precomputed neighbor-set map:
+ * sum of 1/log(|N(z)|) for every common neighbor z, skipping any z with
+ * degree < 2 (log(1) is 0, which would divide by zero / blow up to
+ * Infinity for a neighbor that connects nothing else).
+ */
+export function adamicAdar(neighbors: Map<string, Set<string>>, a: string, b: string): number {
+  const na = neighbors.get(a)
+  const nb = neighbors.get(b)
+  if (!na || !nb) return 0
+  let sum = 0
+  for (const z of na) {
+    if (!nb.has(z)) continue
+    const degree = neighbors.get(z)?.size ?? 0
+    // NOTE: unreachable via deriveKnowledgeGraph (neighborSets is symmetric,
+    // so a common neighbor of two distinct nodes always has degree >= 2);
+    // kept for the exported helper's general contract with arbitrary maps.
+    if (degree < 2) continue
+    sum += 1 / Math.log(degree)
+  }
+  return sum
+}
+
+function sharedSourceCount(a: WikiPage, b: WikiPage): number {
+  const setA = new Set(a.frontmatter.sources ?? [])
+  const setB = new Set(b.frontmatter.sources ?? [])
+  let shared = 0
+  for (const s of setA) if (setB.has(s)) shared++
+  return Math.min(shared, SHARED_SOURCE_CAP)
+}
+
+// NUL separator, written as an escape sequence (a literal control byte in
+// source makes git treat the file as binary). A plain space would collide:
+// pairKey("a", "a b") === pairKey("a a", "b") would silently merge two
+// distinct pairs. NUL cannot appear in the joined values.
+function pairKey(a: string, b: string): string {
+  return a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`
+}
+
+/**
+ * Candidate pairs = union of (1) pages linked via wikilink/related[], (2)
+ * pages sharing at least one source, (3) pages sharing at least one common
+ * neighbor (the Adamic-Adar candidate set). Never the full O(n^2) cross
+ * product of pages — type-affinity alone never promotes a pair into
+ * candidacy (it only ever adds to an edge's weight once the pair already
+ * qualifies via one of the three sources above).
+ */
+function collectCandidatePairs(bundle: Bundle, neighbors: Map<string, Set<string>>): Set<string> {
+  const pairs = new Set<string>()
+
+  for (const [a, set] of neighbors) {
+    for (const b of set) pairs.add(pairKey(a, b))
+  }
+
+  const bySource = new Map<string, string[]>()
+  for (const page of bundle.pages.values()) {
+    for (const s of new Set(page.frontmatter.sources ?? [])) {
+      const list = bySource.get(s)
+      if (list) list.push(page.id)
+      else bySource.set(s, [page.id])
+    }
+  }
+  for (const ids of bySource.values()) {
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) pairs.add(pairKey(ids[i], ids[j]))
+    }
+  }
+
+  for (const set of neighbors.values()) {
+    if (set.size < 2) continue
+    const arr = [...set]
+    for (let i = 0; i < arr.length; i++) {
+      for (let j = i + 1; j < arr.length; j++) pairs.add(pairKey(arr[i], arr[j]))
+    }
+  }
+
+  return pairs
+}
+
+// Fixed-seed PRNG (mulberry32) so graphology-communities-louvain's
+// stochastic tie-breaking is reproducible across runs — required for
+// deterministic derivation (tests, and a stable graph layout across reloads
+// of the same vault).
+function seededRng(seed: number): () => number {
+  let state = seed
+  return () => {
+    state |= 0
+    state = (state + 0x6d2b79f5) | 0
+    let t = Math.imul(state ^ (state >>> 15), 1 | state)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const LOUVAIN_SEED = 0xc0ffee
+
+export function deriveKnowledgeGraph(bundle: Bundle): KnowledgeGraph {
+  const neighbors = neighborSets(bundle)
+  const candidatePairs = collectCandidatePairs(bundle, neighbors)
+
+  const graph = new Graph({ type: "undirected" })
+  for (const id of bundle.pages.keys()) graph.addNode(id)
+
+  const edges: GraphEdge[] = []
+  const degree = new Map<string, number>()
+
+  for (const key of candidatePairs) {
+    const [a, b] = key.split("\u0000")
+    const pageA = bundle.pages.get(a)
+    const pageB = bundle.pages.get(b)
+    if (!pageA || !pageB) continue
+
+    const wikilink = neighbors.get(a)?.has(b) ? 1 : 0
+    const sharedSource = sharedSourceCount(pageA, pageB)
+    const aa = adamicAdar(neighbors, a, b)
+    const affinity = typeAffinity(pageA.frontmatter.type, pageB.frontmatter.type)
+
+    const weight =
+      wikilink * SIGNAL_WEIGHTS.wikilink +
+      sharedSource * SIGNAL_WEIGHTS.sharedSource +
+      aa * SIGNAL_WEIGHTS.adamicAdar +
+      affinity * SIGNAL_WEIGHTS.typeAffinity
+
+    if (weight === 0) continue
+
+    edges.push({
+      source: a,
+      target: b,
+      weight,
+      signals: { wikilink, sharedSource, adamicAdar: aa, typeAffinity: affinity },
+    })
+    graph.addUndirectedEdge(a, b, { weight })
+    degree.set(a, (degree.get(a) ?? 0) + weight)
+    degree.set(b, (degree.get(b) ?? 0) + weight)
+  }
+
+  // Louvain needs at least one node; empty bundles skip it entirely rather
+  // than relying on the library to no-op gracefully. Single-node and
+  // multi-node zero-edge graphs are handled fine by the library itself
+  // (each isolated node lands in its own community — single-node graphs
+  // land on community 0 since it's the only node processed).
+  const communityMap: Record<string, number> =
+    graph.order > 0 ? louvain(graph, { rng: seededRng(LOUVAIN_SEED), getEdgeWeight: "weight" }) : {}
+
+  const nodes: GraphNode[] = [...bundle.pages.values()].map((page) => ({
+    id: page.id,
+    title: page.frontmatter.title,
+    type: page.frontmatter.type,
+    community: communityMap[page.id] ?? 0,
+    degree: degree.get(page.id) ?? 0,
+  }))
+
+  const communities = new Set(nodes.map((n) => n.community)).size
+
+  return { nodes, edges, communities }
+}

@@ -1,0 +1,96 @@
+import type { Bundle } from "../vault/bundle"
+
+export interface AuthorNode {
+  key: string // normalized author name (lowercased, collapsed whitespace)
+  name: string // display name (first-seen casing)
+  paperCount: number
+  pageId: string | null // wiki author page id when one exists (match by normalized name)
+}
+
+export interface CoauthorEdge {
+  a: string
+  b: string
+  papers: number // keys; papers = co-authored count
+}
+
+export interface AuthorNetwork {
+  nodes: AuthorNode[]
+  edges: CoauthorEdge[]
+}
+
+function normalize(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toLowerCase()
+}
+
+// NUL separator, written as an escape sequence (a literal control byte in
+// source makes git treat the file as binary). A plain space would collide:
+// pairKey("a", "a b") === pairKey("a a", "b") would silently merge two
+// distinct pairs. NUL cannot appear in the joined values.
+function pairKey(a: string, b: string): string {
+  return a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`
+}
+
+/**
+ * Co-authorship network from `paper` page frontmatter (`authors: string[]`).
+ * Names are normalized (trim, collapse whitespace, lowercase) into a `key`;
+ * every unordered co-author pair on one paper increments a `CoauthorEdge`.
+ * An author's `pageId` is set when a `type: author` page's title normalizes
+ * to the same key. Pure: no storage/network/DOM.
+ */
+export function deriveAuthorNetwork(bundle: Bundle): AuthorNetwork {
+  const authorPageByKey = new Map<string, string>()
+  for (const page of bundle.pages.values()) {
+    if (page.frontmatter.type !== "author") continue
+    const key = normalize(page.frontmatter.title)
+    if (!authorPageByKey.has(key)) authorPageByKey.set(key, page.id)
+  }
+
+  const nodes = new Map<string, AuthorNode>()
+  const edges = new Map<string, CoauthorEdge>()
+
+  for (const page of bundle.pages.values()) {
+    if (page.frontmatter.type !== "paper") continue
+    const authors = page.frontmatter.authors
+    if (!Array.isArray(authors)) continue
+
+    // Dedupe identical normalized names within this one paper before
+    // touching paperCount / co-author pairs, so a name listed twice on the
+    // same paper doesn't inflate counts or create a self-edge.
+    const onThisPaper = new Map<string, string>() // key -> display name
+    for (const raw of authors) {
+      if (typeof raw !== "string") continue
+      const name = raw.trim().replace(/\s+/g, " ")
+      if (!name) continue
+      const key = normalize(name)
+      if (!onThisPaper.has(key)) onThisPaper.set(key, name)
+    }
+
+    for (const [key, name] of onThisPaper) {
+      let node = nodes.get(key)
+      if (!node) {
+        node = { key, name, paperCount: 0, pageId: authorPageByKey.get(key) ?? null }
+        nodes.set(key, node)
+      }
+      node.paperCount += 1
+    }
+
+    const keys = [...onThisPaper.keys()]
+    for (let i = 0; i < keys.length; i++) {
+      for (let j = i + 1; j < keys.length; j++) {
+        const a = keys[i]
+        const b = keys[j]
+        if (a === b) continue
+        const edgeKey = pairKey(a, b)
+        let edge = edges.get(edgeKey)
+        if (!edge) {
+          const [lo, hi] = a < b ? [a, b] : [b, a]
+          edge = { a: lo, b: hi, papers: 0 }
+          edges.set(edgeKey, edge)
+        }
+        edge.papers += 1
+      }
+    }
+  }
+
+  return { nodes: [...nodes.values()], edges: [...edges.values()] }
+}
