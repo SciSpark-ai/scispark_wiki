@@ -407,12 +407,20 @@ async function rankCandidates(
     const output = unwrapRun(run)
     costUsd += run.costUsd
 
+    const seenInBatch = new Set<number>()
     for (const s of output.scores) {
       const localIndex = s.index - offset
       if (localIndex < 0 || localIndex >= batch.length) {
         console.warn(`[feed] rank stage dropped out-of-range index ${s.index} (batch offset ${offset})`)
         continue
       }
+      // Model output can repeat an index; keep only the first occurrence so one
+      // candidate never claims two pool slots or inflates stats.ranked.
+      if (seenInBatch.has(localIndex)) {
+        console.warn(`[feed] rank stage dropped duplicate index ${s.index}`)
+        continue
+      }
+      seenInBatch.add(localIndex)
       scored.push({ candidate: batch[localIndex], score: s.score })
     }
   }
@@ -451,11 +459,18 @@ async function rerankCandidates(
   const output = unwrapRun(run)
 
   const items: FeedItem[] = []
+  const seenIndices = new Set<number>()
   for (const entry of output.items) {
     if (entry.index < 0 || entry.index >= pool.length) {
       console.warn(`[feed] re-rank stage dropped out-of-range index ${entry.index}`)
       continue
     }
+    // A repeated index would render the same paper card twice; keep the first.
+    if (seenIndices.has(entry.index)) {
+      console.warn(`[feed] re-rank stage dropped duplicate index ${entry.index}`)
+      continue
+    }
+    seenIndices.add(entry.index)
     const scored = pool[entry.index]
     items.push({
       paper: scored.candidate,

@@ -208,6 +208,54 @@ describe("runFeed", () => {
     expect(result.items[0].paper.title).toBe("Paper A")
   })
 
+  it("drops duplicate indices in rank and re-rank output — a paper never renders twice", async () => {
+    const storage = new MemoryVaultStorage()
+    const candidates = [
+      paper({ title: "Paper A", ids: { arxiv: "1" } }),
+      paper({ title: "Paper B", ids: { arxiv: "2" } }),
+    ]
+    const searchFn = async () => candidates
+
+    const strategyProvider = new MockProvider([
+      llmResult(ONE_QUERY_STRATEGY, "claude-opus-4-8"),
+      llmResult(
+        {
+          items: [
+            { index: 0, whyThis: "t1", whyYou: "y1", whyNow: "n1" },
+            { index: 0, whyThis: "t2", whyYou: "y2", whyNow: "n2" }, // duplicate, dropped
+            { index: 1, whyThis: "t3", whyYou: "y3", whyNow: "n3" },
+          ],
+        },
+        "claude-opus-4-8",
+      ),
+    ])
+    const rankProvider = new MockProvider([
+      llmResult(
+        {
+          scores: [
+            { index: 0, score: 90 },
+            { index: 0, score: 10 }, // duplicate, dropped (first occurrence wins)
+            { index: 1, score: 80 },
+          ],
+        },
+        "claude-haiku-4-5",
+      ),
+    ])
+
+    const result = await runFeed(storage, {
+      searchFn,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: strategyProvider, fast: rankProvider },
+      now: NOW,
+    })
+
+    expect(result.stats.ranked).toBe(2)
+    expect(result.items).toHaveLength(2)
+    expect(result.items.map((i) => i.paper.title)).toEqual(["Paper A", "Paper B"])
+    expect(result.items[0].score).toBe(90) // first occurrence's score, not the duplicate's
+    expect(result.items[0].whyThis).toBe("t1")
+  })
+
   it("throws without writing cache when zero candidates are retrieved", async () => {
     const storage = new MemoryVaultStorage()
     const searchFn = async () => []
