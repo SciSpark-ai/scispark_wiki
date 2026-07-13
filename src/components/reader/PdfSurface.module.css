@@ -1,0 +1,87 @@
+.root {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: auto;
+}
+
+.pages {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+}
+
+.page {
+  position: relative;
+}
+
+.canvas {
+  display: block;
+}
+
+/* pdf.js's TextLayer class creates <span>/<br> children directly inside
+ * this element (see node_modules/pdfjs-dist/build/pdf.mjs, class TextLayer).
+ * We render with includeMarkedContent left at its default (false), so no
+ * ".markedContent" wrapper spans are ever produced here — only the
+ * per-item <span> that TextLayer's own #appendText creates, one per
+ * getTextContent() item, in item order. `span`/`br` are plain element
+ * selectors so CSS Modules leaves them unscoped, matching the classless
+ * DOM pdf.js emits. */
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  --total-scale-factor: 1;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.textLayer span,
+.textLayer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+
+.textLayer > span {
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.textLayer ::selection {
+  background: rgba(249, 115, 22, 0.35);
+}
+
+.highlightOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.status {
+  padding: 16px;
+  font-size: 0.875rem;
+  color: var(--color-muted-text, #94877c);
+}
+
+.error {
+  padding: 16px;
+  font-size: 0.875rem;
+  color: #b91c1c;
+}

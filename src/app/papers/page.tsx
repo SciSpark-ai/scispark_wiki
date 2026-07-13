@@ -1,7 +1,7 @@
 "use client"
 
 import { Suspense, useEffect, useState, type FormEvent } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { paperKey, type PaperRecord, type SourceId } from "@/lib/papers/types"
 import { acquireFullText, snapshotSource } from "@/lib/wiki/acquire"
@@ -12,6 +12,8 @@ import { loadSettings } from "@/lib/llm/settings"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadFeed } from "@/lib/skills/feed"
 import { logEvent } from "@/lib/events/log"
+import { writeReaderHandoff } from "@/lib/reader/handoff"
+import { listHighlights, formatHighlightsForPrompt } from "@/lib/highlights/store"
 import { PaperResultItem } from "@/components/papers/PaperResultItem"
 import { DigestPanel } from "@/components/papers/DigestPanel"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
@@ -54,6 +56,22 @@ function pageHref(idOrPath: string): string {
 
 function PapersPageContent() {
   const searchParams = useSearchParams()
+  const router = useRouter()
+
+  // A just-searched paper is in neither the feed cache nor the wiki yet, so the
+  // reader can't resolve it by key alone — stash the full record first, then
+  // navigate.
+  async function handleReadFullPaper() {
+    if (!selected) return
+    try {
+      const vault = await getOpenVault()
+      await writeReaderHandoff(vault, selected)
+    } catch {
+      // If the stash fails the reader will fall back to its other resolution
+      // paths (feed cache / ingested page) or show "not found" — don't block.
+    }
+    router.push(`/reader?paperKey=${encodeURIComponent(paperKey(selected))}`)
+  }
   const [source, setSource] = useState<SourceId>("arxiv")
   const [query, setQuery] = useState("")
   const [searching, setSearching] = useState(false)
@@ -163,6 +181,10 @@ function PapersPageContent() {
       setIngestState({ phase: "ingesting" })
       const settings = await loadSettings(vault)
       const today = new Date().toISOString().slice(0, 10)
+      // Emphasis wiring (M6): the user's own highlights on this paper feed
+      // into buildAnalysisContext's "User Highlights" section as signals of
+      // what the ingest should emphasize.
+      const highlights = formatHighlightsForPrompt(await listHighlights(vault, paperKey(selected)))
       const run = await runSkill({
         skill: ingestSkill,
         input: {
@@ -170,6 +192,7 @@ function PapersPageContent() {
           paper: selected,
           digest,
           fullText: { kind: acquired.kind, text: acquired.text, snapshotPath },
+          highlights,
           today,
         },
         storage: vault,
@@ -356,6 +379,12 @@ function PapersPageContent() {
                   className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1 disabled:opacity-50"
                 >
                   Add to knowledge base
+                </button>
+                <button
+                  onClick={handleReadFullPaper}
+                  className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1"
+                >
+                  Read full paper
                 </button>
               </div>
 

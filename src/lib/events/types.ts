@@ -9,5 +9,9 @@ export type SciSparkEvent =
   | { type: "feed_save"; paperKey: string; title: string }
   | { type: "feed_dismiss"; paperKey: string; title: string }
   | { type: "consolidation"; changesetId: string | null }
+  | { type: "reader_open"; paperKey: string; title: string }
+  | { type: "highlight_add"; paperKey: string; title: string }
+  | { type: "reading_ask"; paperKey: string }
+  | { type: "idea_captured"; paperKey: string; changesetId: string }
 
 export type LoggedEvent = SciSparkEvent & { ts: string } // ISO timestamp
