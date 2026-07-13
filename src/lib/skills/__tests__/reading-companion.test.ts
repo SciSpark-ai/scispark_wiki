@@ -134,6 +134,10 @@ describe("readingCompanionSkill", () => {
     // elsewhere") and is wrapped starting M7.
     expect(systemContent).toContain(COMPANION.name)
     expect(systemContent).toContain("Accuracy and grounding always come first")
+    // Persona is TONE ONLY — it must not replace the skill's substantive
+    // grounding/citation rules, which must still be present in the same prompt.
+    expect(systemContent).toContain("Ground every claim")
+    expect(systemContent).toContain("say so plainly rather than inventing")
   })
 
   it("neutralizes fence-marker runs inside the selection before sending", async () => {
