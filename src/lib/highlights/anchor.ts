@@ -85,6 +85,11 @@ function longestCommonPrefixLength(a: string, b: string): number {
 export function resolveAnchor(text: string, anchor: HighlightAnchor): { start: number; end: number } | null {
   const { exact, prefix, suffix, start, end } = anchor
 
+  // A malformed/empty-exact anchor (only reachable if a stored anchor bypassed
+  // createAnchor's validation) can never anchor a real highlight — orphan it
+  // rather than resolving to a zero-width span.
+  if (exact.length === 0) return null
+
   // Tier 1: fast path.
   if (start >= 0 && start <= end && end <= text.length && text.slice(start, end) === exact) {
     return { start, end }

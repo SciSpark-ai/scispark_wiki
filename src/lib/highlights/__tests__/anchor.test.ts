@@ -183,4 +183,11 @@ describe("resolveAnchor", () => {
     const anchor = createAnchor("xyz-needle-xyz", 4, 10) // "needle"
     expect(resolveAnchor(text, anchor)).toBeNull()
   })
+
+  it("orphans a malformed empty-exact anchor instead of returning a zero-width span", () => {
+    // createAnchor can never produce this (it throws on start>=end), but a
+    // corrupted stored anchor could; resolveAnchor must reject it.
+    const anchor = { exact: "", prefix: "abc", suffix: "def", start: 5, end: 5 }
+    expect(resolveAnchor("abcdef ghij", anchor)).toBeNull()
+  })
 })
