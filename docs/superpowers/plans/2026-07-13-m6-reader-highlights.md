@@ -367,3 +367,14 @@ export async function buildAskContext(storage: VaultStorage, args: {
 - Blessed storage pattern honored: skills (T3) are storage-free; orchestration (T8 `buildAskContext`, T4 capture) owns storage.
 - Deferred (not M6): companion **persona** wrapping (M7 — the skill is persona-free now); external image rendering in the HTML reader (dropped for privacy/CORS; relay-routed images are a later enhancement); PDF-only live fetch may fall back to `kind:"none"` if the acquire PDF branch proves flaky; dwell-time *duration* events (only `reader_open` now — precise dwell tracking can ride with the companion's idle triggers in M7).
 - Ride-forward from earlier milestones touched here: note-path slug fix (T4 addresses the M5-ledgered `New note` hardcoded-path collision for captured ideas).
+
+---
+
+## Status (2026-07-13) — MERGED
+
+All 9 tasks complete; final whole-branch review READY TO MERGE (zero Critical/Important; all safety constraints verified). Live gate PASS 2/2 vs GMI `anthropic/claude-sonnet-5` — Reading-Companion answer grounded, **$0.0101/select-to-ask**. Browser-verified: `/reader` mounts with no SSR crash/console errors; search → "Read full paper" → relay-fetched HTML rendered + sanitized (images→`[figure]`, links inert); handoff resolution survives reload; text selection valid; SelectionBubble renders Ask/Highlight/Capture idea.
+
+### Manual verification checklist (deferred to Tong's hand-driven pass)
+
+1. **Reader HTML renders unstyled — needs better rendering.** The sanitized paper HTML currently displays as a flat wall of plain text: headings (Introduction/Method/Results…), paragraphs, and lists all render with no visual hierarchy or spacing. Likely root cause: the `.reader-surface` container has no prose/typography CSS, so the semantic tags DOMPurify preserves (`h1-h6`, `p`, `ul/ol`, `blockquote`, `table`) inherit the Tailwind reset (no margins, uniform font-size) and collapse to undifferentiated text; the arXiv HTML's own stylesheet is (correctly) stripped. **Try better ways** to render: add a scoped typography layer to `.reader-surface` (e.g. `@tailwindcss/typography` `prose` classes, or hand-written CSS giving headings/paragraphs/lists real size + spacing), and consider preserving more structural markup (section numbering, math via MathML/KaTeX, tables) so the reader looks like a paper, not a transcript. Verify against a real arXiv HTML paper.
+2. **Interactive select→highlight→ask flow (real mouse).** Select a passage with a real mouse (the bubble stays, unlike scripted selections): click **Highlight** → confirm the mark paints and survives a page reload; click **Ask** (GMI key configured in /debug/llm) → confirm a grounded answer + cited-page links appear in the right panel; click **Capture idea** → confirm a linked `note` page is created. Also test the **PDF** surface (selection→actions work; highlight painting on PDF is a known deferred gap).
