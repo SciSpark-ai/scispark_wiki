@@ -91,8 +91,11 @@ export function deriveTimeline(bundle: Bundle): Timeline {
   lanes.sort((a, b) => b.itemCount - a.itemCount || a.title.localeCompare(b.title))
 
   // Empty item set has no meaningful year range; callers should treat 0/0 as
-  // "no data" rather than a real calendar year.
-  const years = items.map((i) => i.year)
+  // "no data" rather than a real calendar year. Items whose date failed to
+  // parse (year 0 from a malformed `created`) are excluded from the RANGE so
+  // one corrupt page can't drag minYear to the 0/0 empty sentinel — they stay
+  // in `items` (the view can still list them) but don't distort the axis.
+  const years = items.map((i) => i.year).filter((y) => y > 0)
   const minYear = years.length ? Math.min(...years) : 0
   const maxYear = years.length ? Math.max(...years) : 0
 

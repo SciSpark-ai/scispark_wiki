@@ -70,6 +70,18 @@ describe("deriveTimeline — dates and years", () => {
     expect(timeline.minYear).toBe(2024)
     expect(timeline.maxYear).toBe(2026)
   })
+
+  it("a malformed created date does not drag the year range to the 0/0 empty sentinel", async () => {
+    const bundle = await bundleFrom({
+      "wiki/findings/bad.md": [fm("finding", "Bad", { created: "not-a-date" }), "no links"],
+      "wiki/papers/p1.md": [fm("paper", "P1", { year: 2020 }), "no links"],
+    })
+    const timeline = deriveTimeline(bundle)
+    // The corrupt item stays listed (year 0) but is excluded from the axis range.
+    expect(timeline.items).toHaveLength(2)
+    expect(timeline.minYear).toBe(2020)
+    expect(timeline.maxYear).toBe(2020)
+  })
 })
 
 describe("deriveTimeline — topic lanes", () => {
