@@ -71,7 +71,7 @@ export default function OnboardingPage() {
 
       {state.status === "already-onboarded" && (
         <div className="text-center">
-          <p className="text-[15px] text-espresso mb-4">You've already set up your research profile.</p>
+          <p className="text-[15px] text-espresso mb-4">You&apos;ve already set up your research profile.</p>
           <Link href="/" className="text-[13px] text-orange hover:text-orange/90 tracking-body">
             Go to your feed →
           </Link>
@@ -82,7 +82,7 @@ export default function OnboardingPage() {
         <div className="w-full">
           <div className="text-center mb-8">
             <h2 className="font-heading text-[15px] text-muted-text tracking-heading-card">
-              Let's set up your research profile
+              Let&apos;s set up your research profile
             </h2>
           </div>
           <OnboardingFlow onSubmit={handleSubmit} submitting={submitting} />
