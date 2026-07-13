@@ -395,3 +395,9 @@ export async function loadFeed(storage: VaultStorage): Promise<FeedResult | null
 - Type consistency: `SearchFn`, `FeedStrategy`, `UserContext`, `USER_MODEL_PATHS` defined once and consumed by name in later tasks.
 - Trending-agent candidates (design 02 stage-1 input) are deliberately absent: trending is M10; `retrieveCandidates` takes only strategy queries today and gains a candidate-injection parameter in M10.
 - Dwell-time/highlight events deferred to M6 (reader milestone) — the event union is open for extension.
+
+---
+
+## Status (2026-07-13)
+
+All 9 tasks complete on branch m5-feed-user-model; final whole-branch review READY TO MERGE (zero Critical/Important); live gate 2/2 vs GMI `anthropic/claude-sonnet-5`. Ride-along fix during live gate: OpenAICompatProvider strips unsupported JSON-Schema constraint keywords from wire schemas (GMI's Anthropic passthrough moved to native structured outputs and rejects them); enforcement stays client-side in zod. Ledgered Minors riding to M6+/M11 are in .superpowers/sdd/progress.md (notably: orphaned mock feed subtree → delete in M11; buildUserContext 100-event window vs marker advance; s2-key exclusion gap predating M5).
