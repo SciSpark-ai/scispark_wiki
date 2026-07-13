@@ -27,6 +27,19 @@ describe("sanitizePaperHtml", () => {
     expect(out).toContain("See figure below.")
   })
 
+  it("gives the img placeholder a class the reader typography can target, and keeps class on allowed elements", () => {
+    const out = sanitizePaperHtml('<p class="lead">Text</p><img src="http://x/y.png">')
+    expect(out).toContain('class="reader-figure-placeholder"')
+    // class is allowed (inert) so the placeholder hook and structural hooks work.
+    expect(out).toContain('class="lead"')
+  })
+
+  it("still forbids the style attribute even though class is allowed", () => {
+    const out = sanitizePaperHtml('<p style="position:fixed" class="ok">Text</p>')
+    expect(out).not.toContain("position:fixed")
+    expect(out).not.toContain("style=")
+  })
+
   it("strips iframe/style/object/embed tags", () => {
     const out = sanitizePaperHtml(
       '<iframe src="http://evil.example.com"></iframe>' +

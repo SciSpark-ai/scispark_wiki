@@ -59,7 +59,11 @@ const ALLOWED_TAGS = [
   "span",
 ]
 
-const ALLOWED_ATTR = ["href"]
+// `class` is inert (it can't execute anything, and the paper's own stylesheet is
+// stripped, so surviving paper classes are no-ops) — it's allowed only so the
+// reader's own typography can target the `[figure]` placeholder span below and
+// so the surface can carry structural hooks. `style` remains forbidden.
+const ALLOWED_ATTR = ["href", "class"]
 
 const FORBID_TAGS = ["script", "style", "iframe", "object", "embed", "img"]
 const FORBID_ATTR = [
@@ -99,6 +103,7 @@ function ensureImgPlaceholderHook(): void {
     if (element.tagName?.toLowerCase() !== "img") return
     const placeholder = element.ownerDocument.createElement("span")
     placeholder.textContent = FIGURE_PLACEHOLDER_TEXT
+    placeholder.setAttribute("class", "reader-figure-placeholder")
     element.parentNode?.replaceChild(placeholder, element)
   })
 }
