@@ -39,6 +39,11 @@ export interface YearColumn {
  * Groups papers into columns by year, ordered ascending. Within a column,
  * ids appear in the same relative order they appeared in the input array
  * (stable — never re-sorted by id or anything else).
+ *
+ * Year 0 is the project's "date unparseable" sentinel (see deriveTimeline) —
+ * a numeric-ascending sort would place undated papers in the LEFTMOST column,
+ * visually claiming they predate everything. The no-year column is instead
+ * pinned to the far right, after every real year.
  */
 export function yearColumns(papers: { id: string; year: number }[]): YearColumn[] {
   const groups = new Map<number, string[]>()
@@ -50,7 +55,8 @@ export function yearColumns(papers: { id: string; year: number }[]): YearColumn[
     }
     ids.push(paper.id)
   }
+  const orderKey = (year: number) => (year <= 0 ? Number.POSITIVE_INFINITY : year)
   return [...groups.entries()]
-    .sort(([a], [b]) => a - b)
+    .sort(([a], [b]) => orderKey(a) - orderKey(b))
     .map(([year, ids]) => ({ year, ids }))
 }

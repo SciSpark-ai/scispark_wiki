@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useId, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { linkHorizontal } from "d3-shape"
 import type { CitationEdge, CitationFlow } from "@/lib/viz/citations"
@@ -52,6 +52,9 @@ const linkGen = linkHorizontal()
  */
 export default function CitationFlowView({ papers, flow, fetchState, onFetch }: CitationFlowViewProps) {
   const router = useRouter()
+  // Instance-scoped marker id: a fixed string would collide if two views
+  // ever mount at once (side-by-side compare, storybook).
+  const arrowMarkerId = useId() + "-citation-arrow"
   const [hovered, setHovered] = useState<Hovered>(null)
 
   const nodeIds = useMemo(() => {
@@ -165,7 +168,7 @@ export default function CitationFlowView({ papers, flow, fetchState, onFetch }: 
                 <svg width={width} height={height} role="img" aria-label="Citation flow">
                   <defs>
                     <marker
-                      id="citation-arrow"
+                      id={arrowMarkerId}
                       viewBox="0 0 10 10"
                       refX="9"
                       refY="5"
@@ -204,7 +207,7 @@ export default function CitationFlowView({ papers, flow, fetchState, onFetch }: 
                         stroke={highlighted ? EDGE_HIGHLIGHT_COLOR : EDGE_COLOR}
                         strokeWidth={highlighted ? 2 : 1.25}
                         opacity={edgeOpacity(edge)}
-                        markerEnd="url(#citation-arrow)"
+                        markerEnd={`url(#${arrowMarkerId})`}
                         className="cursor-pointer"
                         onMouseEnter={() => setHovered({ kind: "edge", citing: edge.citing, cited: edge.cited })}
                         onMouseLeave={() => setHovered(null)}

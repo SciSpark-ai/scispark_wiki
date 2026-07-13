@@ -130,4 +130,14 @@ describe("yearColumns", () => {
     const result = yearColumns([{ id: "p1", year: 0 }])
     expect(result).toEqual([{ year: 0, ids: ["p1"] }])
   })
+
+  it("the year-0 (undated) column is pinned LAST, never before real years", () => {
+    const result = yearColumns([
+      { id: "old", year: 1995 },
+      { id: "undated", year: 0 },
+      { id: "recent", year: 2023 },
+    ])
+    expect(result.map((c) => c.year)).toEqual([1995, 2023, 0])
+    expect(result[2].ids).toEqual(["undated"])
+  })
 })

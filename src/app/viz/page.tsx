@@ -58,6 +58,9 @@ export default function VizPage() {
 
   const handleFetchCitations = async () => {
     if (!bundle) return
+    // Self-defensive re-entrancy guard (the button is also disabled while
+    // fetching, but the handler shouldn't depend on its caller for that).
+    if (citationFetchState === "fetching") return
     setCitationFetchState("fetching")
     try {
       const storage: VaultStorage = await getOpenVault()
