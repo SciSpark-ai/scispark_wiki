@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { topLanes, yearColumns, topAuthorsByPaperCount, OTHER_LANE_ID } from "../layout"
+import { topLanes, yearColumns, topAuthorsByPaperCount, edgesAmongNodes, OTHER_LANE_ID } from "../layout"
 import type { TimelineLane } from "../timeline"
 import type { AuthorNode } from "../authors"
 
@@ -181,5 +181,41 @@ describe("topAuthorsByPaperCount", () => {
     const copy = [...input]
     topAuthorsByPaperCount(input, 10)
     expect(input).toEqual(copy)
+  })
+})
+
+describe("edgesAmongNodes (forceLink crash guard)", () => {
+  it("drops any edge referencing a node outside the rendered set", () => {
+    const edges = [
+      { a: "kept1", b: "kept2", papers: 3 },
+      { a: "kept1", b: "dropped", papers: 1 }, // endpoint capped out — must be excluded
+      { a: "dropped", b: "kept2", papers: 2 },
+      { a: "droppedX", b: "droppedY", papers: 5 },
+    ]
+    const keys = new Set(["kept1", "kept2"])
+    expect(edgesAmongNodes(edges, keys)).toEqual([{ a: "kept1", b: "kept2", papers: 3 }])
+  })
+
+  it("a 201-author over-cap network yields only in-cap edges (no dangling references)", () => {
+    const nodes = Array.from({ length: 201 }, (_, i) => author(`a${i}`, 201 - i))
+    const capped = topAuthorsByPaperCount(nodes, 200)
+    const keys = new Set(capped.map((n) => n.key))
+    // a200 has the lowest paperCount and is the one capped out.
+    expect(keys.has("a200")).toBe(false)
+    const edges = [
+      { a: "a0", b: "a200", papers: 1 }, // references the dropped author
+      { a: "a0", b: "a1", papers: 2 },
+    ]
+    const inScope = edgesAmongNodes(edges, keys)
+    expect(inScope).toEqual([{ a: "a0", b: "a1", papers: 2 }])
+    // every surviving edge endpoint is resolvable — the forceLink invariant.
+    for (const e of inScope) {
+      expect(keys.has(e.a)).toBe(true)
+      expect(keys.has(e.b)).toBe(true)
+    }
+  })
+
+  it("empty keys -> no edges", () => {
+    expect(edgesAmongNodes([{ a: "x", b: "y", papers: 1 }], new Set())).toEqual([])
   })
 })

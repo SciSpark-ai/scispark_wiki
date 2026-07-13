@@ -75,3 +75,13 @@ export function topAuthorsByPaperCount(nodes: AuthorNode[], n: number): AuthorNo
     .sort((a, b) => b.paperCount - a.paperCount || a.key.localeCompare(b.key))
     .slice(0, Math.max(0, n))
 }
+
+/**
+ * Filters co-author edges to pairs whose BOTH endpoints are in `keys`.
+ * This is the guard that keeps d3-force's forceLink from throwing
+ * "node not found" when the author list is capped (an edge referencing a
+ * dropped author must never reach the simulation).
+ */
+export function edgesAmongNodes<E extends { a: string; b: string }>(edges: E[], keys: Set<string>): E[] {
+  return edges.filter((e) => keys.has(e.a) && keys.has(e.b))
+}

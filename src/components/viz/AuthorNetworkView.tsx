@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { forceSimulation, forceManyBody, forceLink, forceCollide, forceCenter } from "d3-force"
 import type { SimulationNodeDatum, SimulationLinkDatum } from "d3-force"
 import type { AuthorNetwork } from "@/lib/viz/authors"
-import { topAuthorsByPaperCount } from "@/lib/viz/layout"
+import { topAuthorsByPaperCount, edgesAmongNodes } from "@/lib/viz/layout"
 
 const MAX_NODES = 200
 const MAX_LABELS = 20
@@ -76,7 +76,7 @@ function layoutNetwork(network: AuthorNetwork): LaidOutNetwork {
     radius: clampedScale(n.paperCount, minPapers, maxPapers, NODE_MIN_RADIUS, NODE_MAX_RADIUS),
   }))
 
-  const edgesInScope = network.edges.filter((e) => cappedKeys.has(e.a) && cappedKeys.has(e.b))
+  const edgesInScope = edgesAmongNodes(network.edges, cappedKeys)
   const edgeCounts = edgesInScope.map((e) => e.papers)
   const minEdge = edgeCounts.length ? Math.min(...edgeCounts) : 0
   const maxEdge = edgeCounts.length ? Math.max(...edgeCounts) : 0
