@@ -8,6 +8,7 @@ import {
   BookOpen,
   Clock,
   FolderOpen,
+  Network,
   PanelLeftClose,
 } from "lucide-react";
 import { useUserStore } from "@/stores/user-store";
@@ -29,6 +30,7 @@ export const navItems = [
   { key: "chat", label: "New Chat", href: "/chat", icon: MessageSquarePlus },
   { key: "projects", label: "Projects", href: "/projects", icon: FolderOpen },
   { key: "library", label: "Library", href: "/library", icon: BookOpen },
+  { key: "dashboard", label: "Dashboard", href: "/viz", icon: Network },
   { key: "history", label: "History", href: "/history", icon: Clock },
 ] as const;
 
