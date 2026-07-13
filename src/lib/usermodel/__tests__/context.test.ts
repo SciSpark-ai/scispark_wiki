@@ -167,5 +167,12 @@ describe("buildUserContext", () => {
 
     const libraryLines = (ctx.text.match(/- Paper \d+ \(2026\)/g) ?? []).length
     expect(libraryLines).toBe(50)
+    // The 50 survivors must be the NEWEST by created: papers 0-4 (June 1-5) drop,
+    // paper 5 (June 6) and paper 54 (July 27) survive.
+    expect(ctx.text).toContain("- Paper 54 (2026)")
+    expect(ctx.text).toContain("- Paper 5 (2026)")
+    for (let i = 0; i < 5; i++) {
+      expect(ctx.text).not.toContain(`- Paper ${i} (2026)`)
+    }
   })
 })
