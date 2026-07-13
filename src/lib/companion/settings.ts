@@ -1,4 +1,5 @@
 import type { VaultStorage } from "../vault/storage"
+import { COMPANION } from "./persona"
 
 /**
  * Companion settings — stored under a top-level "companion" key in
@@ -14,11 +15,18 @@ export type Chattiness = "off" | "low" | "medium" | "high"
 
 export interface CompanionSettings {
   chattiness: Chattiness
+  /** User-chosen companion name (M7 addendum). Falls back to COMPANION.name
+   * (the default "Ember") when absent, blank, or over MAX_NAME_LENGTH. */
+  companionName: string
 }
 
 export const DEFAULT_COMPANION_SETTINGS: CompanionSettings = {
   chattiness: "medium",
+  companionName: COMPANION.name,
 }
+
+/** Max accepted companionName length; longer values fall back to the default. */
+const MAX_NAME_LENGTH = 40
 
 const CHATTINESS_VALUES: readonly Chattiness[] = ["off", "low", "medium", "high"]
 
@@ -56,10 +64,15 @@ export async function loadCompanionSettings(storage: VaultStorage): Promise<Comp
   // an unknown chattiness (stale schema, typo, hand-edit) must fall back to the
   // default, or SESSION_BUDGET[chattiness] would be undefined and silently mute
   // the companion forever.
+  const rawName = typeof companion.companionName === "string" ? companion.companionName.trim() : ""
+  const companionName =
+    rawName.length > 0 && rawName.length <= MAX_NAME_LENGTH ? rawName : DEFAULT_COMPANION_SETTINGS.companionName
+
   return {
     chattiness: isChattiness(companion.chattiness)
       ? companion.chattiness
       : DEFAULT_COMPANION_SETTINGS.chattiness,
+    companionName,
   }
 }
 

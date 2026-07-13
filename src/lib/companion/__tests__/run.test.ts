@@ -87,7 +87,7 @@ function baseArgs(storage: MemoryVaultStorage, overrides?: Partial<RunCompanionA
 describe("runCompanion", () => {
   it("chattiness off: returns null, makes no LLM call, logs nothing", async () => {
     const storage = await seededStorage()
-    await saveCompanionSettings(storage, { chattiness: "off" })
+    await saveCompanionSettings(storage, { chattiness: "off", companionName: "Ember" })
     const provider = new MockProvider([structuredResult()])
 
     const result = await runCompanion(baseArgs(storage, { providerOverride: { fast: provider } }))
@@ -99,7 +99,7 @@ describe("runCompanion", () => {
 
   it("session budget exhausted: returns null, makes no LLM call", async () => {
     const storage = await seededStorage()
-    await saveCompanionSettings(storage, { chattiness: "low" }) // SESSION_BUDGET.low = 2
+    await saveCompanionSettings(storage, { chattiness: "low", companionName: "Ember" }) // SESSION_BUDGET.low = 2
     const provider = new MockProvider([structuredResult()])
 
     const result = await runCompanion(
@@ -113,7 +113,7 @@ describe("runCompanion", () => {
 
   it("no trigger fires: returns null, nothing logged, no LLM call", async () => {
     const storage = await seededStorage()
-    await saveCompanionSettings(storage, { chattiness: "medium" })
+    await saveCompanionSettings(storage, { chattiness: "medium", companionName: "Ember" })
     const provider = new MockProvider([structuredResult()])
 
     const result = await runCompanion(
@@ -127,7 +127,7 @@ describe("runCompanion", () => {
 
   it("firing trigger under budget: returns utterance from the skill, logs companion_shown, attaches action", async () => {
     const storage = await seededStorage()
-    await saveCompanionSettings(storage, { chattiness: "medium" })
+    await saveCompanionSettings(storage, { chattiness: "medium", companionName: "Ember" })
     const provider = new MockProvider([structuredResult()])
 
     const result = await runCompanion(baseArgs(storage, { providerOverride: { fast: provider } }))
@@ -148,7 +148,7 @@ describe("runCompanion", () => {
 
   it("passes triggerContext and feedback.md body to the skill", async () => {
     const storage = await seededStorage()
-    await saveCompanionSettings(storage, { chattiness: "medium" })
+    await saveCompanionSettings(storage, { chattiness: "medium", companionName: "Ember" })
     const provider = new MockProvider([structuredResult()])
 
     await runCompanion(baseArgs(storage, { providerOverride: { fast: provider } }))
@@ -160,7 +160,7 @@ describe("runCompanion", () => {
 
   it("forced provider error: falls back to the template utterance, still logs shown, never throws", async () => {
     const storage = await seededStorage()
-    await saveCompanionSettings(storage, { chattiness: "medium" })
+    await saveCompanionSettings(storage, { chattiness: "medium", companionName: "Ember" })
     const provider = new MockProvider([new Error("provider exploded")])
 
     const result = await runCompanion(baseArgs(storage, { providerOverride: { fast: provider } }))
@@ -177,9 +177,23 @@ describe("runCompanion", () => {
     expect(shown).toHaveLength(1)
   })
 
+  it("companionName in settings: the companionSkill's system prompt carries the custom name (M7 addendum)", async () => {
+    const storage = await seededStorage()
+    await saveCompanionSettings(storage, { chattiness: "medium", companionName: "Fizz" })
+    const provider = new MockProvider([structuredResult()])
+
+    const result = await runCompanion(baseArgs(storage, { providerOverride: { fast: provider } }))
+
+    expect(result).not.toBeNull()
+    expect(provider.calls).toHaveLength(1)
+    const systemContent = provider.calls[0].req.messages[0].content
+    expect(systemContent).toContain("Fizz")
+    expect(systemContent).not.toContain("Ember")
+  })
+
   it("unexpected error anywhere in the flow never throws — returns null", async () => {
     const storage = await seededStorage()
-    await saveCompanionSettings(storage, { chattiness: "medium" })
+    await saveCompanionSettings(storage, { chattiness: "medium", companionName: "Ember" })
     // Force an unexpected failure: storage.read throws for any path.
     const brokenStorage = {
       ...storage,

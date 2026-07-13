@@ -46,9 +46,9 @@ describe("loadCompanionSettings", () => {
 describe("saveCompanionSettings", () => {
   it("round-trips through save then load", async () => {
     const storage = new MemoryVaultStorage()
-    await saveCompanionSettings(storage, { chattiness: "high" })
+    await saveCompanionSettings(storage, { chattiness: "high", companionName: "Ember" })
     const loaded = await loadCompanionSettings(storage)
-    expect(loaded).toEqual({ chattiness: "high" })
+    expect(loaded).toEqual({ chattiness: "high", companionName: "Ember" })
   })
 
   it("preserves an existing sibling llm key when saving companion settings", async () => {
@@ -63,12 +63,12 @@ describe("saveCompanionSettings", () => {
     }
     await storage.write(".scispark/settings.json", JSON.stringify({ llm: llmSettings }))
 
-    await saveCompanionSettings(storage, { chattiness: "low" })
+    await saveCompanionSettings(storage, { chattiness: "low", companionName: "Ember" })
 
     const raw = await storage.read(".scispark/settings.json")
     const parsed = JSON.parse(raw as string)
     expect(parsed.llm).toEqual(llmSettings)
-    expect(parsed.companion).toEqual({ chattiness: "low" })
+    expect(parsed.companion).toEqual({ chattiness: "low", companionName: "Ember" })
   })
 
   it("preserves other unknown sibling top-level keys", async () => {
@@ -86,13 +86,80 @@ describe("saveCompanionSettings", () => {
     await storage.write(".scispark/settings.json", JSON.stringify({ llm: { dailyBudgetUsd: 5 } }))
 
     await Promise.all([
-      saveCompanionSettings(storage, { chattiness: "off" }),
-      saveCompanionSettings(storage, { chattiness: "high" }),
+      saveCompanionSettings(storage, { chattiness: "off", companionName: "Ember" }),
+      saveCompanionSettings(storage, { chattiness: "high", companionName: "Ember" }),
     ])
 
     const raw = await storage.read(".scispark/settings.json")
     const parsed = JSON.parse(raw as string)
     expect(parsed.llm).toEqual({ dailyBudgetUsd: 5 })
     expect(["off", "high"]).toContain(parsed.companion.chattiness)
+  })
+})
+
+describe("companionName (M7 addendum: user-renamable companion)", () => {
+  it("defaults to Ember when absent", async () => {
+    const storage = new MemoryVaultStorage()
+    const settings = await loadCompanionSettings(storage)
+    expect(settings.companionName).toBe("Ember")
+  })
+
+  it("round-trips a custom name through save/load", async () => {
+    const storage = new MemoryVaultStorage()
+    await saveCompanionSettings(storage, { chattiness: "medium", companionName: "Fizz" })
+    const loaded = await loadCompanionSettings(storage)
+    expect(loaded.companionName).toBe("Fizz")
+  })
+
+  it("empty/whitespace companionName falls back to the default name", async () => {
+    const storage = new MemoryVaultStorage()
+    await storage.write(
+      ".scispark/settings.json",
+      JSON.stringify({ companion: { chattiness: "medium", companionName: "   " } }),
+    )
+    const settings = await loadCompanionSettings(storage)
+    expect(settings.companionName).toBe("Ember")
+  })
+
+  it(">40-char companionName falls back to the default name", async () => {
+    const storage = new MemoryVaultStorage()
+    const tooLong = "x".repeat(41)
+    await storage.write(
+      ".scispark/settings.json",
+      JSON.stringify({ companion: { chattiness: "medium", companionName: tooLong } }),
+    )
+    const settings = await loadCompanionSettings(storage)
+    expect(settings.companionName).toBe("Ember")
+  })
+
+  it("a 40-char companionName (boundary) is accepted as-is", async () => {
+    const storage = new MemoryVaultStorage()
+    const exactly40 = "x".repeat(40)
+    await storage.write(
+      ".scispark/settings.json",
+      JSON.stringify({ companion: { chattiness: "medium", companionName: exactly40 } }),
+    )
+    const settings = await loadCompanionSettings(storage)
+    expect(settings.companionName).toBe(exactly40)
+  })
+
+  it("trims surrounding whitespace from an otherwise-valid companionName", async () => {
+    const storage = new MemoryVaultStorage()
+    await storage.write(
+      ".scispark/settings.json",
+      JSON.stringify({ companion: { chattiness: "medium", companionName: "  Fizz  " } }),
+    )
+    const settings = await loadCompanionSettings(storage)
+    expect(settings.companionName).toBe("Fizz")
+  })
+
+  it("returned object has ONLY {chattiness, companionName} — no extra leaked keys", async () => {
+    const storage = new MemoryVaultStorage()
+    await storage.write(
+      ".scispark/settings.json",
+      JSON.stringify({ companion: { chattiness: "high", companionName: "Fizz", extra: true } }),
+    )
+    const settings = await loadCompanionSettings(storage)
+    expect(Object.keys(settings).sort()).toEqual(["chattiness", "companionName"])
   })
 })

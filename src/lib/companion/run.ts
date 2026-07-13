@@ -60,7 +60,11 @@ export async function runCompanion(args: RunCompanionArgs): Promise<CompanionUtt
 
     const run = await runSkill({
       skill: companionSkill,
-      input: { triggerContext: fired.contextBlurb, feedback: userModel.feedback ?? "" },
+      input: {
+        triggerContext: fired.contextBlurb,
+        feedback: userModel.feedback ?? "",
+        companionName: settings.companionName,
+      },
       storage: args.storage,
       settings: args.settings,
       providerOverride: args.providerOverride,

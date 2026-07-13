@@ -18,6 +18,7 @@ import { buildAskContext } from "@/lib/reader/ask-context"
 import { readingCompanionSkill } from "@/lib/skills/reading-companion"
 import { runSkill } from "@/lib/skills/runner"
 import { loadSettings } from "@/lib/llm/settings"
+import { loadCompanionSettings } from "@/lib/companion/settings"
 import { loadBundle } from "@/lib/vault/bundle"
 import { logEvent } from "@/lib/events/log"
 
@@ -224,8 +225,16 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
         surroundingText: computeSurroundingText(surfaceTextRef.current, target.start, target.end),
         userQuestion: question,
       })
-      const settings = await loadSettings(storage)
-      const run = await runSkill({ skill: readingCompanionSkill, input: context, storage, settings })
+      const [settings, companionSettings] = await Promise.all([
+        loadSettings(storage),
+        loadCompanionSettings(storage),
+      ])
+      const run = await runSkill({
+        skill: readingCompanionSkill,
+        input: { ...context, companionName: companionSettings.companionName },
+        storage,
+        settings,
+      })
       if (run.status === "ok" && run.output !== undefined) {
         setAskState({ status: "done", answer: run.output.answer, citedPageIds: run.output.citedPageIds })
         void logEvent(storage, { type: "reading_ask", paperKey: key })

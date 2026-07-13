@@ -140,6 +140,43 @@ describe("readingCompanionSkill", () => {
     expect(systemContent).toContain("say so plainly rather than inventing")
   })
 
+  it("companionName in input: system prompt contains the custom name (M7 addendum)", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structuredResult()])
+
+    const input: ReadingCompanionInput = { ...BASE_INPUT, companionName: "Fizz" }
+
+    await runSkill({
+      skill: readingCompanionSkill,
+      input,
+      storage,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+
+    const systemContent = provider.calls[0].req.messages[0].content
+    expect(systemContent).toContain("Fizz")
+    expect(systemContent).not.toContain(COMPANION.name)
+  })
+
+  it("no companionName in input: system prompt defaults to the default name (Ember)", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structuredResult()])
+
+    await runSkill({
+      skill: readingCompanionSkill,
+      input: BASE_INPUT,
+      storage,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+
+    const systemContent = provider.calls[0].req.messages[0].content
+    expect(systemContent).toContain(COMPANION.name)
+  })
+
   it("neutralizes fence-marker runs inside the selection before sending", async () => {
     const storage = new MemoryVaultStorage()
     const provider = new MockProvider([structuredResult()])

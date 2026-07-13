@@ -130,6 +130,43 @@ describe("companionSkill", () => {
     expect(userContent).toContain("<<<FEEDBACK>>>")
   })
 
+  it("companionName in input: system prompt contains the custom name, not the default", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structuredResult()])
+
+    const input: CompanionSkillInput = { ...BASE_INPUT, companionName: "Fizz" }
+
+    await runSkill({
+      skill: companionSkill,
+      input,
+      storage,
+      settings: settingsWithKeys(),
+      providerOverride: { fast: provider },
+      now: NOW,
+    })
+
+    const systemContent = provider.calls[0].req.messages[0].content
+    expect(systemContent).toContain("Fizz")
+    expect(systemContent).not.toContain(COMPANION.name)
+  })
+
+  it("no companionName in input: system prompt defaults to the default name (Ember)", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structuredResult()])
+
+    await runSkill({
+      skill: companionSkill,
+      input: BASE_INPUT,
+      storage,
+      settings: settingsWithKeys(),
+      providerOverride: { fast: provider },
+      now: NOW,
+    })
+
+    const systemContent = provider.calls[0].req.messages[0].content
+    expect(systemContent).toContain(COMPANION.name)
+  })
+
   it("non-ok run status surfaces via runSkill's status field (does not throw)", async () => {
     const storage = new MemoryVaultStorage()
     const provider = new MockProvider([new Error("provider exploded")])

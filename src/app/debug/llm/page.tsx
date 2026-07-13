@@ -78,6 +78,7 @@ export default function LlmDebugPage() {
   const [companionChattiness, setCompanionChattiness] = useState<Chattiness>(
     DEFAULT_COMPANION_SETTINGS.chattiness,
   )
+  const [companionName, setCompanionName] = useState<string>(DEFAULT_COMPANION_SETTINGS.companionName)
   const [companionSaveStatus, setCompanionSaveStatus] = useState("")
 
   const refreshSpend = async () => {
@@ -90,7 +91,9 @@ export default function LlmDebugPage() {
     ;(async () => {
       const vault = await getVault()
       setSettings(await loadSettings(vault))
-      setCompanionChattiness((await loadCompanionSettings(vault)).chattiness)
+      const companion = await loadCompanionSettings(vault)
+      setCompanionChattiness(companion.chattiness)
+      setCompanionName(companion.companionName)
       setLoaded(true)
       await refreshSpend()
     })()
@@ -107,7 +110,18 @@ export default function LlmDebugPage() {
     setCompanionChattiness(value)
     setCompanionSaveStatus("saving…")
     const vault = await getVault()
-    await saveCompanionSettings(vault, { chattiness: value })
+    // Save the FULL CompanionSettings — must include companionName or this
+    // handler would clobber whatever name the other handler last saved.
+    await saveCompanionSettings(vault, { chattiness: value, companionName })
+    setCompanionSaveStatus(`saved ${new Date().toLocaleTimeString()}`)
+  }
+
+  const handleCompanionNameSave = async () => {
+    setCompanionSaveStatus("saving…")
+    const vault = await getVault()
+    // Save the FULL CompanionSettings — must include chattiness or this
+    // handler would clobber whatever chattiness the other handler last saved.
+    await saveCompanionSettings(vault, { chattiness: companionChattiness, companionName })
     setCompanionSaveStatus(`saved ${new Date().toLocaleTimeString()}`)
   }
 
@@ -264,6 +278,17 @@ export default function LlmDebugPage() {
                   </option>
                 ))}
               </select>
+            </label>{" "}
+            <label>
+              Name:{" "}
+              <input
+                type="text"
+                value={companionName}
+                maxLength={40}
+                onChange={(e) => setCompanionName(e.target.value)}
+                onBlur={handleCompanionNameSave}
+                style={{ width: 160 }}
+              />
             </label>{" "}
             <span>{companionSaveStatus}</span>
           </div>
