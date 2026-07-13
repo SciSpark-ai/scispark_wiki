@@ -7,6 +7,7 @@ import { MobileNav } from "./MobileNav";
 import { RightPanel } from "./RightPanel";
 import { useUIStore } from "@/stores/ui-store";
 import { SelectionToNoteBubble } from "@/components/notes/SelectionToNoteBubble";
+import { CompanionMascot } from "@/components/companion/CompanionMascot";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -56,6 +57,7 @@ export function AppShell({ children }: AppShellProps) {
         </RightPanel>
       </div>
       <SelectionToNoteBubble />
+      <CompanionMascot />
     </div>
   );
 }
