@@ -7,6 +7,7 @@ import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadBundle, type Bundle } from "@/lib/vault/bundle"
 import { reviewCount, listIngests, type IngestRecord } from "@/lib/wiki/review-queue"
 import { undoIngest } from "@/lib/skills/ingest"
+import { logEvent } from "@/lib/events/log"
 import { composePage } from "@/lib/wiki/authoring"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { Tree } from "@/components/wiki/Tree"
@@ -45,6 +46,7 @@ export default function WikiIndexPage() {
     setBusy(true)
     try {
       await undoIngest(storage, changesetId)
+      void logEvent(storage, { type: "ingest_undo", changesetId })
       await refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))

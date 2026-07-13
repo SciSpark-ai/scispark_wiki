@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { Suspense, useEffect, useState, type FormEvent } from "react"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { paperKey, type PaperRecord, type SourceId } from "@/lib/papers/types"
 import { acquireFullText, snapshotSource } from "@/lib/wiki/acquire"
@@ -9,6 +10,8 @@ import { ingestSkill, undoIngest, type IngestOutput } from "@/lib/skills/ingest"
 import { runSkill } from "@/lib/skills/runner"
 import { loadSettings } from "@/lib/llm/settings"
 import { getOpenVault } from "@/lib/vault/get-vault"
+import { loadFeed } from "@/lib/skills/feed"
+import { logEvent } from "@/lib/events/log"
 import { PaperResultItem } from "@/components/papers/PaperResultItem"
 import { DigestPanel } from "@/components/papers/DigestPanel"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
@@ -49,7 +52,8 @@ function pageHref(idOrPath: string): string {
   return `/wiki/${id}` // full id in URL: the /wiki/[...id] route joins segments back to the bundle id (e.g. /wiki/wiki/concepts/foo)
 }
 
-export default function PapersPage() {
+function PapersPageContent() {
+  const searchParams = useSearchParams()
   const [source, setSource] = useState<SourceId>("arxiv")
   const [query, setQuery] = useState("")
   const [searching, setSearching] = useState(false)
@@ -60,6 +64,27 @@ export default function PapersPage() {
   const [abstractExpanded, setAbstractExpanded] = useState(false)
   const [digestState, setDigestState] = useState<DigestState>({ status: "idle" })
   const [ingestState, setIngestState] = useState<IngestState>({ phase: "idle" })
+
+  // Deep-link from the home feed's "Read & digest" action: `?paperKey=` is looked
+  // up in the feed cache and preselected, same as clicking a search result.
+  useEffect(() => {
+    const key = searchParams.get("paperKey")
+    if (!key) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const vault = await getOpenVault()
+        const feed = await loadFeed(vault)
+        const item = feed?.items.find((it) => paperKey(it.paper) === key)
+        if (!cancelled && item) handleSelect(item.paper)
+      } catch {
+        // Best-effort deep link — a missing/corrupt cache just leaves nothing preselected.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [searchParams])
 
   async function handleSearch(e: FormEvent) {
     e.preventDefault()
@@ -73,6 +98,7 @@ export default function PapersPage() {
       const body = await res.json()
       if (res.ok && Array.isArray(body?.papers)) {
         setResults(body.papers as PaperRecord[])
+        void getOpenVault().then((vault) => logEvent(vault, { type: "search", source, query: q }))
       } else {
         setSearchError(typeof body?.error === "string" ? body.error : `search failed (status ${res.status})`)
       }
@@ -88,6 +114,9 @@ export default function PapersPage() {
     setAbstractExpanded(false)
     setDigestState({ status: "idle" })
     setIngestState({ phase: "idle" })
+    void getOpenVault().then((vault) =>
+      logEvent(vault, { type: "paper_view", paperKey: paperKey(paper), title: paper.title }),
+    )
   }
 
   async function handleGenerateDigest() {
@@ -100,6 +129,14 @@ export default function PapersPage() {
         fullText: acquired.kind === "html" ? acquired.text : undefined,
       })
       setDigestState({ status: "done", digest, fromCache, costUsd })
+      if (!fromCache) {
+        void logEvent(vault, {
+          type: "digest_generated",
+          paperKey: paperKey(selected),
+          title: selected.title,
+          costUsd,
+        })
+      }
     } catch (err) {
       setDigestState({ status: "error", message: err instanceof Error ? err.message : String(err) })
     }
@@ -141,6 +178,14 @@ export default function PapersPage() {
 
       if (run.status === "ok" && run.output !== undefined) {
         setIngestState({ phase: "done", output: run.output, costUsd: run.costUsd })
+        if (run.output.status === "ok") {
+          void logEvent(vault, {
+            type: "ingest",
+            paperKey: paperKey(selected),
+            title: selected.title,
+            changesetId: run.output.changesetId,
+          })
+        }
       } else {
         setIngestState({
           phase: "error",
@@ -399,5 +444,13 @@ export default function PapersPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function PapersPage() {
+  return (
+    <Suspense fallback={<div className="p-7 text-[14px] text-muted-text">Loading…</div>}>
+      <PapersPageContent />
+    </Suspense>
   )
 }
