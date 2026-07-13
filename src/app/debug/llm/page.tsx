@@ -8,9 +8,17 @@ import type { ProviderId, Tier } from "@/lib/llm/types"
 import { runSkill } from "@/lib/skills/runner"
 import { defineSkill, type SkillRunResult } from "@/lib/skills/types"
 import { Meter } from "@/lib/llm/metering"
+import {
+  loadCompanionSettings,
+  saveCompanionSettings,
+  DEFAULT_COMPANION_SETTINGS,
+  SESSION_BUDGET,
+  type Chattiness,
+} from "@/lib/companion/settings"
 
 const PROVIDERS: ProviderId[] = ["anthropic", "openai", "google", "openrouter"]
 const TIERS: Tier[] = ["fast", "strong"]
+const CHATTINESS_LEVELS: Chattiness[] = ["off", "low", "medium", "high"]
 
 const pingSkill = defineSkill({
   name: "debug-ping",
@@ -67,6 +75,11 @@ export default function LlmDebugPage() {
 
   const [spentTodayUsd, setSpentTodayUsd] = useState<number | null>(null)
 
+  const [companionChattiness, setCompanionChattiness] = useState<Chattiness>(
+    DEFAULT_COMPANION_SETTINGS.chattiness,
+  )
+  const [companionSaveStatus, setCompanionSaveStatus] = useState("")
+
   const refreshSpend = async () => {
     const vault = await getVault()
     const meter = new Meter(vault)
@@ -77,6 +90,7 @@ export default function LlmDebugPage() {
     ;(async () => {
       const vault = await getVault()
       setSettings(await loadSettings(vault))
+      setCompanionChattiness((await loadCompanionSettings(vault)).chattiness)
       setLoaded(true)
       await refreshSpend()
     })()
@@ -87,6 +101,14 @@ export default function LlmDebugPage() {
     const vault = await getVault()
     await saveSettings(vault, settings)
     setSaveStatus(`saved ${new Date().toLocaleTimeString()}`)
+  }
+
+  const handleCompanionChattinessChange = async (value: Chattiness) => {
+    setCompanionChattiness(value)
+    setCompanionSaveStatus("saving…")
+    const vault = await getVault()
+    await saveCompanionSettings(vault, { chattiness: value })
+    setCompanionSaveStatus(`saved ${new Date().toLocaleTimeString()}`)
   }
 
   const handlePing = async () => {
@@ -220,6 +242,30 @@ export default function LlmDebugPage() {
 
           <div style={{ marginTop: 12 }}>
             <button onClick={handleSave}>Save</button> <span>{saveStatus}</span>
+          </div>
+
+          <hr style={{ margin: "24px 0" }} />
+
+          <h2>Research Companion</h2>
+          <p>
+            Chattiness controls how often the companion proactively speaks up (M7). Each level caps
+            proactive interventions per browser session; &quot;off&quot; silences proactivity entirely.
+          </p>
+          <div style={{ marginBottom: 8 }}>
+            <label>
+              Chattiness:{" "}
+              <select
+                value={companionChattiness}
+                onChange={(e) => handleCompanionChattinessChange(e.target.value as Chattiness)}
+              >
+                {CHATTINESS_LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {level} (max {SESSION_BUDGET[level]}/session)
+                  </option>
+                ))}
+              </select>
+            </label>{" "}
+            <span>{companionSaveStatus}</span>
           </div>
 
           <hr style={{ margin: "24px 0" }} />

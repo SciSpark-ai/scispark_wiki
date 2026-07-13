@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS, type LLMSettings } from "../../llm/settings"
 import type { LLMResult } from "../../llm/types"
 import { runSkill } from "../runner"
 import { ReadingAnswerSchema, readingCompanionSkill, type ReadingCompanionInput } from "../reading-companion"
+import { COMPANION } from "../../companion/persona"
 
 const NOW = () => new Date("2026-07-13T10:00:00.000Z")
 
@@ -112,6 +113,27 @@ describe("readingCompanionSkill", () => {
     expect(messages[1].content).toContain("sparse attention")
     expect(messages[1].content).toContain(BASE_INPUT.paperMeta)
     expect(messages[1].content).toContain(BASE_INPUT.userQuestion)
+  })
+
+  it("wraps the system prompt with the companion persona (M7 Task 7)", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structuredResult()])
+
+    await runSkill({
+      skill: readingCompanionSkill,
+      input: BASE_INPUT,
+      storage,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+
+    const systemContent = provider.calls[0].req.messages[0].content
+    // A distinctive phrase from COMPANION.systemFragment must now be present —
+    // this skill was deliberately persona-free through M6 ("layered on
+    // elsewhere") and is wrapped starting M7.
+    expect(systemContent).toContain(COMPANION.name)
+    expect(systemContent).toContain("Accuracy and grounding always come first")
   })
 
   it("neutralizes fence-marker runs inside the selection before sending", async () => {

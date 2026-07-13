@@ -9,6 +9,7 @@ import { paperKey } from "@/lib/papers/types"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { RealFeedCard } from "@/components/feed/RealFeedCard"
 import { FeedRefreshBar } from "@/components/feed/FeedRefreshBar"
+import { useCompanion } from "@/components/companion/useCompanion"
 
 type PageState =
   | { status: "checking" }
@@ -32,6 +33,12 @@ function formatUpdatedAt(iso: string): string {
 }
 
 export default function HomePage() {
+  // App-open trigger (M7): home is the app's landing surface, so evaluating
+  // the companion on mount here also catches "just came back after an
+  // ingest/review" since the trigger engine looks at recent events, not just
+  // the current route.
+  useCompanion()
+
   const [storage, setStorage] = useState<VaultStorage | null>(null)
   const [state, setState] = useState<PageState>({ status: "checking" })
   const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set())
