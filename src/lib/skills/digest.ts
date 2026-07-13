@@ -124,6 +124,8 @@ export const digestSkill = defineSkill<DigestSkillInput, DigestResult>({
           { role: "system", content: system },
           { role: "user", content: user },
         ],
+        // Explicit output budget (endpoint defaults can truncate JSON).
+        maxTokens: 4096,
       },
       DigestSchema,
     )

@@ -381,7 +381,9 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
       },
       { role: "user" as const, content: await buildGenerationUserMessage(storage, paper, analysis) },
     ]
-    let generation = await ctx.llmStructured("strong", { messages }, GenerationSchema)
+    // Generous output budget: generation writes several full wiki pages in one
+    // JSON payload; endpoint default caps truncate it (live-gate finding).
+    let generation = await ctx.llmStructured("strong", { messages, maxTokens: 16384 }, GenerationSchema)
 
     // ── 3. Deterministic drafts + merge + validate ──────────────────────────
     const bundle = await loadBundle(storage)
@@ -413,7 +415,7 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
         { role: "assistant" as const, content: JSON.stringify(generation) },
         { role: "user" as const, content: buildRetryMessage(prepared.errors) },
       ]
-      generation = await ctx.llmStructured("strong", { messages: retryMessages }, GenerationSchema)
+      generation = await ctx.llmStructured("strong", { messages: retryMessages, maxTokens: 16384 }, GenerationSchema)
       prepared = await prepareFiles(storage, generation, deterministic, routing, { today, sources })
 
       if (prepared.errors.length > 0) {

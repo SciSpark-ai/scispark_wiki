@@ -323,6 +323,9 @@ export async function runAnalysis(ctx: SkillContext, context: string): Promise<A
         { role: "system", content: buildAnalysisSystemPrompt() },
         { role: "user", content: context },
       ],
+      // Explicit output budget: OpenAI-compatible endpoints apply their own
+      // (often small) default cap when unset — live gate saw truncated JSON.
+      maxTokens: 8192,
     },
     AnalysisSchema,
   )
