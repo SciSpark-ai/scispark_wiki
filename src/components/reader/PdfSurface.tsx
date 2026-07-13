@@ -141,6 +141,11 @@ export default function PdfSurface({ bytes, onPlainText, renderHighlights, onSel
 
       try {
         const pdfjsLib = await import("pdfjs-dist");
+        // The dynamic import always yields at least one microtask, during which
+        // the effect may already have been torn down (guaranteed under React
+        // Strict Mode's mount→cleanup→mount). Bail before creating a worker so
+        // cleanup — which ran while loadingTask was still null — can't miss it.
+        if (cancelled) return;
         pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
           "pdfjs-dist/build/pdf.worker.min.mjs",
           import.meta.url,
@@ -246,7 +251,7 @@ export default function PdfSurface({ bytes, onPlainText, renderHighlights, onSel
       cancelled = true;
       loadingTask?.destroy();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onPlainText/onSelect are read via refs so identity churn doesn't reload the PDF.
+    // onPlainText/onSelect are read via refs, so their identity churn must not reload the PDF.
   }, [bytes]);
 
   const handleSelection = useCallback(() => {
