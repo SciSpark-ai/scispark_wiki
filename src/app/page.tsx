@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { isOnboarded } from "@/lib/usermodel/pages"
@@ -71,13 +71,19 @@ export default function HomePage() {
     })
   }, [])
 
+  // Serializes cache rewrites so rapid successive dismissals can't land out of
+  // order and resurrect a dismissed card on the next reload.
+  const cacheWriteChain = useRef<Promise<void>>(Promise.resolve())
+
   const handleDismiss = useCallback(
     (key: string) => {
       if (!storage) return
       setState((prev) => {
         if (prev.status !== "ready" || !prev.feed) return prev
         const nextFeed: FeedResult = { ...prev.feed, items: prev.feed.items.filter((it) => paperKey(it.paper) !== key) }
-        void storage.write(FEED_CACHE_PATH, JSON.stringify(nextFeed, null, 2))
+        cacheWriteChain.current = cacheWriteChain.current
+          .then(() => storage.write(FEED_CACHE_PATH, JSON.stringify(nextFeed, null, 2)))
+          .catch(() => undefined)
         return { status: "ready", feed: nextFeed }
       })
     },
