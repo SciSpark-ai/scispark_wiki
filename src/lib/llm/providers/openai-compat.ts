@@ -102,13 +102,49 @@ function safeParse(text: string): unknown {
   try { return JSON.parse(text) } catch { return undefined }
 }
 
-// Removes a top-level "$schema" keyword (e.g. from zod v4's z.toJSONSchema output)
-// before sending to OpenAI, which doesn't expect JSON Schema meta-keywords in the
-// request body. Returns a shallow copy; does not mutate the caller's schema.
+// Validation-constraint keywords that some backends' structured-output
+// implementations reject as "extra inputs" (live-verified 2026-07-13 against
+// GMI Cloud's Anthropic passthrough: minItems/maxItems and minimum/maximum on
+// the wire schema → 400 "output_config.format: Extra inputs are not permitted").
+// Stripping them is safe: the harness re-validates every structured result
+// client-side with the full zod schema (with retry-on-invalid), so these
+// constraints are still enforced — just not by the provider.
+const UNSUPPORTED_CONSTRAINT_KEYWORDS = [
+  "minItems", "maxItems", "minLength", "maxLength",
+  "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
+  "multipleOf", "pattern", "minProperties", "maxProperties", "format",
+] as const
+
+// Keys whose value is a map of NAMES → subschemas. Keyword filtering must not
+// apply to the names themselves (a property legitimately named "pattern" or
+// "maxLength" is data, not a constraint keyword) — only to schema nodes.
+const NAME_MAP_KEYS = ["properties", "$defs", "definitions", "patternProperties"] as const
+
+// Prepares a zod-emitted JSON schema for the wire: drops the "$schema"
+// meta-keyword and recursively removes validation-constraint keywords the
+// backends don't accept (see above). Pure — never mutates the input.
+function sanitizeSchemaNode(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(sanitizeSchemaNode)
+  if (node === null || typeof node !== "object") return node
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (key === "$schema") continue
+    if ((UNSUPPORTED_CONSTRAINT_KEYWORDS as readonly string[]).includes(key)) continue
+    if ((NAME_MAP_KEYS as readonly string[]).includes(key) && value !== null && typeof value === "object" && !Array.isArray(value)) {
+      const map: Record<string, unknown> = {}
+      for (const [name, subschema] of Object.entries(value as Record<string, unknown>)) {
+        map[name] = sanitizeSchemaNode(subschema)
+      }
+      out[key] = map
+      continue
+    }
+    out[key] = sanitizeSchemaNode(value)
+  }
+  return out
+}
+
 function stripSchemaKeyword(schema: Record<string, unknown>): Record<string, unknown> {
-  const copy = { ...schema }
-  delete copy.$schema
-  return copy
+  return sanitizeSchemaNode(schema) as Record<string, unknown>
 }
 
 export const openAIProvider = (key: string, fetchFn?: typeof fetch) =>
