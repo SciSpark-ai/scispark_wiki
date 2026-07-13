@@ -194,11 +194,11 @@ export async function retrieveCandidates(
 
   const candidates: PaperRecord[] = []
   for (const key of order) {
+    if (candidates.length >= cap) break
     if (excluded.has(key)) continue
     const record = merged.get(key)
     if (!record) continue
     candidates.push(record)
-    if (candidates.length >= cap) break
   }
 
   return candidates

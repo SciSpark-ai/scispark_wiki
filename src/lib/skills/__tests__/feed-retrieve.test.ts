@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { logEvent } from "../../events/log"
-import { composePage } from "../../wiki/authoring"
+import { buildPaperPage, composePage } from "../../wiki/authoring"
 import type { PaperRecord } from "../../papers/types"
 import { MockProvider } from "../../llm/mock-provider"
 import { DEFAULT_SETTINGS, type LLMSettings } from "../../llm/settings"
@@ -245,23 +245,11 @@ describe("retrieveCandidates", () => {
 
   it("excludes a candidate already present as a vault paper page", async () => {
     const storage = new MemoryVaultStorage()
-    await storage.write(
-      "wiki/papers/existing.md",
-      composePage({
-        path: "wiki/papers/existing.md",
-        frontmatter: {
-          type: "paper",
-          title: "Existing Paper",
-          created: "2026-07-01",
-          updated: "2026-07-01",
-          tags: [],
-          related: [],
-          sources: [],
-          doi: "10.5555/existing",
-        },
-        body: "# Existing Paper\n",
-      }),
-    )
+    // Build the page through the REAL production path (buildPaperPage), so this
+    // test breaks if the frontmatter shape vaultPaperKeys reads ever drifts.
+    const existing = paper({ title: "Existing Paper", ids: { doi: "10.5555/existing" } })
+    const draft = buildPaperPage(existing, { today: "2026-07-01", fullText: false })
+    await storage.write(draft.path, composePage(draft))
     const searchFn: SearchFn = async (source) => {
       if (source === "arxiv") return [paper({ title: "Existing Paper", ids: { doi: "10.5555/existing" } })]
       return [paper({ title: "New Paper", ids: { openalex: "W1" } })]
