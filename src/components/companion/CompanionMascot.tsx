@@ -1,24 +1,40 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { motion } from "framer-motion";
 import { useCompanionStore } from "@/stores/companion-store";
+import { getOpenVault } from "@/lib/vault/get-vault";
+import { logEvent } from "@/lib/events/log";
 import { CompanionBubble } from "./CompanionBubble";
 
-/** Reads (and subscribes to) the user's OS-level reduced-motion preference. */
+/** Fire-and-forget Tier-1 companion event. Never blocks or throws into render —
+ * logEvent already swallows its own storage errors. */
+function logCompanionEvent(type: "companion_dismiss" | "companion_action", trigger: string) {
+  void getOpenVault()
+    .then((storage) => logEvent(storage, { type, trigger }))
+    .catch(() => undefined);
+}
+
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+function subscribeReducedMotion(onChange: () => void): () => void {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const mql = window.matchMedia(REDUCED_MOTION_QUERY);
+  mql.addEventListener("change", onChange);
+  return () => mql.removeEventListener("change", onChange);
+}
+
+/** Reads (and subscribes to) the user's OS-level reduced-motion preference.
+ * useSyncExternalStore keeps SSR (false) and client in sync without a
+ * setState-in-effect. */
 function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mql.matches);
-    const onChange = () => setReduced(mql.matches);
-    mql.addEventListener("change", onChange);
-    return () => mql.removeEventListener("change", onChange);
-  }, []);
-
-  return reduced;
+  return useSyncExternalStore(
+    subscribeReducedMotion,
+    () => (typeof window !== "undefined" && window.matchMedia
+      ? window.matchMedia(REDUCED_MOTION_QUERY).matches
+      : false),
+    () => false, // server snapshot
+  );
 }
 
 /**
@@ -47,16 +63,18 @@ export function CompanionMascot() {
     setBubbleOpen((open) => !open);
   }
 
-  // Dismiss (x) just clears the store. Task 7 wires this into the trigger
-  // engine's caller so it also logs a `companion_dismiss` Tier-1 event.
+  // Dismiss (x) clears the store and logs a `companion_dismiss` Tier-1 event so
+  // Memory-Consolidation can learn what to stop suggesting (anti-Clippy loop).
   function handleDismiss() {
+    if (current) logCompanionEvent("companion_dismiss", current.trigger);
     setBubbleOpen(false);
     dismiss();
   }
 
-  // Action click navigates (plain next/link, below) and closes the bubble.
-  // Task 7 adds the `companion_action` log around this.
+  // Action click logs `companion_action` (positive signal), then the bubble's
+  // next/link navigates and this closes the bubble.
   function handleAction() {
+    if (current) logCompanionEvent("companion_action", current.trigger);
     setBubbleOpen(false);
     dismiss();
   }
