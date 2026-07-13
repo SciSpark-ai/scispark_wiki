@@ -107,6 +107,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
   const [highlights, setHighlights] = useState<Highlight[]>([])
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null)
   const [sourcePageId, setSourcePageId] = useState<string | undefined>(undefined)
+  const addingHighlightRef = useRef(false)
   const [askState, setAskState] = useState<AskState>({ status: "idle" })
   const [captureNotice, setCaptureNotice] = useState<{ path: string } | null>(null)
 
@@ -162,14 +163,21 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
   }, [])
 
   async function handleHighlight() {
-    if (!pendingSelection) return
+    // Synchronous re-entrancy guard: a double-click fires two onClicks in the
+    // same render, both closing over the same pendingSelection — without this
+    // the same passage would be added twice.
+    if (addingHighlightRef.current) return
+    const sel = pendingSelection
+    if (!sel) return
     let anchor
     try {
-      anchor = createAnchor(surfaceTextRef.current, pendingSelection.start, pendingSelection.end)
+      anchor = createAnchor(surfaceTextRef.current, sel.start, sel.end)
     } catch {
       clearSelection()
       return
     }
+    addingHighlightRef.current = true
+    clearSelection()
     const highlight: Highlight = {
       id: makeHighlightId(),
       anchor,
@@ -177,10 +185,13 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
       note: "",
       createdTs: new Date().toISOString(),
     }
-    await addHighlight(storage, key, highlight)
-    setHighlights(await listHighlights(storage, key))
-    void logEvent(storage, { type: "highlight_add", paperKey: key, title: paper.title })
-    clearSelection()
+    try {
+      await addHighlight(storage, key, highlight)
+      setHighlights(await listHighlights(storage, key))
+      void logEvent(storage, { type: "highlight_add", paperKey: key, title: paper.title })
+    } finally {
+      addingHighlightRef.current = false
+    }
   }
 
   async function handleRemoveHighlight(id: string) {

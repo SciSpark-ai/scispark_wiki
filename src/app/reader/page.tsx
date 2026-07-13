@@ -7,6 +7,7 @@ import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadFeed } from "@/lib/skills/feed"
 import { loadBundle } from "@/lib/vault/bundle"
 import { loadReaderContent, type ReaderContent } from "@/lib/reader/load"
+import { readReaderHandoff } from "@/lib/reader/handoff"
 import { paperKey, type PaperRecord } from "@/lib/papers/types"
 import type { VaultStorage } from "@/lib/vault/storage"
 import type { Frontmatter } from "@/lib/vault/types"
@@ -61,6 +62,11 @@ async function resolvePaper(storage: VaultStorage, key: string): Promise<PaperRe
       const candidate = paperRecordFromFrontmatter(page.frontmatter)
       if (paperKey(candidate) === key) return candidate
     }
+
+    // Neither in the feed nor ingested — a paper reached via the /papers search
+    // box stashes its full record here when the user clicks "Read full paper".
+    const handoff = await readReaderHandoff(storage, key)
+    if (handoff) return handoff
   } catch {
     // Best-effort resolution, same as the /papers deep-link — a missing/
     // corrupt cache or bundle just falls through to "not found".

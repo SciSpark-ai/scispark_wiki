@@ -1,7 +1,7 @@
 "use client"
 
 import { Suspense, useEffect, useState, type FormEvent } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { paperKey, type PaperRecord, type SourceId } from "@/lib/papers/types"
 import { acquireFullText, snapshotSource } from "@/lib/wiki/acquire"
@@ -12,6 +12,7 @@ import { loadSettings } from "@/lib/llm/settings"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadFeed } from "@/lib/skills/feed"
 import { logEvent } from "@/lib/events/log"
+import { writeReaderHandoff } from "@/lib/reader/handoff"
 import { listHighlights, formatHighlightsForPrompt } from "@/lib/highlights/store"
 import { PaperResultItem } from "@/components/papers/PaperResultItem"
 import { DigestPanel } from "@/components/papers/DigestPanel"
@@ -55,6 +56,22 @@ function pageHref(idOrPath: string): string {
 
 function PapersPageContent() {
   const searchParams = useSearchParams()
+  const router = useRouter()
+
+  // A just-searched paper is in neither the feed cache nor the wiki yet, so the
+  // reader can't resolve it by key alone — stash the full record first, then
+  // navigate.
+  async function handleReadFullPaper() {
+    if (!selected) return
+    try {
+      const vault = await getOpenVault()
+      await writeReaderHandoff(vault, selected)
+    } catch {
+      // If the stash fails the reader will fall back to its other resolution
+      // paths (feed cache / ingested page) or show "not found" — don't block.
+    }
+    router.push(`/reader?paperKey=${encodeURIComponent(paperKey(selected))}`)
+  }
   const [source, setSource] = useState<SourceId>("arxiv")
   const [query, setQuery] = useState("")
   const [searching, setSearching] = useState(false)
@@ -363,12 +380,12 @@ function PapersPageContent() {
                 >
                   Add to knowledge base
                 </button>
-                <Link
-                  href={`/reader?paperKey=${encodeURIComponent(paperKey(selected))}`}
+                <button
+                  onClick={handleReadFullPaper}
                   className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1"
                 >
                   Read full paper
-                </Link>
+                </button>
               </div>
 
               {digestState.status === "error" && <LlmErrorMessage message={digestState.message} />}
