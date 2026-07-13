@@ -17,6 +17,7 @@ import { listHighlights, formatHighlightsForPrompt } from "@/lib/highlights/stor
 import { PaperResultItem } from "@/components/papers/PaperResultItem"
 import { DigestPanel } from "@/components/papers/DigestPanel"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
+import { useCompanion } from "@/components/companion/useCompanion"
 
 const SOURCES: SourceId[] = ["arxiv", "openalex", "s2", "pubmed"]
 
@@ -57,6 +58,9 @@ function pageHref(idOrPath: string): string {
 function PapersPageContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
+  // Post-ingest celebration (M7): re-evaluate the companion right after a
+  // successful ingest below, without waiting for a route change.
+  const reevaluateCompanion = useCompanion()
 
   // A just-searched paper is in neither the feed cache nor the wiki yet, so the
   // reader can't resolve it by key alone — stash the full record first, then
@@ -202,12 +206,16 @@ function PapersPageContent() {
       if (run.status === "ok" && run.output !== undefined) {
         setIngestState({ phase: "done", output: run.output, costUsd: run.costUsd })
         if (run.output.status === "ok") {
-          void logEvent(vault, {
+          // Awaited (not fire-and-forget) so the ingest event is durably logged
+          // before the companion re-evaluates — the post-ingest trigger reads
+          // recent events and would otherwise race the write.
+          await logEvent(vault, {
             type: "ingest",
             paperKey: paperKey(selected),
             title: selected.title,
             changesetId: run.output.changesetId,
           })
+          reevaluateCompanion()
         }
       } else {
         setIngestState({

@@ -17,7 +17,7 @@
 - **Anti-Clippy contract is harness-enforced, not prompt-only:** a session intervention budget (from the chattiness setting), per-trigger cooldowns, always-dismissible bubbles, and dismissals logged as Tier-1 events so Memory-Consolidation can learn what to stop suggesting.
 - **Triggers are deterministic and LLM-free** (design 04): pure functions over app state; no model call decides *whether* to speak — the LLM only phrases *what* to say, and only after the gate passes.
 - **Tier-1 event payloads stay local** (nothing to any server beyond the existing `/api/search` + `/api/fetch` relays). New companion event types append to the open `SciSparkEvent` union from M5.
-- **Companion persona name/character is a placeholder for Tong's branding decision** (CLAUDE.md: "still open"). Define it as a single swappable constant; the default (`Sol`, a small warm spark-companion) and the mascot art (inline SVG, not commissioned) are provisional — renaming/reskinning must be a one-file edit.
+- **Companion persona name/character is a placeholder for Tong's branding decision** (CLAUDE.md: "still open"). Define it as a single swappable constant; Tong chose the name `Ember` (2026-07-13); the mascot art (inline SVG, not commissioned) is still provisional — renaming/reskinning must be a one-file edit.
 - Tests: vitest, colocated `__tests__/`. `npx tsc --noEmit` clean at every commit; `npm run build` succeeds for every task that changes app code. Live tests env-gated on `LIVE_LLM_BASE_URL`/`LIVE_LLM_API_KEY`/`LIVE_LLM_MODEL`, skipping cleanly when unset.
 - Existing tests keep passing; the orphaned fork mock chat/feed subtrees stay untouched (M11 cleanup).
 
@@ -51,7 +51,7 @@ export function withPersona(systemPrompt: string): string
 ```
 
 **Details:**
-- `COMPANION` default: `name: "Sol"`, `character: "a small, warm, curious spark-companion who helps you track your research"`, and a `systemFragment` that establishes: friendly, brief, encouraging, first-person-singular, never naggy, text only; **and explicitly** that accuracy and grounding come first — personality never invents facts, softens a caveat, or changes what the underlying skill was asked to do.
+- `COMPANION` default: `name: "Ember"`, `character: "a small, warm, curious spark-companion who helps you track your research"`, and a `systemFragment` that establishes: friendly, brief, encouraging, first-person-singular, never naggy, text only; **and explicitly** that accuracy and grounding come first — personality never invents facts, softens a caveat, or changes what the underlying skill was asked to do.
 - `withPersona(sys)` returns `${COMPANION.systemFragment}\n\n${sys}` (persona first, so the skill's substantive rules are the last and most salient instructions).
 - Pure module, no storage, no LLM.
 
