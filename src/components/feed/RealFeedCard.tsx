@@ -48,6 +48,10 @@ export function RealFeedCard({
     router.push(`/papers?paperKey=${encodeURIComponent(key)}`)
   }
 
+  function handleRead() {
+    router.push(`/reader?paperKey=${encodeURIComponent(key)}`)
+  }
+
   return (
     <div className="border border-border-warm rounded-card px-4 py-3 bg-light-surface flex flex-col gap-2">
       <div className="flex items-start justify-between gap-2">
@@ -97,8 +101,15 @@ export function RealFeedCard({
         </button>
         <button
           type="button"
+          onClick={handleRead}
+          className="ml-auto text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1"
+        >
+          Read
+        </button>
+        <button
+          type="button"
           onClick={handleReadDigest}
-          className="ml-auto text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-3 py-1 font-medium"
+          className="text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-3 py-1 font-medium"
         >
           Read & digest
         </button>

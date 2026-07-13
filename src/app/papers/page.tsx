@@ -12,6 +12,7 @@ import { loadSettings } from "@/lib/llm/settings"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadFeed } from "@/lib/skills/feed"
 import { logEvent } from "@/lib/events/log"
+import { listHighlights, formatHighlightsForPrompt } from "@/lib/highlights/store"
 import { PaperResultItem } from "@/components/papers/PaperResultItem"
 import { DigestPanel } from "@/components/papers/DigestPanel"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
@@ -163,6 +164,10 @@ function PapersPageContent() {
       setIngestState({ phase: "ingesting" })
       const settings = await loadSettings(vault)
       const today = new Date().toISOString().slice(0, 10)
+      // Emphasis wiring (M6): the user's own highlights on this paper feed
+      // into buildAnalysisContext's "User Highlights" section as signals of
+      // what the ingest should emphasize.
+      const highlights = formatHighlightsForPrompt(await listHighlights(vault, paperKey(selected)))
       const run = await runSkill({
         skill: ingestSkill,
         input: {
@@ -170,6 +175,7 @@ function PapersPageContent() {
           paper: selected,
           digest,
           fullText: { kind: acquired.kind, text: acquired.text, snapshotPath },
+          highlights,
           today,
         },
         storage: vault,
@@ -357,6 +363,12 @@ function PapersPageContent() {
                 >
                   Add to knowledge base
                 </button>
+                <Link
+                  href={`/reader?paperKey=${encodeURIComponent(paperKey(selected))}`}
+                  className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1"
+                >
+                  Read full paper
+                </Link>
               </div>
 
               {digestState.status === "error" && <LlmErrorMessage message={digestState.message} />}
