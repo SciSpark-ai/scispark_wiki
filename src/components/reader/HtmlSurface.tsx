@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { sanitizePaperHtml } from "@/lib/reader/sanitize"
 import { plainTextOf, rangeToOffsets } from "@/lib/reader/dom-offsets"
 
@@ -66,7 +66,16 @@ export default function HtmlSurface({ html, onPlainText, onSelectionChange, onCo
     onSelectionChangeRef.current = onSelectionChange
   }, [onSelectionChange])
 
-  const sanitizedHtml = sanitizePaperHtml(html)
+  // DOMPurify has no real `window` under SSR, where its default export is the
+  // uninitialized factory (`.sanitize` is not a function) — so sanitizing in
+  // the render body would throw during server render. Defer it to a
+  // client-only effect; the surface renders empty until hydration, then fills
+  // in. (Callers should also load this via next/dynamic({ssr:false}), same as
+  // PdfSurface, but this makes the component self-safe regardless.)
+  const [sanitizedHtml, setSanitizedHtml] = useState("")
+  useEffect(() => {
+    setSanitizedHtml(sanitizePaperHtml(html))
+  }, [html])
 
   // Emit the surface's flattened plain text after every render that changes
   // the sanitized content, so callers (highlight anchoring) always work
@@ -136,6 +145,13 @@ export default function HtmlSurface({ html, onPlainText, onSelectionChange, onCo
     return () => document.removeEventListener("selectionchange", handleSelection)
   }, [handleSelection])
 
+  // Links in paper HTML are rendered inert: the reader never bounces the user
+  // out to a third-party viewer (product identity constraint). The anchor text
+  // stays visible; the click just doesn't navigate.
+  const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest("a")) e.preventDefault()
+  }, [])
+
   return (
     <div
       ref={containerRef}
@@ -145,6 +161,7 @@ export default function HtmlSurface({ html, onPlainText, onSelectionChange, onCo
       dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
       onMouseUp={handleSelection}
       onKeyUp={handleSelection}
+      onClick={handleClick}
     />
   )
 }
