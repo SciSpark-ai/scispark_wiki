@@ -28,17 +28,18 @@ describe("loadCompanionSettings", () => {
     expect(settings).toEqual(DEFAULT_COMPANION_SETTINGS)
   })
 
-  it("merges an unknown/garbage companion section over defaults rather than throwing", async () => {
+  it("coerces an unknown/garbage chattiness value to the default (never mutes silently)", async () => {
     const storage = new MemoryVaultStorage()
     await storage.write(
       ".scispark/settings.json",
       JSON.stringify({ companion: { chattiness: "not-a-real-value", extra: true } }),
     )
     const settings = await loadCompanionSettings(storage)
-    // unknown chattiness value passes through the merge (schema-less merge, like llm settings);
-    // the important contract is that the section is read and merged over defaults, not that
-    // the value is validated here — but at minimum it must not throw and other fields default.
-    expect(settings.chattiness).toBeDefined()
+    // An unknown value must fall back to the default — otherwise SESSION_BUDGET[chattiness]
+    // is undefined and the companion goes permanently mute with no error.
+    expect(settings.chattiness).toBe(DEFAULT_COMPANION_SETTINGS.chattiness)
+    // Unknown extra keys must not leak into the returned typed object.
+    expect(settings).toEqual(DEFAULT_COMPANION_SETTINGS)
   })
 })
 

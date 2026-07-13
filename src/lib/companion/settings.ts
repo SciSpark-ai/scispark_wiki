@@ -20,6 +20,12 @@ export const DEFAULT_COMPANION_SETTINGS: CompanionSettings = {
   chattiness: "medium",
 }
 
+const CHATTINESS_VALUES: readonly Chattiness[] = ["off", "low", "medium", "high"]
+
+function isChattiness(v: unknown): v is Chattiness {
+  return typeof v === "string" && (CHATTINESS_VALUES as readonly string[]).includes(v)
+}
+
 /** Max proactive interventions allowed per session for a chattiness level. */
 export const SESSION_BUDGET: Record<Chattiness, number> = {
   off: 0,
@@ -41,13 +47,19 @@ async function readJsonFile(storage: VaultStorage): Promise<Record<string, unkno
 
 export async function loadCompanionSettings(storage: VaultStorage): Promise<CompanionSettings> {
   const file = await readJsonFile(storage)
-  const companion = (
-    file.companion !== null && typeof file.companion === "object" ? file.companion : {}
-  ) as Partial<CompanionSettings>
+  const companion =
+    file.companion !== null && typeof file.companion === "object"
+      ? (file.companion as Record<string, unknown>)
+      : {}
 
+  // Validate the stored value against the union rather than trusting the file:
+  // an unknown chattiness (stale schema, typo, hand-edit) must fall back to the
+  // default, or SESSION_BUDGET[chattiness] would be undefined and silently mute
+  // the companion forever.
   return {
-    ...DEFAULT_COMPANION_SETTINGS,
-    ...companion,
+    chattiness: isChattiness(companion.chattiness)
+      ? companion.chattiness
+      : DEFAULT_COMPANION_SETTINGS.chattiness,
   }
 }
 
