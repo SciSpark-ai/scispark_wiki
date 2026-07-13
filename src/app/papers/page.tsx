@@ -46,7 +46,7 @@ const INGEST_PHASE_LABEL: Record<IngestPhase, string> = {
 /** wiki page id (e.g. "wiki/papers/foo" or "wiki/papers/foo.md") -> the /wiki/<...> route for it. */
 function pageHref(idOrPath: string): string {
   const id = idOrPath.replace(/\.md$/, "")
-  return `/wiki/${id.replace(/^wiki\//, "")}`
+  return `/wiki/${id}` // full id in URL: the /wiki/[...id] route joins segments back to the bundle id (e.g. /wiki/wiki/concepts/foo)
 }
 
 export default function PapersPage() {

@@ -15,7 +15,7 @@ const KIND_LABEL: Record<ReviewItem["kind"], string> = {
 
 /** wiki page id (e.g. "wiki/papers/foo") -> the /wiki/<...> route for it. */
 function pageHref(id: string): string {
-  return `/wiki/${id.replace(/^wiki\//, "")}`
+  return `/wiki/${id}` // full id in URL: the /wiki/[...id] route joins segments back to the bundle id (e.g. /wiki/wiki/concepts/foo)
 }
 
 export default function WikiInboxPage() {
