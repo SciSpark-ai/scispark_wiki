@@ -198,7 +198,12 @@ export function deriveCitationFlow(bundle: Bundle, refsByPageId: Map<string, Cit
       }
       if (!citedId || citedId === page.id) continue
 
-      const edgeKey = `${page.id} ${citedId}`
+      // Directional key, NUL separator written as an escape sequence (a literal
+      // control byte makes the file binary-undiffable). Page ids can contain
+      // spaces (they come from file paths), so a plain-space join could merge
+      // two distinct edges. Same rationale as pairKey in graph.ts/authors.ts,
+      // but NOT sorted: citing->cited is directed.
+      const edgeKey = `${page.id}\u0000${citedId}`
       if (seenEdges.has(edgeKey)) continue
       seenEdges.add(edgeKey)
       edges.push({ citing: page.id, cited: citedId })

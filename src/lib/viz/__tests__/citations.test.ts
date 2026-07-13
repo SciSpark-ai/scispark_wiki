@@ -42,6 +42,28 @@ describe("deriveCitationFlow — edges", () => {
     expect(flow.edges).toEqual([{ citing: "wiki/papers/a", cited: "wiki/papers/b" }])
   })
 
+  it("edge dedup keys stay distinct when page ids contain spaces", async () => {
+    // Page ids come from file paths, which may contain spaces. A plain-space
+    // key join would merge {citing:"…/a b", cited:"…/c"} with
+    // {citing:"…/a", cited:"…/b c"} — both must survive.
+    const { bundle } = await bundleFrom({
+      "wiki/papers/a b.md": [fm("paper", "A B", { doi: "10.1/ab" }), "x"],
+      "wiki/papers/a.md": [fm("paper", "A", { doi: "10.1/a" }), "x"],
+      "wiki/papers/b c.md": [fm("paper", "B C", { doi: "10.1/bc" }), "x"],
+      "wiki/papers/c.md": [fm("paper", "C", { doi: "10.1/c" }), "x"],
+    })
+    const refsByPageId = new Map<string, CitationRef[]>([
+      ["wiki/papers/a b", [ref({ doi: "10.1/c" })]],
+      ["wiki/papers/a", [ref({ doi: "10.1/bc" })]],
+    ])
+
+    const flow = deriveCitationFlow(bundle, refsByPageId)
+
+    expect(flow.edges).toHaveLength(2)
+    expect(flow.edges).toContainEqual({ citing: "wiki/papers/a b", cited: "wiki/papers/c" })
+    expect(flow.edges).toContainEqual({ citing: "wiki/papers/a", cited: "wiki/papers/b c" })
+  })
+
   it("matches a reference via arxiv when doi is absent", async () => {
     const { bundle } = await bundleFrom({
       "wiki/papers/a.md": [fm("paper", "A", { arxiv: "1706.03762" }), "x"],
