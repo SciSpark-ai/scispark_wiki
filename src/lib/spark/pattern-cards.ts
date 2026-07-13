@@ -81,9 +81,17 @@ let cache: PatternCard[] | null = null
  * regen command) into the in-memory `PatternCard[]` catalog. Pure and
  * memoized; safe to call repeatedly from any skill/orchestrator.
  */
+// Reference/index docs bundled alongside the real cards — NOT ideation
+// patterns. `overview.md` lists every pattern's own "Operational signature"
+// line, so parsing it as a card grabbed the wrong pattern's signature; and the
+// design specifies exactly the "15-pattern / 31-sub-pattern" catalog (= 46
+// cards), which excluding these three yields. `companion-combos.md` is a
+// pattern-pairing reference, likewise not a single-pattern card.
+const NON_CARD_FILES = new Set(["overview.md", "companion-combos.md"])
+
 export function loadPatternCards(): PatternCard[] {
   if (cache) return cache
-  cache = GENERATED_CARDS.map((c) => parseCard(c.file, c.kind, c.raw))
+  cache = GENERATED_CARDS.filter((c) => !NON_CARD_FILES.has(c.file)).map((c) => parseCard(c.file, c.kind, c.raw))
   return cache
 }
 

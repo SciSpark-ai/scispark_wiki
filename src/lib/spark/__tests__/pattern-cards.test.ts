@@ -1,12 +1,13 @@
 import { describe, it, expect } from "vitest"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { loadPatternCards, patternIndex, cardsByIds } from "../pattern-cards"
+import { GENERATED_CARDS } from "../pattern-cards/generated-cards"
 
 describe("loadPatternCards", () => {
-  it("returns at least 49 cards, each with non-empty id/alias/signature/body", () => {
+  it("returns the 46-card catalog, each with non-empty id/alias/signature/body", () => {
     const cards = loadPatternCards()
-    expect(cards.length).toBeGreaterThanOrEqual(49)
+    expect(cards.length).toBe(46) // 15 patterns + 31 sub-patterns (design spec)
     for (const card of cards) {
       expect(card.id.length).toBeGreaterThan(0)
       expect(card.alias.length).toBeGreaterThan(0)
@@ -22,10 +23,13 @@ describe("loadPatternCards", () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 
-  it("includes the 17 top-level patterns and 32 sub-patterns", () => {
+  it("includes the 15 top-level patterns and 31 sub-patterns, excluding the reference/index docs", () => {
     const cards = loadPatternCards()
-    expect(cards.filter((c) => c.kind === "pattern").length).toBe(17)
-    expect(cards.filter((c) => c.kind === "sub-pattern").length).toBe(32)
+    expect(cards.filter((c) => c.kind === "pattern").length).toBe(15)
+    expect(cards.filter((c) => c.kind === "sub-pattern").length).toBe(31)
+    // The reference/index docs are NOT ideation cards.
+    expect(cards.find((c) => c.id.includes("overview"))).toBeUndefined()
+    expect(cards.find((c) => c.id.includes("companion-combos"))).toBeUndefined()
   })
 
   it("parses a known pattern card's structured fields exactly", () => {
@@ -88,4 +92,30 @@ describe("bundled attribution files", () => {
     expect(notice).toContain("microsoft/ResearchStudio")
     expect(notice).toContain("MIT License")
   })
+})
+
+describe("generated-cards.ts staleness guard", () => {
+  // The generated module is committed so loadPatternCards needs no runtime fs/glob.
+  // This guard fails if someone hand-edits a source .md card (or adds/removes one)
+  // without re-running scripts/generate-spark-cards.mjs — otherwise the drift would
+  // silently ship stale card text into the ideation prompt.
+  const root = join(__dirname, "..", "pattern-cards")
+
+  for (const [dir, kind] of [
+    ["patterns", "pattern"],
+    ["sub-patterns", "sub-pattern"],
+  ] as const) {
+    it(`${dir}/ source .md files match the generated module byte-for-byte`, () => {
+      const files = readdirSync(join(root, dir)).filter((f) => f.endsWith(".md")).sort()
+      for (const file of files) {
+        const raw = readFileSync(join(root, dir, file), "utf8")
+        const entry = GENERATED_CARDS.find((c) => c.kind === kind && c.file === file)
+        expect(entry, `generated-cards missing ${dir}/${file} — re-run scripts/generate-spark-cards.mjs`).toBeDefined()
+        expect(entry!.raw, `${dir}/${file} drifted from generated-cards — re-run the generator`).toBe(raw)
+      }
+      // And nothing generated that isn't on disk.
+      const generatedForKind = GENERATED_CARDS.filter((c) => c.kind === kind).map((c) => c.file).sort()
+      expect(generatedForKind).toEqual(files)
+    })
+  }
 })
