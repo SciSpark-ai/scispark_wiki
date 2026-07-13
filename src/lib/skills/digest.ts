@@ -7,6 +7,15 @@ import { paperSlug } from "../wiki/authoring"
 import { defineSkill } from "./types"
 import { runSkill } from "./runner"
 
+/** Resolved shape of a `generateDigest` call — cached or freshly generated. */
+type DigestOutcome = {
+  digest: DigestResult
+  fromCache: boolean
+  runId?: string
+  costUsd?: number
+  cacheWriteFailed?: boolean
+}
+
 /**
  * Module-level map of in-flight generateDigest calls, keyed by cache path.
  * Ensures concurrent calls for the same paper share a single runSkill call
@@ -15,10 +24,7 @@ import { runSkill } from "./runner"
  *
  * Single-flight scope: per module (per tab/session in browser; per process in Node.js).
  */
-const inFlightDigests = new Map<
-  string,
-  Promise<{ digest: DigestResult; fromCache: boolean; runId?: string; costUsd?: number; cacheWriteFailed?: boolean }>
->()
+const inFlightDigests = new Map<string, Promise<DigestOutcome>>()
 
 /** Cap on how much of the paper's full text goes into the prompt (characters, not tokens). */
 const MAX_FULL_TEXT_CHARS = 40_000
@@ -171,7 +177,7 @@ export async function generateDigest(
     providerOverride?: Partial<Record<Tier, LLMProvider>>
     now?: () => Date
   },
-): Promise<{ digest: DigestResult; fromCache: boolean; runId?: string; costUsd?: number; cacheWriteFailed?: boolean }> {
+): Promise<DigestOutcome> {
   const path = digestCachePath(paper)
 
   // Single-flight: if another call for this same paper is already in flight,
@@ -182,16 +188,10 @@ export async function generateDigest(
   }
 
   // Create the promise for this call and track it immediately.
-  let resolvePromise: ((result: any) => void) | undefined
-  let rejectPromise: ((error: any) => void) | undefined
+  let resolvePromise: ((result: DigestOutcome) => void) | undefined
+  let rejectPromise: ((error: unknown) => void) | undefined
 
-  const promise = new Promise<{
-    digest: DigestResult
-    fromCache: boolean
-    runId?: string
-    costUsd?: number
-    cacheWriteFailed?: boolean
-  }>((resolve, reject) => {
+  const promise = new Promise<DigestOutcome>((resolve, reject) => {
     resolvePromise = resolve
     rejectPromise = reject
   })

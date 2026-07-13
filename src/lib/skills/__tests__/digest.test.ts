@@ -381,14 +381,14 @@ describe("generateDigest", () => {
     // and find the first call's promise already there.
     const call1Promise = generateDigest(storage, PAPER, {
       settings: settingsWithKeys(),
-      providerOverride: { strong: provider as any },
+      providerOverride: { strong: provider },
       now: NOW,
     })
 
     // Immediately start the second call (before the first call's storage.read completes)
     const call2Promise = generateDigest(storage, PAPER, {
       settings: settingsWithKeys(),
-      providerOverride: { strong: provider as any },
+      providerOverride: { strong: provider },
       now: NOW,
     })
 

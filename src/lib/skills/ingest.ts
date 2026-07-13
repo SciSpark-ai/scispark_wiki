@@ -133,6 +133,40 @@ function unionStable(existing: string[] | undefined, incoming: string[]): string
   return out
 }
 
+/** Reads a Frontmatter value expected to be a string array, tolerating anything else (missing, wrong type) as absent. */
+function asStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? (value as string[]) : undefined
+}
+
+/**
+ * Merges a freshly-built deterministic paper-page draft's frontmatter with an existing
+ * paper page's frontmatter at the same path, using the same union/preserve discipline
+ * `composeLlmFile` applies to LLM-authored pages (I2, m4-final-review.md):
+ *
+ *   - any key the existing page has that the deterministic draft doesn't set (e.g. a
+ *     hand-added custom key) survives untouched — the deterministic draft's own fields
+ *     still win where both define a key.
+ *   - `created` is preserved from the existing page.
+ *   - `sources`/`tags`/`projects` are UNIONED (existing first, then new, order-stable
+ *     dedupe) instead of replaced, so a second ingest of the same paper never drops a
+ *     prior source/tag/project.
+ *
+ * The BODY is untouched by this function — the paper page's body is always the full
+ * deterministic rebuild (see buildPaperPage's caller): the paper page is system-owned,
+ * so user prose belongs on other pages (notes, etc.); any body edit made directly on a
+ * paper page does not survive re-ingest by design. Undo is the recovery path.
+ */
+function mergePaperPageFrontmatter(draft: Frontmatter, existing: Frontmatter): Frontmatter {
+  return {
+    ...existing,
+    ...draft,
+    created: existing.created,
+    sources: unionStable(asStringArray(existing.sources), draft.sources),
+    tags: unionStable(asStringArray(existing.tags), draft.tags),
+    projects: unionStable(asStringArray(existing.projects), asStringArray(draft.projects) ?? []),
+  }
+}
+
 /**
  * Per-path guard beyond routing: model output must never touch the app-owned reserved
  * files (index.md, log.md, purpose.md, schema.md), anything under `.scispark/` (audit
@@ -395,9 +429,13 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
       sources,
       dir: paperDir,
     })
-    // Re-ingest of a known paper: keep the original created date, only bump updated.
+    // Re-ingest of a known paper: merge frontmatter with the existing page (created
+    // preserved, custom keys carried over, sources/tags/projects unioned) — see
+    // mergePaperPageFrontmatter. The body stays the deterministic rebuild.
     const existingPaperPage = bundle.pages.get(`${paperDir}/${slug}`)
-    if (existingPaperPage) paperDraft.frontmatter.created = existingPaperPage.frontmatter.created
+    if (existingPaperPage) {
+      paperDraft.frontmatter = mergePaperPageFrontmatter(paperDraft.frontmatter, existingPaperPage.frontmatter)
+    }
     const authorDrafts = buildAuthorSkeletons(paper, {
       existingIds: new Set(bundle.pages.keys()),
       today,

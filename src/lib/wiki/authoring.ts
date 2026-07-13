@@ -171,7 +171,7 @@ export function buildAuthorSkeletons(paper: PaperRecord, opts: BuildAuthorSkelet
   const dir = opts.dir ?? "wiki/authors"
 
   for (const author of paper.authors) {
-    let baseSlug = author.openalexId ? author.openalexId.toLowerCase() : slugifyTitle(author.name)
+    const baseSlug = author.openalexId ? author.openalexId.toLowerCase() : slugifyTitle(author.name)
     let id = `${dir}/${baseSlug}`
 
     // Skip if this exact id is already in existingIds (pre-existing page)

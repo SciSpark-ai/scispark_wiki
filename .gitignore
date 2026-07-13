@@ -40,7 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-.claude/worktrees/
+
+# session-local Claude Code config (e.g. launch.json dev-server settings) — not shipped
+.claude/
 
 # playwright mcp
 .playwright-mcp/

@@ -10,16 +10,36 @@ import type { SkillContext } from "./types"
 const MAX_FULL_TEXT_EXCERPT_CHARS = 30_000
 
 /**
+ * Neutralizes fence-marker runs (`<<<`, `>>>`) that appear inside untrusted content
+ * before it's spliced into a WIKI-DATA fence — see the I1 finding in m4-final-review.md:
+ * a paper/wiki text containing a literal `<<<END-WIKI-DATA>>>` (or a fake
+ * `<<<WIKI-DATA section="...">>>` opener) could otherwise forge a fence boundary and
+ * make attacker text look like prompt structure rather than data. Every maximal run of
+ * 3+ `<` or `>` characters is replaced with the same-length run of the visually similar
+ * but distinct single/double angle-quote characters (`‹`/`›`, U+2039/U+203A) — this
+ * still reads as "arrow-like" to a model skimming the text, but no longer matches the
+ * literal ASCII marker the fence functions emit, so it can never be confused with a real
+ * boundary. Applied to every fenced content string (both the analysis context in this
+ * file and the generation user message in ingest.ts, since both route through this
+ * function).
+ */
+function neutralizeFenceMarkers(content: string): string {
+  return content.replace(/<{3,}/g, (run) => "‹".repeat(run.length)).replace(/>{3,}/g, (run) => "›".repeat(run.length))
+}
+
+/**
  * Delimiter fences wrapped around every injected data section's content (purpose, page
  * types, the wiki index, paper metadata/abstract, digest, full-text excerpt, and
  * highlights), so the model can tell "this is untrusted content to analyze" apart from
  * prompt structure — see Review finding 2 in m4-task-6-report.md. `<<<...>>>` was chosen
  * because it's a token run that essentially never appears verbatim inside markdown wiki
  * pages, paper abstracts, or LLM-authored prose, unlike single/double angle brackets or
- * `---` which do show up in normal text.
+ * `---` which do show up in normal text. `content` is neutralized (see
+ * `neutralizeFenceMarkers`) before splicing so untrusted text can never forge a fence
+ * boundary of its own (I1, m4-final-review.md).
  */
 export function wikiDataFence(section: string, content: string): string {
-  return `<<<WIKI-DATA section="${section}">>>\n${content}\n<<<END-WIKI-DATA>>>`
+  return `<<<WIKI-DATA section="${section}">>>\n${neutralizeFenceMarkers(content)}\n<<<END-WIKI-DATA>>>`
 }
 
 /**
