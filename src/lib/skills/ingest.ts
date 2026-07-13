@@ -100,7 +100,7 @@ interface ComposedFile {
  * value goes through slugifyTitle, empties/punctuation-only values dropped
  * (slugifyTitle's "untitled" fallback marks those), order-preserving dedupe.
  */
-function sanitizeSlugList(values: string[]): string[] {
+export function sanitizeSlugList(values: string[]): string[] {
   const out: string[] = []
   const seen = new Set<string>()
   for (const value of values) {

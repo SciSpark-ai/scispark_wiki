@@ -4,6 +4,7 @@ import { applyChangeset, makeChangesetId } from "../vault/changesets"
 import { slugifyTitle, composePage, type PageDraft } from "../wiki/authoring"
 import { logEvent } from "../events/log"
 import { neutralizeFenceMarkers } from "../skills/ingest-analysis"
+import { sanitizeSlugList } from "../skills/ingest"
 
 export interface CaptureIdeaInput {
   storage: VaultStorage
@@ -91,7 +92,10 @@ export async function captureIdeaAsNote(
     created: input.today,
     updated: input.today,
     tags: [],
-    related: input.sourcePageId ? [input.sourcePageId] : [],
+    // related[] is a bare-slug list per the frontmatter contract; sourcePageId
+    // arrives as a full wiki id (e.g. "wiki/papers/foo"), so reduce it the same
+    // way ingest does before writing related[].
+    related: input.sourcePageId ? sanitizeSlugList([input.sourcePageId]) : [],
     sources: [],
   }
 

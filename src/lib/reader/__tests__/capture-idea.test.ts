@@ -30,7 +30,9 @@ describe("captureIdeaAsNote", () => {
     expect(page!.frontmatter.type).toBe("note")
     expect(typeof page!.frontmatter.title).toBe("string")
     expect((page!.frontmatter.title as string).length).toBeGreaterThan(0)
-    expect(page!.frontmatter.related).toEqual(["wiki/papers/a-great-paper"])
+    // related[] is a bare-slug list per the frontmatter contract — the full
+    // wiki id is reduced to its last path segment.
+    expect(page!.frontmatter.related).toEqual(["a-great-paper"])
     expect(page!.frontmatter.tags).toEqual([])
     expect(page!.frontmatter.sources).toEqual([])
     expect(page!.frontmatter.created).toBe("2026-07-13")
