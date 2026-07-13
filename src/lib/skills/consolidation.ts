@@ -139,6 +139,9 @@ export async function runConsolidation(
   }
 
   const userContext = await buildUserContext(storage)
+  // High-water mark captured BEFORE the LLM round-trip: events logged while the
+  // model is thinking were not in userContext and must stay unconsolidated.
+  const lastTs = await newestEventTs(storage, now)
   const run = await runSkill({
     skill: consolidationSkill,
     input: { userContextText: userContext.text },
@@ -159,8 +162,6 @@ export async function runConsolidation(
     { path: USER_MODEL_PATHS.feedback, before: current.feedback, after: run.output.feedback },
   ]
   const changed = candidates.filter((c) => c.before !== c.after)
-
-  const lastTs = await newestEventTs(storage, now)
 
   if (changed.length === 0) {
     await writeMarker(storage, { lastTs, runId: run.runId })

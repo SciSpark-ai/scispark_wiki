@@ -217,6 +217,39 @@ describe("runConsolidation", () => {
     expect(after).toEqual(before)
   })
 
+  it("marker high-water mark excludes events logged during the LLM round-trip", async () => {
+    const storage = await seededStorage()
+    await logManyEvents(storage, CONSOLIDATION_MIN_EVENTS)
+    const before = await readUserModel(storage)
+    // Newest pre-call event ts: NOW + (MIN_EVENTS-1) seconds.
+    const preCallNewest = new Date(NOW().getTime() + (CONSOLIDATION_MIN_EVENTS - 1) * 1000).toISOString()
+
+    const inner = new MockProvider([
+      structuredResult({ profile: before.profile!, interests: before.interests!, feedback: before.feedback! }),
+    ])
+    // A provider that logs a fresh event mid-call, simulating user activity
+    // while the model is thinking.
+    const midCallTs = new Date(NOW().getTime() + 3_600_000)
+    const racyProvider = {
+      id: inner.id,
+      complete: async (model: string, req: Parameters<typeof inner.complete>[1]) => {
+        await logEvent(storage, { type: "paper_view", paperKey: "arxiv:race", title: "Mid-run paper" }, () => midCallTs)
+        return inner.complete(model, req)
+      },
+    }
+
+    await runConsolidation(storage, {
+      settings: settingsWithKeys(),
+      providerOverride: { fast: racyProvider },
+      now: NOW,
+    })
+
+    const marker = JSON.parse((await storage.read(CONSOLIDATION_MARKER)) as string)
+    // The mid-run event was NOT in the LLM's context, so it must remain unconsolidated.
+    expect(marker.lastTs).toBe(preCallNewest)
+    expect(marker.lastTs < midCallTs.toISOString()).toBe(true)
+  })
+
   it("a non-ok run status throws an Error carrying the run's error message", async () => {
     const storage = await seededStorage()
     await logManyEvents(storage, CONSOLIDATION_MIN_EVENTS)
