@@ -18,7 +18,7 @@ describe("isOnboarded", () => {
 
   it("is true after seedUserModel has run", async () => {
     const storage = new MemoryVaultStorage()
-    await seedUserModel(storage, answers, () => new Date("2026-07-12T00:00:00.000Z"))
+    await seedUserModel(storage, answers, () => new Date(2026, 6, 12, 9, 0, 0))
     expect(await isOnboarded(storage)).toBe(true)
   })
 })
@@ -26,7 +26,7 @@ describe("isOnboarded", () => {
 describe("seedUserModel", () => {
   it("writes profile.md, interests.md, feedback.md each containing the injected answers verbatim", async () => {
     const storage = new MemoryVaultStorage()
-    await seedUserModel(storage, answers, () => new Date("2026-07-12T00:00:00.000Z"))
+    await seedUserModel(storage, answers, () => new Date(2026, 6, 12, 9, 0, 0))
 
     const profile = await storage.read(USER_MODEL_PATHS.profile)
     const interests = await storage.read(USER_MODEL_PATHS.interests)
@@ -59,10 +59,10 @@ describe("seedUserModel", () => {
 
   it("throws when profile.md already exists (refuses to re-seed)", async () => {
     const storage = new MemoryVaultStorage()
-    await seedUserModel(storage, answers, () => new Date("2026-07-12T00:00:00.000Z"))
+    await seedUserModel(storage, answers, () => new Date(2026, 6, 12, 9, 0, 0))
 
     await expect(
-      seedUserModel(storage, answers, () => new Date("2026-07-13T00:00:00.000Z")),
+      seedUserModel(storage, answers, () => new Date(2026, 6, 13, 9, 0, 0)),
     ).rejects.toThrow("user model already seeded")
   })
 })
@@ -70,7 +70,7 @@ describe("seedUserModel", () => {
 describe("readUserModel", () => {
   it("round-trips content written by seedUserModel", async () => {
     const storage = new MemoryVaultStorage()
-    await seedUserModel(storage, answers, () => new Date("2026-07-12T00:00:00.000Z"))
+    await seedUserModel(storage, answers, () => new Date(2026, 6, 12, 9, 0, 0))
 
     const model = await readUserModel(storage)
     expect(model.profile).toContain(answers.role)
