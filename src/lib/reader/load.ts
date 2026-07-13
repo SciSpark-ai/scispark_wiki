@@ -2,6 +2,7 @@ import { paperKey, type PaperRecord } from "../papers/types"
 import type { VaultStorage } from "../vault/storage"
 import {
   acquireFullText,
+  relayUrl,
   sanitizeSlug,
   snapshotSource,
   type AcquireFullTextDeps,
@@ -115,7 +116,7 @@ async function fetchPdfCandidate(
 
   let response: Response
   try {
-    response = await fetchFn(`${apiBase}/api/fetch?url=${encodeURIComponent(paper.pdfUrl)}`)
+    response = await fetchFn(relayUrl(apiBase, paper.pdfUrl))
   } catch {
     return null
   }

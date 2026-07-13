@@ -32,7 +32,7 @@ interface ResolveResponseBody {
  * this module goes through the M3 /api/fetch relay rather than hitting the
  * target host directly (CORS + the relay's allowlist/rate-limit/SSRF guards).
  */
-function relayUrl(apiBase: string, target: string): string {
+export function relayUrl(apiBase: string, target: string): string {
   return `${apiBase}/api/fetch?url=${encodeURIComponent(target)}`
 }
 
