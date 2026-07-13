@@ -23,7 +23,7 @@ const MAX_FULL_TEXT_EXCERPT_CHARS = 30_000
  * file and the generation user message in ingest.ts, since both route through this
  * function).
  */
-function neutralizeFenceMarkers(content: string): string {
+export function neutralizeFenceMarkers(content: string): string {
   return content.replace(/<{3,}/g, (run) => "‹".repeat(run.length)).replace(/>{3,}/g, (run) => "›".repeat(run.length))
 }
 

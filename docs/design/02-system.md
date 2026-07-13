@@ -112,6 +112,7 @@ Public side: the **trending agent** (server, daily, SciSpark's key) writes per-f
 - **Tier 1 — ground truth:** append-only event log in `.scispark/events/` (views + dwell time, highlights, saves/likes/dismissals, ingests, chat interactions). Local, exported with the vault, replayable.
 - **Tier 2 — working memory:** the Memory-Consolidation Skill periodically distills events into **readable, editable wiki pages**: `profile.md` (seeded by onboarding), `interests.md` (evidence-linked, rising/fading), `feedback.md` (standing instructions the user has given agents). Agents consume Tier 2 + recent raw events.
 - Editing the pages **is** retraining. Lint watches for drift between tiers; consolidation is always recomputable from Tier 1.
+- The three pages live at the vault root alongside `purpose.md`; they are not wiki bundle pages.
 
 ## Review queue
 
