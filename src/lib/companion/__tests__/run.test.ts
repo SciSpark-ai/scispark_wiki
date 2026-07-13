@@ -9,7 +9,6 @@ import type { TriggerState } from "../triggers"
 import { runCompanion, type RunCompanionArgs } from "../run"
 
 const NOW = () => new Date("2026-07-13T12:00:00.000Z")
-const NOW_MS = NOW().getTime()
 
 const settingsWithKeys = (overrides?: Partial<LLMSettings>): LLMSettings => ({
   ...DEFAULT_SETTINGS,
