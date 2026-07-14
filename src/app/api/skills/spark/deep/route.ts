@@ -24,6 +24,16 @@ export interface DeepSparkRouteInput {
  * `DeepSparkResult` values returned as the terminal result, exactly as
  * `SparkPanel` rendered them before this move. Mirrors
  * src/app/api/skills/feed/refresh/route.ts.
+ *
+ * Concurrency/spend safety: this route itself has no guard against two
+ * overlapping requests (e.g. two browser tabs both POSTing here for the same
+ * vault) — the guard lives one layer down, in `runDeepSpark` itself
+ * (src/lib/spark/deep.ts), which shares one in-flight run per `VaultStorage`
+ * via a module-level `WeakMap` (same pattern as
+ * src/lib/trending/dashboard.ts's `runTrendingDashboard`). So two concurrent
+ * POSTs to this route for the same vault resolve to the SAME `DeepSparkResult`
+ * (only one real LLM spend), but the second request's `onPhase` progress
+ * events won't fire mid-run — see runDeepSpark's JSDoc for the full nuance.
  */
 export const POST = ndjsonSkillRoute<DeepSparkRouteInput>(async (input, vault, emit) => {
   const settings = await loadSettings(vault)

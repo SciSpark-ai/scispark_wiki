@@ -164,7 +164,47 @@ interface IdeationScoopAudit {
   audit: AuditResult
 }
 
+/**
+ * In-flight guard (blessed pattern, ported from src/lib/trending/dashboard.ts's
+ * `inFlight` WeakMap): two browser tabs can both POST /api/skills/spark/deep
+ * against the same local server for the same vault (e.g. one left open from
+ * yesterday) — without a guard that's two concurrent Deep Sparks, each a real
+ * $1-3 LLM spend, run against the same storage. Concurrent calls for the SAME
+ * `args.storage` now share one in-flight run — every caller gets the same
+ * `DeepSparkResult` promise/object, and every phase's LLM call (and the single
+ * `spark_run` event) fires only once, not once per caller. A call made AFTER
+ * the shared run has settled starts a fresh run.
+ *
+ * Nuance vs. trending's dashboard guard: sharing here means the SECOND
+ * caller's `direction`/`clusterPageIds`/`seedPageId` (and everything else in
+ * its `opts`) are silently ignored — tab B gets tab A's idea, not its own,
+ * even if tab B asked about a different research direction. For a $1-3 spend
+ * that is the correct conservative default for v1: it is far better for tab B
+ * to (surprisingly) receive tab A's idea than for the harness to ever fire two
+ * concurrent paid Deep Spark runs. If a future caller needs guaranteed-distinct
+ * concurrent runs, it must key the in-flight map on more than just `storage`
+ * (e.g. storage + direction).
+ *
+ * Also per the trending precedent: the second caller's `onPhase` never fires
+ * (only the first caller's `opts` — including its `onPhase` callback — drive
+ * the shared run), so a second tab's progress UI will not update phase-by-phase
+ * until the shared promise resolves. Acceptable for the same reason: this is a
+ * spend-safety guard, not a UX feature.
+ */
+const inFlight = new WeakMap<VaultStorage, Promise<DeepSparkResult>>()
+
 export async function runDeepSpark(args: DeepSparkArgs): Promise<DeepSparkResult> {
+  const existing = inFlight.get(args.storage)
+  if (existing) return existing
+
+  const run = runDeepSparkUncached(args).finally(() => {
+    inFlight.delete(args.storage)
+  })
+  inFlight.set(args.storage, run)
+  return run
+}
+
+async function runDeepSparkUncached(args: DeepSparkArgs): Promise<DeepSparkResult> {
   const now = args.now ?? (() => new Date())
   const phaseCosts: Record<string, number> = {}
   let costUsd = 0
