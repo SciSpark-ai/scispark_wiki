@@ -29,10 +29,16 @@ function formatUpdated(iso: string): string {
 export default function TrendingPage() {
   const [state, setState] = useState<State>({ status: "loading" })
   const [refreshing, setRefreshing] = useState(false)
+  // Refresh outcome is tracked separately from `state` so a failed refresh
+  // never wipes an already-displayed dashboard (see FeedRefreshBar/page.tsx
+  // precedent: refresh errors stay local, old content remains visible with a
+  // retry affordance).
+  const [refreshError, setRefreshError] = useState<string | null>(null)
   const started = useRef(false)
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
+    setRefreshError(null)
     try {
       const vault = await getOpenVault()
       const [settings, tSettings, userModel] = await Promise.all([
@@ -48,7 +54,13 @@ export default function TrendingPage() {
       const dashboard = await runTrendingDashboard(vault, { fields, searchFn: browserSearchFn(), settings })
       setState({ status: "ready", dashboard })
     } catch (err) {
-      setState({ status: "error", message: err instanceof Error ? err.message : String(err) })
+      const message = err instanceof Error ? err.message : String(err)
+      // If a dashboard is already on screen, keep it visible and surface the
+      // failure inline near the Refresh button instead of clobbering the
+      // ready state. Only fall back to the full-page error state when there
+      // was nothing to show in the first place (first load, no cache).
+      setState((prev) => (prev.status === "ready" ? prev : { status: "error", message }))
+      setRefreshError(message)
     } finally {
       setRefreshing(false)
     }
@@ -70,10 +82,17 @@ export default function TrendingPage() {
           setState({ status: "empty" })
           return
         }
-        if (cached && !isStale(cached, tSettings.cadence, new Date())) {
+        if (cached) {
+          // Stale-while-revalidate: show the cached dashboard immediately —
+          // fresh or stale — so panels never disappear. A stale cache then
+          // triggers a background refresh; the Refresh button's own
+          // `refreshing` spinner is the in-progress indicator.
           setState({ status: "ready", dashboard: cached })
+          if (isStale(cached, tSettings.cadence, new Date())) {
+            await refresh()
+          }
         } else {
-          await refresh() // stale or missing → background refresh
+          await refresh() // no cache at all → first load
         }
       } catch (err) {
         setState({ status: "error", message: err instanceof Error ? err.message : String(err) })
@@ -116,14 +135,28 @@ export default function TrendingPage() {
       {state.status === "error" && (
         <div className="mt-6">
           <LlmErrorMessage message={state.message} />
+          <button
+            onClick={refresh}
+            disabled={refreshing}
+            className="mt-3 text-[13px] text-white bg-orange hover:bg-orange/90 disabled:opacity-50 rounded-pill px-4 py-1.5 font-medium"
+          >
+            {refreshing ? "Retrying…" : "Retry"}
+          </button>
         </div>
       )}
       {state.status === "ready" && (
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {state.dashboard.panels.map((panel) => (
-            <FieldPanelView key={panel.field.slug} panel={panel} />
-          ))}
-        </div>
+        <>
+          {refreshError && (
+            <div className="mt-3">
+              <LlmErrorMessage message={refreshError} />
+            </div>
+          )}
+          <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {state.dashboard.panels.map((panel) => (
+              <FieldPanelView key={panel.field.slug} panel={panel} />
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
