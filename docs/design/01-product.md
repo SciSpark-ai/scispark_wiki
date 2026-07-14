@@ -32,10 +32,12 @@ Researchers and research-adjacent professionals who need to stay current in one 
 
 ## Entry flow
 
-1. **Anonymous visitor** → lands on the **Trending page**: daily agent-written trend surveys per major field. Real content, zero setup — this is the live demo and the top of the funnel.
+**v1 (reframed 2026-07-14):** there is no public/anonymous trending page or marketing-capture step in v1 — trending was reframed from a public funnel to a per-user personalized dashboard, which needs an onboarded local profile to have any fields to show. The steps below describe the original public-landing/marketing-capture design, kept as the documented **v2 path** (see `docs/design/03-backend.md` and `docs/superpowers/specs/2026-07-14-m10-trending-dashboard-design.md`) for once a real backend + accounts exist:
+
+1. **[v2, deferred]** **Anonymous visitor** → lands on the **Trending page**: daily agent-written trend surveys per major field. Real content, zero setup — this is the live demo and the top of the funnel.
 2. Click **"Personalized home"** → conversational, agent-style onboarding (a few questions: fields, topics, role, reading habits) → creates a **local profile** (this is "registration" — no server account).
-3. Final onboarding step **optionally** offers a real account (email via Supabase) purely for marketing contact and future tiers. Never required; gates nothing in v1.
-4. Onboarded users get: **For You** feed (personalized), **Trending** tab (public content), and the full app.
+3. **[v2, deferred]** Final onboarding step **optionally** offers a real account (email via Supabase) purely for marketing contact and future tiers. Never required; gates nothing in v1.
+4. Onboarded users get: **For You** feed (personalized), **Trending** tab (v1: personalized "what's big in your field" dashboard, scoped to the user's own fixed sub-fields — not public content), and the full app.
 
 ## The core loop
 
@@ -63,9 +65,9 @@ Anti-Clippy rules (product-level commitments): never modal, never blocks, always
 
 ## v1 scope
 
-**IN:** conversational onboarding → local profile; personalized agentic feed; trending page (public + tab); LLM digest; in-app reader (HTML + pdf.js) with persistent highlights and select-to-ask; add-to-KB two-step agent ingest; wiki browse/edit (Milkdown); projects as virtual indexes; KB chat with citations; visualization dashboard with **all four views** (graph, timeline, citation flow, author network); wiki lint; slim async review queue; per-ingest changeset undo; vault zip export; AI spend meter + daily budget; optional marketing account capture; **the Research Companion** (proactive, always-present); **the Spark Skill** (vault-grounded idea generation with scoop-check, adapted from MIT-licensed ResearchStudio-Idea).
+**IN:** conversational onboarding → local profile; personalized agentic feed; personalized trending dashboard (fixed fields from `interests.md`, deterministic metrics + charts + LLM survey, staleness-refreshed, client-side/BYOK — reframed 2026-07-14 from a public trending page); LLM digest; in-app reader (HTML + pdf.js) with persistent highlights and select-to-ask; add-to-KB two-step agent ingest; wiki browse/edit (Milkdown); projects as virtual indexes; KB chat with citations; visualization dashboard with **all four views** (graph, timeline, citation flow, author network); wiki lint; slim async review queue; per-ingest changeset undo; vault zip export; AI spend meter + daily budget; **the Research Companion** (proactive, always-present); **the Spark Skill** (vault-grounded idea generation with scoop-check, adapted from MIT-licensed ResearchStudio-Idea).
 
-**OUT (v1.5+):** Tauri desktop wrapper; cloud sync (paid tier); SciSpark-managed LLM keys (paid tier); mobile apps; general web search / deep research for agents; Ollama/local models; collaborative filtering; multi-user/team features.
+**OUT (v1.5+):** Tauri desktop wrapper; cloud sync (paid tier); SciSpark-managed LLM keys (paid tier); mobile apps; general web search / deep research for agents; Ollama/local models; collaborative filtering; multi-user/team features; **public/anonymous trending page + server cron + Vercel Blob + optional marketing account capture (`/api/register`/Supabase)** — the original M10 public-landing model, documented as a v2 growth path (see `docs/design/03-backend.md`).
 
 ## Business model hooks (built now, monetized later)
 

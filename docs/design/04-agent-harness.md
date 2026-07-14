@@ -9,7 +9,7 @@ A skill is a versioned document + manifest defining: purpose, workflow steps, co
 | Skill | Trigger | Steps (tier) | Output |
 |---|---|---|---|
 | **Research Feed** | daily / app-open / manual refresh | assemble user context → formulate search strategies (strong) → retrieve via API tools → batch rank ~500→50 (fast) → re-rank + per-card explanations (strong) | feed items + "why this, why you, why now" |
-| **Trending** | server cron, daily per field | pull 24–48h papers + citation movers → trend survey (strong) | field trend page (JSON+md) |
+| **Trending** | client-side, staleness-scheduled (cadence in settings; default weekly; manual refresh) per tracked field | retrieve recent papers + citation movers (deterministic) → compute metrics (counts, %Δ, weekly series, top movers/venues — deterministic, never LLM-emitted) → qualitative survey (strong, persona-free) | `FieldPanel` per tracked field: deterministic metrics/charts + LLM survey (notable-paper whys, emerging topics, momentum narrative) |
 | **Digest** | first open of a paper | full text/abstract → digest (strong) | summary, lay summary, key methods/results, figure digest |
 | **Ingest** | "Add to knowledge base" | deterministic pre-fill (no LLM) → analysis (strong) → generation via structured output (strong) → validate → changeset | wiki changeset + review items |
 | **Reading-Companion** | select-text → ask, in reader/digest/wiki | selection + surrounding section + paper page + relevant wiki neighborhood → answer (strong); "capture idea" → note-page changeset proposal | grounded answer / note draft |
@@ -41,11 +41,13 @@ The Research Feed Skill is the reference implementation ("Agentic Research Feed 
 | `vault.propose_changeset` | – | – | – | ✓ | ✓ (notes only) | – | ✓ | ✓ |
 | `papers.search/citations` | ✓ | ✓ | – | – | ✓ | – | – | – |
 | `papers.fetch` | – | – | ✓ | ✓ | ✓ | – | – | – |
-| `trending.get` | ✓ | – | – | – | – | – | – | – |
+| `trending.get` *(deferred, v2)* | ✓ | – | – | – | – | – | – | – |
 | `events.query` | ✓ | – | – | – | – | – | – | ✓ |
 | `user.flag` (→ review queue) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 Additions for the two new skills: **Spark** gets `vault.read/search/list`, `papers.search/citations`, `vault.propose_changeset` (idea pages), `user.flag`. **Companion** gets `vault.read/search/list`, `events.query`, `trending.get`, `user.flag` — read-only + flagging; it deep-links to other skills rather than invoking them itself.
+
+**`trending.get` / Feed integration deferred (reframed 2026-07-14):** the `trending.get` tool and feeding trending output into the Feed Skill's stage-1 candidates are **not built in v1**. M10 shipped a personalized, self-contained `/trending` dashboard (own retrieval, own cache at `.scispark/trending/dashboard.json`); wiring its output back into Feed candidates is a noted, deferred follow-up (see `docs/superpowers/specs/2026-07-14-m10-trending-dashboard-design.md`, "Out of scope (v1)").
 
 ## Safety contract (harness-enforced, never prompt-trusted)
 
@@ -74,4 +76,4 @@ Skills declare `fast` or `strong` per step — never model names. Settings map t
 - Skill runs are resumable jobs with persisted state (a browser tab can close mid-ingest; the run resumes or safely discards — nothing partial ever reaches the vault thanks to atomic changesets).
 - Retry policy: transient provider errors retry with backoff; validation failures retry once with the error appended; then park in the review queue (`failed-ingest` draft) rather than fail silently.
 - Concurrency: one vault-mutating skill run at a time (changeset serialization); read-only skills run freely.
-- The Trending Skill runs the same harness code server-side on the cron — one harness implementation, two homes.
+- The Trending Skill runs client-side, scheduled via staleness (cache `generatedAt` vs. a cadence setting), not a server cron — v1 has one home (the client). A server-side cron re-running the same harness code (per the original public-trending model) is a documented **v2** growth path, not built in v1.
