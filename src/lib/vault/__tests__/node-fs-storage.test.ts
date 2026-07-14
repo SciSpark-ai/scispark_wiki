@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, rmSync, readdirSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { storageContractTests } from "../storage-contract"
@@ -31,6 +31,29 @@ describe("NodeFsVaultStorage", () => {
     const bytes = new Uint8Array([0, 1, 2, 255, 254, 128])
     await s.writeBinary("assets/x.bin", bytes)
     expect(Array.from((await s.readBinary("assets/x.bin"))!)).toEqual(Array.from(bytes))
+  })
+
+  it("write() and writeBinary() do not leave .tmp files on success", async () => {
+    const s = new NodeFsVaultStorage(dir)
+    await s.write("test.txt", "content")
+    await s.writeBinary("test.bin", new Uint8Array([1, 2, 3]))
+
+    // List all files in dir recursively; none should contain ".tmp"
+    const listRecursive = (base: string): string[] => {
+      const entries = readdirSync(base, { withFileTypes: true })
+      const result: string[] = []
+      for (const entry of entries) {
+        const fullPath = join(base, entry.name)
+        if (entry.isDirectory()) {
+          result.push(...listRecursive(fullPath))
+        } else {
+          result.push(entry.name)
+        }
+      }
+      return result
+    }
+    const files = listRecursive(dir)
+    expect(files.every(f => !f.includes(".tmp"))).toBe(true)
   })
 })
 

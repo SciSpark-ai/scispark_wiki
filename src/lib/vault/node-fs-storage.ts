@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rm, readdir } from "node:fs/promises"
+import { mkdir, readFile, writeFile, rm, readdir, rename } from "node:fs/promises"
 import { dirname, join, resolve, sep } from "node:path"
 import type { VaultStorage } from "./storage"
 
@@ -34,7 +34,15 @@ export class NodeFsVaultStorage implements VaultStorage {
   async write(path: string, content: string): Promise<void> {
     const full = this.abs(path)
     await mkdir(dirname(full), { recursive: true })
-    await writeFile(full, content, "utf8")
+    // tmp+rename so a crash mid-write never leaves a truncated file (matches the OPFS swap-file atomicity we replaced)
+    const tmpPath = `${full}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`
+    try {
+      await writeFile(tmpPath, content, "utf8")
+      await rename(tmpPath, full)
+    } catch (e) {
+      await rm(tmpPath, { force: true })
+      throw e
+    }
   }
 
   async readBinary(path: string): Promise<Uint8Array | null> {
@@ -50,7 +58,15 @@ export class NodeFsVaultStorage implements VaultStorage {
   async writeBinary(path: string, data: Uint8Array): Promise<void> {
     const full = this.abs(path)
     await mkdir(dirname(full), { recursive: true })
-    await writeFile(full, data)
+    // tmp+rename so a crash mid-write never leaves a truncated file (matches the OPFS swap-file atomicity we replaced)
+    const tmpPath = `${full}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`
+    try {
+      await writeFile(tmpPath, data)
+      await rename(tmpPath, full)
+    } catch (e) {
+      await rm(tmpPath, { force: true })
+      throw e
+    }
   }
 
   async delete(path: string): Promise<void> {
