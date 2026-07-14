@@ -1,4 +1,4 @@
-import { posix } from "node:path"
+import { resolve } from "node:path"
 import { getServerVault } from "@/lib/server/vault"
 
 /**
@@ -11,21 +11,33 @@ import { getServerVault } from "@/lib/server/vault"
  * Every other `.scispark/*` file (events, usage, run records, etc.) is
  * unaffected.
  *
- * The guard compares the *normalized* path, not the raw query string: storage
- * resolves paths with `node:path` `resolve()`, which collapses `.` segments
- * and repeated slashes, so a raw string compare against
- * ".scispark/settings.json" is bypassable with e.g.
- * "./.scispark/settings.json", ".//.scispark/settings.json",
- * ".scispark//settings.json", or ".scispark/./settings.json" — all of which
- * resolve to the exact same file on disk. `posix.normalize` is used (not the
- * OS-default `normalize`) because vault paths are always forward-slash POSIX
- * paths regardless of host OS, matching how `NodeFsVaultStorage.abs()`
- * resolves paths.
+ * The guard must agree with how storage actually resolves a path, not with a
+ * second independent normalizer. A prior version used `posix.normalize()`,
+ * which is NOT the same algorithm `NodeFsVaultStorage.abs()` uses
+ * (`path.resolve(this.root, path)`), and the two disagree on real bypasses:
+ *   - `posix.normalize` KEEPS a trailing slash ("foo/" stays "foo/"), while
+ *     `resolve()` STRIPS it — so "?path=.scispark/settings.json/" (or "//")
+ *     compared unequal under normalize() but resolves to the exact real file
+ *     under resolve(), silently opening it.
+ *   - Neither is case-insensitive, so on a case-insensitive filesystem
+ *     (macOS APFS, Windows NTFS — both local-runtime targets) a differently
+ *     -cased path like ".scispark/SETTINGS.json" resolves to the same file on
+ *     disk but compares unequal as a string.
+ *
+ * The fix: resolve the requested path against a fixed sentinel root using the
+ * exact same `path.resolve()` call `abs()` uses, then compare case-
+ * -insensitively against the canonical path resolved the same way. This
+ * collapses "." segments, repeated/trailing slashes, ".." traversal, and case
+ * in one place, and is guaranteed consistent with `abs()` because it's the
+ * same resolve() semantics. Case-insensitive comparison means a genuinely
+ * different, differently-cased file on a case-sensitive filesystem could be
+ * blocked as a false positive — that's the safe direction for a secrets file.
  */
-const PROTECTED_PATH = ".scispark/settings.json"
+const SENTINEL_ROOT = resolve("/__vault_root__")
+const PROTECTED_ABS = resolve(SENTINEL_ROOT, ".scispark/settings.json").toLowerCase()
 
 function isProtectedPath(path: string): boolean {
-  return posix.normalize(path) === PROTECTED_PATH
+  return resolve(SENTINEL_ROOT, path).toLowerCase() === PROTECTED_ABS
 }
 
 function jsonResponse(status: number, body: unknown): Response {

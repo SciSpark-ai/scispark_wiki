@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest"
-import { readFileSync, readdirSync, statSync } from "node:fs"
+import { describe, it, expect, afterEach } from "vitest"
+import { readFileSync, readdirSync, statSync, writeFileSync, rmSync, existsSync } from "node:fs"
 import { join } from "node:path"
 
 /**
@@ -210,14 +210,19 @@ function scanFile(file: string): Violation[] {
   const cleaned = stripComments(readFileSync(file, "utf-8"))
 
   // Dynamic import("mod") — resolves to the full module namespace object.
-  for (const m of cleaned.matchAll(/\bimport\s*\(\s*["']([^"']+)["']\s*\)/g)) {
+  // The quote class includes backtick so a no-substitution template-literal
+  // specifier — `import(\`@/lib/skills/runner\`)` — can't evade the scan just
+  // by swapping quote style; template literals are otherwise lexically
+  // interchangeable with string literals for a static specifier.
+  for (const m of cleaned.matchAll(/\bimport\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/g)) {
     checkAnyAccess(m[1], m[0], file, violations)
   }
 
   // CommonJS require("mod") — same "whole module or any binding is a risk"
   // treatment as dynamic import(), since a require() may be destructured and
-  // it's not worth statically tracing every extraction.
-  for (const m of cleaned.matchAll(/\brequire\s*\(\s*["']([^"']+)["']\s*\)/g)) {
+  // it's not worth statically tracing every extraction. Backtick included for
+  // the same reason as dynamic import() above.
+  for (const m of cleaned.matchAll(/\brequire\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/g)) {
     checkAnyAccess(m[1], m[0], file, violations)
   }
 
@@ -291,5 +296,42 @@ describe("browser purity", () => {
       const report = violations.map((v) => `  ${v.file}: ${v.reason}\n    ${v.statement}`).join("\n")
       expect.fail(`Found ${violations.length} browser-purity violation(s):\n${report}`)
     }
+  })
+
+  // Re-review finding: a no-substitution template-literal specifier —
+  // `await import(\`@/lib/skills/runner\`)` or `require(\`@/lib/skills/runner\`)`
+  // — is lexically just as static as a quoted string but used a different
+  // quote char, so the original `["']`-only regexes silently let it through.
+  // These write a real throwaway file under a scanned root (so the walk/read
+  // path is exercised end-to-end, not just the regex in isolation), assert
+  // the scanner now catches it, then delete the file regardless of outcome.
+  describe("backtick-quoted dynamic import()/require() specifiers are caught", () => {
+    const scratchFile = join("src", "app", "__purity_scratch_backtick_test.ts")
+
+    afterEach(() => {
+      if (existsSync(scratchFile)) rmSync(scratchFile)
+    })
+
+    it("backtick import(`@/lib/skills/runner`) is flagged", () => {
+      writeFileSync(
+        scratchFile,
+        "export async function evade() {\n  const mod = await import(`@/lib/skills/runner`)\n  return mod\n}\n",
+        "utf-8",
+      )
+      const violations = scanFile(scratchFile)
+      expect(violations.length).toBeGreaterThan(0)
+      expect(violations.some((v) => v.reason.includes("lib/skills/runner"))).toBe(true)
+    })
+
+    it("backtick require(`@/lib/skills/runner`) is flagged", () => {
+      writeFileSync(
+        scratchFile,
+        "export function evade() {\n  const mod = require(`@/lib/skills/runner`)\n  return mod\n}\n",
+        "utf-8",
+      )
+      const violations = scanFile(scratchFile)
+      expect(violations.length).toBeGreaterThan(0)
+      expect(violations.some((v) => v.reason.includes("lib/skills/runner"))).toBe(true)
+    })
   })
 })

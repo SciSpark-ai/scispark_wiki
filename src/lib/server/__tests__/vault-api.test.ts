@@ -109,6 +109,22 @@ describe("vault API", () => {
       ".//.scispark/settings.json",
       ".scispark//settings.json",
       ".scispark/./settings.json",
+      // Trailing-slash variants (M11 Task 10 re-review finding): `resolve()`
+      // strips a trailing slash so these open the exact same real file, but
+      // the old `posix.normalize()` guard KEPT the trailing slash and so
+      // compared unequal — a live-reproduced bypass.
+      ".scispark/settings.json/",
+      ".scispark/settings.json//",
+      "./.scispark/settings.json/",
+      ".scispark/./settings.json/",
+      // ".." traversal that nets out to the same file.
+      "x/../.scispark/settings.json",
+      // Case variants (live-reproduced bypass on case-insensitive
+      // filesystems — macOS APFS / Windows NTFS, both local-runtime
+      // targets): these resolve to the SAME on-disk file there even though
+      // they differ from the canonical path as strings.
+      ".scispark/SETTINGS.json",
+      ".SciSpark/settings.json",
     ]
 
     describe.each(PATH_VARIANTS)("path-normalization variant %j", (variant) => {
