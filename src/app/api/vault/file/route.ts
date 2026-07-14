@@ -1,3 +1,4 @@
+import { posix } from "node:path"
 import { getServerVault } from "@/lib/server/vault"
 
 /**
@@ -9,8 +10,23 @@ import { getServerVault } from "@/lib/server/vault"
  * redaction by reading/writing the file directly (M11 Task 10 carry-forward).
  * Every other `.scispark/*` file (events, usage, run records, etc.) is
  * unaffected.
+ *
+ * The guard compares the *normalized* path, not the raw query string: storage
+ * resolves paths with `node:path` `resolve()`, which collapses `.` segments
+ * and repeated slashes, so a raw string compare against
+ * ".scispark/settings.json" is bypassable with e.g.
+ * "./.scispark/settings.json", ".//.scispark/settings.json",
+ * ".scispark//settings.json", or ".scispark/./settings.json" — all of which
+ * resolve to the exact same file on disk. `posix.normalize` is used (not the
+ * OS-default `normalize`) because vault paths are always forward-slash POSIX
+ * paths regardless of host OS, matching how `NodeFsVaultStorage.abs()`
+ * resolves paths.
  */
 const PROTECTED_PATH = ".scispark/settings.json"
+
+function isProtectedPath(path: string): boolean {
+  return posix.normalize(path) === PROTECTED_PATH
+}
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -27,7 +43,7 @@ function requirePath(req: Request): string | null {
 export async function GET(req: Request): Promise<Response> {
   const path = requirePath(req)
   if (!path) return jsonResponse(400, { error: "path is required" })
-  if (path === PROTECTED_PATH) {
+  if (isProtectedPath(path)) {
     return jsonResponse(403, { error: "settings are managed via /api/settings" })
   }
 
@@ -49,7 +65,7 @@ export async function GET(req: Request): Promise<Response> {
 export async function PUT(req: Request): Promise<Response> {
   const path = requirePath(req)
   if (!path) return jsonResponse(400, { error: "path is required" })
-  if (path === PROTECTED_PATH) {
+  if (isProtectedPath(path)) {
     return jsonResponse(403, { error: "settings are managed via /api/settings" })
   }
 

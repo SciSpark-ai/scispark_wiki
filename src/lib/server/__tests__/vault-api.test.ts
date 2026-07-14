@@ -97,6 +97,44 @@ describe("vault API", () => {
       expect(await storage.read(".scispark/settings.json")).toBeNull()
     })
 
+    // The guard used to compare the raw query-string path against the literal
+    // ".scispark/settings.json" — but NodeFsVaultStorage resolves paths with
+    // `path.resolve()`, which collapses "." segments and repeated slashes.
+    // Every one of these variants resolves to the SAME on-disk file as the
+    // canonical path, so they must all be blocked too (M11 Task 10 review
+    // finding: path-normalization bypass).
+    const PATH_VARIANTS = [
+      ".scispark/settings.json",
+      "./.scispark/settings.json",
+      ".//.scispark/settings.json",
+      ".scispark//settings.json",
+      ".scispark/./settings.json",
+    ]
+
+    describe.each(PATH_VARIANTS)("path-normalization variant %j", (variant) => {
+      const url = "http://x/api/vault/file?path=" + encodeURIComponent(variant)
+
+      it("GET → 403", async () => {
+        await storage.write(".scispark/settings.json", JSON.stringify({ keys: { anthropic: "sk-secret" } }))
+        const res = await fileRoute.GET(new Request(url))
+        expect(res.status).toBe(403)
+        expect((await res.json()).error).toBe("settings are managed via /api/settings")
+      })
+
+      it("PUT → 403 (and does not write through)", async () => {
+        const res = await fileRoute.PUT(
+          new Request(url, {
+            method: "PUT",
+            headers: { "x-vault-text": "1" },
+            body: JSON.stringify({ keys: { anthropic: "sk-injected" } }),
+          }),
+        )
+        expect(res.status).toBe(403)
+        expect((await res.json()).error).toBe("settings are managed via /api/settings")
+        expect(await storage.read(".scispark/settings.json")).toBeNull()
+      })
+    })
+
     it("RemoteVaultStorage read of .scispark/settings.json throws", async () => {
       await storage.write(".scispark/settings.json", JSON.stringify({ keys: { anthropic: "sk-secret" } }))
       const remote = new RemoteVaultStorage(

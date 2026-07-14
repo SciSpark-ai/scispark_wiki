@@ -77,10 +77,64 @@ function* walk(dir: string): Generator<string> {
   }
 }
 
-/** Strips block and line comments so prose mentioning a banned module path never trips the gate. */
+/**
+ * Strips block and line comments so prose mentioning a banned module path
+ * never trips the gate — WITHOUT stripping `//` that appears inside a string
+ * literal. A naive `/\/\/.*$/gm` regex deletes everything after the FIRST
+ * `//` on a line unconditionally, so e.g.
+ * `const U = "https://x"; import{runSkill}from"@/lib/skills/runner"` would
+ * have the real import erased before the scanner ever sees it (the `//` in
+ * the URL string looks identical to a line-comment start to a regex that
+ * isn't tracking string state). This is a small hand-rolled tokenizer that
+ * tracks whether it's inside a single/double/template-quoted string and only
+ * treats `//`/`/* *\/` as comment delimiters when they're NOT inside one.
+ */
 function stripComments(src: string): string {
-  const noBlock = src.replace(/\/\*[\s\S]*?\*\//g, "")
-  return noBlock.replace(/\/\/.*$/gm, "")
+  let out = ""
+  let i = 0
+  const n = src.length
+  let inString: '"' | "'" | "`" | null = null
+
+  while (i < n) {
+    const c = src[i]
+    const c2 = i + 1 < n ? src[i + 1] : ""
+
+    if (inString) {
+      if (c === "\\" && i + 1 < n) {
+        out += c + src[i + 1]
+        i += 2
+        continue
+      }
+      out += c
+      if (c === inString) inString = null
+      i++
+      continue
+    }
+
+    if (c === '"' || c === "'" || c === "`") {
+      inString = c
+      out += c
+      i++
+      continue
+    }
+
+    if (c === "/" && c2 === "/") {
+      while (i < n && src[i] !== "\n") i++
+      continue // leave the newline itself for the next iteration to copy through
+    }
+
+    if (c === "/" && c2 === "*") {
+      i += 2
+      while (i < n && !(src[i] === "*" && src[i + 1] === "/")) i++
+      i = Math.min(i + 2, n) // skip past the closing "*/" (or clamp at EOF for an unterminated block comment)
+      continue
+    }
+
+    out += c
+    i++
+  }
+
+  return out
 }
 
 /** Only internal `lib/...` modules are relevant (npm packages, `next/...`, `@/components/...` etc. are never banned). Handles both the `@/lib/...` alias and relative paths that traverse into `lib/`. */
@@ -160,14 +214,32 @@ function scanFile(file: string): Violation[] {
     checkAnyAccess(m[1], m[0], file, violations)
   }
 
-  // Side-effect-only: import "mod"; (no bindings, so only whole-module bans apply)
-  for (const m of cleaned.matchAll(/\bimport\s+["']([^"']+)["']\s*;?/g)) {
+  // CommonJS require("mod") — same "whole module or any binding is a risk"
+  // treatment as dynamic import(), since a require() may be destructured and
+  // it's not worth statically tracing every extraction.
+  for (const m of cleaned.matchAll(/\brequire\s*\(\s*["']([^"']+)["']\s*\)/g)) {
+    checkAnyAccess(m[1], m[0], file, violations)
+  }
+
+  // Side-effect-only: import "mod"; (no bindings, so only whole-module bans apply).
+  // Whitespace between `import` and the string is optional — `import"mod"` is
+  // valid JS (a keyword directly followed by a string literal needs no
+  // separating whitespace), and is exactly the shape a minifier emits.
+  for (const m of cleaned.matchAll(/\bimport\s*["']([^"']+)["']\s*;?/g)) {
     checkWholeOnly(m[1], m[0], file, violations)
   }
 
   // Static `import ... from "mod"` / `export ... from "mod"` (covers `export *`/`export * as ns` too,
   // since their clause text is `*`/`* as ns`, which parseClause reports as a namespace import).
-  for (const m of cleaned.matchAll(/\b(import|export)\s+(type\s+)?([\s\S]*?)\s+from\s+["']([^"']+)["']/g)) {
+  //
+  // Whitespace around the clause is optional to match what a minifier
+  // produces: `import{runSkill}from"@/lib/skills/runner"` is valid JS (no
+  // separating whitespace is lexically required around `{`/`}`/a string
+  // literal) and must not evade this scan just because it lacks the spacing
+  // Prettier would normally add. `(?=[\s{*])` after `import`/`export` still
+  // guards against matching a plain identifier prefix like "importantly" —
+  // the character right after the keyword must be whitespace, `{`, or `*`.
+  for (const m of cleaned.matchAll(/\b(import|export)(?=[\s{*])\s*(type\s+)?([\s\S]*?)\s*from\s*["']([^"']+)["']/g)) {
     const [full, , typeOnlyStmt, clauseText, moduleSpec] = m
     if (typeOnlyStmt) continue // `import type {...} from "..."` / `export type {...} from "..."` — erased at compile time
 
