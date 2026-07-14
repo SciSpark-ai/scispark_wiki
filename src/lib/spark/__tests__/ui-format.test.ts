@@ -4,6 +4,7 @@ import {
   formatDeepSparkConfirm,
   deepSparkPhaseLabel,
   describeDeepOutcome,
+  isDevelopButtonDisabled,
 } from "../ui-format"
 import type { DeepSparkOutcome } from "../deep"
 
@@ -80,5 +81,28 @@ describe("describeDeepOutcome", () => {
       heading: "Idea abandoned after review",
       message: "Failed novelty check twice.",
     })
+  })
+})
+
+describe("isDevelopButtonDisabled", () => {
+  it("is disabled whenever ANY deep run is active, index-agnostic (M9 task-8 finding 1)", () => {
+    // This must hold regardless of which seed the caller checks against —
+    // the whole point is that a running deep run blocks every seed's
+    // "Develop fully", not just the one it belongs to.
+    expect(isDevelopButtonDisabled("running", "idle")).toBe(true)
+    expect(isDevelopButtonDisabled("running", "saved")).toBe(true)
+    expect(isDevelopButtonDisabled("running", "error")).toBe(true)
+  })
+
+  it("is disabled while this seed's own Save write is in flight (M9 task-8 finding 3)", () => {
+    expect(isDevelopButtonDisabled("idle", "saving")).toBe(true)
+    expect(isDevelopButtonDisabled("done", "saving")).toBe(true)
+    expect(isDevelopButtonDisabled("error", "saving")).toBe(true)
+  })
+
+  it("is enabled when no deep run is active and no save is in flight", () => {
+    expect(isDevelopButtonDisabled("idle", "idle")).toBe(false)
+    expect(isDevelopButtonDisabled("done", "saved")).toBe(false)
+    expect(isDevelopButtonDisabled("error", "error")).toBe(false)
   })
 })

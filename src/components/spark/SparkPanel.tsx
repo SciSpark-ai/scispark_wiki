@@ -7,7 +7,7 @@ import { loadSettings } from "@/lib/llm/settings"
 import { browserSearchFn } from "@/lib/skills/feed"
 import { runQuickSpark, saveSeed, type Seed } from "@/lib/spark/quick"
 import { runDeepSpark, estimateDeepSparkCost, type DeepSparkOutcome } from "@/lib/spark/deep"
-import { formatDeepSparkConfirm, describeDeepOutcome } from "@/lib/spark/ui-format"
+import { formatDeepSparkConfirm, describeDeepOutcome, isDevelopButtonDisabled } from "@/lib/spark/ui-format"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { SeedCard, type SeedSaveState } from "./SeedCard"
 import { DeepProgress } from "./DeepProgress"
@@ -206,6 +206,7 @@ export function SparkPanel({ clusterPageIds, onIdeaSaved }: SparkPanelProps) {
               onSave={() => handleSaveSeed(seed, i)}
               onDevelop={() => handleDevelopSeed(seed, i)}
               developBusy={deepState.status === "running" && deepState.seedIndex === i}
+              developDisabled={isDevelopButtonDisabled(deepState.status, seedUi[i]?.status ?? "idle")}
             />
           ))}
         </div>

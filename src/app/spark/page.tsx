@@ -25,14 +25,16 @@ function SparkPageContent() {
   }, [searchParams])
 
   const [bundle, setBundle] = useState<Bundle | null>(null)
+  const [bundleError, setBundleError] = useState<string | null>(null)
 
   const refreshBundle = useCallback(async () => {
     const vault = await getOpenVault()
     setBundle(await loadBundle(vault))
+    setBundleError(null)
   }, [])
 
   useEffect(() => {
-    refreshBundle()
+    refreshBundle().catch((e) => setBundleError(e instanceof Error ? e.message : String(e)))
   }, [refreshBundle])
 
   return (
@@ -49,9 +51,10 @@ function SparkPageContent() {
 
       <div className="mt-10">
         <h2 className="font-heading text-[20px] text-espresso tracking-heading-card mb-3">Idea gallery</h2>
+        {bundleError && <p className="mb-3 text-[13px] text-red-700">Error: {bundleError}</p>}
         {bundle ? (
           <IdeaGallery bundle={bundle} />
-        ) : (
+        ) : bundleError ? null : (
           <div className="text-[13px] text-muted-text tracking-body">Loading…</div>
         )}
       </div>

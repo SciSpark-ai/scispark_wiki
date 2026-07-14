@@ -21,8 +21,15 @@ interface SeedCardProps {
   saveState: SeedSaveState
   onSave: () => void
   onDevelop: () => void
-  /** True while this specific seed is running through Deep Spark ("Develop fully"). */
+  /** True while this specific seed is the one running through Deep Spark
+   * ("Develop fully") — drives the "Developing…" label only. */
   developBusy: boolean
+  /** True whenever the "Develop fully" button must be non-clickable: ANY
+   * Deep Spark run active anywhere on the panel (index-agnostic — Deep Spark
+   * spends real money, so runs must be mutually exclusive) or this seed's
+   * own Save write still in flight (avoids a same-path write race). See
+   * `isDevelopButtonDisabled` in `@/lib/spark/ui-format`. */
+  developDisabled: boolean
 }
 
 /**
@@ -31,7 +38,7 @@ interface SeedCardProps {
  * / bg-light-surface / rounded-card — without its dismiss/mascot chrome, since
  * this lives inline on /spark rather than in the floating mascot bubble).
  */
-export function SeedCard({ seed, saveState, onSave, onDevelop, developBusy }: SeedCardProps) {
+export function SeedCard({ seed, saveState, onSave, onDevelop, developBusy, developDisabled }: SeedCardProps) {
   return (
     <div className="border border-border-warm rounded-card px-4 py-3 bg-light-surface">
       <h3 className="font-heading text-[16px] text-espresso tracking-heading-card">{seed.title}</h3>
@@ -63,7 +70,7 @@ export function SeedCard({ seed, saveState, onSave, onDevelop, developBusy }: Se
         <button
           type="button"
           onClick={onDevelop}
-          disabled={developBusy}
+          disabled={developDisabled}
           className="text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-3 py-1 font-medium disabled:opacity-50"
         >
           {developBusy ? "Developing…" : "Develop fully"}

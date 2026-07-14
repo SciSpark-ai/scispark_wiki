@@ -42,6 +42,28 @@ export function deepSparkPhaseLabel(phase: string): string {
   return DEEP_SPARK_PHASE_LABELS[phase as DeepSparkPhase] ?? phase
 }
 
+export type DeepRunStatus = "idle" | "running" | "done" | "error"
+export type SeedSaveStatus = "idle" | "saving" | "saved" | "error"
+
+/** Whether a seed's "Develop fully" button must be non-clickable.
+ *
+ * Deep Spark is a paid, real-LLM action, so only one run may ever be in
+ * flight at a time: `deepRunStatus === "running"` is checked index-agnostic
+ * (true for every seed, not just whichever one the active run belongs to) so
+ * a second run can never be started while the first is still writing — this
+ * is what prevents the top-level Deep Spark button and every other seed's
+ * "Develop fully" from clobbering the in-flight run's tracked state or
+ * double-spending on it (M9 task-8 review finding 1).
+ *
+ * `saveStatus === "saving"` additionally blocks a same-seed race: "Develop
+ * fully" calls `persistSeed` first, which writes the seed's idea page at a
+ * deterministic path; if the user's separate "Save" click is still writing
+ * that same path, starting a develop run too would race a second write onto
+ * it (M9 task-8 review finding 3). */
+export function isDevelopButtonDisabled(deepRunStatus: DeepRunStatus, saveStatus: SeedSaveStatus): boolean {
+  return deepRunStatus === "running" || saveStatus === "saving"
+}
+
 export interface DeepOutcomeDisplay {
   kind: DeepSparkOutcome["kind"]
   heading: string
