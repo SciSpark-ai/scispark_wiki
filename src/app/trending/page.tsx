@@ -3,18 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { getOpenVault } from "@/lib/vault/get-vault"
-import { loadSettings } from "@/lib/llm/settings"
-import { browserSearchFn } from "@/lib/skills/feed"
 import { readUserModel } from "@/lib/usermodel/pages"
 import { effectiveTrackedFields } from "@/lib/trending/fields"
 import { loadTrendingSettings } from "@/lib/trending/settings"
 import {
   loadDashboard,
-  runTrendingDashboard,
   isStale,
   fieldsMatchDashboard,
   type TrendingDashboard,
 } from "@/lib/trending/dashboard"
+import { refreshTrendingDashboard } from "@/lib/trending/client"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { FieldPanelView } from "@/components/trending/FieldPanelView"
 
@@ -48,8 +46,7 @@ export default function TrendingPage() {
     setRefreshError(null)
     try {
       const vault = await getOpenVault()
-      const [settings, tSettings, userModel] = await Promise.all([
-        loadSettings(vault),
+      const [tSettings, userModel] = await Promise.all([
         loadTrendingSettings(vault),
         readUserModel(vault),
       ])
@@ -58,12 +55,7 @@ export default function TrendingPage() {
         setState({ status: "empty" })
         return
       }
-      const dashboard = await runTrendingDashboard(vault, {
-        fields,
-        searchFn: browserSearchFn(),
-        settings,
-        onProgress: (slug) => setRefreshingField(slug),
-      })
+      const dashboard = await refreshTrendingDashboard(fields, (slug) => setRefreshingField(slug))
       setState({ status: "ready", dashboard })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)

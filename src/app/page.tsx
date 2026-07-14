@@ -4,10 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { isOnboarded } from "@/lib/usermodel/pages"
-import { loadFeed, FEED_CACHE_PATH, browserSearchFn, type FeedResult } from "@/lib/skills/feed"
+import { loadFeed, FEED_CACHE_PATH, type FeedResult } from "@/lib/skills/feed"
 import { paperKey } from "@/lib/papers/types"
-import { loadSettings } from "@/lib/llm/settings"
-import { maybeAutoRefreshTrending } from "@/lib/trending/auto-refresh"
+import { autoRefreshTrending } from "@/lib/trending/client"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { RealFeedCard } from "@/components/feed/RealFeedCard"
 import { FeedRefreshBar } from "@/components/feed/FeedRefreshBar"
@@ -66,8 +65,7 @@ export default function HomePage() {
         // outlive an unmount (e.g. fast navigation away from home).
         void (async () => {
           try {
-            const settings = await loadSettings(vault)
-            await maybeAutoRefreshTrending(vault, { searchFn: browserSearchFn(), settings })
+            await autoRefreshTrending()
           } catch {
             /* background best-effort */
           }
