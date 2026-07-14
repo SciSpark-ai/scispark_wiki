@@ -21,12 +21,14 @@ export const IdeaCandidateSchema = z.object({
   /** Which bundled pattern card(s) (by id, from the injected patternIndex) this candidate draws on. */
   patternIds: z.array(z.string()),
   // LOCKED falsification fields — the audit (Task 6) may rewrite but never drop these.
+  // .min(1) so the lock guarantees non-empty content, not just key presence; the
+  // wire layer strips minLength for GMI (openai-compat) while zod still enforces it.
   falsification: z.object({
-    hypothesis: z.string(),
-    prediction: z.string(),
+    hypothesis: z.string().min(1),
+    prediction: z.string().min(1),
     /** The specific result that would kill the idea — never "if results are bad". */
-    killCriterion: z.string(),
-    experiment: z.string(),
+    killCriterion: z.string().min(1),
+    experiment: z.string().min(1),
   }),
 })
 

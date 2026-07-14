@@ -122,6 +122,16 @@ describe("AuditSchema", () => {
     expect(AuditSchema.safeParse(ACCEPT_RESULT).success).toBe(true)
     expect(AuditSchema.safeParse(ABANDON_RESULT).success).toBe(true)
   })
+
+  it("FALSIFICATION LOCK: rejects a 'revise' result whose revisedFalsification has an EMPTY field", () => {
+    for (const field of ["hypothesis", "prediction", "killCriterion", "experiment"] as const) {
+      const bad = {
+        ...REVISE_RESULT,
+        revisedFalsification: { ...REVISED_FALSIFICATION, [field]: "" },
+      }
+      expect(AuditSchema.safeParse(bad).success).toBe(false)
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------

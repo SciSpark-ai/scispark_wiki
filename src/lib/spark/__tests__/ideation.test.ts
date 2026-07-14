@@ -65,6 +65,16 @@ describe("IdeaCandidateSchema", () => {
     void patternIds
     expect(IdeaCandidateSchema.safeParse(bad).success).toBe(false)
   })
+
+  it("rejects an EMPTY falsification field (lock guarantees content, not just key presence)", () => {
+    for (const field of ["hypothesis", "prediction", "killCriterion", "experiment"] as const) {
+      const bad = {
+        ...SAMPLE_CANDIDATE,
+        falsification: { ...SAMPLE_CANDIDATE.falsification, [field]: "" },
+      }
+      expect(IdeaCandidateSchema.safeParse(bad).success).toBe(false)
+    }
+  })
 })
 
 describe("ideationSkill", () => {

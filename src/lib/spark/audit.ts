@@ -13,12 +13,14 @@ import { neutralizeFenceMarkers } from "../skills/ingest-analysis"
 // fields — the audit may rewrite, but never drop, a falsification field.
 // ---------------------------------------------------------------------------
 
+// .min(1) so a revised plan can never ship an empty field — the lock guarantees
+// non-empty content, not just key presence (wire layer strips minLength for GMI).
 const FalsificationSchema = z.object({
-  hypothesis: z.string(),
-  prediction: z.string(),
+  hypothesis: z.string().min(1),
+  prediction: z.string().min(1),
   /** The specific result that would kill the idea — never "if results are bad". */
-  killCriterion: z.string(),
-  experiment: z.string(),
+  killCriterion: z.string().min(1),
+  experiment: z.string().min(1),
 })
 
 export const AuditSchema = z.object({
