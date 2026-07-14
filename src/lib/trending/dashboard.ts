@@ -55,28 +55,46 @@ export async function runTrendingDashboard(storage: VaultStorage, opts: RunTrend
 
   for (const field of opts.fields) {
     opts.onProgress?.(field.slug)
-    const at = now()
-    const candidates = await retrieveFieldCandidates(opts.searchFn, field, { now: at })
-    const metrics = computeFieldMetrics(candidates, { now: at })
+    try {
+      const at = now()
+      const candidates = await retrieveFieldCandidates(opts.searchFn, field, { now: at })
+      const metrics = computeFieldMetrics(candidates, { now: at })
 
-    let survey: TrendingSurvey | null = null
-    let error: string | undefined
-    const run = await runSkill({
-      skill: trendingSkill,
-      input: { field, recent: candidates.recent, movers: candidates.movers },
-      storage,
-      settings: opts.settings,
-      providerOverride: opts.providerOverride,
-      now: opts.now,
-    })
-    if (run.status === "ok" && run.output !== undefined) {
-      survey = run.output
-      costUsd += run.costUsd
-    } else {
-      error = run.error ?? `trending skill finished with status "${run.status}"`
+      let survey: TrendingSurvey | null = null
+      let error: string | undefined
+      const run = await runSkill({
+        skill: trendingSkill,
+        input: { field, recent: candidates.recent, movers: candidates.movers },
+        storage,
+        settings: opts.settings,
+        providerOverride: opts.providerOverride,
+        now: opts.now,
+      })
+      if (run.status === "ok" && run.output !== undefined) {
+        survey = run.output
+        costUsd += run.costUsd
+      } else {
+        error = run.error ?? `trending skill finished with status "${run.status}"`
+      }
+
+      panels.push({ field, metrics, survey, error, generatedAt })
+    } catch (err) {
+      // Outer safety net for anything unexpected thrown by retrieval or metrics
+      // computation (the skill-failure path above is handled separately and
+      // never throws). Per the spec's error-handling section, a per-field
+      // failure degrades that panel — it must never fail the whole dashboard,
+      // which would lose every other field's panel, the cache write, and the
+      // event log. `generatedAt` (captured once above, shared by all panels)
+      // stands in for `now()` here since the failure may have originated in
+      // `now()` itself.
+      panels.push({
+        field,
+        metrics: computeFieldMetrics({ recent: [], movers: [] }, { now: new Date(generatedAt) }),
+        survey: null,
+        error: err instanceof Error ? err.message : String(err),
+        generatedAt,
+      })
     }
-
-    panels.push({ field, metrics, survey, error, generatedAt })
   }
 
   const dashboard: TrendingDashboard = { panels, generatedAt }
