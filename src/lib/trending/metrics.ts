@@ -41,6 +41,19 @@ function isoWeekStart(d: Date): string {
   return monday.toISOString().slice(0, 10)
 }
 
+/**
+ * Computes field-level trending metrics from candidates already retrieved by
+ * `retrieveFieldCandidates`.
+ *
+ * IMPORTANT: `opts.now` and `opts.recentWindowDays` here MUST be the exact
+ * same values passed to `retrieveFieldCandidates` for this `candidates`
+ * object. `paperCountRecent` is derived from `candidates.recent`, which was
+ * already filtered by `retrieveFieldCandidates` using its own now/window;
+ * `paperCountPrior` (and therefore `pctChange`) is computed here by
+ * re-deriving cutoffs from `opts.now`/`opts.recentWindowDays`. If the two
+ * calls disagree, the recent and prior windows silently desynchronize
+ * (gaps, overlaps, or double-counted papers) without any error.
+ */
 export function computeFieldMetrics(
   candidates: TrendingCandidates,
   opts: { now: Date; recentWindowDays?: number; weeks?: number },
@@ -81,14 +94,19 @@ export function computeFieldMetrics(
   }
   const weeklyVolume: VolumePoint[] = weekStarts.map((ws) => ({ weekStart: ws, count: buckets.get(ws) ?? 0 }))
 
-  const topMovers = candidates.movers
+  // Defensive re-sort: don't rely on the producer (retrieveFieldCandidates)
+  // having sorted movers by citationCount already. For already-sorted input
+  // this is a no-op (stable sort preserves order among equal counts).
+  const sortedMovers = [...candidates.movers].sort((a, b) => (b.citationCount ?? 0) - (a.citationCount ?? 0))
+  const topMovers = sortedMovers
     .filter((p): p is PaperRecord & { citationCount: number } => typeof p.citationCount === "number")
     .slice(0, TOP_MOVERS)
     .map((p) => ({ paper: p, citationCount: p.citationCount }))
 
   const venueCounts = new Map<string, number>()
   for (const p of candidates.movers) {
-    if (p.venue && p.venue.trim().length > 0) venueCounts.set(p.venue, (venueCounts.get(p.venue) ?? 0) + 1)
+    const v = p.venue?.trim()
+    if (v) venueCounts.set(v, (venueCounts.get(v) ?? 0) + 1)
   }
   const topVenues = [...venueCounts.entries()]
     .sort((a, b) => b[1] - a[1])

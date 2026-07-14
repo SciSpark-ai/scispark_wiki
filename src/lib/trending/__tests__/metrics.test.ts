@@ -61,4 +61,33 @@ describe("computeFieldMetrics", () => {
     expect(m).toMatchObject({ paperCountRecent: 0, paperCountPrior: 0, pctChange: null, topMovers: [], topVenues: [] })
     expect(m.weeklyVolume.every((v) => v.count === 0)).toBe(true)
   })
+
+  it("trims venue names before aggregating so trailing-space variants merge", () => {
+    const movers = [
+      paper({ title: "a", venue: "ACL" }),
+      paper({ title: "b", venue: "ACL " }), // trailing space — same venue
+    ]
+    const m = computeFieldMetrics({ recent: [], movers }, { now: NOW })
+    expect(m.topVenues).toEqual([{ venue: "ACL", count: 2 }])
+  })
+
+  it("prior window is [priorCutoff, recentCutoff): boundary papers land on exactly one side, never both", () => {
+    // windowDays=14, now=2026-07-14T00:00:00Z => recentCutoff=2026-06-30T00:00:00.000Z,
+    // priorCutoff=2026-06-16T00:00:00.000Z
+    const onRecentCutoff = paper({ title: "on-recent-cutoff", date: "2026-06-30T00:00:00.000Z", year: 2026 })
+    const onPriorCutoff = paper({ title: "on-prior-cutoff", date: "2026-06-16T00:00:00.000Z", year: 2026 })
+    const movers = [onRecentCutoff, onPriorCutoff]
+    const m = computeFieldMetrics({ recent: [], movers }, { now: NOW, recentWindowDays: 14 })
+    // Only the paper dated exactly priorCutoff counts (t >= priorCutoff && t < recentCutoff);
+    // the paper dated exactly recentCutoff does not (excluded by t < recentCutoff).
+    expect(m.paperCountPrior).toBe(1)
+  })
+
+  it("a future-dated paper does not crash weeklyVolume and contributes to no bucket", () => {
+    const future = paper({ title: "future", date: "2026-07-20", year: 2026 }) // a week after NOW
+    const m = computeFieldMetrics({ recent: [], movers: [future] }, { now: NOW, weeks: 8 })
+    expect(m.weeklyVolume.length).toBe(8)
+    expect(m.weeklyVolume.every((v) => v.count === 0)).toBe(true)
+    expect(m.paperCountPrior).toBe(0)
+  })
 })
