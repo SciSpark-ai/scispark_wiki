@@ -114,7 +114,7 @@ describe("ndjsonSkillRoute + readNdjson", () => {
     const chunks = [
       '{"type":"progress","fi', // split mid-line
       'eld":"a"}\n{"type":"progress","field":"b"}\n', // two lines in one chunk
-      '{"type":"result","panels":[1,2]}\n',
+      '{"type":"result","payload":{"panels":[1,2]}}\n',
     ]
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -127,6 +127,42 @@ describe("ndjsonSkillRoute + readNdjson", () => {
     const result = await readNdjson(res, (e) => seen.push(e))
     expect(seen).toEqual([{ type: "progress", field: "a" }, { type: "progress", field: "b" }])
     expect(result).toEqual({ panels: [1, 2] })
+  })
+
+  it("a handler result that itself has a `type` property round-trips intact (nested payload, not spread)", async () => {
+    const route = ndjsonSkillRoute<Record<string, never>>(async () => ({
+      type: "refreshed",
+      count: 3,
+    }))
+    const res = await route(new Request("http://x/api/skills/test", { method: "POST", body: "{}" }))
+    const result = await readNdjson(res, () => undefined)
+    // Before the fix, spreading `{type:"result", ...result}` would let the
+    // handler's own `type: "refreshed"` overwrite the terminal tag, so
+    // readNdjson would treat this line as a non-terminal progress event and
+    // then reject with "stream ended without a result or error event".
+    expect(result).toEqual({ type: "refreshed", count: 3 })
+  })
+
+  it("a late emit() after the handler has resolved is a silent no-op — no unhandled rejection, stream result intact", async () => {
+    let lateEmit: ((event: object) => void) | undefined
+    const route = ndjsonSkillRoute<Record<string, never>>(async (_input, _vault, emit) => {
+      emit({ type: "progress", step: 1 })
+      // Simulate a handler that kicks off async work it doesn't await, which
+      // tries to emit again after the handler itself has already resolved
+      // and the terminal line has been written.
+      lateEmit = emit
+      return { done: true }
+    })
+    const res = await route(new Request("http://x/api/skills/test", { method: "POST", body: "{}" }))
+    const seen: unknown[] = []
+    const result = await readNdjson(res, (e) => seen.push(e))
+    expect(result).toEqual({ done: true })
+    expect(seen).toEqual([{ type: "progress", step: 1 }])
+
+    // Calling emit() now must not throw (would otherwise be an unhandled
+    // rejection with no catch site, since the route's start() callback has
+    // already returned).
+    expect(() => lateEmit?.({ type: "progress", step: "too late" })).not.toThrow()
   })
 
   it("setSkillTestOverrides / getSkillTestOverrides round-trip and reset", async () => {

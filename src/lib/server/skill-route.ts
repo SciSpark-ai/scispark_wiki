@@ -57,13 +57,18 @@ export function jsonSkillRoute<TIn, TOut>(
  * back as newline-delimited JSON (`content-type: application/x-ndjson`).
  * `emit(event)` writes one `{...}\n` progress line immediately (for
  * long-running skills to report per-item progress); the handler's resolved
- * value is written as the terminal `{"type":"result",...}\n` line; any throw
- * anywhere in the chain (malformed body, vault failure, handler failure)
- * writes the terminal `{"type":"error","message":...}\n` line instead. The
- * stream always terminates — the `finally` closes the controller on both the
- * success and failure paths, and the HTTP response itself is always 200 (the
- * outcome lives in the terminal NDJSON line, not the status code, since the
- * headers are already committed once streaming starts).
+ * value is written as the terminal line, NESTED under a `payload` key —
+ * `{"type":"result","payload":<handler result>}\n` — rather than spread
+ * alongside `type`. Spreading would let a handler result that itself has a
+ * `type` field (e.g. `{type: "refreshed", ...}`) clobber the terminal tag,
+ * making `readNdjson` misread the line as a progress event and then reject
+ * with "stream ended without a result" once EOF hit. Any throw anywhere in
+ * the chain (malformed body, vault failure, handler failure) writes the
+ * terminal `{"type":"error","message":...}\n` line instead. The stream always
+ * terminates — the `finally` closes the controller on both the success and
+ * failure paths, and the HTTP response itself is always 200 (the outcome
+ * lives in the terminal NDJSON line, not the status code, since the headers
+ * are already committed once streaming starts).
  */
 export function ndjsonSkillRoute<TIn>(
   handler: (input: TIn, vault: VaultStorage, emit: (event: object) => void) => Promise<object>,
@@ -72,17 +77,37 @@ export function ndjsonSkillRoute<TIn>(
     const encoder = new TextEncoder()
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
+        // Guards against a handler calling `emit` after it has already
+        // resolved/thrown (e.g. from a stray setTimeout/async callback it
+        // kicked off and didn't await) — once the terminal line is about to
+        // be written (or has been), the controller is closing/closed, and
+        // enqueueing on it throws. Without this guard that throw becomes an
+        // unhandled rejection outside any try/catch here (the `start`
+        // callback has already returned by the time the late timer fires).
+        let closed = false
         const emit = (event: object): void => {
+          if (closed) return
+          // Eager, unbuffered enqueue with no desiredSize/backpressure check:
+          // fine for today's low-volume progress events (one per field/item,
+          // human-timescale cadence). Revisit with a backpressure-aware queue
+          // if a skill starts emitting at high volume (e.g. per-token).
           controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))
         }
         try {
           const input = (await req.json()) as TIn
           const vault = await getServerVault()
           const result = await handler(input, vault, emit)
-          emit({ type: "result", ...result })
+          closed = true
+          controller.enqueue(encoder.encode(`${JSON.stringify({ type: "result", payload: result })}\n`))
         } catch (err) {
-          emit({ type: "error", message: err instanceof Error ? err.message : String(err) })
+          closed = true
+          controller.enqueue(
+            encoder.encode(
+              `${JSON.stringify({ type: "error", message: err instanceof Error ? err.message : String(err) })}\n`,
+            ),
+          )
         } finally {
+          closed = true
           controller.close()
         }
       },

@@ -18,6 +18,7 @@
 interface NdjsonEvent {
   type?: string
   message?: string
+  payload?: unknown
   [key: string]: unknown
 }
 
@@ -25,11 +26,13 @@ interface NdjsonEvent {
  * Line-buffers across chunk boundaries so a line split across two
  * `reader.read()` chunks, or multiple lines delivered in one chunk, are both
  * handled correctly. Calls `onEvent` for every non-terminal (`progress`)
- * line as it arrives; resolves with the terminal `result` event's payload
- * (with `type` stripped) once the stream ends, or rejects with an `Error`
- * built from the terminal `error` event's `message`. A stream that ends
- * without ever seeing a `result` or `error` event is itself treated as a
- * failure.
+ * line as it arrives; resolves with the terminal `result` event's `payload`
+ * field once the stream ends, or rejects with an `Error` built from the
+ * terminal `error` event's `message`. The payload is nested (not spread
+ * alongside `type`) so a handler result that itself has a `type` property
+ * round-trips intact instead of clobbering the terminal tag. A stream that
+ * ends without ever seeing a `result` or `error` event is itself treated as
+ * a failure.
  */
 export async function readNdjson(res: Response, onEvent: (event: NdjsonEvent) => void): Promise<unknown> {
   if (!res.body) throw new Error("readNdjson: response has no body")
@@ -45,9 +48,7 @@ export async function readNdjson(res: Response, onEvent: (event: NdjsonEvent) =>
     if (trimmed.length === 0) return
     const event = JSON.parse(trimmed) as NdjsonEvent
     if (event.type === "result") {
-      const rest: Record<string, unknown> = { ...event }
-      delete rest.type
-      result = rest
+      result = event.payload
       hasResult = true
     } else if (event.type === "error") {
       errorMessage = event.message ?? "skill error"
