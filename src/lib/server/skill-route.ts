@@ -122,6 +122,8 @@ export function ndjsonSkillRoute<TIn>(
 export interface SkillTestOverrides {
   providerOverride?: Partial<Record<Tier, LLMProvider>>
   searchFn?: SearchFn
+  /** Injects a fake fetch for `serverRelayFetch`-consuming routes (digest/ingest) so tests never hit the real relay/network. */
+  fetchFn?: typeof fetch
 }
 
 let skillTestOverrides: SkillTestOverrides = {}

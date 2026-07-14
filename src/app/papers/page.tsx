@@ -4,16 +4,13 @@ import { Suspense, useEffect, useState, type FormEvent } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { paperKey, type PaperRecord, type SourceId } from "@/lib/papers/types"
-import { acquireFullText, snapshotSource } from "@/lib/wiki/acquire"
-import { generateDigest, type DigestResult } from "@/lib/skills/digest"
-import { ingestSkill, undoIngest, type IngestOutput } from "@/lib/skills/ingest"
-import { runSkill } from "@/lib/skills/runner"
-import { loadSettings } from "@/lib/llm/settings"
+import type { DigestResult } from "@/lib/skills/digest"
+import type { IngestOutput } from "@/lib/skills/ingest"
+import { generateDigestRemote, ingestRemote, undoIngestRemote, type IngestPhase } from "@/lib/skills/ingest-client"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadFeed } from "@/lib/skills/feed"
 import { logEvent } from "@/lib/events/log"
 import { writeReaderHandoff } from "@/lib/reader/handoff"
-import { listHighlights, formatHighlightsForPrompt } from "@/lib/highlights/store"
 import { PaperResultItem } from "@/components/papers/PaperResultItem"
 import { DigestPanel } from "@/components/papers/DigestPanel"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
@@ -26,8 +23,6 @@ type DigestState =
   | { status: "loading" }
   | { status: "done"; digest: DigestResult; fromCache: boolean; costUsd?: number }
   | { status: "error"; message: string }
-
-type IngestPhase = "acquiring" | "snapshotting" | "digesting" | "ingesting"
 
 type IngestState =
   | { phase: "idle" }
@@ -145,13 +140,10 @@ function PapersPageContent() {
     if (!selected) return
     setDigestState({ status: "loading" })
     try {
-      const vault = await getOpenVault()
-      const acquired = await acquireFullText(selected)
-      const { digest, fromCache, costUsd } = await generateDigest(vault, selected, {
-        fullText: acquired.kind === "html" ? acquired.text : undefined,
-      })
+      const { digest, fromCache, costUsd } = await generateDigestRemote(selected)
       setDigestState({ status: "done", digest, fromCache, costUsd })
       if (!fromCache) {
+        const vault = await getOpenVault()
         void logEvent(vault, {
           type: "digest_generated",
           paperKey: paperKey(selected),
@@ -168,60 +160,20 @@ function PapersPageContent() {
     if (!selected) return
     setIngestState({ phase: "acquiring" })
     try {
-      const vault = await getOpenVault()
-      const acquired = await acquireFullText(selected)
-
-      let snapshotPath: string | undefined
-      if (acquired.kind === "html" && acquired.html !== undefined) {
-        setIngestState({ phase: "snapshotting" })
-        snapshotPath = await snapshotSource(vault, selected, acquired.html)
-      }
-
-      setIngestState({ phase: "digesting" })
-      const { digest } = await generateDigest(vault, selected, {
-        fullText: acquired.kind === "html" ? acquired.text : undefined,
-      })
-
-      setIngestState({ phase: "ingesting" })
-      const settings = await loadSettings(vault)
-      const today = new Date().toISOString().slice(0, 10)
-      // Emphasis wiring (M6): the user's own highlights on this paper feed
-      // into buildAnalysisContext's "User Highlights" section as signals of
-      // what the ingest should emphasize.
-      const highlights = formatHighlightsForPrompt(await listHighlights(vault, paperKey(selected)))
-      const run = await runSkill({
-        skill: ingestSkill,
-        input: {
-          storage: vault,
-          paper: selected,
-          digest,
-          fullText: { kind: acquired.kind, text: acquired.text, snapshotPath },
-          highlights,
-          today,
-        },
-        storage: vault,
-        settings,
-      })
-
-      if (run.status === "ok" && run.output !== undefined) {
-        setIngestState({ phase: "done", output: run.output, costUsd: run.costUsd })
-        if (run.output.status === "ok") {
-          // Awaited (not fire-and-forget) so the ingest event is durably logged
-          // before the companion re-evaluates — the post-ingest trigger reads
-          // recent events and would otherwise race the write.
-          await logEvent(vault, {
-            type: "ingest",
-            paperKey: paperKey(selected),
-            title: selected.title,
-            changesetId: run.output.changesetId,
-          })
-          reevaluateCompanion()
-        }
-      } else {
-        setIngestState({
-          phase: "error",
-          message: run.error ?? `ingest run finished with unexpected status "${run.status}"`,
+      const { output, costUsd } = await ingestRemote(selected, (phase) => setIngestState({ phase }))
+      setIngestState({ phase: "done", output, costUsd })
+      if (output.status === "ok") {
+        const vault = await getOpenVault()
+        // Awaited (not fire-and-forget) so the ingest event is durably logged
+        // before the companion re-evaluates — the post-ingest trigger reads
+        // recent events and would otherwise race the write.
+        await logEvent(vault, {
+          type: "ingest",
+          paperKey: paperKey(selected),
+          title: selected.title,
+          changesetId: output.changesetId,
         })
+        reevaluateCompanion()
       }
     } catch (err) {
       setIngestState({ phase: "error", message: err instanceof Error ? err.message : String(err) })
@@ -233,8 +185,7 @@ function PapersPageContent() {
     const changesetId = ingestState.output.changesetId
     setIngestState({ ...ingestState, undoing: true })
     try {
-      const vault = await getOpenVault()
-      await undoIngest(vault, changesetId)
+      await undoIngestRemote(changesetId)
       setIngestState((prev) => (prev.phase === "done" ? { ...prev, undoing: false, undone: true } : prev))
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
