@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { isOnboarded } from "@/lib/usermodel/pages"
-import { loadFeed, FEED_CACHE_PATH, type FeedResult } from "@/lib/skills/feed"
+import { loadFeed, FEED_CACHE_PATH, browserSearchFn, type FeedResult } from "@/lib/skills/feed"
 import { paperKey } from "@/lib/papers/types"
+import { loadSettings } from "@/lib/llm/settings"
+import { maybeAutoRefreshTrending } from "@/lib/trending/auto-refresh"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { RealFeedCard } from "@/components/feed/RealFeedCard"
 import { FeedRefreshBar } from "@/components/feed/FeedRefreshBar"
@@ -57,6 +59,19 @@ export default function HomePage() {
         const feed = await loadFeed(vault)
         if (cancelled) return
         setState({ status: "ready", feed })
+
+        // v1 trending "cron": refresh in the background if stale. Never blocks
+        // the feed render. Intentionally not gated by `cancelled` — this is a
+        // background vault write, not a state update, so it's fine for it to
+        // outlive an unmount (e.g. fast navigation away from home).
+        void (async () => {
+          try {
+            const settings = await loadSettings(vault)
+            await maybeAutoRefreshTrending(vault, { searchFn: browserSearchFn(), settings })
+          } catch {
+            /* background best-effort */
+          }
+        })()
       } catch (err) {
         if (!cancelled) setState({ status: "error", message: err instanceof Error ? err.message : String(err) })
       }
