@@ -16,38 +16,53 @@ export async function GET(req: Request): Promise<Response> {
   const path = requirePath(req)
   if (!path) return jsonResponse(400, { error: "path is required" })
 
-  const storage = await getServerVault()
-  const bytes = await storage.readBinary(path)
-  if (bytes === null) return jsonResponse(404, { error: "not found" })
+  try {
+    const storage = await getServerVault()
+    const bytes = await storage.readBinary(path)
+    if (bytes === null) return jsonResponse(404, { error: "not found" })
 
-  return new Response(bytes as Uint8Array<ArrayBuffer>, {
-    status: 200,
-    headers: { "Content-Type": "application/octet-stream" },
-  })
+    return new Response(bytes as Uint8Array<ArrayBuffer>, {
+      status: 200,
+      headers: { "Content-Type": "application/octet-stream" },
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return jsonResponse(500, { error: message })
+  }
 }
 
 export async function PUT(req: Request): Promise<Response> {
   const path = requirePath(req)
   if (!path) return jsonResponse(400, { error: "path is required" })
 
-  const bytes = new Uint8Array(await req.arrayBuffer())
-  const storage = await getServerVault()
+  try {
+    const bytes = new Uint8Array(await req.arrayBuffer())
+    const storage = await getServerVault()
 
-  if (req.headers.get("x-vault-text") === "1") {
-    await storage.write(path, new TextDecoder("utf-8").decode(bytes))
-  } else {
-    await storage.writeBinary(path, bytes)
+    if (req.headers.get("x-vault-text") === "1") {
+      await storage.write(path, new TextDecoder("utf-8").decode(bytes))
+    } else {
+      await storage.writeBinary(path, bytes)
+    }
+
+    return new Response(null, { status: 204 })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return jsonResponse(500, { error: message })
   }
-
-  return new Response(null, { status: 204 })
 }
 
 export async function DELETE(req: Request): Promise<Response> {
   const path = requirePath(req)
   if (!path) return jsonResponse(400, { error: "path is required" })
 
-  const storage = await getServerVault()
-  await storage.delete(path)
+  try {
+    const storage = await getServerVault()
+    await storage.delete(path)
 
-  return new Response(null, { status: 204 })
+    return new Response(null, { status: 204 })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return jsonResponse(500, { error: message })
+  }
 }

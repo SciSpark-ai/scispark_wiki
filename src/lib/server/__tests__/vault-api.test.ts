@@ -1,9 +1,31 @@
 import { describe, it, expect, beforeEach } from "vitest"
+import type { VaultStorage } from "../../vault/storage"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { setServerVaultForTests } from "../vault"
 import * as fileRoute from "../../../app/api/vault/file/route"
 import * as listRoute from "../../../app/api/vault/list/route"
 import * as changesetRoute from "../../../app/api/vault/changeset/route"
+
+class ThrowingReadStorage implements VaultStorage {
+  async read(): Promise<string | null> {
+    throw new Error("simulated read failure")
+  }
+  async write(): Promise<void> {
+    throw new Error("simulated write failure")
+  }
+  async readBinary(): Promise<Uint8Array | null> {
+    throw new Error("simulated readBinary failure")
+  }
+  async writeBinary(): Promise<void> {
+    throw new Error("simulated writeBinary failure")
+  }
+  async delete(): Promise<void> {
+    throw new Error("simulated delete failure")
+  }
+  async list(): Promise<string[]> {
+    throw new Error("simulated list failure")
+  }
+}
 
 describe("vault API", () => {
   let storage: MemoryVaultStorage
@@ -85,7 +107,7 @@ describe("vault API", () => {
     expect(await storage.read("wiki/new.md")).toBe("content")
   })
 
-  it("POST /api/vault/changeset: reusing a changeset id (record collision, not a content conflict) → 500", async () => {
+  it("POST /api/vault/changeset: reusing a changeset id (record collision, a ChangesetInvalidError) → 400", async () => {
     const cs = {
       id: "cs-collide",
       skill: "test-skill",
@@ -99,12 +121,11 @@ describe("vault API", () => {
     expect(ok.status).toBe(200)
     // Re-applying the exact same changeset (same id) hits applyChangeset's
     // id-collision guard (ChangesetInvalidError), which runs before the
-    // content-conflict check — this is NOT a ChangesetConflictError, so the
-    // route maps it to 500 per the brief's "other errors → 500" rule.
+    // content-conflict check — ChangesetInvalidError always maps to 400.
     const dup = await changesetRoute.POST(new Request("http://x/api/vault/changeset", {
       method: "POST", body: JSON.stringify({ action: "apply", changeset: cs }),
     }))
-    expect(dup.status).toBe(500)
+    expect(dup.status).toBe(400)
     expect((await dup.json()).error).toMatch(/collision/i)
   })
 
@@ -143,5 +164,95 @@ describe("vault API", () => {
       body: JSON.stringify({ action: "apply" }),
     }))
     expect(missingChangeset.status).toBe(400)
+  })
+
+  it("POST /api/vault/changeset with duplicate paths (ChangesetInvalidError) → 400", async () => {
+    const cs = {
+      id: "cs-dup-paths",
+      skill: "test-skill",
+      model: "test-model",
+      timestamp: "2026-07-14T00:00:00Z",
+      changes: [
+        { path: "wiki/dup.md", before: null, after: "v1" },
+        { path: "wiki/dup.md", before: "v1", after: "v2" },
+      ],
+    }
+    const res = await changesetRoute.POST(new Request("http://x/api/vault/changeset", {
+      method: "POST", body: JSON.stringify({ action: "apply", changeset: cs }),
+    }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/duplicate/i)
+  })
+
+  it("POST /api/vault/changeset targeting protected path index.md (ChangesetInvalidError) → 400", async () => {
+    const cs = {
+      id: "cs-protected",
+      skill: "test-skill",
+      model: "test-model",
+      timestamp: "2026-07-14T00:00:00Z",
+      changes: [{ path: "index.md", before: null, after: "hacked" }],
+    }
+    const res = await changesetRoute.POST(new Request("http://x/api/vault/changeset", {
+      method: "POST", body: JSON.stringify({ action: "apply", changeset: cs }),
+    }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/protected/i)
+  })
+
+  it("POST /api/vault/changeset targeting protected path log.md (ChangesetInvalidError) → 400", async () => {
+    const cs = {
+      id: "cs-protected-log",
+      skill: "test-skill",
+      model: "test-model",
+      timestamp: "2026-07-14T00:00:00Z",
+      changes: [{ path: "log.md", before: null, after: "hacked" }],
+    }
+    const res = await changesetRoute.POST(new Request("http://x/api/vault/changeset", {
+      method: "POST", body: JSON.stringify({ action: "apply", changeset: cs }),
+    }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/protected/i)
+  })
+
+  it("GET /api/vault/file: storage error → 500 with JSON {error}", async () => {
+    setServerVaultForTests(new ThrowingReadStorage())
+    const res = await fileRoute.GET(new Request("http://x/api/vault/file?path=test.md"))
+    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(body).toHaveProperty("error")
+    expect(body.error).toMatch(/failure/)
+  })
+
+  it("GET /api/vault/list: storage error → 500 with JSON {error}", async () => {
+    setServerVaultForTests(new ThrowingReadStorage())
+    const res = await listRoute.GET(new Request("http://x/api/vault/list?prefix=wiki/"))
+    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(body).toHaveProperty("error")
+    expect(body.error).toMatch(/failure/)
+  })
+
+  it("PUT /api/vault/file: storage error → 500 with JSON {error}", async () => {
+    setServerVaultForTests(new ThrowingReadStorage())
+    const res = await fileRoute.PUT(new Request("http://x/api/vault/file?path=test.md", {
+      method: "PUT",
+      headers: { "x-vault-text": "1" },
+      body: "content",
+    }))
+    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(body).toHaveProperty("error")
+    expect(body.error).toMatch(/failure/)
+  })
+
+  it("DELETE /api/vault/file: storage error → 500 with JSON {error}", async () => {
+    setServerVaultForTests(new ThrowingReadStorage())
+    const res = await fileRoute.DELETE(new Request("http://x/api/vault/file?path=test.md", {
+      method: "DELETE",
+    }))
+    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(body).toHaveProperty("error")
+    expect(body.error).toMatch(/failure/)
   })
 })

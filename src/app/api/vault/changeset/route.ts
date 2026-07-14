@@ -1,5 +1,5 @@
 import type { Changeset } from "@/lib/vault/types"
-import { applyChangeset, revertChangeset, ChangesetConflictError } from "@/lib/vault/changesets"
+import { applyChangeset, revertChangeset, ChangesetConflictError, ChangesetInvalidError } from "@/lib/vault/changesets"
 import { getServerVault } from "@/lib/server/vault"
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -41,6 +41,9 @@ export async function POST(req: Request): Promise<Response> {
     if (action === "apply") await applyChangeset(storage, changeset)
     else await revertChangeset(storage, changeset)
   } catch (err) {
+    if (err instanceof ChangesetInvalidError) {
+      return jsonResponse(400, { error: err.message })
+    }
     if (err instanceof ChangesetConflictError) {
       return jsonResponse(409, { error: err.message })
     }
