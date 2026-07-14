@@ -46,8 +46,35 @@ export interface RunTrendingOpts {
  * `at` is captured once per field and passed to BOTH retrieveFieldCandidates
  * and computeFieldMetrics — per metrics.ts's JSDoc, those two calls must
  * share the same `now` or the recent/prior windows silently desynchronize.
+ *
+ * Concurrency: home's fire-and-forget auto-refresh (`maybeAutoRefreshTrending`)
+ * and /trending's own mount-time refresh can both observe a stale/missing
+ * cache and fire at once for the same vault. Concurrent calls for the SAME
+ * `storage` share one in-flight run — every caller gets the same
+ * `TrendingDashboard` promise/object, and the strong-tier skill runs (and the
+ * `trending_refresh` event logs) only once, not once per caller. A call made
+ * AFTER the shared run has settled starts a fresh run (so the manual Refresh
+ * button still works). Note: the shared run uses only the FIRST caller's
+ * `opts` (fields/searchFn/now/settings) — a second concurrent caller's opts
+ * are ignored. This is safe today because both call sites (home auto-refresh,
+ * /trending mount) derive identical effective fields from the same trending
+ * settings; if a future caller needs guaranteed-distinct opts honored
+ * concurrently, it must key the in-flight map on more than just `storage`.
  */
+const inFlight = new WeakMap<VaultStorage, Promise<TrendingDashboard>>()
+
 export async function runTrendingDashboard(storage: VaultStorage, opts: RunTrendingOpts): Promise<TrendingDashboard> {
+  const existing = inFlight.get(storage)
+  if (existing) return existing
+
+  const run = runTrendingDashboardUncached(storage, opts).finally(() => {
+    inFlight.delete(storage)
+  })
+  inFlight.set(storage, run)
+  return run
+}
+
+async function runTrendingDashboardUncached(storage: VaultStorage, opts: RunTrendingOpts): Promise<TrendingDashboard> {
   const now = opts.now ?? (() => new Date())
   const generatedAt = now().toISOString()
   const panels: FieldPanel[] = []

@@ -103,6 +103,53 @@ describe("runTrendingDashboard", () => {
     expect(refresh).toBeTruthy()
     expect((refresh as { fieldCount?: number })?.fieldCount).toBe(2)
   })
+
+  it("concurrent calls for the same storage share one in-flight run (no double-spend)", async () => {
+    const storage = new MemoryVaultStorage()
+    // Two fields → MockProvider needs exactly 2 responses IF the run happens
+    // once. If the concurrency guard fails and each caller runs its own pass,
+    // the provider would need 4 and this would throw "no responses left".
+    const provider = new MockProvider([structured(SURVEY), structured(SURVEY)])
+    const searchFn: SearchFn = async () => [paper({ title: "Fresh", date: "2026-07-10", year: 2026, citationCount: 3, venue: "ACL" })]
+    const opts = {
+      fields: [
+        { slug: "nlp", label: "NLP" },
+        { slug: "bio", label: "Bio" },
+      ],
+      searchFn,
+      settings: SETTINGS,
+      providerOverride: { strong: provider },
+      now: NOW,
+    }
+    const [a, b] = await Promise.all([runTrendingDashboard(storage, opts), runTrendingDashboard(storage, opts)])
+    expect(provider.calls).toHaveLength(2) // once per field, not 2x
+    expect(a).toBe(b) // same dashboard object shared by both callers
+    const events = await readRecentEvents(storage)
+    expect(events.filter((e) => e.type === "trending_refresh")).toHaveLength(1)
+  })
+
+  it("a call AFTER the shared run settles starts a fresh run", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structured(SURVEY), structured(SURVEY)])
+    const searchFn: SearchFn = async () => [paper({ title: "Fresh", date: "2026-07-10", year: 2026 })]
+    const opts = { fields: [{ slug: "nlp", label: "NLP" }], searchFn, settings: SETTINGS, providerOverride: { strong: provider }, now: NOW }
+    await runTrendingDashboard(storage, opts)
+    expect(provider.calls).toHaveLength(1)
+    await runTrendingDashboard(storage, opts)
+    expect(provider.calls).toHaveLength(2) // second, sequential call ran fresh
+    const events = await readRecentEvents(storage)
+    expect(events.filter((e) => e.type === "trending_refresh")).toHaveLength(2)
+  })
+
+  it("different storage instances do not share an in-flight run", async () => {
+    const storageA = new MemoryVaultStorage()
+    const storageB = new MemoryVaultStorage()
+    const provider = new MockProvider([structured(SURVEY), structured(SURVEY)])
+    const searchFn: SearchFn = async () => [paper({ title: "Fresh", date: "2026-07-10", year: 2026 })]
+    const opts = { fields: [{ slug: "nlp", label: "NLP" }], searchFn, settings: SETTINGS, providerOverride: { strong: provider }, now: NOW }
+    await Promise.all([runTrendingDashboard(storageA, opts), runTrendingDashboard(storageB, opts)])
+    expect(provider.calls).toHaveLength(2) // one run per storage, not shared
+  })
 })
 
 describe("isStale", () => {

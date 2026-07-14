@@ -61,5 +61,11 @@ describe("maybeAutoRefreshTrending", () => {
     const provider = new MockProvider([structured(SURVEY)])
     const r = await maybeAutoRefreshTrending(storage, { searchFn, settings: SETTINGS, now: NOW, providerOverride: { strong: provider } })
     expect(r).toBe("refreshed")
+    // Strengthen beyond the return-string check: assert the refresh actually
+    // ran — the provider was invoked, and the cache now holds a panel for the
+    // NEW tracked field ("nlp"), not the stale cached one ("old").
+    expect(provider.calls.length).toBeGreaterThan(0)
+    const dashboard = await loadDashboard(storage)
+    expect(dashboard?.panels.map((p) => p.field.slug)).toEqual(["nlp"])
   })
 })
