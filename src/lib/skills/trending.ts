@@ -19,6 +19,8 @@ export interface TrendingSkillInput {
 }
 
 const ABSTRACT_CHARS = 300
+const MAX_RECENT_RENDERED = 20
+const TITLE_CHARS = 200
 
 /** Wraps `body` in a `<<<TAG>>> ... <<<END-TAG>>>` fence, neutralizing any fence-marker
  * runs inside `body` first (see `neutralizeFenceMarkers`) so untrusted paper/field text
@@ -31,7 +33,7 @@ function renderPapers(papers: PaperRecord[]): string {
   if (papers.length === 0) return "(none)"
   return papers
     .map((p, i) => {
-      const title = neutralizeFenceMarkers(p.title)
+      const title = neutralizeFenceMarkers(p.title.slice(0, TITLE_CHARS))
       const year = p.year !== undefined ? String(p.year) : "n/a"
       const abstract = neutralizeFenceMarkers((p.abstract ?? "").slice(0, ABSTRACT_CHARS))
       return `[${i + 1}] ${title} (${year}) — ${abstract}`
@@ -53,7 +55,7 @@ function buildSystemPrompt(): string {
 function buildUserMessage(input: TrendingSkillInput): string {
   return [
     fence("FIELD", input.field.label),
-    fence("RECENT-PAPERS", renderPapers(input.recent)),
+    fence("RECENT-PAPERS", renderPapers(input.recent.slice(0, MAX_RECENT_RENDERED))),
     fence("TOP-CITED-PAPERS", renderPapers(input.movers.slice(0, 10))),
   ].join("\n\n")
 }

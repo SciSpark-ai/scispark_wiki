@@ -23,6 +23,24 @@ describe("TrendingSurveySchema", () => {
     expect(TrendingSurveySchema.safeParse({ ...SAMPLE, notablePapers: [] }).success).toBe(false)
     expect(TrendingSurveySchema.safeParse({ ...SAMPLE, notablePapers: [{ title: "A", why: "" }] }).success).toBe(false)
   })
+
+  it("rejects more than 6 notablePapers", () => {
+    expect(
+      TrendingSurveySchema.safeParse({
+        ...SAMPLE,
+        notablePapers: Array.from({ length: 7 }, (_, i) => ({ title: `paper${i}`, why: "why" })),
+      }).success,
+    ).toBe(false)
+  })
+
+  it("rejects more than 5 emergingTopics", () => {
+    expect(
+      TrendingSurveySchema.safeParse({
+        ...SAMPLE,
+        emergingTopics: Array.from({ length: 6 }, (_, i) => ({ topic: `topic${i}`, why: "why" })),
+      }).success,
+    ).toBe(false)
+  })
 })
 
 describe("trendingSkill", () => {
