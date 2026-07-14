@@ -15,9 +15,8 @@ import { listHighlights, addHighlight, removeHighlight, makeHighlightId } from "
 import { createAnchor } from "@/lib/highlights/anchor"
 import { captureIdeaAsNote } from "@/lib/reader/capture-idea"
 import { buildAskContext } from "@/lib/reader/ask-context"
-import { readingCompanionSkill } from "@/lib/skills/reading-companion"
-import { runSkill } from "@/lib/skills/runner"
-import { loadSettings } from "@/lib/llm/settings"
+import { askRemote } from "@/lib/reader/client"
+import { applyChangesetRemote } from "@/lib/vault/changeset-client"
 import { loadCompanionSettings } from "@/lib/companion/settings"
 import { loadBundle } from "@/lib/vault/bundle"
 import { logEvent } from "@/lib/events/log"
@@ -225,25 +224,10 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
         surroundingText: computeSurroundingText(surfaceTextRef.current, target.start, target.end),
         userQuestion: question,
       })
-      const [settings, companionSettings] = await Promise.all([
-        loadSettings(storage),
-        loadCompanionSettings(storage),
-      ])
-      const run = await runSkill({
-        skill: readingCompanionSkill,
-        input: { ...context, companionName: companionSettings.companionName },
-        storage,
-        settings,
-      })
-      if (run.status === "ok" && run.output !== undefined) {
-        setAskState({ status: "done", answer: run.output.answer, citedPageIds: run.output.citedPageIds })
-        void logEvent(storage, { type: "reading_ask", paperKey: key })
-      } else {
-        setAskState({
-          status: "error",
-          message: run.error ?? `reading-companion run finished with unexpected status "${run.status}"`,
-        })
-      }
+      const companionSettings = await loadCompanionSettings(storage)
+      const answer = await askRemote({ ...context, companionName: companionSettings.companionName })
+      setAskState({ status: "done", answer: answer.answer, citedPageIds: answer.citedPageIds })
+      void logEvent(storage, { type: "reading_ask", paperKey: key })
     } catch (err) {
       setAskState({ status: "error", message: err instanceof Error ? err.message : String(err) })
     }
@@ -263,6 +247,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
         selection: selectionText,
         thought,
         today: new Date().toISOString().slice(0, 10),
+        apply: (_storage, changeset) => applyChangesetRemote(changeset),
       })
       setCaptureNotice({ path })
     } catch {
