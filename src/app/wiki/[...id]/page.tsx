@@ -133,6 +133,16 @@ export default function WikiPageDetail() {
           <span className="text-[12px] uppercase tracking-wide px-2 py-0.5 rounded-pill bg-card-surface text-espresso">
             {fm.type}
           </span>
+          {fm.type === "idea" && typeof fm.status === "string" && (
+            <span className="text-[12px] uppercase tracking-wide px-2 py-0.5 rounded-pill bg-card-surface text-espresso">
+              {fm.status}
+            </span>
+          )}
+          {fm.type === "idea" && typeof fm.depth === "string" && (
+            <span className="text-[12px] uppercase tracking-wide px-2 py-0.5 rounded-pill bg-light-surface border border-border-warm text-muted-text">
+              {fm.depth}
+            </span>
+          )}
           {fm.tags.map((tag) => (
             <span key={tag} className="text-[12px] px-2 py-0.5 rounded-pill bg-light-surface border border-border-warm text-muted-text">
               #{tag}
