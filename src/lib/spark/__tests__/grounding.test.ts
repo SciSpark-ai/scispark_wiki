@@ -215,8 +215,24 @@ describe("assembleGrounding — fresh retrieval", () => {
     expect(grounding.freshPapers).toHaveLength(1)
     expect(grounding.freshPapers[0].ids).toEqual({ arxiv: "2406.00001", openalex: "W123" })
     expect(grounding.freshPapers[0].abstract).toBe("a much longer abstract than the short one")
-    // Every default source got the single query.
-    expect(seenCalls.map((c) => c.source).sort()).toEqual(["arxiv", "openalex", "pubmed", "s2"])
+    // Each keyless-safe default source (arxiv + openalex) got the single query.
+    expect(seenCalls.map((c) => c.source).sort()).toEqual(["arxiv", "openalex"])
+  })
+
+  it("honors an explicit opts.sources override (e.g. when S2/NCBI keys are configured)", async () => {
+    const storage = new MemoryVaultStorage()
+    const seen: string[] = []
+    const searchFn: SearchFn = async (source) => {
+      seen.push(source)
+      return []
+    }
+    await assembleGrounding(storage, {
+      direction: "efficient long-context attention",
+      searchFn,
+      queries: ["attention"],
+      sources: ["arxiv", "openalex", "s2", "pubmed"],
+    })
+    expect(seen.sort()).toEqual(["arxiv", "openalex", "pubmed", "s2"])
   })
 
   it("a rejecting/throwing query contributes [] and doesn't sink the other results", async () => {

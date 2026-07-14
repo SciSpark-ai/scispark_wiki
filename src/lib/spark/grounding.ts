@@ -151,7 +151,11 @@ function renderSnippets(pages: SnippetPage[]): string {
 // sinks the others — it contributes `[]`.
 // ---------------------------------------------------------------------------
 
-const DEFAULT_SOURCES: readonly SourceId[] = ["arxiv", "openalex", "s2", "pubmed"]
+// Keyless-safe default (same as the M5 feed): arxiv + openalex need no API key.
+// s2/pubmed require S2_API_KEY/NCBI_API_KEY and rate-limit hard when keyless, so
+// blanketing all 4 per query (12–16 searches/run) risks throttling. Callers with
+// keys configured can widen this via `opts.sources`.
+const DEFAULT_SOURCES: readonly SourceId[] = ["arxiv", "openalex"]
 const DEFAULT_PER_QUERY_LIMIT = 8
 const MAX_FRESH_PAPERS = 20
 const LITERATURE_ABSTRACT_CHARS = 400
@@ -251,8 +255,13 @@ function toGroundingPaper(record: PaperRecord): GroundingPaper {
  * approach `retrieveCandidates` uses), and caps the result at
  * `MAX_FRESH_PAPERS` in first-seen order. A rejecting/throwing call
  * contributes `[]` rather than failing the whole retrieval. */
-async function fetchFreshPapers(searchFn: SearchFn, queries: string[], perQueryLimit: number): Promise<PaperRecord[]> {
-  const calls = queries.flatMap((query) => DEFAULT_SOURCES.map((source) => ({ source, query })))
+async function fetchFreshPapers(
+  searchFn: SearchFn,
+  queries: string[],
+  perQueryLimit: number,
+  sources: readonly SourceId[],
+): Promise<PaperRecord[]> {
+  const calls = queries.flatMap((query) => sources.map((source) => ({ source, query })))
 
   const perCallResults = await Promise.all(
     calls.map(async ({ source, query }) => {
@@ -333,6 +342,8 @@ export async function assembleGrounding(
     searchFn: SearchFn
     queries?: string[]
     perQueryLimit?: number
+    /** Sources to query; defaults to the keyless-safe arxiv+openalex. */
+    sources?: readonly SourceId[]
   },
 ): Promise<SparkGrounding> {
   const bundle = await loadBundle(storage)
@@ -342,7 +353,7 @@ export async function assembleGrounding(
 
   const queries = opts.queries && opts.queries.length > 0 ? opts.queries : deriveQueries(opts.direction)
   const perQueryLimit = opts.perQueryLimit ?? DEFAULT_PER_QUERY_LIMIT
-  const freshRecords = await fetchFreshPapers(opts.searchFn, queries, perQueryLimit)
+  const freshRecords = await fetchFreshPapers(opts.searchFn, queries, perQueryLimit, opts.sources ?? DEFAULT_SOURCES)
   const freshPapers = freshRecords.map(toGroundingPaper)
 
   const contextText = [fence("VAULT", vaultSnippets), fence("LITERATURE", renderLiterature(freshPapers))].join("\n\n")
