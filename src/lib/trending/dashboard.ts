@@ -122,3 +122,20 @@ export function isStale(dashboard: TrendingDashboard | null, cadence: Cadence, n
   if (Number.isNaN(gen)) return true
   return now.getTime() - gen >= CADENCE_MS[cadence]
 }
+
+/**
+ * True iff `dashboard` is non-null and the SET of its panels' field slugs
+ * equals the set of `fields`' slugs (order-insensitive). Used to detect a
+ * settings-change path (e.g. profile save) that swapped tracked fields
+ * without a corresponding refresh — a cache can be time-fresh but field-stale.
+ */
+export function fieldsMatchDashboard(dashboard: TrendingDashboard | null, fields: TrackedField[]): boolean {
+  if (dashboard == null) return false
+  const dashboardSlugs = new Set(dashboard.panels.map((p) => p.field.slug))
+  const fieldSlugs = new Set(fields.map((f) => f.slug))
+  if (dashboardSlugs.size !== fieldSlugs.size) return false
+  for (const slug of fieldSlugs) {
+    if (!dashboardSlugs.has(slug)) return false
+  }
+  return true
+}

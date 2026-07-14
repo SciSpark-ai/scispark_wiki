@@ -31,4 +31,35 @@ describe("trending settings", () => {
     await storage.write(".scispark/settings.json", JSON.stringify({ trending: { cadence: "hourly", fields: "nope" } }))
     expect(await loadTrendingSettings(storage)).toEqual(DEFAULT_TRENDING_SETTINGS)
   })
+
+  it("dedupes fields by slug on save, keeping the first occurrence's label", async () => {
+    const storage = new MemoryVaultStorage()
+    await saveTrendingSettings(storage, {
+      fields: [
+        { slug: "nlp", label: "NLP" },
+        { slug: "nlp", label: "nlp" },
+      ],
+      cadence: "weekly",
+    })
+    const loaded = await loadTrendingSettings(storage)
+    expect(loaded.fields).toEqual([{ slug: "nlp", label: "NLP" }])
+  })
+
+  it("dedupes fields by slug on load, for a hand-edited settings.json with duplicate slugs", async () => {
+    const storage = new MemoryVaultStorage()
+    await storage.write(
+      ".scispark/settings.json",
+      JSON.stringify({
+        trending: {
+          fields: [
+            { slug: "nlp", label: "NLP" },
+            { slug: "nlp", label: "Natural Language Processing" },
+          ],
+          cadence: "weekly",
+        },
+      }),
+    )
+    const loaded = await loadTrendingSettings(storage)
+    expect(loaded.fields).toEqual([{ slug: "nlp", label: "NLP" }])
+  })
 })

@@ -37,6 +37,24 @@ function isTrackedField(v: unknown): v is TrackedField {
   )
 }
 
+/**
+ * Dedupes fields by slug, keeping the first occurrence. Two labels that
+ * slugify identically (e.g. "NLP" and "nlp") would otherwise both persist,
+ * doubling strong-tier LLM spend per refresh and producing duplicate React
+ * keys in the dashboard. Applied centrally (save + load) so no caller —
+ * present or future — can reintroduce the bug.
+ */
+function dedupeFieldsBySlug(fields: TrackedField[]): TrackedField[] {
+  const seen = new Set<string>()
+  const out: TrackedField[] = []
+  for (const f of fields) {
+    if (seen.has(f.slug)) continue
+    seen.add(f.slug)
+    out.push(f)
+  }
+  return out
+}
+
 async function readJsonFile(storage: VaultStorage): Promise<Record<string, unknown>> {
   const raw = await storage.read(SETTINGS_PATH)
   if (raw == null) return {}
@@ -55,7 +73,7 @@ export async function loadTrendingSettings(storage: VaultStorage): Promise<Trend
       ? (file.trending as Record<string, unknown>)
       : {}
   const fields = Array.isArray(t.fields)
-    ? (t.fields.filter(isTrackedField) as TrackedField[]).slice(0, MAX_TRACKED_FIELDS)
+    ? dedupeFieldsBySlug(t.fields.filter(isTrackedField) as TrackedField[]).slice(0, MAX_TRACKED_FIELDS)
     : DEFAULT_TRENDING_SETTINGS.fields
   return {
     fields,
@@ -69,7 +87,7 @@ export async function saveTrendingSettings(storage: VaultStorage, settings: Tren
   const previous = settingsWriteQueues.get(storage) ?? Promise.resolve()
   const work = async (): Promise<void> => {
     const file = await readJsonFile(storage)
-    const next = { ...file, trending: settings }
+    const next = { ...file, trending: { ...settings, fields: dedupeFieldsBySlug(settings.fields) } }
     await storage.write(SETTINGS_PATH, JSON.stringify(next, null, 2))
   }
   const thisWrite = previous.then(work)

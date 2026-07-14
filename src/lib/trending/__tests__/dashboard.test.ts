@@ -5,7 +5,8 @@ import type { LLMResult } from "../../llm/types"
 import type { PaperRecord } from "../../papers/types"
 import type { SearchFn } from "../../skills/feed"
 import { readRecentEvents } from "../../events/log"
-import { runTrendingDashboard, loadDashboard, isStale, DASHBOARD_CACHE_PATH } from "../dashboard"
+import { runTrendingDashboard, loadDashboard, isStale, fieldsMatchDashboard, DASHBOARD_CACHE_PATH } from "../dashboard"
+import type { TrendingDashboard } from "../dashboard"
 
 const NOW = () => new Date("2026-07-14T00:00:00.000Z")
 function paper(o: Partial<PaperRecord> & { title: string }): PaperRecord {
@@ -132,5 +133,49 @@ describe("isStale", () => {
   it("daily: exactly 24h old is stale (boundary is inclusive)", () => {
     const exact = { panels: [], generatedAt: "2026-07-13T00:00:00.000Z" } // NOW() - 24h exactly
     expect(isStale(exact, "daily", NOW())).toBe(true)
+  })
+})
+
+describe("fieldsMatchDashboard", () => {
+  const EMPTY_METRICS = { paperCountRecent: 0, paperCountPrior: 0, pctChange: null, weeklyVolume: [], topMovers: [], topVenues: [] }
+  function dashboardWithSlugs(slugs: string[]): TrendingDashboard {
+    return {
+      generatedAt: NOW().toISOString(),
+      panels: slugs.map((slug) => ({
+        field: { slug, label: slug },
+        metrics: EMPTY_METRICS,
+        survey: null,
+        generatedAt: NOW().toISOString(),
+      })),
+    }
+  }
+
+  it("true when the field slug sets match exactly", () => {
+    const dashboard = dashboardWithSlugs(["nlp", "bio"])
+    expect(fieldsMatchDashboard(dashboard, [{ slug: "nlp", label: "NLP" }, { slug: "bio", label: "Bio" }])).toBe(true)
+  })
+
+  it("true regardless of order", () => {
+    const dashboard = dashboardWithSlugs(["bio", "nlp"])
+    expect(fieldsMatchDashboard(dashboard, [{ slug: "nlp", label: "NLP" }, { slug: "bio", label: "Bio" }])).toBe(true)
+  })
+
+  it("false when a field was added since the dashboard was generated", () => {
+    const dashboard = dashboardWithSlugs(["nlp"])
+    expect(fieldsMatchDashboard(dashboard, [{ slug: "nlp", label: "NLP" }, { slug: "bio", label: "Bio" }])).toBe(false)
+  })
+
+  it("false when a field was removed since the dashboard was generated", () => {
+    const dashboard = dashboardWithSlugs(["nlp", "bio"])
+    expect(fieldsMatchDashboard(dashboard, [{ slug: "nlp", label: "NLP" }])).toBe(false)
+  })
+
+  it("false when the field sets are disjoint", () => {
+    const dashboard = dashboardWithSlugs(["nlp"])
+    expect(fieldsMatchDashboard(dashboard, [{ slug: "bio", label: "Bio" }])).toBe(false)
+  })
+
+  it("false for a null dashboard", () => {
+    expect(fieldsMatchDashboard(null, [{ slug: "nlp", label: "NLP" }])).toBe(false)
   })
 })

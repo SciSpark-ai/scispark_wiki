@@ -8,7 +8,13 @@ import { browserSearchFn } from "@/lib/skills/feed"
 import { readUserModel } from "@/lib/usermodel/pages"
 import { deriveTrackedFields } from "@/lib/trending/fields"
 import { loadTrendingSettings } from "@/lib/trending/settings"
-import { loadDashboard, runTrendingDashboard, isStale, type TrendingDashboard } from "@/lib/trending/dashboard"
+import {
+  loadDashboard,
+  runTrendingDashboard,
+  isStale,
+  fieldsMatchDashboard,
+  type TrendingDashboard,
+} from "@/lib/trending/dashboard"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { FieldPanelView } from "@/components/trending/FieldPanelView"
 
@@ -82,7 +88,7 @@ export default function TrendingPage() {
           setState({ status: "empty" })
           return
         }
-        if (cached) {
+        if (cached && fieldsMatchDashboard(cached, fields)) {
           // Stale-while-revalidate: show the cached dashboard immediately —
           // fresh or stale — so panels never disappear. A stale cache then
           // triggers a background refresh; the Refresh button's own
@@ -92,7 +98,13 @@ export default function TrendingPage() {
             await refresh()
           }
         } else {
-          await refresh() // no cache at all → first load
+          // No cache at all, OR the cached panels are for a different set of
+          // tracked fields (e.g. the user just changed fields on /profile).
+          // Unlike time-staleness, a field-set mismatch means the cached
+          // panels are for the WRONG fields — showing them first would be
+          // actively misleading, so go through the loading path instead of
+          // stale-while-revalidate.
+          await refresh()
         }
       } catch (err) {
         setState({ status: "error", message: err instanceof Error ? err.message : String(err) })
