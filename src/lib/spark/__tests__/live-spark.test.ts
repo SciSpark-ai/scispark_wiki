@@ -40,9 +40,11 @@ const MODEL = process.env.LIVE_LLM_MODEL
 
 const live = Boolean(BASE_URL && API_KEY && MODEL)
 // Deep Spark runs 5-9 strong-tier calls across its phase graph (bottleneck,
-// ideation, scoop-terms, scoop-verdict, audit — possibly twice on a retry);
-// budget generously.
-const LIVE_TIMEOUT = 300_000
+// ideation, scoop-terms, scoop-verdict, audit — possibly twice on a retry), each
+// of which may itself burn a GMI prompt-JSON fallback retry, plus arXiv retry
+// backoff on the scoop searches. A clean run measured ~299s against the old 300s
+// cap — far too thin a margin for a reliable gate — so budget 7 minutes.
+const LIVE_TIMEOUT = 420_000
 
 /**
  * Node relay-free SearchFn: calls the M3 search-core adapters (searchArxiv,
