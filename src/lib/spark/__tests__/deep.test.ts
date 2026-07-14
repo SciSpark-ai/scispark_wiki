@@ -323,6 +323,42 @@ describe("runDeepSpark", () => {
     expect(page!.body).not.toContain(CANDIDATE.falsification.killCriterion)
   })
 
+  it("audit revises with a null revisedFalsification (schema-permitted edge case): still produces an idea page, does not crash, and the body carries the CANDIDATE's original falsification fields", async () => {
+    // AuditSchema allows routing:"revise" with revisedFalsification:null even though the
+    // FALSIFICATION LOCK prompt contract says "revise" should always carry a rewritten
+    // plan — a real audit call could return this shape anyway. assemble.ts's
+    // resolveFalsification falls back to the candidate's original plan in that case; this
+    // exercises that fallback through the full orchestrator, not just the pure function.
+    const storage = new MemoryVaultStorage()
+    const reviseWithNullFalsification = { ...REVISE_AUDIT, revisedFalsification: null }
+    const provider = new MockProvider([structuredResult(PROCEED_BOTTLENECK), ...legResponses(reviseWithNullFalsification)])
+
+    const result = await runDeepSpark({
+      storage,
+      direction: "efficient cross-document coreference",
+      searchFn: NO_SEARCH,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      today: "2026-07-13",
+      now: NOW,
+    })
+
+    expect(result.outcome.kind).toBe("idea")
+    if (result.outcome.kind !== "idea") throw new Error("expected idea outcome")
+
+    const bundle = await loadBundle(storage)
+    expect(bundle.errors).toEqual([])
+    const page = bundle.pages.get(result.outcome.ideaPageId)
+    expect(page).toBeDefined()
+    // The fallback fired: the CANDIDATE's original falsification fields are in the body...
+    expect(page!.body).toContain(CANDIDATE.falsification.hypothesis)
+    expect(page!.body).toContain(CANDIDATE.falsification.prediction)
+    expect(page!.body).toContain(CANDIDATE.falsification.killCriterion)
+    expect(page!.body).toContain(CANDIDATE.falsification.experiment)
+    // ...and the (never-supplied) revised fields are absent.
+    expect(page!.body).not.toContain(REVISED_FALSIFICATION.killCriterion)
+  })
+
   it("seedPageId given: overwrites the seed's path; before-state captured so revert restores the seed", async () => {
     const storage = new MemoryVaultStorage()
     await writePage(

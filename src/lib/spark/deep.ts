@@ -57,29 +57,61 @@ export interface DeepSparkArgs {
 // the confirm dialog. Real cost varies with how much context assembleGrounding
 // pulls in and whether the audit's single internal retry fires — this is a
 // rough sum of typical per-phase token counts at the default strong-tier
-// model's pricing, NOT a budget guarantee.
+// model's pricing, NOT a budget guarantee. It exists to be shown to the user
+// BEFORE they confirm a spend, so it must be honest about the product's
+// documented cost range (CLAUDE.md M9: "Deep Spark ... ~$1-3, always
+// user-confirmed with a cost estimate") rather than a best-case lowball.
 // ---------------------------------------------------------------------------
 
 const ESTIMATE_MODEL = "claude-opus-4-8"
 
-/** Rough per-phase input/output token estimates for a single (non-retried) pass,
- * at the default strong-tier model. bottleneck/ideation/audit carry the full
- * grounding context (vault snippets + up to 20 fresh papers + the ~46-card
- * pattern index) on the input side; the two scoop-check calls are lighter. */
+/**
+ * Recalibrated 2026-07-13 (Task 7 review, Finding 1): the previous numbers here summed to
+ * ~$0.20 — a 5x+ under-quote against the $1-3 contract above, which a spend-confirmation
+ * dialog cannot afford (under-quoting is misleading; over-quoting is merely conservative).
+ * These are deliberately generous per-phase input/output token estimates, at the default
+ * strong-tier model's pricing — NOT a tight bottom-up sum of today's grounding-assembly
+ * caps (grounding.ts's MAX_FRESH_PAPERS=20 / SNIPPET_CHARS=300 / MAX_SNIPPET_PAGES=6 alone
+ * only total a few thousand tokens of context). They run higher than that bottom-up figure
+ * because: real-world grounding skews larger as those caps get tuned; every phase is a
+ * structured-output call whose request carries schema/tool-definition overhead this
+ * per-token model doesn't itemize; and this is meant to be read BEFORE the spend, when
+ * erring generous is the safer failure mode. Output tokens still stay under each phase's
+ * `maxTokens` cap (bottleneck.ts=2048, ideation.ts=4096, scoop.ts=1024/2048, audit.ts=3072)
+ * but sit much closer to it than before — real structured JSON responses (a full
+ * falsification plan, 5 audit checks with concrete notes) are verbose in practice.
+ * bottleneck/ideation/audit carry the full grounding context (vault snippets + up to 20
+ * fresh papers + the ~46-card pattern index) on the input side; scoop-verdict carries the
+ * collision hits block (up to 20 hits); scoop-terms is the one genuinely light call.
+ */
 const PHASE_TOKEN_ESTIMATES: Record<string, { inputTokens: number; outputTokens: number }> = {
-  bottleneck: { inputTokens: 4000, outputTokens: 500 },
-  ideation: { inputTokens: 6000, outputTokens: 1200 },
-  "scoop-terms": { inputTokens: 2000, outputTokens: 300 },
-  "scoop-verdict": { inputTokens: 5000, outputTokens: 600 },
-  audit: { inputTokens: 6000, outputTokens: 900 },
+  bottleneck: { inputTokens: 20000, outputTokens: 1200 },
+  ideation: { inputTokens: 30000, outputTokens: 3200 },
+  "scoop-terms": { inputTokens: 6000, outputTokens: 800 },
+  "scoop-verdict": { inputTokens: 24000, outputTokens: 1700 },
+  audit: { inputTokens: 28000, outputTokens: 2600 },
 }
+
+/** Every phase after bottleneck — i.e. everything `runIdeationScoopAudit` (below) re-runs
+ * in full on the single internal abandon-retry. bottleneck and the (free, non-LLM)
+ * grounding phase never re-run, so they're excluded from the retry headroom below. */
+const RETRYABLE_PHASES = new Set(["ideation", "scoop-terms", "scoop-verdict", "audit"])
+
+/**
+ * Blended headroom on the retryable phases: a fired retry fully DOUBLES their cost (1x ->
+ * 2x), while no retry leaves them at 1x. Weighting at 1.5x approximates "roughly even odds
+ * of one retry firing" in a real run — conservative enough not to under-quote, without
+ * assuming every run retries (2x, which would overshoot into alarmist territory).
+ */
+const RETRY_HEADROOM_FACTOR = 1.5
 
 export async function estimateDeepSparkCost(): Promise<number> {
   const price = PRICES[ESTIMATE_MODEL]
   if (!price) return 0
   let total = 0
-  for (const { inputTokens, outputTokens } of Object.values(PHASE_TOKEN_ESTIMATES)) {
-    total += (inputTokens / 1e6) * price.inPerM + (outputTokens / 1e6) * price.outPerM
+  for (const [phase, { inputTokens, outputTokens }] of Object.entries(PHASE_TOKEN_ESTIMATES)) {
+    const passCost = (inputTokens / 1e6) * price.inPerM + (outputTokens / 1e6) * price.outPerM
+    total += RETRYABLE_PHASES.has(phase) ? passCost * RETRY_HEADROOM_FACTOR : passCost
   }
   return total
 }

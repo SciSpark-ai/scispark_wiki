@@ -167,6 +167,29 @@ describe("assembleIdeaBody", () => {
     expect(result.body).not.toContain(CANDIDATE.falsification.killCriterion)
   })
 
+  it("when the audit routed 'revise' but revisedFalsification is null (schema-permitted, contrary to the FALSIFICATION LOCK), the body falls back to the candidate's ORIGINAL falsification fields", () => {
+    // AuditSchema types revisedFalsification as nullable even for "revise" (the lock is a
+    // prompt-level contract, not a schema-level one — see audit.ts) — a real audit call
+    // could return this shape. resolveFalsification (assemble.ts) must not blow up or
+    // silently emit an empty field; it must fall back to the candidate's own plan.
+    const reviseWithNullFalsification: AuditResult = { ...REVISE_AUDIT, revisedFalsification: null }
+
+    const result = assembleIdeaBody({
+      candidate: CANDIDATE,
+      scoop: CLEAR_SCOOP,
+      bottleneck: BOTTLENECK,
+      grounding: GROUNDING,
+      audit: reviseWithNullFalsification,
+    })
+
+    expect(result.body).toContain(CANDIDATE.falsification.hypothesis)
+    expect(result.body).toContain(CANDIDATE.falsification.prediction)
+    expect(result.body).toContain(CANDIDATE.falsification.killCriterion)
+    expect(result.body).toContain(CANDIDATE.falsification.experiment)
+    // The (never-supplied) revised fields must not leak in from elsewhere.
+    expect(result.body).not.toContain(REVISED_FALSIFICATION.killCriterion)
+  })
+
   it("when the audit routed 'accept', the body uses the candidate's ORIGINAL falsification fields", () => {
     const result = assembleIdeaBody({
       candidate: CANDIDATE,
