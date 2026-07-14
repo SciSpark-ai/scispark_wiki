@@ -324,6 +324,10 @@ export interface FeedResult {
   stats: { retrieved: number; ranked: number }
 }
 
+/** The four funnel stages `runFeed` reports via its optional `onStage` callback, in the
+ * order they actually run (M11 Task 6). */
+export type FeedStage = "strategy" | "retrieval" | "rank" | "rerank"
+
 export const FEED_CACHE_PATH = ".scispark/feed/latest.json"
 
 const RANK_BATCH_SIZE = 25
@@ -506,6 +510,12 @@ export async function runFeed(
     settings?: LLMSettings
     providerOverride?: Partial<Record<Tier, LLMProvider>>
     now?: () => Date
+    /** Fires immediately before each funnel stage starts (M11 Task 6, for the NDJSON
+     * feed-refresh route to stream real progress instead of the old client-side timer
+     * heuristic). Stage order matches the funnel itself: strategy -> retrieval -> rank
+     * -> rerank. Never fires for a stage that doesn't run (e.g. rank/rerank are skipped
+     * once retrieval throws on zero candidates). */
+    onStage?: (stage: FeedStage) => void
   },
 ): Promise<FeedResult> {
   const now = opts.now ?? (() => new Date())
@@ -513,6 +523,7 @@ export async function runFeed(
 
   const context = await buildUserContext(storage)
 
+  opts.onStage?.("strategy")
   const strategyRun = await runSkill({
     skill: feedStrategySkill,
     input: { userContextText: context.text },
@@ -522,17 +533,20 @@ export async function runFeed(
   const strategy = unwrapRun(strategyRun)
   let costUsd = strategyRun.costUsd
 
+  opts.onStage?.("retrieval")
   const candidates = await retrieveCandidates(storage, strategy, opts.searchFn)
   if (candidates.length === 0) {
     throw new Error("no candidates retrieved — try adjusting profile.md or interests.md")
   }
 
+  opts.onStage?.("rank")
   const rankResult = await rankCandidates(storage, candidates, context.compactText, runOpts)
   costUsd += rankResult.costUsd
 
   const sorted = [...rankResult.scored].sort((a, b) => b.score - a.score)
   const pool = sorted.slice(0, RERANK_POOL_SIZE)
 
+  opts.onStage?.("rerank")
   const rerankResult = await rerankCandidates(storage, pool, context.text, runOpts)
   costUsd += rerankResult.costUsd
 
