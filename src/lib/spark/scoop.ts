@@ -175,6 +175,38 @@ const DEFAULT_SOURCES: readonly SourceId[] = ["arxiv", "openalex"]
 const PER_TERM_LIMIT = 8
 const MAX_HITS = 20
 const HITS_ABSTRACT_CHARS = 400
+// Peak concurrent source requests across BOTH channels. The scoop-check fans out
+// up to (signature+alias terms) × sources requests; firing them all at once made
+// arXiv shed load with 429/503 (live-gate 2026-07-14). A shared limiter caps the
+// burst — per-source retry/backoff (see arxiv.ts) then absorbs any residual blip.
+const MAX_SEARCH_CONCURRENCY = 4
+
+/** A minimal FIFO concurrency limiter: at most `maxConcurrent` tasks run at once,
+ * the rest queue. Returned `limit(task)` resolves/rejects with the task's result.
+ * Shared across both scoop channels so the global request burst stays bounded. */
+function createLimiter(maxConcurrent: number): <T>(task: () => Promise<T>) => Promise<T> {
+  let active = 0
+  const queue: Array<() => void> = []
+  const pump = () => {
+    while (active < maxConcurrent && queue.length > 0) {
+      const start = queue.shift()!
+      active++
+      start()
+    }
+  }
+  return <T>(task: () => Promise<T>): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      queue.push(() => {
+        task().then(resolve, reject).finally(() => {
+          active--
+          pump()
+        })
+      })
+      pump()
+    })
+}
+
+type Limiter = ReturnType<typeof createLimiter>
 // The RECENT window for the signature channel: year >= nowYear - RECENCY_WINDOW_YEARS.
 // The alias channel applies no such filter (the LONG window).
 const RECENCY_WINDOW_YEARS = 1
@@ -184,17 +216,19 @@ const RECENCY_WINDOW_YEARS = 1
  * discipline as Task 3's `fetchFreshPapers`. `searchFn` has no native recency parameter
  * (see `SearchFn`), so query text is not biased toward recency here; recency is instead
  * enforced by post-filtering the signature channel's results (see `filterRecent`). */
-async function runCollisionSearches(searchFn: SearchFn, terms: string[]): Promise<PaperRecord[]> {
+async function runCollisionSearches(searchFn: SearchFn, terms: string[], limit: Limiter): Promise<PaperRecord[]> {
   const calls = terms.flatMap((term) => DEFAULT_SOURCES.map((source) => ({ source, term })))
 
   const perCallResults = await Promise.all(
-    calls.map(async ({ source, term }) => {
-      try {
-        return await searchFn(source, term, PER_TERM_LIMIT)
-      } catch {
-        return []
-      }
-    }),
+    calls.map(({ source, term }) =>
+      limit(async () => {
+        try {
+          return await searchFn(source, term, PER_TERM_LIMIT)
+        } catch {
+          return []
+        }
+      }),
+    ),
   )
 
   return perCallResults.flat()
@@ -288,9 +322,12 @@ export async function runScoopCheck(
   }
   const { signatureTerms, aliasTerms } = termsRun.output
 
+  // One limiter shared by both channels so their combined request burst — up to
+  // (signature+alias) × sources calls — never exceeds MAX_SEARCH_CONCURRENCY at once.
+  const limit = createLimiter(MAX_SEARCH_CONCURRENCY)
   const [signatureRaw, aliasRaw] = await Promise.all([
-    runCollisionSearches(opts.searchFn, signatureTerms),
-    runCollisionSearches(opts.searchFn, aliasTerms),
+    runCollisionSearches(opts.searchFn, signatureTerms, limit),
+    runCollisionSearches(opts.searchFn, aliasTerms, limit),
   ])
   const nowYear = now().getUTCFullYear()
   // Each channel queries every default source per term, so raw results carry

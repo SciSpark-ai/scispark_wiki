@@ -444,4 +444,39 @@ describe("runScoopCheck", () => {
       }),
     ).rejects.toThrow(/verdict exploded/)
   })
+
+  it("THROTTLE: caps concurrent source searches at 4 across both channels, but still issues every call", async () => {
+    const storage = new MemoryVaultStorage()
+    // 4 signature + 4 alias terms × 2 sources = 16 total collision searches. Without a
+    // limiter all 16 fire at once (what made arXiv 429/503 in the live gate).
+    const manyTerms = {
+      signatureTerms: ["sig-a", "sig-b", "sig-c", "sig-d"],
+      aliasTerms: ["alias-a", "alias-b", "alias-c", "alias-d"],
+    }
+    const provider = new MockProvider([structuredResult(manyTerms), structuredResult(SAMPLE_VERDICT)])
+
+    let active = 0
+    let peak = 0
+    let total = 0
+    const searchFn: SearchFn = async () => {
+      total++
+      active++
+      peak = Math.max(peak, active)
+      await new Promise((r) => setTimeout(r, 5)) // hold the slot so overlap is observable
+      active--
+      return []
+    }
+
+    await runScoopCheck(storage, {
+      candidateText: "some candidate",
+      searchFn,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+
+    expect(total).toBe(16) // every term × source still searched
+    expect(peak).toBeLessThanOrEqual(4) // never more than 4 in flight at once
+    expect(peak).toBeGreaterThan(1) // and it does run concurrently (not serialized)
+  })
 })

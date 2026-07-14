@@ -59,7 +59,27 @@ export interface ArxivQuery {
 
 export interface ArxivDeps {
   fetchFn?: typeof fetch
+  /** Injectable delay for retry backoff (tests pass a no-op to avoid real waits). */
+  sleep?: (ms: number) => Promise<void>
+  /** Total attempts including the first (default 3). */
+  maxAttempts?: number
 }
+
+// arXiv's public API is politeness-rate-limited and sheds load under bursts with
+// 429/503 (the Deep Spark scoop-check fans out many queries). Retry those transient
+// statuses with backoff rather than failing the whole search on the first blip.
+const RETRYABLE_STATUS = (status: number): boolean => status === 429 || status >= 500
+const DEFAULT_MAX_ATTEMPTS = 3
+const BACKOFF_BASE_MS = 500
+const BACKOFF_CAP_MS = 8000
+
+function backoffDelayMs(attempt: number, retryAfterHeader: string | null): number {
+  const ra = retryAfterHeader != null ? Number(retryAfterHeader) : NaN
+  if (Number.isFinite(ra) && ra > 0) return Math.min(ra * 1000, BACKOFF_CAP_MS)
+  return Math.min(BACKOFF_BASE_MS * 2 ** attempt, BACKOFF_CAP_MS)
+}
+
+const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * Decodes numeric character references (&#NNN; and &#xHHH;) in text.
@@ -171,21 +191,40 @@ function buildUrl(q: ArxivQuery): string {
  */
 export async function searchArxiv(q: ArxivQuery, deps: ArxivDeps = {}): Promise<PaperRecord[]> {
   const fetchFn = deps.fetchFn ?? fetch
+  const sleep = deps.sleep ?? realSleep
+  const maxAttempts = deps.maxAttempts ?? DEFAULT_MAX_ATTEMPTS
   const url = buildUrl(q)
 
-  let response: Response
-  try {
-    response = await fetchFn(url)
-  } catch (err) {
-    throw new PaperSourceError(err instanceof Error ? err.message : "arXiv request failed")
+  let lastError: PaperSourceError | undefined
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let response: Response
+    try {
+      response = await fetchFn(url)
+    } catch (err) {
+      // Network error — transient, retry with backoff.
+      lastError = new PaperSourceError(err instanceof Error ? err.message : "arXiv request failed")
+      if (attempt < maxAttempts - 1) {
+        await sleep(backoffDelayMs(attempt, null))
+        continue
+      }
+      throw lastError
+    }
+
+    if (response.ok) {
+      const xml = await response.text()
+      const parsed = xmlParser.parse(xml) as ArxivFeedResponse
+      const entries = parsed.feed?.entry ?? []
+      return entries.map(mapEntry)
+    }
+
+    lastError = new PaperSourceError(`arXiv request failed with status ${response.status}`, response.status)
+    if (RETRYABLE_STATUS(response.status) && attempt < maxAttempts - 1) {
+      await sleep(backoffDelayMs(attempt, response.headers.get("retry-after")))
+      continue
+    }
+    throw lastError
   }
 
-  if (!response.ok) {
-    throw new PaperSourceError(`arXiv request failed with status ${response.status}`, response.status)
-  }
-
-  const xml = await response.text()
-  const parsed = xmlParser.parse(xml) as ArxivFeedResponse
-  const entries = parsed.feed?.entry ?? []
-  return entries.map(mapEntry)
+  // Unreachable: the loop returns or throws on every path.
+  throw lastError ?? new PaperSourceError("arXiv request failed")
 }

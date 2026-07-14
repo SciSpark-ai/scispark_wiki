@@ -12,11 +12,47 @@ export class OpenAICompatProvider implements LLMProvider {
   ) {}
 
   async complete(model: string, req: LLMRequest): Promise<LLMResult> {
+    if (!req.jsonSchema) {
+      return this.send(model, req, "none")
+    }
+    // Native structured output (response_format) is the preferred path. GMI Cloud's
+    // Anthropic passthrough intermittently rejects the WHOLE structured-output field
+    // with a 400 ("output_config.format: Extra inputs are not permitted") via
+    // backend-replica variance — a transient infra flake, not a schema defect
+    // (CLAUDE.md). On exactly that rejection, fall back once to prompt-embedded JSON:
+    // drop response_format and instruct the model to emit schema-conformant JSON in
+    // its text, which safeParse extracts. zod re-validation in completeStructured
+    // remains the enforcement layer either way.
+    try {
+      return await this.send(model, req, "native")
+    } catch (e) {
+      if (e instanceof LLMBadRequestError && isStructuredOutputRejection(e.message)) {
+        return await this.send(model, req, "prompt")
+      }
+      throw e
+    }
+  }
+
+  /**
+   * One request attempt. `schemaMode` picks how a requested `jsonSchema` is conveyed:
+   * "none" = no schema; "native" = OpenAI `response_format`; "prompt" = schema embedded
+   * as an instruction in the messages (the GMI-flake fallback), no `response_format`.
+   */
+  private async send(
+    model: string,
+    req: LLMRequest,
+    schemaMode: "none" | "native" | "prompt",
+  ): Promise<LLMResult> {
+    const messages =
+      schemaMode === "prompt" && req.jsonSchema
+        ? [...req.messages, { role: "user" as const, content: buildPromptJsonInstruction(req.jsonSchema) }]
+        : req.messages
+
     const body: Record<string, unknown> = {
       model,
-      messages: req.messages,
+      messages,
       ...(req.maxTokens ? { max_completion_tokens: req.maxTokens } : {}),
-      ...(req.jsonSchema
+      ...(schemaMode === "native" && req.jsonSchema
         ? {
             response_format: {
               type: "json_schema",
@@ -89,6 +125,30 @@ export class OpenAICompatProvider implements LLMProvider {
   }
 }
 
+// Matches the GMI Bedrock-passthrough rejection of the whole structured-output
+// field — deliberately specific so a genuinely malformed request (a real 400)
+// still surfaces rather than silently retrying. The observed body is
+// "output_config.format: Extra inputs are not permitted".
+export function isStructuredOutputRejection(message: string): boolean {
+  const m = message.toLowerCase()
+  return m.includes("output_config") || m.includes("response_format")
+}
+
+// The prompt-JSON fallback instruction: appended as a final user turn when the
+// native structured-output path is rejected. The full JSON Schema guides the
+// model; the "only JSON, no prose/fences" directive keeps safeParse's job simple
+// (though safeParse also tolerates fences/prose defensively).
+function buildPromptJsonInstruction(jsonSchema: Record<string, unknown>): string {
+  const { $schema, ...rest } = jsonSchema as Record<string, unknown>
+  void $schema
+  return [
+    "Respond with ONLY a single JSON value that validates against this JSON Schema.",
+    "Do not include any prose, explanation, or markdown code fences — output raw JSON only.",
+    "",
+    JSON.stringify(rest),
+  ].join("\n")
+}
+
 interface ChatCompletionResponse {
   model?: string
   choices?: Array<{
@@ -98,8 +158,29 @@ interface ChatCompletionResponse {
   usage?: { prompt_tokens?: number; completion_tokens?: number }
 }
 
+// Parses JSON from a model response. The native structured-output path returns
+// pure JSON (the first, direct attempt succeeds). The prompt-JSON fallback path
+// may wrap the JSON in a ```json fence or surround it with prose despite the
+// instruction, so we defensively try: (1) the raw text, (2) a fenced block,
+// (3) the outermost {...} object, (4) the outermost [...] array.
 function safeParse(text: string): unknown {
-  try { return JSON.parse(text) } catch { return undefined }
+  for (const candidate of jsonCandidates(text)) {
+    try { return JSON.parse(candidate) } catch { /* try next */ }
+  }
+  return undefined
+}
+
+function jsonCandidates(text: string): string[] {
+  const out: string[] = [text.trim()]
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (fenced) out.push(fenced[1].trim())
+  const objStart = text.indexOf("{")
+  const objEnd = text.lastIndexOf("}")
+  if (objStart >= 0 && objEnd > objStart) out.push(text.slice(objStart, objEnd + 1))
+  const arrStart = text.indexOf("[")
+  const arrEnd = text.lastIndexOf("]")
+  if (arrStart >= 0 && arrEnd > arrStart) out.push(text.slice(arrStart, arrEnd + 1))
+  return out
 }
 
 // Validation-constraint keywords that some backends' structured-output
