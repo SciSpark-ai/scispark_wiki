@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { deriveTrackedFields, MAX_TRACKED_FIELDS, slugify } from "../fields"
+import { deriveTrackedFields, effectiveTrackedFields, MAX_TRACKED_FIELDS, slugify } from "../fields"
 
 const INTERESTS = `# Interests
 
@@ -36,5 +36,20 @@ describe("slugify", () => {
   it("lowercases and hyphenates", () => {
     expect(slugify("Natural Language Processing")).toBe("natural-language-processing")
     expect(slugify("  C++ & Rust!  ")).toBe("c-rust")
+  })
+})
+
+describe("effectiveTrackedFields", () => {
+  it("prefers non-empty settings fields over interests.md", () => {
+    const settingsFields = [{ slug: "alpha", label: "Alpha" }]
+    expect(effectiveTrackedFields(settingsFields, INTERESTS)).toEqual(settingsFields)
+  })
+
+  it("falls back to deriveTrackedFields(interests) when settings fields are empty", () => {
+    expect(effectiveTrackedFields([], INTERESTS)).toEqual(deriveTrackedFields(INTERESTS))
+  })
+
+  it("returns [] when both settings fields and interests are empty/null", () => {
+    expect(effectiveTrackedFields([], null)).toEqual([])
   })
 })

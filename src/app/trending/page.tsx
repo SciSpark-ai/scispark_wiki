@@ -6,7 +6,7 @@ import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadSettings } from "@/lib/llm/settings"
 import { browserSearchFn } from "@/lib/skills/feed"
 import { readUserModel } from "@/lib/usermodel/pages"
-import { deriveTrackedFields } from "@/lib/trending/fields"
+import { effectiveTrackedFields } from "@/lib/trending/fields"
 import { loadTrendingSettings } from "@/lib/trending/settings"
 import {
   loadDashboard,
@@ -40,6 +40,7 @@ export default function TrendingPage() {
   // precedent: refresh errors stay local, old content remains visible with a
   // retry affordance).
   const [refreshError, setRefreshError] = useState<string | null>(null)
+  const [refreshingField, setRefreshingField] = useState<string | null>(null)
   const started = useRef(false)
 
   const refresh = useCallback(async () => {
@@ -52,12 +53,17 @@ export default function TrendingPage() {
         loadTrendingSettings(vault),
         readUserModel(vault),
       ])
-      const fields = tSettings.fields.length > 0 ? tSettings.fields : deriveTrackedFields(userModel.interests)
+      const fields = effectiveTrackedFields(tSettings.fields, userModel.interests)
       if (fields.length === 0) {
         setState({ status: "empty" })
         return
       }
-      const dashboard = await runTrendingDashboard(vault, { fields, searchFn: browserSearchFn(), settings })
+      const dashboard = await runTrendingDashboard(vault, {
+        fields,
+        searchFn: browserSearchFn(),
+        settings,
+        onProgress: (slug) => setRefreshingField(slug),
+      })
       setState({ status: "ready", dashboard })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -69,6 +75,7 @@ export default function TrendingPage() {
       setRefreshError(message)
     } finally {
       setRefreshing(false)
+      setRefreshingField(null)
     }
   }, [])
 
@@ -83,7 +90,7 @@ export default function TrendingPage() {
           readUserModel(vault),
           loadDashboard(vault),
         ])
-        const fields = tSettings.fields.length > 0 ? tSettings.fields : deriveTrackedFields(userModel.interests)
+        const fields = effectiveTrackedFields(tSettings.fields, userModel.interests)
         if (fields.length === 0) {
           setState({ status: "empty" })
           return
@@ -118,6 +125,9 @@ export default function TrendingPage() {
         <h1 className="font-heading text-[28px] text-espresso tracking-heading">Trending in your fields</h1>
         {state.status === "ready" && (
           <div className="flex items-center gap-3">
+            {refreshing && refreshingField && (
+              <span className="text-[12px] text-muted-text">Gathering trends… ({refreshingField})</span>
+            )}
             <span className="text-[12px] text-muted-text">Updated {formatUpdated(state.dashboard.generatedAt)}</span>
             <button
               onClick={refresh}
@@ -131,7 +141,13 @@ export default function TrendingPage() {
       </div>
 
       {state.status === "loading" && (
-        <p className="mt-6 text-[14px] text-muted-text">{refreshing ? "Gathering your fields’ trends…" : "Loading…"}</p>
+        <p className="mt-6 text-[14px] text-muted-text">
+          {refreshing
+            ? refreshingField
+              ? `Gathering your fields’ trends… (${refreshingField})`
+              : "Gathering your fields’ trends…"
+            : "Loading…"}
+        </p>
       )}
       {state.status === "empty" && (
         <div className="mt-8 border border-border-warm rounded-card px-5 py-6 bg-light-surface max-w-lg">

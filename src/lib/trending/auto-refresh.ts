@@ -3,7 +3,7 @@ import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
 import type { SearchFn } from "../skills/feed"
 import { readUserModel } from "../usermodel/pages"
-import { deriveTrackedFields } from "./fields"
+import { effectiveTrackedFields } from "./fields"
 import { loadTrendingSettings } from "./settings"
 import { loadDashboard, isStale, fieldsMatchDashboard, runTrendingDashboard } from "./dashboard"
 
@@ -25,7 +25,7 @@ export async function maybeAutoRefreshTrending(
     readUserModel(storage),
     loadDashboard(storage),
   ])
-  const fields = tSettings.fields.length > 0 ? tSettings.fields : deriveTrackedFields(userModel.interests)
+  const fields = effectiveTrackedFields(tSettings.fields, userModel.interests)
   if (fields.length === 0) return "no-fields"
   if (!isStale(cached, tSettings.cadence, now()) && fieldsMatchDashboard(cached, fields)) return "fresh"
   await runTrendingDashboard(storage, { fields, searchFn: deps.searchFn, settings: deps.settings, providerOverride: deps.providerOverride, now: deps.now })

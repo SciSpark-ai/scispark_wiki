@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useUserStore } from "@/stores/user-store";
 import { getOpenVault } from "@/lib/vault/get-vault";
 import { readUserModel } from "@/lib/usermodel/pages";
-import { deriveTrackedFields, slugify, MAX_TRACKED_FIELDS } from "@/lib/trending/fields";
+import { effectiveTrackedFields, slugify, MAX_TRACKED_FIELDS } from "@/lib/trending/fields";
 import { loadTrendingSettings, saveTrendingSettings, type Cadence } from "@/lib/trending/settings";
 
 export default function ProfilePage() {
@@ -34,10 +34,7 @@ export default function ProfilePage() {
           loadTrendingSettings(vault),
           readUserModel(vault),
         ]);
-        const fields =
-          settings.fields.length > 0
-            ? settings.fields
-            : deriveTrackedFields(userModel.interests);
+        const fields = effectiveTrackedFields(settings.fields, userModel.interests);
         if (cancelled) return;
         setFieldLabels(fields.map((f) => f.label));
         setCadence(settings.cadence);

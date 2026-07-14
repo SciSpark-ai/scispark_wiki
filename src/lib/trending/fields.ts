@@ -40,3 +40,17 @@ export function deriveTrackedFields(interestsMarkdown: string | null): TrackedFi
   }
   return fields
 }
+
+/**
+ * The fields actually tracked: explicit settings win when non-empty,
+ * otherwise fall back to deriving fields from interests.md's Active topics
+ * section. Centralizes the `settingsFields.length > 0 ? settingsFields :
+ * deriveTrackedFields(interestsMarkdown)` fallback repeated across
+ * /profile, /trending, and the auto-refresh cron. Pure.
+ */
+export function effectiveTrackedFields(
+  settingsFields: TrackedField[],
+  interestsMarkdown: string | null,
+): TrackedField[] {
+  return settingsFields.length > 0 ? settingsFields : deriveTrackedFields(interestsMarkdown)
+}

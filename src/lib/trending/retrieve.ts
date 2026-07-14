@@ -2,6 +2,7 @@ import type { PaperRecord, SourceId } from "../papers/types"
 import { paperKey, mergeRecords } from "../papers/types"
 import type { SearchFn } from "../skills/feed"
 import type { TrackedField } from "./fields"
+import { paperDate } from "./paper-date"
 
 export interface TrendingCandidates {
   /** Papers published within the recent window (for volume/counts). */
@@ -29,15 +30,6 @@ function dedupe(records: PaperRecord[]): PaperRecord[] {
     }
   }
   return order.map((k) => merged.get(k)!).filter(Boolean)
-}
-
-function paperDate(p: PaperRecord): Date | null {
-  if (p.date) {
-    const d = new Date(p.date)
-    if (!Number.isNaN(d.getTime())) return d
-  }
-  if (p.year !== undefined) return new Date(Date.UTC(p.year, 0, 1))
-  return null
 }
 
 /**

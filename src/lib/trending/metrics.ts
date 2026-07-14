@@ -1,5 +1,6 @@
 import type { PaperRecord } from "../papers/types"
 import type { TrendingCandidates } from "./retrieve"
+import { paperDate } from "./paper-date"
 
 export interface VolumePoint {
   /** ISO date (YYYY-MM-DD) of the week's Monday, UTC. */
@@ -23,15 +24,6 @@ const DEFAULT_WEEKS = 8
 const TOP_MOVERS = 5
 const TOP_VENUES = 5
 const DAY_MS = 24 * 60 * 60 * 1000
-
-function paperDate(p: PaperRecord): Date | null {
-  if (p.date) {
-    const d = new Date(p.date)
-    if (!Number.isNaN(d.getTime())) return d
-  }
-  if (p.year !== undefined) return new Date(Date.UTC(p.year, 0, 1))
-  return null
-}
 
 /** UTC Monday of the week containing `d`, as a YYYY-MM-DD string. */
 function isoWeekStart(d: Date): string {
