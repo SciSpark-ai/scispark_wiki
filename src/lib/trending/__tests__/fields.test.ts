@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { deriveTrackedFields, MAX_TRACKED_FIELDS } from "../fields"
+import { deriveTrackedFields, MAX_TRACKED_FIELDS, slugify } from "../fields"
 
 const INTERESTS = `# Interests
 
@@ -29,5 +29,12 @@ describe("deriveTrackedFields", () => {
   it("only reads the Active topics section, not Rising/Fading", () => {
     const md = "## Active topics\n\n- Alpha\n\n## Rising\n\n- Beta\n"
     expect(deriveTrackedFields(md).map((f) => f.label)).toEqual(["Alpha"])
+  })
+})
+
+describe("slugify", () => {
+  it("lowercases and hyphenates", () => {
+    expect(slugify("Natural Language Processing")).toBe("natural-language-processing")
+    expect(slugify("  C++ & Rust!  ")).toBe("c-rust")
   })
 })

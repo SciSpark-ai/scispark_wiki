@@ -7,7 +7,7 @@ export interface TrackedField {
 
 export const MAX_TRACKED_FIELDS = 3
 
-function slugify(label: string): string {
+export function slugify(label: string): string {
   return label
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
