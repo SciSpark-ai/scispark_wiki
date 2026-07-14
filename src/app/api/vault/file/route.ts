@@ -1,0 +1,53 @@
+import { getServerVault } from "@/lib/server/vault"
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
+function requirePath(req: Request): string | null {
+  const path = new URL(req.url).searchParams.get("path")
+  return path && path.length > 0 ? path : null
+}
+
+export async function GET(req: Request): Promise<Response> {
+  const path = requirePath(req)
+  if (!path) return jsonResponse(400, { error: "path is required" })
+
+  const storage = await getServerVault()
+  const bytes = await storage.readBinary(path)
+  if (bytes === null) return jsonResponse(404, { error: "not found" })
+
+  return new Response(bytes as Uint8Array<ArrayBuffer>, {
+    status: 200,
+    headers: { "Content-Type": "application/octet-stream" },
+  })
+}
+
+export async function PUT(req: Request): Promise<Response> {
+  const path = requirePath(req)
+  if (!path) return jsonResponse(400, { error: "path is required" })
+
+  const bytes = new Uint8Array(await req.arrayBuffer())
+  const storage = await getServerVault()
+
+  if (req.headers.get("x-vault-text") === "1") {
+    await storage.write(path, new TextDecoder("utf-8").decode(bytes))
+  } else {
+    await storage.writeBinary(path, bytes)
+  }
+
+  return new Response(null, { status: 204 })
+}
+
+export async function DELETE(req: Request): Promise<Response> {
+  const path = requirePath(req)
+  if (!path) return jsonResponse(400, { error: "path is required" })
+
+  const storage = await getServerVault()
+  await storage.delete(path)
+
+  return new Response(null, { status: 204 })
+}
