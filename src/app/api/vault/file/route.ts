@@ -6,10 +6,12 @@ import { getServerVault } from "@/lib/server/vault"
  * API — it's a raw passthrough to storage, with no concept of "this path is
  * secret". Keys are managed exclusively via `/api/settings` (M11 Task 4),
  * which redacts them on GET and merges patches on PUT; this route rejects
- * both GET and PUT of that one path so a client can't route around the
- * redaction by reading/writing the file directly (M11 Task 10 carry-forward).
- * Every other `.scispark/*` file (events, usage, run records, etc.) is
- * unaffected.
+ * GET, PUT, and DELETE of that one path so a client can't route around the
+ * redaction (or wipe the keys outright) by reading/writing/deleting the file
+ * directly (M11 Task 10 carry-forward; DELETE guard added in final review —
+ * it had been overlooked even though this comment always claimed the route
+ * "rejects" the path). Every other `.scispark/*` file (events, usage, run
+ * records, etc.) is unaffected.
  *
  * The guard must agree with how storage actually resolves a path, not with a
  * second independent normalizer. A prior version used `posix.normalize()`,
@@ -101,6 +103,9 @@ export async function PUT(req: Request): Promise<Response> {
 export async function DELETE(req: Request): Promise<Response> {
   const path = requirePath(req)
   if (!path) return jsonResponse(400, { error: "path is required" })
+  if (isProtectedPath(path)) {
+    return jsonResponse(403, { error: "settings are managed via /api/settings" })
+  }
 
   try {
     const storage = await getServerVault()

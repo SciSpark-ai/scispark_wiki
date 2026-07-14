@@ -39,6 +39,33 @@ const ROOTS = ["src/app", "src/components"]
 const EXCLUDED_PREFIX = join("src", "app", "api")
 const FILE_EXTENSIONS = new Set([".ts", ".tsx"])
 
+/**
+ * Second scan set (M11 Task 10 final-review fix — gate blind spot): the main
+ * `ROOTS` walk above only covers `src/app`/`src/components`, but several
+ * `src/lib/**` helper modules are themselves imported directly by client
+ * code (pages/components import `*-client.ts` wrappers that call
+ * `/api/vault`, `/api/settings`, `/api/skills/*` instead of running skills
+ * or touching providers locally). Those modules need the same purity
+ * guarantee, but scanning all of `src/lib` would be wrong — most of it is
+ * server/shared orchestration code (skill runners, provider implementations,
+ * changeset appliers) that legitimately imports the very things this gate
+ * bans. So this is a hand-picked allowlist of the known browser-imported
+ * `lib` helpers, not a directory walk. If a new client-facing `lib` helper
+ * is added, add its path here.
+ */
+const CLIENT_LIB_FILES = [
+  join("src", "lib", "trending", "client.ts"),
+  join("src", "lib", "spark", "client.ts"),
+  join("src", "lib", "skills", "feed-client.ts"),
+  join("src", "lib", "skills", "ingest-client.ts"),
+  join("src", "lib", "companion", "client.ts"),
+  join("src", "lib", "reader", "client.ts"),
+  join("src", "lib", "llm", "settings-client.ts"),
+  join("src", "lib", "vault", "changeset-client.ts"),
+  join("src", "lib", "vault", "remote-storage.ts"),
+  join("src", "lib", "server", "ndjson.ts"),
+]
+
 const WHOLE_MODULE_BANS = new Set([
   "lib/skills/runner",
   "lib/spark/quick",
@@ -295,6 +322,20 @@ describe("browser purity", () => {
     if (violations.length > 0) {
       const report = violations.map((v) => `  ${v.file}: ${v.reason}\n    ${v.statement}`).join("\n")
       expect.fail(`Found ${violations.length} browser-purity violation(s):\n${report}`)
+    }
+  })
+
+  it("known browser-imported src/lib client-helper modules never import skill-running, changeset-applying, settings-loading, or provider code", () => {
+    const violations: Violation[] = []
+    for (const file of CLIENT_LIB_FILES) {
+      if (!existsSync(file)) {
+        throw new Error(`browser-purity CLIENT_LIB_FILES allowlist entry is missing on disk: ${file}`)
+      }
+      violations.push(...scanFile(file))
+    }
+    if (violations.length > 0) {
+      const report = violations.map((v) => `  ${v.file}: ${v.reason}\n    ${v.statement}`).join("\n")
+      expect.fail(`Found ${violations.length} browser-purity violation(s) in client-lib helpers:\n${report}`)
     }
   })
 

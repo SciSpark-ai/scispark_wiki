@@ -97,6 +97,14 @@ describe("vault API", () => {
       expect(await storage.read(".scispark/settings.json")).toBeNull()
     })
 
+    it("DELETE .scispark/settings.json → 403 (and does not delete through)", async () => {
+      await storage.write(".scispark/settings.json", JSON.stringify({ keys: { anthropic: "sk-secret" } }))
+      const res = await fileRoute.DELETE(new Request(SETTINGS_URL, { method: "DELETE" }))
+      expect(res.status).toBe(403)
+      expect((await res.json()).error).toBe("settings are managed via /api/settings")
+      expect(await storage.read(".scispark/settings.json")).not.toBeNull()
+    })
+
     // The guard used to compare the raw query-string path against the literal
     // ".scispark/settings.json" — but NodeFsVaultStorage resolves paths with
     // `path.resolve()`, which collapses "." segments and repeated slashes.
@@ -149,6 +157,14 @@ describe("vault API", () => {
         expect((await res.json()).error).toBe("settings are managed via /api/settings")
         expect(await storage.read(".scispark/settings.json")).toBeNull()
       })
+
+      it("DELETE → 403 (and does not delete through)", async () => {
+        await storage.write(".scispark/settings.json", JSON.stringify({ keys: { anthropic: "sk-secret" } }))
+        const res = await fileRoute.DELETE(new Request(url, { method: "DELETE" }))
+        expect(res.status).toBe(403)
+        expect((await res.json()).error).toBe("settings are managed via /api/settings")
+        expect(await storage.read(".scispark/settings.json")).not.toBeNull()
+      })
     })
 
     it("RemoteVaultStorage read of .scispark/settings.json throws", async () => {
@@ -172,6 +188,25 @@ describe("vault API", () => {
       )
       expect(res.status).toBe(200)
       expect(new TextDecoder().decode(await res.arrayBuffer())).toBe('{"day":"2026-07-14"}\n')
+    })
+
+    it("DELETE of non-protected files still works (a neighboring .scispark file and a wiki file)", async () => {
+      await storage.write(".scispark/usage/x.jsonl", '{"day":"2026-07-14"}\n')
+      await storage.write("wiki/a.md", "hello")
+
+      const usageRes = await fileRoute.DELETE(
+        new Request("http://x/api/vault/file?path=" + encodeURIComponent(".scispark/usage/x.jsonl"), {
+          method: "DELETE",
+        }),
+      )
+      expect(usageRes.status).toBe(204)
+      expect(await storage.read(".scispark/usage/x.jsonl")).toBeNull()
+
+      const wikiRes = await fileRoute.DELETE(
+        new Request("http://x/api/vault/file?path=" + encodeURIComponent("wiki/a.md"), { method: "DELETE" }),
+      )
+      expect(wikiRes.status).toBe(204)
+      expect(await storage.read("wiki/a.md")).toBeNull()
     })
   })
 
