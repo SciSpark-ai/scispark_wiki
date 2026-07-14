@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest"
 import type { VaultStorage } from "../../vault/storage"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
+import { RemoteVaultStorage } from "../../vault/remote-storage"
 import { setServerVaultForTests } from "../vault"
 import * as fileRoute from "../../../app/api/vault/file/route"
 import * as listRoute from "../../../app/api/vault/list/route"
@@ -69,6 +70,55 @@ describe("vault API", () => {
     expect((await fileRoute.GET(new Request("http://x/api/vault/file"))).status).toBe(400)
     expect((await fileRoute.PUT(new Request("http://x/api/vault/file", { method: "PUT", body: "x" }))).status).toBe(400)
     expect((await fileRoute.DELETE(new Request("http://x/api/vault/file", { method: "DELETE" }))).status).toBe(400)
+  })
+
+  describe("settings.json is unreachable via the generic vault file API (M11 Task 10 carry-forward)", () => {
+    const SETTINGS_URL = "http://x/api/vault/file?path=" + encodeURIComponent(".scispark/settings.json")
+
+    it("GET .scispark/settings.json → 403", async () => {
+      // Even when the file genuinely exists in storage, the route must
+      // reject before ever touching storage.
+      await storage.write(".scispark/settings.json", JSON.stringify({ keys: { anthropic: "sk-secret" } }))
+      const res = await fileRoute.GET(new Request(SETTINGS_URL))
+      expect(res.status).toBe(403)
+      expect((await res.json()).error).toBe("settings are managed via /api/settings")
+    })
+
+    it("PUT .scispark/settings.json → 403 (and does not write through)", async () => {
+      const res = await fileRoute.PUT(
+        new Request(SETTINGS_URL, {
+          method: "PUT",
+          headers: { "x-vault-text": "1" },
+          body: JSON.stringify({ keys: { anthropic: "sk-injected" } }),
+        }),
+      )
+      expect(res.status).toBe(403)
+      expect((await res.json()).error).toBe("settings are managed via /api/settings")
+      expect(await storage.read(".scispark/settings.json")).toBeNull()
+    })
+
+    it("RemoteVaultStorage read of .scispark/settings.json throws", async () => {
+      await storage.write(".scispark/settings.json", JSON.stringify({ keys: { anthropic: "sk-secret" } }))
+      const remote = new RemoteVaultStorage(
+        (async (input, init) => {
+          const req = new Request(input as string, init)
+          return fileRoute.GET(req)
+        }) as typeof fetch,
+        "http://x",
+      )
+      await expect(remote.read(".scispark/settings.json")).rejects.toThrow(
+        /settings are managed via \/api\/settings/,
+      )
+    })
+
+    it("a neighboring .scispark file is still readable through the vault file API", async () => {
+      await storage.write(".scispark/usage/x.jsonl", '{"day":"2026-07-14"}\n')
+      const res = await fileRoute.GET(
+        new Request("http://x/api/vault/file?path=" + encodeURIComponent(".scispark/usage/x.jsonl")),
+      )
+      expect(res.status).toBe(200)
+      expect(new TextDecoder().decode(await res.arrayBuffer())).toBe('{"day":"2026-07-14"}\n')
+    })
   })
 
   it("POST /api/vault/changeset applies atomically server-side and 409s on conflict", async () => {

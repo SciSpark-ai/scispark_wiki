@@ -1,12 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { z } from "zod"
 import { getVault } from "@/lib/vault/get-vault"
 import { loadRedactedSettings, patchSettings, type RedactedSettings, type SettingsPatch } from "@/lib/llm/settings-client"
 import type { ProviderId, Tier } from "@/lib/llm/types"
-import { runSkill } from "@/lib/skills/runner"
-import { defineSkill, type SkillRunResult } from "@/lib/skills/types"
+import type { SkillRunResult } from "@/lib/skills/types"
+import type { DebugStructuredOutput } from "@/lib/skills/debug"
 import { Meter } from "@/lib/llm/metering"
 import {
   loadCompanionSettings,
@@ -20,41 +19,32 @@ const PROVIDERS: ProviderId[] = ["anthropic", "openai", "google", "openrouter"]
 const TIERS: Tier[] = ["fast", "strong"]
 const CHATTINESS_LEVELS: Chattiness[] = ["off", "low", "medium", "high"]
 
-const pingSkill = defineSkill({
-  name: "debug-ping",
-  version: "1",
-  run: async (ctx) =>
-    (
-      await ctx.llm("fast", {
-        messages: [{ role: "user", content: "Reply with exactly: pong" }],
-        maxTokens: 32,
-      })
-    ).text,
-})
-
-const structuredSchema = z.object({
-  answer: z.string(),
-  confidence: z.number(),
-})
-
-const structuredSkill = defineSkill({
-  name: "debug-structured",
-  version: "1",
-  run: async (ctx) =>
-    ctx.llmStructured(
-      "fast",
-      {
-        messages: [
-          {
-            role: "user",
-            content:
-              "Give a JSON object with answer (a short string) and confidence (0-1 number) for: is water wet?",
-          },
-        ],
-      },
-      structuredSchema,
-    ),
-})
+/**
+ * POST /api/skills/debug/ping with `{kind}`; resolves with the raw
+ * `SkillRunResult` (M11 Task 10 — the browser-purity gate forbids client
+ * code from importing `runSkill`/`@/lib/skills/runner` directly, so the ping
+ * and structured-output test buttons below now go through a tiny server
+ * route instead of running the skill in-browser).
+ */
+async function runDebugSkill<O>(kind: "ping" | "structured"): Promise<SkillRunResult<O>> {
+  const res = await fetch("/api/skills/debug/ping", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ kind }),
+  })
+  if (!res.ok) {
+    let message = `debug skill run failed (${res.status})`
+    try {
+      const body = (await res.json()) as { error?: string }
+      if (body?.error) message = body.error
+    } catch {
+      /* non-JSON body; fall back to the generic status message */
+    }
+    throw new Error(message)
+  }
+  const body = (await res.json()) as { result: SkillRunResult<O> }
+  return body.result
+}
 
 function pretty(v: unknown): string {
   return JSON.stringify(v, null, 2)
@@ -83,9 +73,9 @@ export default function LlmDebugPage() {
   const [pingResult, setPingResult] = useState<SkillRunResult<string> | null>(null)
   const [pingRunning, setPingRunning] = useState(false)
 
-  const [structuredResult, setStructuredResult] = useState<SkillRunResult<
-    z.infer<typeof structuredSchema>
-  > | null>(null)
+  const [structuredResult, setStructuredResult] = useState<SkillRunResult<DebugStructuredOutput> | null>(
+    null,
+  )
   const [structuredRunning, setStructuredRunning] = useState(false)
 
   const [spentTodayUsd, setSpentTodayUsd] = useState<number | null>(null)
@@ -157,8 +147,7 @@ export default function LlmDebugPage() {
     setPingRunning(true)
     setPingResult(null)
     try {
-      const vault = await getVault()
-      const run = await runSkill({ skill: pingSkill, input: undefined, storage: vault })
+      const run = await runDebugSkill<string>("ping")
       setPingResult(run)
     } finally {
       setPingRunning(false)
@@ -170,8 +159,7 @@ export default function LlmDebugPage() {
     setStructuredRunning(true)
     setStructuredResult(null)
     try {
-      const vault = await getVault()
-      const run = await runSkill({ skill: structuredSkill, input: undefined, storage: vault })
+      const run = await runDebugSkill<DebugStructuredOutput>("structured")
       setStructuredResult(run)
     } finally {
       setStructuredRunning(false)

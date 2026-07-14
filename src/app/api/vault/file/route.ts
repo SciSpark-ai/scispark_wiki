@@ -1,5 +1,17 @@
 import { getServerVault } from "@/lib/server/vault"
 
+/**
+ * LLM settings (API keys) must be unreachable through the generic vault file
+ * API — it's a raw passthrough to storage, with no concept of "this path is
+ * secret". Keys are managed exclusively via `/api/settings` (M11 Task 4),
+ * which redacts them on GET and merges patches on PUT; this route rejects
+ * both GET and PUT of that one path so a client can't route around the
+ * redaction by reading/writing the file directly (M11 Task 10 carry-forward).
+ * Every other `.scispark/*` file (events, usage, run records, etc.) is
+ * unaffected.
+ */
+const PROTECTED_PATH = ".scispark/settings.json"
+
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -15,6 +27,9 @@ function requirePath(req: Request): string | null {
 export async function GET(req: Request): Promise<Response> {
   const path = requirePath(req)
   if (!path) return jsonResponse(400, { error: "path is required" })
+  if (path === PROTECTED_PATH) {
+    return jsonResponse(403, { error: "settings are managed via /api/settings" })
+  }
 
   try {
     const storage = await getServerVault()
@@ -34,6 +49,9 @@ export async function GET(req: Request): Promise<Response> {
 export async function PUT(req: Request): Promise<Response> {
   const path = requirePath(req)
   if (!path) return jsonResponse(400, { error: "path is required" })
+  if (path === PROTECTED_PATH) {
+    return jsonResponse(403, { error: "settings are managed via /api/settings" })
+  }
 
   try {
     const bytes = new Uint8Array(await req.arrayBuffer())
