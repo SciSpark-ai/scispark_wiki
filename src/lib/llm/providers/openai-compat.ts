@@ -23,6 +23,15 @@ export class OpenAICompatProvider implements LLMProvider {
     // drop response_format and instruct the model to emit schema-conformant JSON in
     // its text, which safeParse extracts. zod re-validation in completeStructured
     // remains the enforcement layer either way.
+    //
+    // We deliberately re-try native (not a sticky skip-native flag) on every call:
+    // the flake is INTERMITTENT, so the next replica usually accepts native, and
+    // native is more schema-reliable than prompt-JSON — trading it away permanently
+    // after one 400 would degrade all later calls. Cost note: this method is itself
+    // wrapped by runSkill's withRetry (transient-retry) and completeStructured's
+    // validation-retry, so a pathological run (native flake + a transient error on
+    // the fallback) can compound to several HTTP round-trips for one logical call.
+    // It is bounded (no loop) and rare in practice (live gate: fallback rarely fires).
     try {
       return await this.send(model, req, "native")
     } catch (e) {
