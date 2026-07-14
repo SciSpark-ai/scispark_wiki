@@ -286,6 +286,51 @@ describe("runScoopCheck", () => {
     expect(verdictUserContent).not.toContain("Old Signature Hit")
   })
 
+  it("KEEPS a signature-channel hit with no year (a fresh scoop with missing metadata must not vanish)", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structuredResult(SAMPLE_TERMS), structuredResult(SAMPLE_VERDICT)])
+    const searchFn: SearchFn = async (source, query) => {
+      if (query === SAMPLE_TERMS.signatureTerms[0]) {
+        // year omitted — adapters legitimately do this; must NOT be dropped.
+        return [paper({ title: "Undated Signature Scoop", ids: { arxiv: "undated-sig" } })]
+      }
+      return []
+    }
+    const result = await runScoopCheck(storage, {
+      candidateText: "some candidate",
+      searchFn,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+    expect(result.searchedSignature).toBe(1)
+    expect(provider.calls[1].req.messages[1].content).toContain("Undated Signature Scoop")
+  })
+
+  it("counts a paper hit by BOTH channels in searchedSignature AND searchedAlias (per-channel counts, not disjoint)", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structuredResult(SAMPLE_TERMS), structuredResult(SAMPLE_VERDICT)])
+    const searchFn: SearchFn = async (source, query) => {
+      // The same paper matches on both the signature and alias channels.
+      if (query === SAMPLE_TERMS.signatureTerms[0] || query === SAMPLE_TERMS.aliasTerms[0]) {
+        return [paper({ title: "Both-Channel Paper", year: 2026, ids: { arxiv: "both-1" } })]
+      }
+      return []
+    }
+    const result = await runScoopCheck(storage, {
+      candidateText: "some candidate",
+      searchFn,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+    // Per-channel counts overlap (both = 1); the rendered hits are deduped to one entry.
+    expect(result.searchedSignature).toBe(1)
+    expect(result.searchedAlias).toBe(1)
+    const hits = provider.calls[1].req.messages[1].content.match(/Both-Channel Paper/g) ?? []
+    expect(hits).toHaveLength(1)
+  })
+
   it("dedupes hits across both channels via paperKey", async () => {
     const storage = new MemoryVaultStorage()
     const provider = new MockProvider([structuredResult(SAMPLE_TERMS), structuredResult(SAMPLE_VERDICT)])

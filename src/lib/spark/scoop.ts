@@ -156,9 +156,12 @@ export interface ScoopResult {
   verdict: "clear" | "partial" | "scooped"
   reasoning: string
   collidingTitles: string[]
-  /** Number of deduped hits contributed by the signature (recent-window) channel. */
+  /** Deduped hits found ON the signature (recent-window) channel. NOTE: this is a
+   * per-channel count — a paper hit by BOTH channels is counted here AND in
+   * searchedAlias, so the two are not disjoint; don't sum them for a distinct total. */
   searchedSignature: number
-  /** Number of deduped hits contributed by the alias (long-window) channel. */
+  /** Deduped hits found ON the alias (long-window) channel. Per-channel (see
+   * searchedSignature) — may overlap the signature count. */
   searchedAlias: number
   /** Sum of costUsd across the terms call and the verdict call. */
   costUsd: number
@@ -197,12 +200,15 @@ async function runCollisionSearches(searchFn: SearchFn, terms: string[]): Promis
   return perCallResults.flat()
 }
 
-/** Keeps only records with a known year >= nowYear - RECENCY_WINDOW_YEARS. A record with
- * no year can't be confirmed recent, so it's dropped from the signature channel — the
- * alias (long-window) channel applies no such filter. */
+/** Drops only records KNOWN to be old (year < nowYear - RECENCY_WINDOW_YEARS). A
+ * record with no year is KEPT: this is a safety check before writing an idea page,
+ * so a fresh exact-vocabulary scoop whose year metadata is merely missing (adapters
+ * legitimately omit it) must not be silently excluded from the signature channel —
+ * a missed scoop is a worse failure than one extra hit the conservative verdict
+ * skill reviews. The alias (long-window) channel applies no filter at all. */
 function filterRecent(records: PaperRecord[], nowYear: number): PaperRecord[] {
   const threshold = nowYear - RECENCY_WINDOW_YEARS
-  return records.filter((r) => r.year !== undefined && r.year >= threshold)
+  return records.filter((r) => r.year === undefined || r.year >= threshold)
 }
 
 /** Merges duplicates by `paperKey` (via `mergeRecords`, same approach `fetchFreshPapers`/
