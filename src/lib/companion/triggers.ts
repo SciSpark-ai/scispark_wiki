@@ -211,7 +211,10 @@ function findSparkableCluster(bundle: Bundle, recentEvents: LoggedEvent[]): Fire
         `The user has recently added ${paperIds.size} papers that all connect to "${conceptTitle}", ` +
         "with no idea page linking that theme yet.",
       templateUtterance: "Those papers share a theme — want to Spark an idea?",
-      action: null,
+      // The companion still only PROPOSES — the user clicks through to /spark
+      // themselves. ?cluster= pre-fills the clustered papers as Spark's vault
+      // warm-start (see src/lib/spark/quick.ts / grounding.ts clusterPageIds).
+      action: { label: "Spark an idea", href: `/spark?cluster=${encodeURIComponent([...paperIds].join(","))}` },
     }
   }
   return null

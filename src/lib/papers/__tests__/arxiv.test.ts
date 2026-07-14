@@ -10,9 +10,13 @@ function fakeFetch(body: string, status = 200) {
   return vi.fn(async () => ({
     ok: status >= 200 && status < 300,
     status,
+    headers: { get: () => null },
     text: async () => body,
   })) as unknown as typeof fetch
 }
+
+// A no-op sleep so retry-path tests never wait on real backoff timers.
+const noSleep = async () => {}
 
 const LEGACY_ID_ATOM = `<?xml version='1.0' encoding='UTF-8'?>
 <feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
@@ -219,28 +223,80 @@ describe("searchArxiv", () => {
     expect(papers).toEqual([])
   })
 
-  it("throws PaperSourceError with status on a non-200 response", async () => {
+  it("throws PaperSourceError with status after exhausting retries on a persistent 500", async () => {
     const fetchFn = fakeFetch("", 500)
 
-    await expect(searchArxiv({ query: "x" }, { fetchFn })).rejects.toMatchObject({
+    await expect(searchArxiv({ query: "x" }, { fetchFn, sleep: noSleep })).rejects.toMatchObject({
       name: "PaperSourceError",
       status: 500,
     })
+    // Retried up to the default 3 attempts before giving up.
+    expect(fetchFn).toHaveBeenCalledTimes(3)
   })
 
-  it("wraps a network-level throw in PaperSourceError without a status", async () => {
+  it("does NOT retry a non-retryable 4xx (e.g. 400) — throws immediately", async () => {
+    const fetchFn = fakeFetch("", 400)
+    await expect(searchArxiv({ query: "x" }, { fetchFn, sleep: noSleep })).rejects.toMatchObject({
+      name: "PaperSourceError",
+      status: 400,
+    })
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+
+  it("RETRY: recovers when a 429 is followed by a 200", async () => {
+    let call = 0
+    const fetchFn = vi.fn(async () => {
+      call++
+      return call === 1
+        ? new Response("", { status: 429, headers: { "retry-after": "0" } })
+        : new Response(singleFixtureXml, { status: 200 })
+    }) as unknown as typeof fetch
+
+    const papers = await searchArxiv({ query: "x" }, { fetchFn, sleep: noSleep })
+    expect(papers.length).toBeGreaterThan(0)
+    expect(fetchFn).toHaveBeenCalledTimes(2)
+  })
+
+  it("RETRY: recovers when a 503 is followed by a 200", async () => {
+    let call = 0
+    const fetchFn = vi.fn(async () => {
+      call++
+      return call === 1
+        ? new Response("", { status: 503 })
+        : new Response(singleFixtureXml, { status: 200 })
+    }) as unknown as typeof fetch
+
+    const papers = await searchArxiv({ query: "x" }, { fetchFn, sleep: noSleep })
+    expect(papers.length).toBeGreaterThan(0)
+    expect(fetchFn).toHaveBeenCalledTimes(2)
+  })
+
+  it("wraps a persistent network-level throw in PaperSourceError without a status (after retries)", async () => {
     const fetchFn = vi.fn(async () => {
       throw new Error("network down")
     }) as unknown as typeof fetch
 
-    await expect(searchArxiv({ query: "x" }, { fetchFn })).rejects.toBeInstanceOf(PaperSourceError)
+    await expect(searchArxiv({ query: "x" }, { fetchFn, sleep: noSleep })).rejects.toBeInstanceOf(PaperSourceError)
     try {
-      await searchArxiv({ query: "x" }, { fetchFn })
+      await searchArxiv({ query: "x" }, { fetchFn, sleep: noSleep })
       expect.unreachable()
     } catch (err) {
       expect(err).toBeInstanceOf(PaperSourceError)
       expect((err as PaperSourceError).status).toBeUndefined()
     }
+  })
+
+  it("RETRY: recovers when a transient network throw is followed by a 200", async () => {
+    let call = 0
+    const fetchFn = vi.fn(async () => {
+      call++
+      if (call === 1) throw new Error("ECONNRESET")
+      return new Response(singleFixtureXml, { status: 200 })
+    }) as unknown as typeof fetch
+
+    const papers = await searchArxiv({ query: "x" }, { fetchFn, sleep: noSleep })
+    expect(papers.length).toBeGreaterThan(0)
+    expect(fetchFn).toHaveBeenCalledTimes(2)
   })
 
   it("maps arxiv:journal_ref to venue when populated", async () => {

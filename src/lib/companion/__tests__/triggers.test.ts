@@ -124,7 +124,10 @@ describe("sparkable-cluster trigger", () => {
     const bundle = bundleOf([conceptPage, paperA, paperB, paperC])
     const fired = evaluateTriggers({ ...baseState, recentEvents: threeIngests, bundle })
     expect(fired?.id).toBe("sparkable-cluster")
-    expect(fired?.action).toBeNull()
+    expect(fired?.action).toEqual({
+      label: "Spark an idea",
+      href: `/spark?cluster=${encodeURIComponent("wiki/papers/paper-a,wiki/papers/paper-b,wiki/papers/paper-c")}`,
+    })
     expect(fired?.contextBlurb).toContain("Attention Mechanisms")
   })
 

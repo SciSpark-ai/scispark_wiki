@@ -1,6 +1,25 @@
 import { describe, it, expect } from "vitest"
-import { OpenAICompatProvider, openAIProvider, openRouterProvider } from "../providers/openai-compat"
-import { LLMAuthError, LLMRateLimitError, LLMTransientError } from "../types"
+import { OpenAICompatProvider, openAIProvider, openRouterProvider, isStructuredOutputRejection } from "../providers/openai-compat"
+import { LLMAuthError, LLMBadRequestError, LLMRateLimitError, LLMTransientError } from "../types"
+
+/** A fetch stub that returns a scripted response per call, capturing each request body.
+ * Used to exercise the GMI-flake prompt-JSON fallback (first call 400s, second 200s). */
+function sequencedFetch(
+  responses: Array<{ status: number; body: unknown; headers?: Record<string, string> }>,
+): { fn: typeof fetch; calls: Array<{ url: string; body: unknown }> } {
+  const calls: Array<{ url: string; body: unknown }> = []
+  let i = 0
+  const fn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(url), body: JSON.parse(String(init?.body)) })
+    const r = responses[Math.min(i, responses.length - 1)]
+    i++
+    return new Response(JSON.stringify(r.body), {
+      status: r.status,
+      headers: { "content-type": "application/json", ...r.headers },
+    })
+  }) as typeof fetch
+  return { fn, calls }
+}
 
 function fakeFetch(status: number, body: unknown, responseHeaders?: Record<string, string>): { fn: typeof fetch; captured: { url?: string; init?: RequestInit } } {
   const captured: { url?: string; init?: RequestInit } = {}
@@ -178,6 +197,72 @@ describe("OpenAICompatProvider", () => {
     expect(p.id).toBe("openai")
     await p.complete("gpt-4o", { messages: [{ role: "user", content: "hi" }] })
     expect(captured.url).toBe("https://api.openai.com/v1/chat/completions")
+  })
+
+  it("GMI FLAKE FALLBACK: on an output_config.format 400, retries with prompt-embedded JSON (no response_format) and parses the result", async () => {
+    const flake = {
+      error: { message: "output_config.format: Extra inputs are not permitted", code: 400 },
+    }
+    const { fn, calls } = sequencedFetch([
+      { status: 400, body: flake },
+      {
+        status: 200,
+        body: { ...OK_RESPONSE, choices: [{ index: 0, message: { role: "assistant", content: '{"a":7}' }, finish_reason: "stop" }] },
+      },
+    ])
+    const p = new OpenAICompatProvider("openai", "sk-test", "https://api.gmi-serving.com/v1", fn)
+    const result = await p.complete("anthropic/claude-sonnet-5", {
+      messages: [{ role: "user", content: "extract" }],
+      jsonSchema: { type: "object", properties: { a: { type: "number" } }, required: ["a"], additionalProperties: false },
+      schemaName: "extraction",
+    })
+
+    expect(calls.length).toBe(2)
+    // First attempt used native response_format...
+    expect(calls[0].body).toHaveProperty("response_format")
+    // ...the retry dropped response_format and appended a schema instruction as a user turn.
+    expect(calls[1].body).not.toHaveProperty("response_format")
+    const retryMessages = (calls[1].body as { messages: Array<{ role: string; content: string }> }).messages
+    expect(retryMessages[retryMessages.length - 1].role).toBe("user")
+    expect(retryMessages[retryMessages.length - 1].content).toContain("JSON Schema")
+    expect(result.json).toEqual({ a: 7 })
+  })
+
+  it("prompt-JSON fallback tolerates a fenced ```json block in the model's text", async () => {
+    const { fn } = sequencedFetch([
+      { status: 400, body: { error: { message: "output_config.format: Extra inputs are not permitted" } } },
+      {
+        status: 200,
+        body: { ...OK_RESPONSE, choices: [{ index: 0, message: { role: "assistant", content: "Here you go:\n```json\n{\"a\":9}\n```" }, finish_reason: "stop" }] },
+      },
+    ])
+    const p = new OpenAICompatProvider("openai", "sk-test", "https://api.gmi-serving.com/v1", fn)
+    const result = await p.complete("anthropic/claude-sonnet-5", {
+      messages: [{ role: "user", content: "extract" }],
+      jsonSchema: { type: "object", properties: { a: { type: "number" } }, required: ["a"], additionalProperties: false },
+    })
+    expect(result.json).toEqual({ a: 9 })
+  })
+
+  it("does NOT fall back on an unrelated 400 (a genuine bad request still throws)", async () => {
+    const { fn, calls } = sequencedFetch([
+      { status: 400, body: { error: { message: "context length exceeded" } } },
+    ])
+    const p = new OpenAICompatProvider("openai", "sk-test", "https://api.gmi-serving.com/v1", fn)
+    await expect(
+      p.complete("anthropic/claude-sonnet-5", {
+        messages: [{ role: "user", content: "x" }],
+        jsonSchema: { type: "object", properties: { a: { type: "number" } }, required: ["a"], additionalProperties: false },
+      }),
+    ).rejects.toThrow(LLMBadRequestError)
+    expect(calls.length).toBe(1) // no retry
+  })
+
+  it("isStructuredOutputRejection matches the GMI flake but not unrelated 400s", () => {
+    expect(isStructuredOutputRejection("output_config.format: Extra inputs are not permitted")).toBe(true)
+    expect(isStructuredOutputRejection("Invalid response_format shape")).toBe(true)
+    expect(isStructuredOutputRejection("context length exceeded")).toBe(false)
+    expect(isStructuredOutputRejection("invalid api key")).toBe(false)
   })
 
   it("openRouterProvider hits openrouter.ai, has id 'openrouter', and sends HTTP-Referer/X-Title attribution headers", async () => {
