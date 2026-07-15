@@ -1,7 +1,7 @@
 import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
-import { nodeSearchFn } from "@/lib/papers/node-search"
-import { countOpenAlexWorks } from "@/lib/papers/openalex"
+import { nodeSearchFn, nodeCountFn } from "@/lib/papers/node-search"
+
 import { runTrendingDashboard } from "@/lib/trending/dashboard"
 import type { TrackedField } from "@/lib/trending/fields"
 
@@ -28,7 +28,7 @@ export const POST = ndjsonSkillRoute<RefreshInput>(async (input, vault, emit) =>
   return runTrendingDashboard(vault, {
     fields: input.fields,
     searchFn: overrides.searchFn ?? nodeSearchFn(),
-    countFn: overrides.countFn ?? ((q) => countOpenAlexWorks(q)),
+    countFn: overrides.countFn ?? nodeCountFn(),
     settings,
     providerOverride: overrides.providerOverride,
     onProgress: (field) => emit({ type: "progress", field }),

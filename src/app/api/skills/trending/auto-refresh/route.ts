@@ -1,7 +1,7 @@
 import { jsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
-import { nodeSearchFn } from "@/lib/papers/node-search"
-import { countOpenAlexWorks } from "@/lib/papers/openalex"
+import { nodeSearchFn, nodeCountFn } from "@/lib/papers/node-search"
+
 import { maybeAutoRefreshTrending } from "@/lib/trending/auto-refresh"
 
 /**
@@ -18,7 +18,7 @@ export const POST = jsonSkillRoute<Record<string, never>, "refreshed" | "fresh" 
   const overrides = getSkillTestOverrides()
   return maybeAutoRefreshTrending(vault, {
     searchFn: overrides.searchFn ?? nodeSearchFn(),
-    countFn: overrides.countFn ?? ((q) => countOpenAlexWorks(q)),
+    countFn: overrides.countFn ?? nodeCountFn(),
     settings,
     providerOverride: overrides.providerOverride,
   })

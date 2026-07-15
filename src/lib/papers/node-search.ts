@@ -1,6 +1,7 @@
 import { searchArxiv } from "./arxiv"
-import { searchOpenAlex } from "./openalex"
+import { searchOpenAlex, countOpenAlexWorks } from "./openalex"
 import type { SearchFn } from "../skills/feed"
+import type { CountFn } from "../trending/weekly-volume"
 
 /**
  * Node relay-free SearchFn: calls the M3 search-core adapters (searchArxiv,
@@ -33,4 +34,15 @@ export function nodeSearchFn(): SearchFn {
       return []
     }
   }
+}
+
+/**
+ * Node CountFn for trending weekly-volume: calls countOpenAlexWorks directly,
+ * threading OPENALEX_MAILTO so count requests land in OpenAlex's polite pool —
+ * same politeness contract nodeSearchFn uses for the search path. A failing
+ * count throws (fetchWeeklyVolume catches it and falls back to the sample series).
+ */
+export function nodeCountFn(): CountFn {
+  const mailto = process.env.OPENALEX_MAILTO
+  return (q) => countOpenAlexWorks(q, { mailto })
 }
