@@ -2,19 +2,13 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { getOpenVault } from "@/lib/vault/get-vault"
-import { loadSettings } from "@/lib/llm/settings"
-import { browserSearchFn } from "@/lib/skills/feed"
-import { runQuickSpark, saveSeed, type Seed } from "@/lib/spark/quick"
-import { runDeepSpark, estimateDeepSparkCost, type DeepSparkOutcome } from "@/lib/spark/deep"
+import type { Seed } from "@/lib/spark/quick"
+import type { DeepSparkOutcome } from "@/lib/spark/deep"
+import { quickSparkRemote, saveSeedRemote, deepSparkRemote, estimateRemote } from "@/lib/spark/client"
 import { formatDeepSparkConfirm, describeDeepOutcome, isDevelopButtonDisabled } from "@/lib/spark/ui-format"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { SeedCard, type SeedSaveState } from "./SeedCard"
 import { DeepProgress } from "./DeepProgress"
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10)
-}
 
 /** wiki page id -> the /wiki/<...> route (same idiom every gallery page in
  * this repo defines locally — see src/app/papers/page.tsx, src/app/wiki/inbox/page.tsx). */
@@ -71,8 +65,7 @@ export function SparkPanel({ clusterPageIds, onIdeaSaved }: SparkPanelProps) {
     const existing = seedUi[index]
     if (existing?.status === "saved") return existing.pageId
     setSeedUi((prev) => ({ ...prev, [index]: { status: "saving" } }))
-    const vault = await getOpenVault()
-    const result = await saveSeed(vault, seed, { today: today() })
+    const result = await saveSeedRemote(seed)
     const pageId = result.path.replace(/\.md$/, "")
     setSeedUi((prev) => ({ ...prev, [index]: { status: "saved", pageId } }))
     onIdeaSaved?.()
@@ -84,9 +77,7 @@ export function SparkPanel({ clusterPageIds, onIdeaSaved }: SparkPanelProps) {
     setSeedUi({})
     setDeepState({ status: "idle" })
     try {
-      const vault = await getOpenVault()
-      const settings = await loadSettings(vault)
-      const result = await runQuickSpark(vault, { direction, clusterPageIds, settings })
+      const result = await quickSparkRemote({ direction, clusterPageIds })
       setQuickState({ status: "done", seeds: result.seeds, costUsd: result.costUsd })
     } catch (err) {
       setQuickState({ status: "error", message: err instanceof Error ? err.message : String(err) })
@@ -110,23 +101,19 @@ export function SparkPanel({ clusterPageIds, onIdeaSaved }: SparkPanelProps) {
     seedPageId?: string
     seedIndex?: number
   }) {
-    const costUsd = await estimateDeepSparkCost()
+    const costUsd = await estimateRemote()
     if (!window.confirm(formatDeepSparkConfirm(costUsd))) return
 
     setDeepState({ status: "running", phase: null, seedIndex: opts.seedIndex })
     try {
-      const vault = await getOpenVault()
-      const settings = await loadSettings(vault)
-      const result = await runDeepSpark({
-        storage: vault,
-        direction: opts.direction,
-        clusterPageIds: opts.clusterPageIds,
-        seedPageId: opts.seedPageId,
-        searchFn: browserSearchFn(),
-        settings,
-        today: today(),
-        onPhase: (phase) => setDeepState((prev) => (prev.status === "running" ? { ...prev, phase } : prev)),
-      })
+      const result = await deepSparkRemote(
+        {
+          direction: opts.direction,
+          clusterPageIds: opts.clusterPageIds,
+          seedPageId: opts.seedPageId,
+        },
+        (phase) => setDeepState((prev) => (prev.status === "running" ? { ...prev, phase } : prev)),
+      )
       setDeepState({ status: "done", outcome: result.outcome, costUsd: result.costUsd, seedIndex: opts.seedIndex })
       if (result.outcome.kind === "idea") onIdeaSaved?.()
     } catch (err) {

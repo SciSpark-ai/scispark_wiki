@@ -7,6 +7,7 @@ import { DEFAULT_SETTINGS, type LLMSettings } from "../../llm/settings"
 import type { LLMResult } from "../../llm/types"
 import type { Frontmatter } from "../../vault/types"
 import { composePage } from "../../wiki/authoring"
+import { readRecentEvents } from "../../events/log"
 import type { SearchFn } from "../grounding"
 import { runDeepSpark, estimateDeepSparkCost } from "../deep"
 
@@ -81,6 +82,14 @@ const CANDIDATE = {
   },
 }
 
+/** A second, differently-titled candidate — used only by the in-flight-guard tests below
+ * so that a second (non-shared, sequential) run doesn't collide on the same idea page path
+ * as the first run's CANDIDATE. */
+const CANDIDATE_2 = {
+  ...CANDIDATE,
+  title: "Adaptive sparse cross-document coreference routing",
+}
+
 const SCOOP_TERMS = {
   signatureTerms: ["learned sparse gate before coreference scoring head"],
   aliasTerms: ["reducing cross-document coreference compute generally"],
@@ -133,10 +142,10 @@ const ABANDON_AUDIT = {
 }
 
 /** One full ideation->scoop->audit leg's worth of scripted responses (4 calls), with the
- * audit response swappable per test. */
-function legResponses(auditOutput: unknown): LLMResult[] {
+ * audit response and candidate swappable per test (candidate defaults to CANDIDATE). */
+function legResponses(auditOutput: unknown, candidate: unknown = CANDIDATE): LLMResult[] {
   return [
-    structuredResult(CANDIDATE),
+    structuredResult(candidate),
     structuredResult(SCOOP_TERMS),
     structuredResult(CLEAR_VERDICT),
     structuredResult(auditOutput),
@@ -425,5 +434,97 @@ describe("runDeepSpark", () => {
     expect(ideaFiles).toEqual([])
     const eventsRaw = await storage.read(".scispark/events/2026-07.jsonl")
     expect(eventsRaw).toBeNull()
+  })
+
+  // -------------------------------------------------------------------------
+  // In-flight guard (spend-safety): mirrors trending/__tests__/dashboard.test.ts's
+  // concurrent-sharing tests. Deep Spark is a real $1-3 LLM spend, so two browser
+  // tabs concurrently POSTing /api/skills/spark/deep for the same vault must never
+  // fire two paid runs — see runDeepSpark's JSDoc in src/lib/spark/deep.ts.
+  // -------------------------------------------------------------------------
+
+  it("concurrent calls for the same storage share one in-flight run (no double-spend)", async () => {
+    const storage = new MemoryVaultStorage()
+    // One full leg's worth of responses (bottleneck + ideation + scoop-terms +
+    // scoop-verdict + audit = 5). If the guard failed and each caller ran its own
+    // pass, the provider would need 10 and this would throw "no responses left".
+    const provider = new MockProvider([structuredResult(PROCEED_BOTTLENECK), ...legResponses(ACCEPT_AUDIT)])
+    const opts = {
+      storage,
+      direction: "efficient cross-document coreference",
+      searchFn: NO_SEARCH,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      today: "2026-07-13",
+      now: NOW,
+    }
+    // The second caller asks about a different direction — proving the guard's
+    // "second caller's opts ignored" subtlety: it still gets the FIRST caller's
+    // result (a shared idea page), not one derived from its own direction.
+    const [a, b] = await Promise.all([
+      runDeepSpark(opts),
+      runDeepSpark({ ...opts, direction: "a different direction tab B asked about" }),
+    ])
+    expect(provider.calls).toHaveLength(5) // bottleneck + ideation + scoop-terms + scoop-verdict + audit, once
+    expect(a).toBe(b) // same result object shared by both callers
+    expect(a.outcome.kind).toBe("idea")
+
+    const events = await readRecentEvents(storage)
+    expect(events.filter((e) => e.type === "spark_run")).toHaveLength(1)
+  })
+
+  it("a call AFTER the shared run settles starts a fresh run", async () => {
+    const storage = new MemoryVaultStorage()
+    // Second leg scripts CANDIDATE_2 (a different title -> a different idea page path) so the
+    // second run's changeset doesn't conflict with the page the first run already wrote.
+    const provider = new MockProvider([
+      structuredResult(PROCEED_BOTTLENECK),
+      ...legResponses(ACCEPT_AUDIT),
+      structuredResult(PROCEED_BOTTLENECK),
+      ...legResponses(ACCEPT_AUDIT, CANDIDATE_2),
+    ])
+    const opts = {
+      storage,
+      direction: "efficient cross-document coreference",
+      searchFn: NO_SEARCH,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      today: "2026-07-13",
+      now: NOW,
+    }
+    const first = await runDeepSpark(opts)
+    expect(provider.calls).toHaveLength(5)
+    const second = await runDeepSpark(opts)
+    expect(provider.calls).toHaveLength(10) // second, sequential call ran fresh, not reused
+    expect(second).not.toBe(first)
+
+    const ideaFiles = await storage.list("wiki/ideas/")
+    expect(ideaFiles).toHaveLength(2) // both runs actually wrote (fresh run, not a no-op)
+
+    const events = await readRecentEvents(storage)
+    expect(events.filter((e) => e.type === "spark_run")).toHaveLength(2)
+  })
+
+  it("different storage instances do not share an in-flight run", async () => {
+    const storageA = new MemoryVaultStorage()
+    const storageB = new MemoryVaultStorage()
+    // Separate providers per storage: this test only asserts the guard doesn't cross storages,
+    // not the phase-call ordering of a single shared provider queue under real interleaving.
+    const providerA = new MockProvider([structuredResult(PROCEED_BOTTLENECK), ...legResponses(ACCEPT_AUDIT)])
+    const providerB = new MockProvider([structuredResult(PROCEED_BOTTLENECK), ...legResponses(ACCEPT_AUDIT, CANDIDATE_2)])
+    const optsFor = (storage: MemoryVaultStorage, provider: MockProvider) => ({
+      storage,
+      direction: "efficient cross-document coreference",
+      searchFn: NO_SEARCH,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      today: "2026-07-13",
+      now: NOW,
+    })
+    await Promise.all([runDeepSpark(optsFor(storageA, providerA)), runDeepSpark(optsFor(storageB, providerB))])
+    // Each storage's own provider ran a full pass (5 calls) — a shared in-flight run would
+    // have starved one of these providers of calls (and the other would throw on the 6th).
+    expect(providerA.calls).toHaveLength(5)
+    expect(providerB.calls).toHaveLength(5)
   })
 })

@@ -19,6 +19,17 @@ export interface CaptureIdeaInput {
   /** Injected date (no Date.now in this module). */
   today: string
   now?: () => Date
+  /**
+   * Injectable changeset applier — defaults to the local `applyChangeset`
+   * (writes straight to `storage`). `ReaderView` (M11 Task 9) passes a
+   * wrapper around `applyChangesetRemote` instead, so the note-capture
+   * changeset applies through the single atomic `/api/vault/changeset` route
+   * rather than decomposing into per-file writes over `RemoteVaultStorage`.
+   * Kept as DI rather than hardcoding the remote call here so this module
+   * stays storage-agnostic and its existing direct-storage tests
+   * (`capture-idea.test.ts`) need no change.
+   */
+  apply?: (storage: VaultStorage, changeset: Changeset) => Promise<void>
 }
 
 const TITLE_WORD_COUNT = 8
@@ -114,7 +125,8 @@ export async function captureIdeaAsNote(
     changes: [change],
   }
 
-  await applyChangeset(input.storage, changeset)
+  const apply = input.apply ?? applyChangeset
+  await apply(input.storage, changeset)
   await logEvent(
     input.storage,
     { type: "idea_captured", paperKey: input.paperKey, changesetId: changeset.id },

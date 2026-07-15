@@ -1,34 +1,39 @@
 # System Design (Layer 2)
 
-*Status: approved 2026-07-11. The whole-system architecture is "Option 1": local-first browser app + thin stateless server. See [03-backend](03-backend.md) for the server, [04-agent-harness](04-agent-harness.md) for agent internals.*
+*Status: approved 2026-07-11; runtime model **superseded 2026-07-14 (M11, "local-runtime pivot")** — implementation-complete on branch `m11-local-runtime`, not yet merged. Tong: "the browser is only for showing UI; runtime is on user." v1 is a **local app**: a Next.js server running on the user's own machine owns the runtime (vault on disk, agent harness, BYOK keys); the browser is UI-only. The Vercel-hosted deployment described in [03-backend](03-backend.md) is now a documented future tier, not the v1 runtime. See `docs/superpowers/specs/2026-07-14-m11-local-runtime-design.md` for the full design, [03-backend](03-backend.md) for the server surface, [04-agent-harness](04-agent-harness.md) for agent internals.*
 
 ## Architecture overview
 
 ```
-┌────────────────────────────  Browser (all user data lives here)  ─────────────────────────┐
-│                                                                                            │
-│  UI (Next.js app, forked from scispark-app-frontend)                                       │
-│   feed · digest · reader · wiki · chat · viz dashboard · review queue · settings           │
-│        │                                                                                   │
-│  Agent Harness  ──executes──▶  Skills (Feed, Ingest, Reading-Companion, KB-Chat,           │
-│        │                        Lint, Memory-Consolidation)                                │
-│        │ tools                                                                             │
-│  ┌─────┴──────────┐   ┌──────────────┐   ┌─────────────────────────┐                       │
-│  │ VaultStorage   │   │ LLMProvider  │   │ proxy API client        │                       │
-│  │ OPFS | FSA dir │   │ BYOK, direct │   │ search/resolve/fetch/   │                       │
-│  │ (later: sync,  │   │ to provider  │   │ trending                │                       │
-│  │  Tauri native) │   └──────┬───────┘   └────────────┬────────────┘                       │
-│  └────────────────┘          │                        │                                    │
-└──────────────────────────────┼────────────────────────┼────────────────────────────────────┘
-                               ▼                        ▼
-                    Anthropic/OpenAI/Google/      Vercel: same Next.js deployment
-                    OpenRouter (user's key)       (API routes + daily trending cron)
-                                                        ▼
-                                            arXiv · OpenAlex · Semantic Scholar ·
-                                            PubMed · Unpaywall · publisher PDFs
+┌──────────────────────────────────┐          ┌──────────────────────────────────────────────────────────────┐
+│  Browser — UI ONLY                │          │  Local Next.js server (the runtime — runs on the user's own   │
+│  (Next.js app, forked from        │  fetch/  │  machine; `npm run dev` / `next start`, localhost)             │
+│  scispark-app-frontend)           │  SSE     │                                                                 │
+│   feed · digest · reader · wiki · │ ───────▶ │  Vault API        Skills API         Settings API               │
+│   chat · viz dashboard · review   │ ◀─────── │  /api/vault/*     /api/skills/*      /api/settings              │
+│   queue · settings                │          │  (file/list/       (feed, ingest,     (BYOK keys; GET           │
+│                                    │          │   changeset)        ask, chat, spark,  redacts values)          │
+│  RemoteVaultStorage implements    │          │       │             trending, …)             │                 │
+│  VaultStorage over fetch          │          │       ▼                  │                    │                 │
+└──────────────────────────────────┘          │  NodeFsVaultStorage   Agent Harness ──executes──▶ Skills          │
+                                                │  (node:fs, vault on   (Feed, Ingest, Reading-Companion,          │
+                                                │   disk at SCISPARK_   KB-Chat, Lint, Memory-Consolidation)       │
+                                                │   VAULT, default            │ tools                             │
+                                                │   ~/SciSpark/vault)   ┌─────┴───────┐   ┌─────────────────────┐ │
+                                                │                       │ LLMProvider │   │ local API routes     │ │
+                                                │                       │ BYOK, server│   │ search/resolve/fetch/│ │
+                                                │                       │ -side key   │   │ trending (same-origin│ │
+                                                │                       └──────┬──────┘   │  now, not a CORS     │ │
+                                                │                              │           │  relay deployment)   │ │
+                                                └──────────────────────────────┼───────────┴──────────┬───────────┘
+                                                                               ▼                       ▼
+                                                                    Anthropic/OpenAI/Google/   arXiv · OpenAlex ·
+                                                                    OpenRouter (user's key)     Semantic Scholar ·
+                                                                                                PubMed · Unpaywall ·
+                                                                                                publisher PDFs
 ```
 
-Everything personal is client-side. The server relays public data and serves shared trending content. LLM traffic goes directly from the browser to the provider with the user's key.
+Everything personal lives on the user's own machine — in the local server's process and the vault it owns on disk — not in the browser. The browser only renders UI and talks to the local server's own API routes (`/api/vault/*`, `/api/skills/*`, `/api/settings`); a browser-purity test enforces this boundary (no server-only code, including provider keys, reaches client bundles). The local server also relays public data (the former CORS relay is now just local, same-origin API routes) and holds the BYOK provider key; LLM traffic runs local-server → provider, never browser → provider. A hosted/Vercel deployment of this same app remains a documented future paid tier (see [03-backend](03-backend.md)), not the v1 runtime.
 
 ## The vault
 
@@ -75,20 +80,23 @@ A project is an index page + a context scope, nothing physical. Membership is de
 
 ## Storage abstraction
 
-`VaultStorage` interface: `read/write/list/delete/watch` + changeset primitives. Implementations:
-1. **OPFS** (default, all browsers, zero friction) — with `navigator.storage.persist()` requested, and export always available.
-2. **File System Access API directory** ("Connect a vault folder", Chromium) — real files the user owns.
-3. *(later)* cloud-sync implementation (paid tier); Tauri native FS (desktop app).
+`VaultStorage` interface: `read/write/list/delete/watch` + changeset primitives. Implementations (as of the M11 local-runtime pivot, 2026-07-14):
+1. **`NodeFsVaultStorage`** (v1, default, server-side) — the vault as plain files on disk via `node:fs/promises`, owned by the local Next.js server. Path from `SCISPARK_VAULT` env var, default `~/SciSpark/vault`; every path resolved and guarded to stay under the vault root; scaffolded (`schema.md`, `purpose.md`, `index.md`, …) on first server start.
+2. **`RemoteVaultStorage`** (browser) — implements the same interface over `fetch` against `/api/vault/*`, which proxies to the server's `NodeFsVaultStorage`. Because every page/component already programs against the `VaultStorage` interface, this is a drop-in swap — no page rewrites needed for reads.
+3. **`MemoryVaultStorage`** — test double only.
+4. *(later)* cloud-sync implementation (paid tier); Tauri wraps the same local server as a packaged desktop app rather than adding a new storage backend.
 
-Vault zip export/import ships in v1 as the trust escape-hatch and the OPFS↔folder migration path.
+**Superseded (M11, 2026-07-14):** the original browser-storage model — OPFS (default) and a File System Access API directory connection (Chromium) — is removed from the user path (`OpfsVaultStorage` is unreferenced). The vault is real files on disk in a folder the user owns, not browser-internal storage; there is no OPFS, no File System Access permission dialog, and any browser works.
+
+Vault zip export/import ships in v1 as the trust escape-hatch and backup workflow (the OPFS↔folder migration path no longer applies — there is no OPFS to migrate from).
 
 ## Changesets and undo
 
-Every agent mutation is an atomic changeset: `{id, skill, model, timestamp, files: [{path, before, after}]}` stored under `.scispark/changesets/`. Apply is all-or-nothing after schema validation; revert restores all `before` states. The review queue's actions are themselves changesets. `log.md` records every application in human-readable form.
+Every agent mutation is an atomic changeset: `{id, skill, model, timestamp, files: [{path, before, after}]}` stored under `.scispark/changesets/`. Apply is all-or-nothing after schema validation; revert restores all `before` states. As of M11, apply/revert run **server-side** via `POST /api/vault/changeset`, so atomicity/undo never depends on per-file HTTP writes from the browser. The review queue's actions are themselves changesets. `log.md` records every application in human-readable form.
 
 ## Ingest pipeline ("Add to knowledge base")
 
-1. **Acquire full text** — HTML (arXiv/PMC) or PDF via proxy; text extracted client-side. Paywalled → proceed on metadata+abstract+digest, `full_text: false`.
+1. **Acquire full text** — HTML (arXiv/PMC) or PDF via proxy; text extracted server-side (the ingest skill runs behind `/api/skills/ingest` on the local server). Paywalled → proceed on metadata+abstract+digest, `full_text: false`.
 2. **Deterministic pre-fill** — code (not LLM) writes structured frontmatter from API metadata and creates author-page skeletons.
 3. **Assemble context** — `purpose.md`, `schema.md`, index, existing digest (reused, not regenerated), the user's highlights/questions on this paper (emphasis signals), target projects.
 4. **LLM Step 1: analysis** — entities, concepts, findings + evidence strength, connections to existing wiki, contradictions, recommendations (llm_wiki's prompt near-verbatim).

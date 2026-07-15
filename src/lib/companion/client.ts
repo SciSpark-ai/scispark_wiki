@@ -1,0 +1,54 @@
+import type { CompanionUtterance } from "./run"
+
+/**
+ * Browser-side caller for the companion utterance skill route (M11 Task 9).
+ * `useCompanion` used to assemble the full `TriggerState` itself (`loadFeed`
+ * + `readRecentEvents` + `reviewCount` + `loadBundle` + `loadSettings`, all
+ * client-side vault reads) and call `runCompanion` directly — it now only
+ * reports what it alone knows (current route, and the per-tab session
+ * bookkeeping already tracked in `useCompanionStore`) and lets the server
+ * assemble the rest and run the skill.
+ *
+ * `CompanionUtterance` is imported with `import type` from `./run`, which is
+ * erased at compile time — none of that module's runtime code (skill runner,
+ * trigger evaluation, storage access) reaches the client bundle, mirroring
+ * `../reader/client.ts`'s `import type` of `ReadingCompanionInput`.
+ */
+
+export interface CompanionRemoteInput {
+  route: string
+  sessionShownCount: number
+  lastShownTs: Record<string, string>
+}
+
+async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await res.json()) as { error?: string }
+    return body?.error ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
+/**
+ * POST /api/skills/companion with `{route, sessionShownCount, lastShownTs}`;
+ * resolves with `CompanionUtterance | null` — a real `null` result (no
+ * trigger eligible / budget exhausted / chattiness off) is a normal, non-error
+ * outcome and resolves rather than throwing. Only a genuinely failed request
+ * (network error, non-2xx response) throws.
+ */
+export async function companionUtteranceRemote(
+  input: CompanionRemoteInput,
+  fetchFn: typeof fetch = fetch,
+): Promise<CompanionUtterance | null> {
+  const res = await fetchFn("/api/skills/companion", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  })
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, `companion failed (${res.status})`))
+  }
+  const body = (await res.json()) as { result: CompanionUtterance | null }
+  return body.result
+}
