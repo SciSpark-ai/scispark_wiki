@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { DEFAULT_SETTINGS } from "../../llm/settings"
 import { searchArxiv } from "../../papers/arxiv"
-import { searchOpenAlex, countOpenAlexWorks } from "../../papers/openalex"
+import { searchOpenAlex } from "../../papers/openalex"
+import { nodeCountFn } from "../../papers/node-search"
 import { readRecentEvents } from "../../events/log"
 import { runTrendingDashboard } from "../dashboard"
 import { TrendingSurveySchema } from "../../skills/trending"
@@ -91,8 +92,10 @@ describe.skipIf(!live)("LIVE trending dashboard gate", () => {
         searchFn: nodeSearchFn(),
         // Real per-week OpenAlex work counts (keyless — no LLM key needed),
         // so even this env-gated live run exercises the v1.1 real-count path
-        // rather than the old retrieval-sample-derived weeklyVolume.
-        countFn: (q) => countOpenAlexWorks(q),
+        // rather than the old retrieval-sample-derived weeklyVolume. Uses the
+        // PRODUCTION nodeCountFn so OPENALEX_MAILTO is threaded (polite pool),
+        // matching the trending routes' wiring exactly.
+        countFn: nodeCountFn(),
         settings: liveSettings(),
         now: () => new Date(),
       })
