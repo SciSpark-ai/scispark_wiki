@@ -1,10 +1,10 @@
 import type { Bundle } from "../vault/bundle"
 import { resolveLink } from "../vault/bundle"
-import { serializeDocument } from "../vault/frontmatter"
+import { parseDocument, serializeDocument } from "../vault/frontmatter"
 import { buildIndexMarkdown } from "../vault/index-builder"
 import { PAGE_TYPES, RESERVED_FILES } from "../vault/types"
 import type { Frontmatter } from "../vault/types"
-import { extractWikilinks } from "../vault/wikilinks"
+import { extractWikilinks, findWikilinkMatches } from "../vault/wikilinks"
 import type { LintFinding } from "./types"
 
 const REQUIRED_FRONTMATTER_KEYS = [
@@ -53,18 +53,24 @@ export function findOrphans(bundle: Bundle): LintFinding[] {
   return findings
 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-}
-
-/** Removes every `[[slug]]` / `[[slug|alias]]` wikilink referencing `slug` from
- * `body`, replacing each occurrence with its alias text (or the bare slug if
- * there's no alias) so the surrounding prose still reads naturally. */
+/**
+ * Removes every REAL `[[slug]]` / `[[slug|alias]]` wikilink referencing
+ * `slug` from `body` — i.e. exactly the occurrences `findWikilinkMatches`
+ * (the same detector `extractWikilinks` uses) would report, never text
+ * inside a fenced or inline code span — replacing each with its alias text
+ * (or the bare slug if there's no alias) so the surrounding prose still
+ * reads naturally. Rewriting is span-based (using the offsets
+ * `findWikilinkMatches` found), not a naive string/regex replace, so it
+ * can't touch a same-looking `[[slug]]` sitting inside a code span.
+ */
 function neutralizeWikilink(body: string, slug: string): string {
-  const re = new RegExp(`\\[\\[\\s*${escapeRegExp(slug)}\\s*(?:\\|([^\\]]*))?\\s*\\]\\]`, "g")
-  return body.replace(re, (_match: string, alias?: string) =>
-    alias !== undefined && alias.trim() ? alias.trim() : slug,
-  )
+  const matches = findWikilinkMatches(body).filter((m) => m.slug === slug)
+  let out = body
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const m = matches[i]
+    out = out.slice(0, m.start) + (m.alias ?? m.slug) + out.slice(m.end)
+  }
+  return out
 }
 
 /**
@@ -98,6 +104,25 @@ export function findBrokenLinks(bundle: Bundle): LintFinding[] {
 }
 
 /**
+ * True iff `raw` (a full file's raw text, frontmatter + body) round-trips
+ * through the real frontmatter parser (`frontmatter.ts#parseDocument`) —
+ * i.e. it's not just "has the required keys" per this file's local checks,
+ * but actually satisfies every rule `parseDocument` enforces at load time
+ * (required keys present, array keys are arrays, type/title non-empty
+ * strings, created/updated valid date values). A mechanical `fix.after` must
+ * pass this before it's ever emitted — a fix a later task auto-applies that
+ * fails this would corrupt the page on its next load.
+ */
+function isValidFrontmatterDocument(raw: string): boolean {
+  try {
+    parseDocument(raw)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
  * Re-validates each page's frontmatter against the same contract
  * `frontmatter.ts#parseDocument` enforces at parse time. Pages that reach
  * `bundle.pages` via `loadBundle` already satisfy this contract (a violation
@@ -106,9 +131,17 @@ export function findBrokenLinks(bundle: Bundle): LintFinding[] {
  * (e.g. hand-built fixtures, future direct writes) and for the one thing
  * `parseDocument` does NOT validate: that `type` is a recognized page type.
  *
- * - Missing "updated" with "created" present -> mechanical fix (safe default:
- *   mirror "created").
- * - Any other missing required key -> advisory (no safe default to guess).
+ * - Missing "updated" with "created" present, AND "updated" is the ONLY
+ *   missing required key -> mechanical fix (safe default: mirror "created").
+ *   A mechanical fix is only ever emitted when the resulting document
+ *   actually round-trips through the real frontmatter parser
+ *   (`parseDocument`) — if some other required key is also missing, adding
+ *   "updated" alone would still leave an invalid document, so this case
+ *   falls through to the general "missing required key(s)" advisory below
+ *   instead of emitting a fix that would corrupt the page on next load.
+ * - Any other missing required key (or "updated" missing alongside another
+ *   missing key) -> advisory listing every missing field, no fix (no safe
+ *   default to guess the others).
  * - A required array field present but not an array -> advisory (structurally
  *   wrong; can't guess intended contents).
  * - An unrecognized `type` -> advisory.
@@ -119,26 +152,32 @@ export function findBadFrontmatter(bundle: Bundle): LintFinding[] {
 
   for (const page of bundle.pages.values()) {
     const fm = page.frontmatter as Record<string, unknown>
+    const missingKeys = REQUIRED_FRONTMATTER_KEYS.filter((key) => !(key in fm))
 
-    if (!("updated" in fm) && typeof fm.created === "string") {
+    if (missingKeys.length === 1 && missingKeys[0] === "updated" && typeof fm.created === "string") {
       const fixedFrontmatter = { ...page.frontmatter, updated: fm.created } as Frontmatter
-      findings.push({
-        lintKind: "bad-frontmatter",
-        title: `"${page.id}" is missing "updated"`,
-        description:
-          `Frontmatter for "${page.id}" has no "updated" field; defaulting it to its ` +
-          `"created" date (${fm.created}).`,
-        pages: [page.id],
-        fix: {
-          path: page.path,
-          before: serializeDocument(page.frontmatter, page.body),
-          after: serializeDocument(fixedFrontmatter, page.body),
-        },
-      })
-      continue
+      const after = serializeDocument(fixedFrontmatter, page.body)
+      if (isValidFrontmatterDocument(after)) {
+        findings.push({
+          lintKind: "bad-frontmatter",
+          title: `"${page.id}" is missing "updated"`,
+          description:
+            `Frontmatter for "${page.id}" has no "updated" field; defaulting it to its ` +
+            `"created" date (${fm.created}).`,
+          pages: [page.id],
+          fix: {
+            path: page.path,
+            before: serializeDocument(page.frontmatter, page.body),
+            after,
+          },
+        })
+        continue
+      }
+      // Round-trip failed for some other reason (e.g. "created" isn't a
+      // valid date string) -> fall through to the advisory path below,
+      // which still correctly reports "updated" as the only missing key.
     }
 
-    const missingKeys = REQUIRED_FRONTMATTER_KEYS.filter((key) => !(key in fm))
     if (missingKeys.length > 0) {
       findings.push({
         lintKind: "bad-frontmatter",

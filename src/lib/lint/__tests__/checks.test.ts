@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
-import { serializeDocument } from "../../vault/frontmatter"
+import { parseDocument, serializeDocument } from "../../vault/frontmatter"
 import { loadBundle } from "../../vault/bundle"
 import { buildIndexMarkdown } from "../../vault/index-builder"
 import type { Bundle } from "../../vault/bundle"
@@ -117,6 +117,26 @@ describe("findBrokenLinks", () => {
     expect(findings).toHaveLength(1)
     expect(findings[0].fix?.after).toContain("See the missing page for details.")
   })
+
+  it("neutralization is fence/inline-code-aware: only the real broken link is rewritten, code spans and valid links survive untouched", async () => {
+    const s = new MemoryVaultStorage()
+    // A real broken [[foo]], the exact same text inside inline code (must
+    // survive unrewritten), and a real, resolvable [[bar]] (must survive
+    // unrewritten too — it isn't broken).
+    const rawBody = "Real: [[foo]]. Example syntax: `[[foo]]`. Also see [[bar]]."
+    await s.write("wiki/concepts/a.md", serializeDocument(fm("concept", "A"), rawBody))
+    await s.write("wiki/concepts/bar.md", serializeDocument(fm("concept", "Bar"), "Body."))
+    const b = await loadBundle(s)
+
+    const findings = findBrokenLinks(b)
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toMatchObject({ lintKind: "broken-link", pages: ["wiki/concepts/a"] })
+
+    const after = findings[0].fix!.after
+    expect(after).toContain("Real: foo.")
+    expect(after).toContain("Example syntax: `[[foo]]`.")
+    expect(after).toContain("Also see [[bar]].")
+  })
 })
 
 describe("findBadFrontmatter", () => {
@@ -188,6 +208,46 @@ describe("findBadFrontmatter", () => {
     const findings = findBadFrontmatter(b)
     expect(findings).toHaveLength(1)
     expect(findings[0].fix).toBeUndefined()
+  })
+
+  it("the missing-updated mechanical fix's 'after' round-trips through the real frontmatter parser", () => {
+    const badFm = {
+      type: "concept",
+      title: "A",
+      created: "2026-07-14",
+      tags: [],
+      related: [],
+      sources: ["s.pdf"],
+      // "updated" intentionally omitted, nothing else missing
+    }
+    const b = bundleFromPages([
+      { id: "wiki/concepts/a", path: "wiki/concepts/a.md", frontmatter: badFm, body: "Body." },
+    ])
+    const findings = findBadFrontmatter(b)
+    expect(findings).toHaveLength(1)
+    expect(findings[0].fix).toBeDefined()
+    const parsed = parseDocument(findings[0].fix!.after)
+    expect(parsed.frontmatter).toMatchObject({ ...badFm, updated: "2026-07-14" })
+  })
+
+  it("missing 'updated' AND 'title' together: no mechanical fix (it would leave the page still missing 'title'); advisory lists both", () => {
+    const badFm = {
+      type: "concept",
+      created: "2026-07-14",
+      tags: [],
+      related: [],
+      sources: ["s.pdf"],
+      // both "title" and "updated" intentionally omitted
+    }
+    const b = bundleFromPages([
+      { id: "wiki/concepts/a", path: "wiki/concepts/a.md", frontmatter: badFm, body: "Body." },
+    ])
+    const findings = findBadFrontmatter(b)
+    expect(findings).toHaveLength(1)
+    expect(findings[0].lintKind).toBe("bad-frontmatter")
+    expect(findings[0].fix).toBeUndefined()
+    expect(findings[0].description).toContain("title")
+    expect(findings[0].description).toContain("updated")
   })
 })
 
