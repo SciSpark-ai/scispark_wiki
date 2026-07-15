@@ -7,6 +7,8 @@ import type { SearchFn } from "../../skills/feed"
 import { readRecentEvents } from "../../events/log"
 import { runTrendingDashboard, loadDashboard, isStale, fieldsMatchDashboard, DASHBOARD_CACHE_PATH } from "../dashboard"
 import type { TrendingDashboard } from "../dashboard"
+import { buildWeekStarts } from "../weeks"
+import type { CountFn, GroupFn } from "../weekly-volume"
 
 const NOW = () => new Date("2026-07-14T00:00:00.000Z")
 function paper(o: Partial<PaperRecord> & { title: string }): PaperRecord {
@@ -139,6 +141,56 @@ describe("runTrendingDashboard", () => {
     expect(provider.calls).toHaveLength(2) // second, sequential call ran fresh
     const events = await readRecentEvents(storage)
     expect(events.filter((e) => e.type === "trending_refresh")).toHaveLength(2)
+  })
+
+  it("wires a real per-week series from countFn through to the panel's metrics, week-aligned", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structured(SURVEY)])
+    const searchFn: SearchFn = async () => [paper({ title: "Fresh", date: "2026-07-10", year: 2026, citationCount: 3, venue: "ACL" })]
+    const weekStarts = buildWeekStarts(NOW(), 8)
+    const countFn: CountFn = async ({ fromDate }) => weekStarts.indexOf(fromDate) + 1 // deterministic per-week count
+    const dash = await runTrendingDashboard(storage, {
+      fields: [{ slug: "nlp", label: "NLP" }], searchFn, settings: SETTINGS, providerOverride: { strong: provider }, now: NOW, countFn,
+    })
+    const expected = weekStarts.map((ws, i) => ({ weekStart: ws, count: i + 1 }))
+    expect(dash.panels[0].metrics.weeklyVolume).toEqual(expected)
+    const recent = expected.slice(-2).reduce((a, v) => a + v.count, 0)
+    const prior = expected.slice(-4, -2).reduce((a, v) => a + v.count, 0)
+    expect(dash.panels[0].metrics.paperCountRecent).toBe(recent)
+    expect(dash.panels[0].metrics.paperCountPrior).toBe(prior)
+    expect(dash.panels[0].metrics.pctChange).toBeCloseTo((recent - prior) / prior)
+  })
+
+  it("wires a real per-week series from groupFn through to the panel's metrics, preferring it over countFn", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structured(SURVEY)])
+    const searchFn: SearchFn = async () => [paper({ title: "Fresh", date: "2026-07-10", year: 2026, citationCount: 3, venue: "ACL" })]
+    const weekStarts = buildWeekStarts(NOW(), 8)
+    const groupFn: GroupFn = async () => weekStarts.map((ws, i) => ({ key: ws, count: i + 1 }))
+    const countFn: CountFn = async () => {
+      throw new Error("countFn must not be called when groupFn succeeds")
+    }
+    const dash = await runTrendingDashboard(storage, {
+      fields: [{ slug: "nlp", label: "NLP" }], searchFn, settings: SETTINGS, providerOverride: { strong: provider }, now: NOW, countFn, groupFn,
+    })
+    const expected = weekStarts.map((ws, i) => ({ weekStart: ws, count: i + 1 }))
+    expect(dash.panels[0].metrics.weeklyVolume).toEqual(expected)
+  })
+
+  it("falls back to the sample-derived weekly series when countFn throws (panel still produced, not dropped)", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structured(SURVEY)])
+    const searchFn: SearchFn = async () => [paper({ title: "Fresh", date: "2026-07-10", year: 2026, citationCount: 3, venue: "ACL" })]
+    const countFn: CountFn = async () => {
+      throw new Error("openalex down")
+    }
+    const dash = await runTrendingDashboard(storage, {
+      fields: [{ slug: "nlp", label: "NLP" }], searchFn, settings: SETTINGS, providerOverride: { strong: provider }, now: NOW, countFn,
+    })
+    expect(dash.panels).toHaveLength(1)
+    expect(dash.panels[0].metrics.weeklyVolume.length).toBe(8) // sample-derived fallback, still well-formed
+    expect(dash.panels[0].survey).toEqual(SURVEY) // panel not degraded by the countFn failure
+    expect(dash.panels[0].error).toBeUndefined()
   })
 
   it("different storage instances do not share an in-flight run", async () => {

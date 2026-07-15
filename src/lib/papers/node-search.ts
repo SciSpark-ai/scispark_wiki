@@ -1,6 +1,7 @@
 import { searchArxiv } from "./arxiv"
-import { searchOpenAlex } from "./openalex"
+import { searchOpenAlex, countOpenAlexWorks, groupWorksByPublicationDate } from "./openalex"
 import type { SearchFn } from "../skills/feed"
+import type { CountFn, GroupFn } from "../trending/weekly-volume"
 
 /**
  * Node relay-free SearchFn: calls the M3 search-core adapters (searchArxiv,
@@ -21,16 +22,41 @@ import type { SearchFn } from "../skills/feed"
  */
 export function nodeSearchFn(): SearchFn {
   const mailto = process.env.OPENALEX_MAILTO
+  const apiKey = process.env.OPENALEX_API_KEY
   return async (source, query, limit) => {
     const effectiveSource = source === "s2" || source === "pubmed" ? "openalex" : source
     try {
       if (effectiveSource === "arxiv") {
         return await searchArxiv({ query, limit })
       }
-      return await searchOpenAlex({ query, limit }, { mailto })
+      return await searchOpenAlex({ query, limit }, { mailto, apiKey })
     } catch (err) {
       console.warn(`[node-search] search failed for source=${source} query="${query}":`, err)
       return []
     }
   }
+}
+
+/**
+ * Node CountFn for trending weekly-volume: calls countOpenAlexWorks directly,
+ * threading OPENALEX_MAILTO so count requests land in OpenAlex's polite pool —
+ * same politeness contract nodeSearchFn uses for the search path. A failing
+ * count throws (fetchWeeklyVolume catches it and falls back to the sample series).
+ */
+export function nodeCountFn(): CountFn {
+  const mailto = process.env.OPENALEX_MAILTO
+  const apiKey = process.env.OPENALEX_API_KEY
+  return (q) => countOpenAlexWorks(q, { mailto, apiKey })
+}
+
+/**
+ * Node GroupFn for trending weekly-volume: calls groupWorksByPublicationDate
+ * directly (one group_by=publication_date request, 1 OpenAlex credit),
+ * threading OPENALEX_MAILTO/OPENALEX_API_KEY exactly like nodeCountFn. Tried
+ * first by fetchWeeklyVolume before falling back to nodeCountFn's per-week path.
+ */
+export function nodeGroupFn(): GroupFn {
+  const mailto = process.env.OPENALEX_MAILTO
+  const apiKey = process.env.OPENALEX_API_KEY
+  return (q) => groupWorksByPublicationDate(q, { mailto, apiKey })
 }

@@ -1,6 +1,7 @@
 import type { PaperRecord } from "../papers/types"
 import type { TrendingCandidates } from "./retrieve"
 import { paperDate } from "./paper-date"
+import { isoWeekStart, buildWeekStarts } from "./weeks"
 
 export interface VolumePoint {
   /** ISO date (YYYY-MM-DD) of the week's Monday, UTC. */
@@ -20,18 +21,10 @@ export interface FieldMetrics {
 }
 
 const DEFAULT_RECENT_WINDOW_DAYS = 14
-const DEFAULT_WEEKS = 8
+export const DEFAULT_WEEKS = 8
 const TOP_MOVERS = 5
 const TOP_VENUES = 5
 const DAY_MS = 24 * 60 * 60 * 1000
-
-/** UTC Monday of the week containing `d`, as a YYYY-MM-DD string. */
-function isoWeekStart(d: Date): string {
-  const day = d.getUTCDay() // 0=Sun..6=Sat
-  const deltaToMonday = (day + 6) % 7 // Mon→0, Sun→6
-  const monday = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - deltaToMonday))
-  return monday.toISOString().slice(0, 10)
-}
 
 /**
  * Computes field-level trending metrics from candidates already retrieved by
@@ -45,46 +38,67 @@ function isoWeekStart(d: Date): string {
  * re-deriving cutoffs from `opts.now`/`opts.recentWindowDays`. If the two
  * calls disagree, the recent and prior windows silently desynchronize
  * (gaps, overlaps, or double-counted papers) without any error.
+ *
+ * `opts.realWeeklyVolume`, when present, is a real per-week series (from
+ * `fetchWeeklyVolume`) that REPLACES the sample-derived weeklyVolume AND the
+ * recent/prior/pctChange math: `weeklyVolume` becomes that series verbatim,
+ * `paperCountRecent`/`paperCountPrior` become sums of its last-2/prior-2
+ * buckets (week-aligned, not day-window-aligned), and `pctChange` is derived
+ * from those. `topMovers`/`topVenues` are unaffected either way — they always
+ * come from `candidates.movers` (the retrieval sample), since real per-week
+ * counts carry no per-paper detail to rank by.
  */
 export function computeFieldMetrics(
   candidates: TrendingCandidates,
-  opts: { now: Date; recentWindowDays?: number; weeks?: number },
+  opts: { now: Date; recentWindowDays?: number; weeks?: number; realWeeklyVolume?: VolumePoint[] },
 ): FieldMetrics {
   const windowDays = opts.recentWindowDays ?? DEFAULT_RECENT_WINDOW_DAYS
   const weeks = opts.weeks ?? DEFAULT_WEEKS
-  const recentCutoff = opts.now.getTime() - windowDays * DAY_MS
-  const priorCutoff = opts.now.getTime() - 2 * windowDays * DAY_MS
 
-  const paperCountRecent = candidates.recent.length
+  let paperCountRecent: number
+  let paperCountPrior: number
+  let pctChange: number | null
+  let weeklyVolume: VolumePoint[]
 
-  // Prior window count comes from movers (the full field set), which includes
-  // papers outside the recent window.
-  let paperCountPrior = 0
-  for (const p of candidates.movers) {
-    const d = paperDate(p)
-    if (d === null) continue
-    const t = d.getTime()
-    if (t >= priorCutoff && t < recentCutoff) paperCountPrior++
-  }
-  const pctChange = paperCountPrior === 0 ? null : (paperCountRecent - paperCountPrior) / paperCountPrior
+  if (opts.realWeeklyVolume) {
+    // Real per-week series: use it verbatim and derive recent/prior from its
+    // own buckets (week-aligned) rather than re-deriving day-based cutoffs.
+    // `.slice()` on a shorter-than-4-bucket array naturally yields fewer (or
+    // zero) elements, so missing older weeks sum to 0 with no special-casing.
+    weeklyVolume = opts.realWeeklyVolume
+    const counts = weeklyVolume.map((v) => v.count)
+    paperCountRecent = counts.slice(-2).reduce((a, b) => a + b, 0)
+    paperCountPrior = counts.slice(-4, -2).reduce((a, b) => a + b, 0)
+    pctChange = paperCountPrior === 0 ? null : (paperCountRecent - paperCountPrior) / paperCountPrior
+  } else {
+    const recentCutoff = opts.now.getTime() - windowDays * DAY_MS
+    const priorCutoff = opts.now.getTime() - 2 * windowDays * DAY_MS
 
-  // Weekly volume: fixed-length, zero-filled series ending at the current week.
-  const thisWeekStart = isoWeekStart(opts.now)
-  const buckets = new Map<string, number>()
-  const weekStarts: string[] = []
-  const anchor = new Date(`${thisWeekStart}T00:00:00.000Z`)
-  for (let i = weeks - 1; i >= 0; i--) {
-    const ws = new Date(anchor.getTime() - i * 7 * DAY_MS).toISOString().slice(0, 10)
-    weekStarts.push(ws)
-    buckets.set(ws, 0)
+    paperCountRecent = candidates.recent.length
+
+    // Prior window count comes from movers (the full field set), which
+    // includes papers outside the recent window.
+    paperCountPrior = 0
+    for (const p of candidates.movers) {
+      const d = paperDate(p)
+      if (d === null) continue
+      const t = d.getTime()
+      if (t >= priorCutoff && t < recentCutoff) paperCountPrior++
+    }
+    pctChange = paperCountPrior === 0 ? null : (paperCountRecent - paperCountPrior) / paperCountPrior
+
+    // Weekly volume: fixed-length, zero-filled series ending at the current week.
+    const weekStarts = buildWeekStarts(opts.now, weeks)
+    const buckets = new Map<string, number>()
+    for (const ws of weekStarts) buckets.set(ws, 0)
+    for (const p of candidates.movers) {
+      const d = paperDate(p)
+      if (d === null) continue
+      const ws = isoWeekStart(d)
+      if (buckets.has(ws)) buckets.set(ws, (buckets.get(ws) ?? 0) + 1)
+    }
+    weeklyVolume = weekStarts.map((ws) => ({ weekStart: ws, count: buckets.get(ws) ?? 0 }))
   }
-  for (const p of candidates.movers) {
-    const d = paperDate(p)
-    if (d === null) continue
-    const ws = isoWeekStart(d)
-    if (buckets.has(ws)) buckets.set(ws, (buckets.get(ws) ?? 0) + 1)
-  }
-  const weeklyVolume: VolumePoint[] = weekStarts.map((ws) => ({ weekStart: ws, count: buckets.get(ws) ?? 0 }))
 
   // Defensive re-sort: don't rely on the producer (retrieveFieldCandidates)
   // having sorted movers by citationCount already. For already-sorted input
