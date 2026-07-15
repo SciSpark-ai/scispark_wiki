@@ -8,6 +8,7 @@ import type { LLMResult } from "../../llm/types"
 import type { PaperRecord } from "../../papers/types"
 import type { SearchFn } from "../../skills/feed"
 import { loadDashboard, DASHBOARD_CACHE_PATH, type TrendingDashboard } from "../../trending/dashboard"
+import type { CountFn } from "../../trending/weekly-volume"
 import * as refreshRoute from "../../../app/api/skills/trending/refresh/route"
 import * as autoRefreshRoute from "../../../app/api/skills/trending/auto-refresh/route"
 
@@ -82,6 +83,22 @@ describe("trending skill routes", () => {
     const result = (await readNdjson(res, () => undefined)) as TrendingDashboard
     expect(result.panels[0].survey).toBeNull()
     expect(result.panels[0].error).toBeTruthy()
+  })
+
+  it("POST /api/skills/trending/refresh: setSkillTestOverrides countFn is wired through to a real per-week series in the result", async () => {
+    const provider = new MockProvider([structured(SURVEY)])
+    const countFn: CountFn = async () => 7
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn })
+
+    const res = await refreshRoute.POST(
+      new Request("http://x/api/skills/trending/refresh", {
+        method: "POST",
+        body: JSON.stringify({ fields: [{ slug: "nlp", label: "NLP" }] }),
+      }),
+    )
+    const result = (await readNdjson(res, () => undefined)) as TrendingDashboard
+    expect(result.panels[0].metrics.weeklyVolume.length).toBe(8)
+    expect(result.panels[0].metrics.weeklyVolume.every((v) => v.count === 7)).toBe(true)
   })
 
   it("POST /api/skills/trending/auto-refresh returns 'no-fields' on an empty vault (no tracked fields, no interests.md)", async () => {

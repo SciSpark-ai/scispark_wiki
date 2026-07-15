@@ -7,7 +7,9 @@ import { logEvent } from "../events/log"
 import type { TrackedField } from "./fields"
 import type { Cadence } from "./settings"
 import { retrieveFieldCandidates } from "./retrieve"
-import { computeFieldMetrics, type FieldMetrics } from "./metrics"
+import { computeFieldMetrics, DEFAULT_WEEKS, type FieldMetrics, type VolumePoint } from "./metrics"
+import { buildWeekStarts } from "./weeks"
+import { fetchWeeklyVolume, type CountFn } from "./weekly-volume"
 import { trendingSkill, type TrendingSurvey } from "../skills/trending"
 
 export interface FieldPanel {
@@ -34,6 +36,8 @@ export interface RunTrendingOpts {
   providerOverride?: Partial<Record<Tier, LLMProvider>>
   now?: () => Date
   onProgress?: (fieldSlug: string) => void
+  /** Real per-week OpenAlex work counter; when present, feeds computeFieldMetrics's realWeeklyVolume. Absent → sample-derived weeklyVolume (unchanged). */
+  countFn?: CountFn
 }
 
 /**
@@ -85,7 +89,20 @@ async function runTrendingDashboardUncached(storage: VaultStorage, opts: RunTren
     try {
       const at = now()
       const candidates = await retrieveFieldCandidates(opts.searchFn, field, { now: at })
-      const metrics = computeFieldMetrics(candidates, { now: at })
+
+      // Real per-week volume, when a countFn is supplied. `weekStarts` is
+      // built from the SAME `at` passed to computeFieldMetrics below, per
+      // this function's window-sync requirement. fetchWeeklyVolume already
+      // returns null on any single week's failure; the outer .catch is a
+      // second line of defense so an unexpected countFn throw (outside
+      // fetchWeeklyVolume's own try/catch) still degrades to the
+      // sample-derived series instead of failing the whole field.
+      let realVol: VolumePoint[] | null = null
+      if (opts.countFn) {
+        const weekStarts = buildWeekStarts(at, DEFAULT_WEEKS)
+        realVol = await fetchWeeklyVolume(opts.countFn, field.label, weekStarts).catch(() => null)
+      }
+      const metrics = computeFieldMetrics(candidates, { now: at, realWeeklyVolume: realVol ?? undefined })
 
       let survey: TrendingSurvey | null = null
       let error: string | undefined

@@ -2,6 +2,7 @@ import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
 import type { SearchFn } from "../skills/feed"
+import type { CountFn } from "./weekly-volume"
 import { readUserModel } from "../usermodel/pages"
 import { effectiveTrackedFields } from "./fields"
 import { loadTrendingSettings } from "./settings"
@@ -17,7 +18,13 @@ import { loadDashboard, isStale, fieldsMatchDashboard, runTrendingDashboard } fr
  */
 export async function maybeAutoRefreshTrending(
   storage: VaultStorage,
-  deps: { searchFn: SearchFn; settings: LLMSettings; now?: () => Date; providerOverride?: Partial<Record<Tier, LLMProvider>> },
+  deps: {
+    searchFn: SearchFn
+    settings: LLMSettings
+    now?: () => Date
+    providerOverride?: Partial<Record<Tier, LLMProvider>>
+    countFn?: CountFn
+  },
 ): Promise<"refreshed" | "fresh" | "no-fields"> {
   const now = deps.now ?? (() => new Date())
   const [tSettings, userModel, cached] = await Promise.all([
@@ -28,6 +35,13 @@ export async function maybeAutoRefreshTrending(
   const fields = effectiveTrackedFields(tSettings.fields, userModel.interests)
   if (fields.length === 0) return "no-fields"
   if (!isStale(cached, tSettings.cadence, now()) && fieldsMatchDashboard(cached, fields)) return "fresh"
-  await runTrendingDashboard(storage, { fields, searchFn: deps.searchFn, settings: deps.settings, providerOverride: deps.providerOverride, now: deps.now })
+  await runTrendingDashboard(storage, {
+    fields,
+    searchFn: deps.searchFn,
+    countFn: deps.countFn,
+    settings: deps.settings,
+    providerOverride: deps.providerOverride,
+    now: deps.now,
+  })
   return "refreshed"
 }
