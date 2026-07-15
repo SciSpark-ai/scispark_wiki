@@ -163,3 +163,15 @@ Implement. **Step 4:** `npx vitest run src/lib/trending && npx tsc --noEmit` gre
 **Placeholder scan:** exact interfaces/filter strings/route files named; code shown for the pure/logic pieces; T3/T4 direct the implementer to read the real dashboard loop + routes. No TBDs.
 
 **Type consistency:** `CountFn` (T2) consumed by T3 orchestrator + routes; `countOpenAlexWorks` (T1) matches `CountFn`'s shape; `isoWeekStart`/`buildWeekStarts` (T2) shared by metrics + weekly-volume + dashboard; `realWeeklyVolume` (T3) is `VolumePoint[]` from `metrics.ts`; `setSkillTestOverrides` gains `countFn`.
+
+---
+
+## Addendum (2026-07-15, post-review follow-ups — approved by Tong)
+
+Live-gate discovery: OpenAlex now runs a credit-priced API — keyless $0.10/day (~100 searches at 10 credits each), free-API-key $1/day; `group_by` requests cost 1 credit; `api_key` query param; resets midnight UTC. Follow-ups:
+
+### Task 5: group_by weekly volume (1 request/field instead of 8) + OPENALEX_API_KEY
+
+**Files:** modify `src/lib/papers/openalex.ts` (add `apiKey?` to deps→buildUrl `api_key` param; add `groupWorksByPublicationDate({query, fromDate, toDate}, deps): Promise<Array<{key: string; count: number}>>` — one GET `works?search=…&filter=from_publication_date:X,to_publication_date:Y&group_by=publication_date&per_page=200`, parse the `group_by: [{key, key_display_name, count}]` response array), `src/lib/papers/node-search.ts` (helpers read `OPENALEX_API_KEY`; add `nodeGroupFn()`), `src/lib/trending/weekly-volume.ts` (optional `groupFn` param: try ONE grouped call first, map daily `key`s → ISO weeks via `isoWeekStart`, zero-fill the weekStarts buckets; on any grouped error/absence fall back to the existing per-week `countFn` path, then `null`→sample), `src/lib/trending/dashboard.ts` + routes + `setSkillTestOverrides` (thread optional `groupFn`), `.env.example` (`OPENALEX_API_KEY=`). Tests: grouped happy path (daily keys summed into correct ISO weeks, zero-filled), grouped-fails→countFn fallback, api_key param on the wire, existing tests green.
+
+### Task 6 (docs): update `docs/design/03-backend.md` OpenAlex politeness note to the credit-quota model + per-user local quota argument; live-gate report note.
