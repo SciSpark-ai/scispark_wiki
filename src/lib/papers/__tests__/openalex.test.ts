@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest"
-import { searchOpenAlex } from "../openalex"
+import { countOpenAlexWorks, searchOpenAlex } from "../openalex"
 import { PaperSourceError } from "../types"
 import fixture from "./fixtures/openalex-works.json"
 
@@ -306,5 +306,74 @@ describe("searchOpenAlex", () => {
     const fetchFn = fakeFetch({})
     const results = await searchOpenAlex({ query: "x" }, { fetchFn })
     expect(results).toEqual([])
+  })
+})
+
+describe("countOpenAlexWorks", () => {
+  it("returns meta.count and requests per_page=1 with from+to date filter", async () => {
+    let calledUrl = ""
+    const fetchFn = (async (url: string) => {
+      calledUrl = String(url)
+      return new Response(JSON.stringify({ results: [], meta: { count: 123 } }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    const n = await countOpenAlexWorks({ query: "nlp", fromDate: "2026-07-06", toDate: "2026-07-12" }, { fetchFn })
+
+    expect(n).toBe(123)
+    expect(calledUrl).toContain("per_page=1")
+    expect(decodeURIComponent(calledUrl)).toContain("from_publication_date:2026-07-06")
+    expect(decodeURIComponent(calledUrl)).toContain("to_publication_date:2026-07-12")
+  })
+
+  it("returns 0 when meta/count is missing", async () => {
+    const fetchFn = (async () => new Response(JSON.stringify({ results: [] }), { status: 200 })) as unknown as typeof fetch
+    expect(await countOpenAlexWorks({ query: "x", fromDate: "2026-07-06", toDate: "2026-07-12" }, { fetchFn })).toBe(0)
+  })
+
+  it("throws PaperSourceError on a non-200", async () => {
+    const fetchFn = (async () => new Response("", { status: 429 })) as unknown as typeof fetch
+    await expect(countOpenAlexWorks({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn })).rejects.toThrow(
+      PaperSourceError,
+    )
+  })
+
+  it("passes mailto through when provided in deps", async () => {
+    let calledUrl = ""
+    const fetchFn = (async (url: string) => {
+      calledUrl = String(url)
+      return new Response(JSON.stringify({ results: [], meta: { count: 1 } }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    await countOpenAlexWorks({ query: "x", fromDate: "2026-01-01", toDate: "2026-01-08" }, { fetchFn, mailto: "me@example.com" })
+
+    expect(calledUrl).toContain("mailto=me%40example.com")
+  })
+})
+
+describe("searchOpenAlex toDate", () => {
+  it("adds to_publication_date to the filter when toDate is set", async () => {
+    let calledUrl = ""
+    const fetchFn = (async (url: string) => {
+      calledUrl = String(url)
+      return new Response(JSON.stringify({ results: [] }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    await searchOpenAlex({ query: "x", fromDate: "2026-01-01", toDate: "2026-02-01" }, { fetchFn })
+
+    expect(decodeURIComponent(calledUrl)).toContain("from_publication_date:2026-01-01")
+    expect(decodeURIComponent(calledUrl)).toContain("to_publication_date:2026-02-01")
+  })
+
+  it("adds only to_publication_date to the filter when fromDate is absent", async () => {
+    let calledUrl = ""
+    const fetchFn = (async (url: string) => {
+      calledUrl = String(url)
+      return new Response(JSON.stringify({ results: [] }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    await searchOpenAlex({ query: "x", toDate: "2026-02-01" }, { fetchFn })
+
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get("filter")).toBe("to_publication_date:2026-02-01")
   })
 })

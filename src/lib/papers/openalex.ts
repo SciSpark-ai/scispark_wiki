@@ -55,12 +55,14 @@ interface OpenAlexWork {
 
 interface OpenAlexWorksResponse {
   results?: OpenAlexWork[] | null
+  meta?: { count?: number } | null
 }
 
 export interface OpenAlexQuery {
   query: string
   limit?: number
   fromDate?: string
+  toDate?: string
 }
 
 export interface OpenAlexDeps {
@@ -165,8 +167,15 @@ function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps): string {
   if (deps.mailto) {
     url.searchParams.set("mailto", deps.mailto)
   }
+  const filterClauses: string[] = []
   if (q.fromDate) {
-    url.searchParams.set("filter", `from_publication_date:${q.fromDate}`)
+    filterClauses.push(`from_publication_date:${q.fromDate}`)
+  }
+  if (q.toDate) {
+    filterClauses.push(`to_publication_date:${q.toDate}`)
+  }
+  if (filterClauses.length > 0) {
+    url.searchParams.set("filter", filterClauses.join(","))
   }
   return url.toString()
 }
@@ -193,4 +202,31 @@ export async function searchOpenAlex(q: OpenAlexQuery, deps: OpenAlexDeps = {}):
   const body = (await response.json()) as OpenAlexWorksResponse
   const results = body.results ?? []
   return results.map(mapWork)
+}
+
+/**
+ * Returns the total OpenAlex work count for a query within a date range,
+ * without fetching any paper records (per_page is fixed at 1). Used by
+ * trending weekly aggregation to get real per-week counts cheaply.
+ */
+export async function countOpenAlexWorks(
+  q: { query: string; fromDate: string; toDate: string },
+  deps: OpenAlexDeps = {},
+): Promise<number> {
+  const fetchFn = deps.fetchFn ?? fetch
+  const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate, limit: 1 }, deps)
+
+  let response: Response
+  try {
+    response = await fetchWithTimeout(fetchFn, url)
+  } catch (err) {
+    throw new PaperSourceError(err instanceof Error ? err.message : "OpenAlex request failed")
+  }
+
+  if (!response.ok) {
+    throw new PaperSourceError(`OpenAlex request failed with status ${response.status}`, response.status)
+  }
+
+  const body = (await response.json()) as OpenAlexWorksResponse
+  return body.meta?.count ?? 0
 }
