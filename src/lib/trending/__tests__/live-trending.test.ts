@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { DEFAULT_SETTINGS } from "../../llm/settings"
 import { searchArxiv } from "../../papers/arxiv"
-import { searchOpenAlex } from "../../papers/openalex"
+import { searchOpenAlex, countOpenAlexWorks } from "../../papers/openalex"
 import { readRecentEvents } from "../../events/log"
 import { runTrendingDashboard } from "../dashboard"
 import { TrendingSurveySchema } from "../../skills/trending"
@@ -26,6 +26,12 @@ import type { SearchFn } from "../../skills/feed"
  * Makes real network calls (arXiv + OpenAlex + the LLM endpoint) and spends
  * real money — never runs in CI. Far lighter than Deep Spark: retrieval plus
  * exactly one strong-tier call for the single field's survey.
+ *
+ * v1.1: also wires a real `countFn` (countOpenAlexWorks — keyless, no LLM
+ * key needed) so the run exercises real per-week OpenAlex work counts
+ * (metrics.ts's realWeeklyVolume) instead of the retrieval-sample-derived
+ * weeklyVolume, and asserts the resulting series is non-degenerate (at least
+ * two weeks with count > 0).
  */
 const BASE_URL = process.env.LIVE_LLM_BASE_URL
 const API_KEY = process.env.LIVE_LLM_API_KEY
@@ -83,6 +89,10 @@ describe.skipIf(!live)("LIVE trending dashboard gate", () => {
       const dash = await runTrendingDashboard(storage, {
         fields: [FIELD],
         searchFn: nodeSearchFn(),
+        // Real per-week OpenAlex work counts (keyless — no LLM key needed),
+        // so even this env-gated live run exercises the v1.1 real-count path
+        // rather than the old retrieval-sample-derived weeklyVolume.
+        countFn: (q) => countOpenAlexWorks(q),
         settings: liveSettings(),
         now: () => new Date(),
       })
@@ -96,6 +106,11 @@ describe.skipIf(!live)("LIVE trending dashboard gate", () => {
 
       console.log("[live-trending] weeklyVolume:", JSON.stringify(panel.metrics.weeklyVolume))
       console.log("[live-trending] paperCountRecent:", panel.metrics.paperCountRecent)
+
+      // Proves real multi-week OpenAlex counts drove weeklyVolume (not the
+      // old degenerate [0..0, N] retrieval-sample series where only the most
+      // recent bucket was ever non-zero).
+      expect(panel.metrics.weeklyVolume.filter((v) => v.count > 0).length).toBeGreaterThanOrEqual(2)
 
       if (panel.survey) {
         // Schema-valid survey is the expected happy path.
