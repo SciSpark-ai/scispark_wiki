@@ -16,7 +16,7 @@ import type { SearchFn } from "../skills/feed"
  * gate's nodeSearchFn, src/lib/skills/__tests__/live-feed.test.ts) — now
  * production code so every server-side skill route (trending, feed, spark)
  * shares one Node search implementation instead of each route re-deriving
- * its own. `browserSearchFn` (src/lib/skills/feed.ts) remains for nothing
+ * its own. The browser-side `SearchFn` (src/lib/skills/feed.ts) is unused
  * after M11: the server now owns search for every skill route.
  */
 export function nodeSearchFn(): SearchFn {

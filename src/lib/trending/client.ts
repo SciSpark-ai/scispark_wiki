@@ -5,7 +5,7 @@ import type { TrendingDashboard } from "./dashboard"
 /**
  * Browser-side callers for the trending skill routes (M11 Task 5). Both
  * pages that used to build the orchestrator's deps themselves
- * (loadSettings + browserSearchFn + runTrendingDashboard /
+ * (loadSettings + a `SearchFn` implementation + runTrendingDashboard /
  * maybeAutoRefreshTrending) now just POST to the server, which owns
  * settings/searchFn/LLM keys entirely — the browser never sees them.
  *

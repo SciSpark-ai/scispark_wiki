@@ -10,7 +10,6 @@ import { runSkill } from "../runner"
 import {
   StrategySchema,
   feedStrategySkill,
-  browserSearchFn,
   retrieveCandidates,
   vaultPaperKeys,
   type FeedStrategy,
@@ -101,50 +100,6 @@ describe("feedStrategySkill", () => {
     expect(provider.calls[0].req.maxTokens).toBe(4096)
     expect(provider.calls[0].req.messages[0].role).toBe("system")
     expect(provider.calls[0].req.messages[1].content).toContain("PhD student")
-  })
-})
-
-// ---------------------------------------------------------------------------
-// browserSearchFn
-// ---------------------------------------------------------------------------
-
-describe("browserSearchFn", () => {
-  it("builds the expected GET URL and returns the papers array on success", async () => {
-    const calls: string[] = []
-    const fakeFetch = (async (url: string | URL) => {
-      calls.push(String(url))
-      return {
-        ok: true,
-        json: async () => ({ papers: [paper({ title: "Found Paper" })] }),
-      } as Response
-    }) as typeof fetch
-
-    const searchFn = browserSearchFn(fakeFetch)
-    const results = await searchFn("arxiv", "sparse attention", 25)
-
-    expect(calls).toHaveLength(1)
-    expect(calls[0]).toBe("/api/search/arxiv?q=sparse%20attention&limit=25")
-    expect(results).toEqual([paper({ title: "Found Paper" })])
-  })
-
-  it("returns [] on a non-OK response", async () => {
-    const fakeFetch = (async () => ({ ok: false, json: async () => ({ error: "rate limited" }) })) as unknown as typeof fetch
-    const searchFn = browserSearchFn(fakeFetch)
-    expect(await searchFn("arxiv", "x", 25)).toEqual([])
-  })
-
-  it("returns [] when fetch throws", async () => {
-    const fakeFetch = (async () => {
-      throw new Error("network down")
-    }) as unknown as typeof fetch
-    const searchFn = browserSearchFn(fakeFetch)
-    expect(await searchFn("arxiv", "x", 25)).toEqual([])
-  })
-
-  it("returns [] when the body has no papers array", async () => {
-    const fakeFetch = (async () => ({ ok: true, json: async () => ({ nope: true }) })) as unknown as typeof fetch
-    const searchFn = browserSearchFn(fakeFetch)
-    expect(await searchFn("arxiv", "x", 25)).toEqual([])
   })
 })
 
