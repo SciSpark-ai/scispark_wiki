@@ -35,6 +35,25 @@ import type { LintFinding } from "./types"
 // changesetId ("index-rebuild") for it instead of a real changeset id. The
 // finding is still surfaced as a normal review item (with its `fix` stored)
 // so the inbox can show it and offer the one-click apply.
+//
+// Recompute-at-apply for the OTHER mechanical fixes (broken-link,
+// bad-frontmatter) — M12 Task 10: a review item stores `fix.before` = the FULL
+// serialized page as it looked when the lint ran. When ONE page has SEVERAL
+// fixable findings (e.g. two broken links), applying the first rewrites the
+// page, so every sibling's stored `before` no longer matches disk and its
+// applyChangeset would throw ChangesetConflictError on the second click. Rather
+// than replay the stale stored fix, applyLintFix RECOMPUTES the deterministic
+// checks against the current vault, re-finds THIS finding (by lintKind + fix
+// path + `fixTarget` discriminator — the broken slug), and builds the changeset
+// with before = current on-disk content and after = the fresh recompute. `before`
+// then always matches disk regardless of sibling fixes. If the finding is gone
+// from the fresh recompute (a sibling or a manual edit already resolved it) the
+// call is a clean no-op success (LINT_FIX_NOOP_SENTINEL) so the UI dismisses the
+// stale item without an error. One mechanical fix — bad-frontmatter's
+// "missing updated" default — targets a page that parseDocument REJECTS, so it
+// never appears in a fresh loadBundle; for that case applyLintFix falls back to
+// the stored fix, but only when the page is still byte-identical to lint time
+// (so `before` matches disk), otherwise no-op.
 // ---------------------------------------------------------------------------
 
 const REVIEW_DIR = ".scispark/review"
@@ -66,6 +85,7 @@ async function writeFindingsAsReviews(
       title: finding.title,
       description: finding.description,
       pages: finding.pages,
+      ...(finding.fixTarget !== undefined ? { fixTarget: finding.fixTarget } : {}),
       ...(finding.fix ? { fix: finding.fix } : {}),
     }
     try {
@@ -214,13 +234,39 @@ async function findReviewItem(storage: VaultStorage, reviewId: string): Promise<
  * changeset id. */
 export const INDEX_DRIFT_FIX_SENTINEL = "index-rebuild"
 
+/** Returned when a mechanical fix is a no-op at apply time — the finding is no
+ * longer present (a sibling fix or a manual edit already resolved it). Not a
+ * real, loadable changeset id; the UI dismisses the stale item on this. */
+export const LINT_FIX_NOOP_SENTINEL = "lint-fix-noop"
+
+/** Locates the fresh finding that corresponds to a stored review item: same
+ * lintKind, same target file, and — when the item carries one — the same
+ * `fixTarget` discriminator (the broken slug), so one of several same-kind
+ * findings on a page is matched exactly rather than by list order. */
+function matchFreshFinding(findings: LintFinding[], item: ReviewItem): LintFinding | undefined {
+  return findings.find(
+    (f) =>
+      f.fix != null &&
+      f.lintKind === item.lintKind &&
+      f.fix.path === item.fix!.path &&
+      (item.fixTarget === undefined || f.fixTarget === item.fixTarget),
+  )
+}
+
 /**
- * Applies a stored lint finding's mechanical fix. For every lintKind except
- * "index-drift" this builds a one-file Changeset (skill "lint") and applies
- * it through the normal applyChangeset path, so undo works via the existing
- * loadChangeset + revertChangeset path (same as ingest changesets). For
- * "index-drift" it instead recomputes index.md directly through the
- * deterministic index-builder (writeIndex) — see the module comment for why.
+ * Applies a stored lint finding's mechanical fix as an undoable changeset.
+ *
+ * - "index-drift": recomputes index.md directly through the deterministic
+ *   index-builder (writeIndex) and returns INDEX_DRIFT_FIX_SENTINEL (see the
+ *   module comment for why it bypasses the changeset machinery).
+ * - every other mechanical fix (broken-link, bad-frontmatter): RECOMPUTES the
+ *   deterministic checks against the current vault and rebuilds the fix so
+ *   `before` always matches disk, even after a sibling fix on the same page has
+ *   already been applied — this is what stops the second Fix click from
+ *   throwing ChangesetConflictError. Undo works via the normal loadChangeset +
+ *   revertChangeset path (same as ingest changesets). If the finding is already
+ *   resolved, returns LINT_FIX_NOOP_SENTINEL (a clean no-op, no throw). See the
+ *   module comment for the full rationale and the bad-frontmatter fallback.
  */
 export async function applyLintFix(storage: VaultStorage, reviewId: string): Promise<{ changesetId: string }> {
   const item = await findReviewItem(storage, reviewId)
@@ -233,12 +279,44 @@ export async function applyLintFix(storage: VaultStorage, reviewId: string): Pro
     return { changesetId: INDEX_DRIFT_FIX_SENTINEL }
   }
 
+  // Recompute the deterministic checks against the CURRENT vault and re-find
+  // this finding, so `before` is derived from the live page rather than the
+  // (possibly sibling-mutated) copy stored at lint time.
+  const bundle = await loadBundle(storage)
+  const storedIndex = await storage.read("index.md")
+  const freshFindings = runDeterministicChecks(bundle, { storedIndex })
+  const match = matchFreshFinding(freshFindings, item)
+
+  // The change to apply: before = current on-disk content (guarantees the
+  // conflict check passes), after = the freshly-recomputed, schema-validated fix.
+  let change: { path: string; before: string | null; after: string } | null = null
+
+  if (match?.fix) {
+    const current = await storage.read(match.fix.path)
+    if (current !== null) change = { path: match.fix.path, before: current, after: match.fix.after }
+  }
+
+  if (!change) {
+    // No reconstructable fresh finding. Fall back to the stored fix, but only
+    // when the page is byte-identical to lint time (so `before` still matches
+    // disk and applyChangeset won't conflict). Covers the bad-frontmatter
+    // "missing updated" fix, whose page parseDocument rejects — so it never
+    // appears in a fresh loadBundle. If disk has since changed, the finding was
+    // resolved elsewhere → clean no-op.
+    const current = await storage.read(item.fix.path)
+    if (current !== null && current === item.fix.before) {
+      change = { path: item.fix.path, before: item.fix.before, after: item.fix.after }
+    }
+  }
+
+  if (!change) return { changesetId: LINT_FIX_NOOP_SENTINEL }
+
   const changeset: Changeset = {
     id: makeChangesetId(),
     skill: "lint",
     model: "none",
     timestamp: new Date().toISOString(),
-    changes: [{ path: item.fix.path, before: item.fix.before, after: item.fix.after }],
+    changes: [change],
   }
   await applyChangeset(storage, changeset)
   // Confirm the record really landed (applyChangeset writes it as part of the

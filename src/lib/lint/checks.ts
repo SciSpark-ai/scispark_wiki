@@ -92,6 +92,10 @@ export function findBrokenLinks(bundle: Bundle): LintFinding[] {
         title: `Broken wikilink [[${slug}]] in "${page.frontmatter.title}"`,
         description: `"${page.id}" links to [[${slug}]], which does not resolve to any page in the vault.`,
         pages: [page.id],
+        // A page can have several broken links; the slug is the stable
+        // discriminator applyLintFix uses to re-find THIS one after a sibling
+        // broken-link fix on the same page has already been applied.
+        fixTarget: slug,
         fix: {
           path: page.path,
           before: serializeDocument(page.frontmatter, page.body),

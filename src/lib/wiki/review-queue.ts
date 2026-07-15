@@ -25,6 +25,13 @@ export interface ReviewItem {
   /** Present only for kind "lint-finding": which check produced it (src/lib/lint/types.ts). */
   lintKind?: LintKind
   /**
+   * Present only for kind "lint-finding" items whose page can carry multiple
+   * same-`lintKind` findings (broken-link: the broken slug). Lets applyLintFix
+   * (src/lib/lint/run.ts) re-find the EXACT finding when it recomputes checks
+   * at apply time — see LintFinding.fixTarget (src/lib/lint/types.ts).
+   */
+  fixTarget?: string
+  /**
    * Present only for kind "lint-finding" items with a mechanical fix
    * (src/lib/lint/types.ts#LintFinding.fix) — what applyLintFix
    * (src/lib/lint/run.ts) will apply as a one-file changeset.

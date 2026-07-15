@@ -10,7 +10,8 @@ import { MockProvider } from "../../llm/mock-provider"
 import { DEFAULT_SETTINGS, type LLMSettings } from "../../llm/settings"
 import type { LLMResult } from "../../llm/types"
 import type { Frontmatter } from "../../vault/types"
-import { runLintDeterministic, runLintLlm, applyLintFix } from "../run"
+import { runDeterministicChecks } from "../checks"
+import { runLintDeterministic, runLintLlm, applyLintFix, LINT_FIX_NOOP_SENTINEL } from "../run"
 
 const NOW = () => new Date("2026-07-14T10:00:00.000Z")
 
@@ -227,6 +228,67 @@ describe("applyLintFix", () => {
     const bundle = await loadBundle(s)
     const indexNow = await s.read("index.md")
     expect(indexNow).toBe(buildIndexMarkdown(bundle))
+  })
+
+  it("two broken links on one page: applying the first fix does not conflict the second (both neutralized, page stays valid)", async () => {
+    // Regression for the Task-10 finding: each review item stored fix.before =
+    // the FULL page. Before the recompute-at-apply change, applying the first
+    // fix mutated the page, so the second fix's stored `before` no longer
+    // matched disk and applyChangeset threw ChangesetConflictError.
+    const s = new MemoryVaultStorage()
+    const rawBody = "See [[ghost-one]] and also [[ghost-two]] for details."
+    await s.write("wiki/concepts/a.md", serializeDocument(fm("concept", "A"), rawBody))
+
+    await runLintDeterministic(s, { now: NOW })
+    const reviews = await listReviews(s)
+    const brokenItems = reviews.filter((r) => r.lintKind === "broken-link")
+    expect(brokenItems).toHaveLength(2)
+    // Each carries the slug discriminator so applyLintFix can re-find the exact
+    // finding after a sibling fix mutates the page.
+    expect(brokenItems.map((r) => r.fixTarget).sort()).toEqual(["ghost-one", "ghost-two"])
+
+    // Apply the first fix — a real changeset, not a no-op.
+    const first = await applyLintFix(s, brokenItems[0].id)
+    expect(first.changesetId).not.toBe(LINT_FIX_NOOP_SENTINEL)
+    expect(await loadChangeset(s, first.changesetId)).not.toBeNull()
+
+    // Apply the second fix — must NOT throw ChangesetConflictError, must remove
+    // the remaining broken link.
+    const second = await applyLintFix(s, brokenItems[1].id)
+    expect(second.changesetId).not.toBe(LINT_FIX_NOOP_SENTINEL)
+    expect(second.changesetId).not.toBe(first.changesetId)
+
+    const finalContent = await s.read("wiki/concepts/a.md")
+    expect(finalContent).not.toContain("[[")
+    expect(finalContent).toContain("ghost-one")
+    expect(finalContent).toContain("ghost-two")
+
+    // Page still parses into the bundle and has no broken links left.
+    const bundle = await loadBundle(s)
+    expect(bundle.errors).toHaveLength(0)
+    expect(bundle.pages.has("wiki/concepts/a")).toBe(true)
+    const refreshed = runDeterministicChecks(bundle, {})
+    expect(refreshed.filter((f) => f.lintKind === "broken-link")).toHaveLength(0)
+  })
+
+  it("a fix whose finding is already resolved (sibling fixed it / it's gone) is a clean no-op — no throw, sentinel id, nothing written", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/concepts/a.md", serializeDocument(fm("concept", "A"), "See [[ghost]] for details."))
+
+    await runLintDeterministic(s, { now: NOW })
+    const reviews = await listReviews(s)
+    const brokenItem = reviews.find((r) => r.lintKind === "broken-link")!
+
+    // Resolve it out-of-band: a manual edit removes the broken link before the
+    // user clicks Fix.
+    await s.write("wiki/concepts/a.md", serializeDocument(fm("concept", "A"), "See ghost for details."))
+    const contentBefore = await s.read("wiki/concepts/a.md")
+
+    const res = await applyLintFix(s, brokenItem.id)
+    expect(res.changesetId).toBe(LINT_FIX_NOOP_SENTINEL)
+    // No changeset was persisted and the page was left untouched.
+    expect(await loadChangeset(s, res.changesetId)).toBeNull()
+    expect(await s.read("wiki/concepts/a.md")).toBe(contentBefore)
   })
 })
 
