@@ -1,4 +1,5 @@
 import type { VaultStorage } from "../vault/storage"
+import { withSettingsWrite } from "../vault/settings-write"
 import type { TrackedField } from "./fields"
 import { MAX_TRACKED_FIELDS } from "./fields"
 
@@ -81,22 +82,9 @@ export async function loadTrendingSettings(storage: VaultStorage): Promise<Trend
   }
 }
 
-const settingsWriteQueues = new WeakMap<VaultStorage, Promise<void>>()
-
 export async function saveTrendingSettings(storage: VaultStorage, settings: TrendingSettings): Promise<void> {
-  const previous = settingsWriteQueues.get(storage) ?? Promise.resolve()
-  const work = async (): Promise<void> => {
-    const file = await readJsonFile(storage)
-    const next = { ...file, trending: { ...settings, fields: dedupeFieldsBySlug(settings.fields) } }
-    await storage.write(SETTINGS_PATH, JSON.stringify(next, null, 2))
-  }
-  const thisWrite = previous.then(work)
-  settingsWriteQueues.set(
-    storage,
-    thisWrite.then(
-      () => undefined,
-      () => undefined,
-    ),
-  )
-  await thisWrite
+  await withSettingsWrite(storage, (file) => ({
+    ...file,
+    trending: { ...settings, fields: dedupeFieldsBySlug(settings.fields) },
+  }))
 }

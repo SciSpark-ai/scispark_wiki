@@ -1,4 +1,5 @@
 import type { VaultStorage } from "../vault/storage"
+import { withSettingsWrite } from "../vault/settings-write"
 import { COMPANION } from "./persona"
 
 /**
@@ -96,24 +97,6 @@ export async function loadCompanionSettings(storage: VaultStorage): Promise<Comp
   }
 }
 
-// Serializes .scispark/settings.json read-modify-write cycles across every
-// saveCompanionSettings() call sharing a VaultStorage instance, mirroring the
-// write-queue pattern in src/lib/events/log.ts. Keyed by storage instance
-// identity — one queue per browser tab/process.
-const settingsWriteQueues = new WeakMap<VaultStorage, Promise<void>>()
-
 export async function saveCompanionSettings(storage: VaultStorage, settings: CompanionSettings): Promise<void> {
-  const previous = settingsWriteQueues.get(storage) ?? Promise.resolve()
-  const work = async (): Promise<void> => {
-    const file = await readJsonFile(storage)
-    const next = { ...file, companion: settings }
-    await storage.write(SETTINGS_PATH, JSON.stringify(next, null, 2))
-  }
-  const thisWrite = previous.then(work)
-  const queueTail = thisWrite.then(
-    () => undefined,
-    () => undefined,
-  )
-  settingsWriteQueues.set(storage, queueTail)
-  await thisWrite
+  await withSettingsWrite(storage, (file) => ({ ...file, companion: settings }))
 }

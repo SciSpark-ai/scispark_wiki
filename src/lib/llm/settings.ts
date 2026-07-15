@@ -1,4 +1,5 @@
 import type { VaultStorage } from "../vault/storage"
+import { withSettingsWrite } from "../vault/settings-write"
 import type { LLMProvider, ProviderId, Tier } from "./types"
 import { LLMError } from "./types"
 import { AnthropicProvider } from "./providers/anthropic"
@@ -72,9 +73,7 @@ export async function loadSettings(storage: VaultStorage): Promise<LLMSettings> 
 }
 
 export async function saveSettings(storage: VaultStorage, settings: LLMSettings): Promise<void> {
-  const file = await readJsonFile(storage)
-  const next = { ...file, llm: settings }
-  await storage.write(SETTINGS_PATH, JSON.stringify(next, null, 2))
+  await withSettingsWrite(storage, (file) => ({ ...file, llm: settings }))
 }
 
 export function resolveTier(settings: LLMSettings, tier: Tier): { provider: ProviderId; model: string } {
