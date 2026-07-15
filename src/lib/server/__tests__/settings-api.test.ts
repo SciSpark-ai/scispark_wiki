@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { setServerVaultForTests } from "../vault"
 import { loadSettings, saveSettings, DEFAULT_SETTINGS } from "../../llm/settings"
+import { loadCompanionSettings, DEFAULT_COMPANION_SETTINGS } from "../../companion/settings"
+import { loadTrendingSettings } from "../../trending/settings"
 import * as settingsRoute from "../../../app/api/settings/route"
 
 const SECRET_KEY = "sk-ant-secret-abc123"
@@ -201,6 +203,150 @@ describe("settings API", () => {
       new Request("http://x/api/settings", { method: "PUT", body: "not json" }),
     )
     expect(badJson.status).toBe(400)
+  })
+
+  // ---- companion + trending sub-objects (M12 follow-up) ----
+  // The vault-file route 403s .scispark/settings.json, so /api/settings is the
+  // ONLY browser path to companion/trending settings. These cover the GET view
+  // and PUT round-trips the profile / debug-llm pages now depend on.
+
+  it("GET returns companion + trending sub-objects (defaults when unset)", async () => {
+    await saveSettings(storage, DEFAULT_SETTINGS)
+    const res = await settingsRoute.GET()
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.companion).toEqual(DEFAULT_COMPANION_SETTINGS)
+    expect(body.trending).toEqual({ fields: [], cadence: "weekly" })
+  })
+
+  it("GET returns stored companion + trending in full (not redacted)", async () => {
+    await storage.write(
+      ".scispark/settings.json",
+      JSON.stringify({
+        llm: DEFAULT_SETTINGS,
+        companion: { chattiness: "high", companionName: "Blaze" },
+        trending: { cadence: "daily", fields: [{ slug: "rl", label: "RL" }] },
+      }),
+    )
+    const body = await (await settingsRoute.GET()).json()
+    expect(body.companion).toEqual({ chattiness: "high", companionName: "Blaze" })
+    expect(body.trending).toEqual({ cadence: "daily", fields: [{ slug: "rl", label: "RL" }] })
+  })
+
+  it("PUT round-trips a companion save without touching llm keys or trending", async () => {
+    await storage.write(
+      ".scispark/settings.json",
+      JSON.stringify({
+        llm: { ...DEFAULT_SETTINGS, keys: { anthropic: SECRET_KEY } },
+        trending: { cadence: "daily", fields: [{ slug: "rl", label: "RL" }] },
+      }),
+    )
+
+    const res = await settingsRoute.PUT(
+      new Request("http://x/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({ companion: { chattiness: "low", companionName: "Spark" } }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.companion).toEqual({ chattiness: "low", companionName: "Spark" })
+    // response never leaks the untouched key
+    expect(JSON.stringify(body)).not.toContain(SECRET_KEY)
+
+    expect(await loadCompanionSettings(storage)).toEqual({ chattiness: "low", companionName: "Spark" })
+    // sibling llm key + trending survive verbatim
+    expect((await loadSettings(storage)).keys.anthropic).toBe(SECRET_KEY)
+    expect(await loadTrendingSettings(storage)).toEqual({ cadence: "daily", fields: [{ slug: "rl", label: "RL" }] })
+  })
+
+  it("PUT round-trips a trending save and dedupes fields by slug", async () => {
+    await saveSettings(storage, DEFAULT_SETTINGS)
+
+    const res = await settingsRoute.PUT(
+      new Request("http://x/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          trending: {
+            cadence: "daily",
+            fields: [
+              { slug: "nlp", label: "NLP" },
+              { slug: "nlp", label: "nlp" },
+            ],
+          },
+        }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    // dedupe-by-slug applied server-side (keeps first occurrence)
+    expect(body.trending).toEqual({ cadence: "daily", fields: [{ slug: "nlp", label: "NLP" }] })
+    expect(await loadTrendingSettings(storage)).toEqual({ cadence: "daily", fields: [{ slug: "nlp", label: "NLP" }] })
+  })
+
+  it("PUT sanitizes/validates a companion payload (bad chattiness → default, control chars stripped from name)", async () => {
+    await saveSettings(storage, DEFAULT_SETTINGS)
+
+    const res = await settingsRoute.PUT(
+      new Request("http://x/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({ companion: { chattiness: "bogus", companionName: "Ember\nInject" } }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.companion.chattiness).toBe(DEFAULT_COMPANION_SETTINGS.chattiness)
+    expect(body.companion.companionName).toBe("Ember Inject") // newline collapsed to a space
+  })
+
+  it("an llm-only PUT leaves companion + trending untouched, and vice versa", async () => {
+    await storage.write(
+      ".scispark/settings.json",
+      JSON.stringify({
+        llm: DEFAULT_SETTINGS,
+        companion: { chattiness: "high", companionName: "Blaze" },
+        trending: { cadence: "daily", fields: [{ slug: "rl", label: "RL" }] },
+      }),
+    )
+
+    await settingsRoute.PUT(
+      new Request("http://x/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({ patch: { dailyBudgetUsd: 9 } }),
+      }),
+    )
+
+    const raw = JSON.parse((await storage.read(".scispark/settings.json"))!)
+    expect(raw.companion).toEqual({ chattiness: "high", companionName: "Blaze" })
+    expect(raw.trending).toEqual({ cadence: "daily", fields: [{ slug: "rl", label: "RL" }] })
+    expect(raw.llm.dailyBudgetUsd).toBe(9)
+  })
+
+  it("PUT with companion + trending together applies both in one write", async () => {
+    await saveSettings(storage, DEFAULT_SETTINGS)
+
+    const res = await settingsRoute.PUT(
+      new Request("http://x/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          companion: { chattiness: "off", companionName: "Q" },
+          trending: { cadence: "weekly", fields: [{ slug: "cv", label: "CV" }] },
+        }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    expect(await loadCompanionSettings(storage)).toEqual({ chattiness: "off", companionName: "Q" })
+    expect(await loadTrendingSettings(storage)).toEqual({ cadence: "weekly", fields: [{ slug: "cv", label: "CV" }] })
+  })
+
+  it("PUT with a companion that isn't an object → 400", async () => {
+    const res = await settingsRoute.PUT(
+      new Request("http://x/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({ companion: "nope" }),
+      }),
+    )
+    expect(res.status).toBe(400)
   })
 
   it("GET storage error → 500 with JSON {error}, no key leakage possible", async () => {

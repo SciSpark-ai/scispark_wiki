@@ -5,7 +5,7 @@ import Link from "next/link"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { readUserModel } from "@/lib/usermodel/pages"
 import { effectiveTrackedFields } from "@/lib/trending/fields"
-import { loadTrendingSettings } from "@/lib/trending/settings"
+import { loadTrendingSettingsRemote } from "@/lib/trending/settings-client"
 import {
   loadDashboard,
   isStale,
@@ -47,7 +47,7 @@ export default function TrendingPage() {
     try {
       const vault = await getOpenVault()
       const [tSettings, userModel] = await Promise.all([
-        loadTrendingSettings(vault),
+        loadTrendingSettingsRemote(),
         readUserModel(vault),
       ])
       const fields = effectiveTrackedFields(tSettings.fields, userModel.interests)
@@ -78,7 +78,7 @@ export default function TrendingPage() {
       try {
         const vault = await getOpenVault()
         const [tSettings, userModel, cached] = await Promise.all([
-          loadTrendingSettings(vault),
+          loadTrendingSettingsRemote(),
           readUserModel(vault),
           loadDashboard(vault),
         ])

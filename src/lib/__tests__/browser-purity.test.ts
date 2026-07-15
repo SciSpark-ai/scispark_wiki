@@ -59,6 +59,8 @@ const CLIENT_LIB_FILES = [
   join("src", "lib", "skills", "feed-client.ts"),
   join("src", "lib", "skills", "ingest-client.ts"),
   join("src", "lib", "companion", "client.ts"),
+  join("src", "lib", "companion", "settings-client.ts"),
+  join("src", "lib", "trending", "settings-client.ts"),
   join("src", "lib", "reader", "client.ts"),
   join("src", "lib", "llm", "settings-client.ts"),
   join("src", "lib", "llm", "usage-client.ts"),
@@ -84,6 +86,13 @@ const NAMED_BANS: Record<string, string[]> = {
   "lib/skills/digest": ["generateDigest"],
   "lib/vault/changesets": ["applyChangeset", "revertChangeset"],
   "lib/llm/settings": ["loadSettings", "saveSettings"],
+  // Companion/trending settings live in the same server-only
+  // .scispark/settings.json (the vault-file route 403s it). The storage-backed
+  // load/save are server-only; client code must go through the settings-client
+  // wrappers (→ /api/settings). Pure exports (types, normalize*, DEFAULT_*,
+  // SESSION_BUDGET) stay allowed.
+  "lib/companion/settings": ["loadCompanionSettings", "saveCompanionSettings"],
+  "lib/trending/settings": ["loadTrendingSettings", "saveTrendingSettings"],
 }
 
 interface Violation {

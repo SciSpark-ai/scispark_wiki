@@ -70,21 +70,25 @@ function sanitizeName(v: unknown): string {
   return out.replace(/\s+/g, " ").trim()
 }
 
-export async function loadCompanionSettings(storage: VaultStorage): Promise<CompanionSettings> {
-  const file = await readJsonFile(storage)
-  const companion =
-    file.companion !== null && typeof file.companion === "object"
-      ? (file.companion as Record<string, unknown>)
-      : {}
+/**
+ * Validates a raw `companion` section (from the settings file or an API
+ * payload) into a full CompanionSettings, falling back to defaults for any
+ * missing/invalid field. Pure — no storage — so it's shared by the
+ * storage-backed loader below and the `/api/settings` route (which validates
+ * client-supplied companion patches with the exact same rules).
+ *
+ * Validate the stored value against the union rather than trusting the file:
+ * an unknown chattiness (stale schema, typo, hand-edit) must fall back to the
+ * default, or SESSION_BUDGET[chattiness] would be undefined and silently mute
+ * the companion forever. The name is interpolated into a conversational
+ * skill's system prompt (`You are ${name}, …`), so strip newlines/control
+ * chars to keep it a single clean line — a name can't start a fresh
+ * instruction line. (Self-set in a single-user vault, so this is hygiene, not
+ * a security boundary.)
+ */
+export function normalizeCompanionSettings(raw: unknown): CompanionSettings {
+  const companion = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {}
 
-  // Validate the stored value against the union rather than trusting the file:
-  // an unknown chattiness (stale schema, typo, hand-edit) must fall back to the
-  // default, or SESSION_BUDGET[chattiness] would be undefined and silently mute
-  // the companion forever.
-  // The name is interpolated into a conversational skill's system prompt
-  // (`You are ${name}, …`), so strip newlines/control chars to keep it a single
-  // clean line — a name can't start a fresh instruction line. (Self-set in a
-  // single-user vault, so this is hygiene, not a security boundary.)
   const rawName = sanitizeName(companion.companionName)
   const companionName =
     rawName.length > 0 && rawName.length <= MAX_NAME_LENGTH ? rawName : DEFAULT_COMPANION_SETTINGS.companionName
@@ -95,6 +99,11 @@ export async function loadCompanionSettings(storage: VaultStorage): Promise<Comp
       : DEFAULT_COMPANION_SETTINGS.chattiness,
     companionName,
   }
+}
+
+export async function loadCompanionSettings(storage: VaultStorage): Promise<CompanionSettings> {
+  const file = await readJsonFile(storage)
+  return normalizeCompanionSettings(file.companion)
 }
 
 export async function saveCompanionSettings(storage: VaultStorage, settings: CompanionSettings): Promise<void> {
