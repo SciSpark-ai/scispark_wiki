@@ -11,6 +11,7 @@ const KIND_LABEL: Record<ReviewItem["kind"], string> = {
   duplicate: "Duplicate",
   "missing-page": "Missing page",
   suggestion: "Suggestion",
+  "lint-finding": "Lint",
 }
 
 /** wiki page id (e.g. "wiki/papers/foo") -> the /wiki/<...> route for it. */

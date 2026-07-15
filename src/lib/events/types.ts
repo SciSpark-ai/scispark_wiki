@@ -18,5 +18,6 @@ export type SciSparkEvent =
   | { type: "companion_action"; trigger: string }
   | { type: "spark_run"; mode: "quick" | "deep"; outcome: string; ideaPageId?: string; costUsd?: number }
   | { type: "trending_refresh"; fieldCount: number; costUsd?: number }
+  | { type: "lint_run"; mode: "deterministic" | "llm"; findingCount: number; costUsd?: number }
 
 export type LoggedEvent = SciSparkEvent & { ts: string } // ISO timestamp
