@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "./fetch-timeout"
 import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
 
 const OPENALEX_WORKS_URL = "https://api.openalex.org/works"
@@ -180,7 +181,7 @@ export async function searchOpenAlex(q: OpenAlexQuery, deps: OpenAlexDeps = {}):
 
   let response: Response
   try {
-    response = await fetchFn(url)
+    response = await fetchWithTimeout(fetchFn, url)
   } catch (err) {
     throw new PaperSourceError(err instanceof Error ? err.message : "OpenAlex request failed")
   }
