@@ -63,6 +63,7 @@ const CLIENT_LIB_FILES = [
   join("src", "lib", "llm", "settings-client.ts"),
   join("src", "lib", "vault", "changeset-client.ts"),
   join("src", "lib", "vault", "remote-storage.ts"),
+  join("src", "lib", "lint", "client.ts"),
   join("src", "lib", "server", "ndjson.ts"),
 ]
 

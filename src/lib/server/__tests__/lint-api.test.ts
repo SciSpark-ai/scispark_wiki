@@ -172,5 +172,19 @@ describe("lint skill routes", () => {
       expect(after).not.toContain("[[nonexistent-page]]")
       expect(after).toContain("nonexistent-page")
     })
+
+    it("returns 500 {error} for unknown reviewId", async () => {
+      const res = await lintFixRoute.POST(
+        new Request("http://x/api/skills/lint/fix", {
+          method: "POST",
+          body: JSON.stringify({ reviewId: "unknown-review-id-12345" }),
+        }),
+      )
+      expect(res.status).toBe(500)
+      expect(res.headers.get("content-type")).toBe("application/json")
+      const body = (await res.json()) as { error: string }
+      expect(body.error).toBeTruthy()
+      expect(body.error).toContain("review item not found")
+    })
   })
 })
