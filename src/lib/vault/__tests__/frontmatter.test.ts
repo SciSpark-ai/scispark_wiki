@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { parseDocument, serializeDocument, FrontmatterError } from "../frontmatter"
+import type { Frontmatter } from "../types"
 
 const DOC = `---
 type: concept
@@ -95,5 +96,73 @@ describe("serializeDocument", () => {
     const again = parseDocument(out)
     expect(again.frontmatter).toEqual(frontmatter)
     expect(again.body.trim()).toBe(body.trim())
+  })
+
+  it("serialize∘parse is byte-identical for normal body", () => {
+    const fm: Frontmatter = {
+      type: "concept",
+      title: "Test Page",
+      created: "2026-07-11",
+      updated: "2026-07-11",
+      tags: [],
+      related: [],
+      sources: [],
+    }
+    const body = "# Heading\n\nSome content here."
+    const original = serializeDocument(fm, body)
+    const parsed = parseDocument(original)
+    const roundtrip = serializeDocument(parsed.frontmatter, parsed.body)
+    expect(roundtrip).toBe(original)
+  })
+
+  it("serialize∘parse is byte-identical for empty body", () => {
+    const fm: Frontmatter = {
+      type: "concept",
+      title: "Empty Page",
+      created: "2026-07-11",
+      updated: "2026-07-11",
+      tags: [],
+      related: [],
+      sources: [],
+    }
+    const body = ""
+    const original = serializeDocument(fm, body)
+    const parsed = parseDocument(original)
+    const roundtrip = serializeDocument(parsed.frontmatter, parsed.body)
+    expect(roundtrip).toBe(original)
+  })
+
+  it("serialize∘parse is byte-identical for body with author-intended leading blank line", () => {
+    const fm: Frontmatter = {
+      type: "concept",
+      title: "Blank Line Page",
+      created: "2026-07-11",
+      updated: "2026-07-11",
+      tags: [],
+      related: [],
+      sources: [],
+    }
+    const body = "\n# Heading after blank\n\nContent."
+    const original = serializeDocument(fm, body)
+    const parsed = parseDocument(original)
+    const roundtrip = serializeDocument(parsed.frontmatter, parsed.body)
+    expect(roundtrip).toBe(original)
+  })
+
+  it("serialize∘parse is byte-identical for single-line body", () => {
+    const fm: Frontmatter = {
+      type: "concept",
+      title: "One Liner",
+      created: "2026-07-11",
+      updated: "2026-07-11",
+      tags: [],
+      related: [],
+      sources: [],
+    }
+    const body = "Just one line"
+    const original = serializeDocument(fm, body)
+    const parsed = parseDocument(original)
+    const roundtrip = serializeDocument(parsed.frontmatter, parsed.body)
+    expect(roundtrip).toBe(original)
   })
 })

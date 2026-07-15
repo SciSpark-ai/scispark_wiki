@@ -1,19 +1,42 @@
 import type { VaultStorage } from "../vault/storage"
 import type { Changeset } from "../vault/types"
+import type { LintKind } from "../lint/types"
 
 /**
- * A review item flagged by the ingest LLM for human judgment.
- * Written by ingest.ts to .scispark/review/{id}.json, or archived to
- * .scispark/review/archived/ when dismissed via dismissReview.
+ * A review item flagged by the ingest LLM for human judgment, or by the lint
+ * orchestrator (src/lib/lint/run.ts) for a deterministic/LLM lint finding.
+ * Written by ingest.ts or lint/run.ts to .scispark/review/{id}.json, or
+ * archived to .scispark/review/archived/ when dismissed via dismissReview.
  */
 export interface ReviewItem {
   id: string
   createdAt: string // ISO 8601 timestamp
-  changesetId: string
-  kind: "contradiction" | "duplicate" | "missing-page" | "suggestion"
+  /**
+   * The changeset that produced this item (ingest items only — the changeset
+   * that ingested the paper this review item flags). Lint findings have no
+   * producing changeset (the finding exists whether or not its fix is ever
+   * applied), so this is absent for kind "lint-finding".
+   */
+  changesetId?: string
+  kind: "contradiction" | "duplicate" | "missing-page" | "suggestion" | "lint-finding"
   title: string
   description: string
   pages: string[] // bare slugs of related wiki pages
+  /** Present only for kind "lint-finding": which check produced it (src/lib/lint/types.ts). */
+  lintKind?: LintKind
+  /**
+   * Present only for kind "lint-finding" items whose page can carry multiple
+   * same-`lintKind` findings (broken-link: the broken slug). Lets applyLintFix
+   * (src/lib/lint/run.ts) re-find the EXACT finding when it recomputes checks
+   * at apply time — see LintFinding.fixTarget (src/lib/lint/types.ts).
+   */
+  fixTarget?: string
+  /**
+   * Present only for kind "lint-finding" items with a mechanical fix
+   * (src/lib/lint/types.ts#LintFinding.fix) — what applyLintFix
+   * (src/lib/lint/run.ts) will apply as a one-file changeset.
+   */
+  fix?: { path: string; before: string | null; after: string }
 }
 
 /**

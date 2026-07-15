@@ -36,6 +36,10 @@ export class OpenAICompatProvider implements LLMProvider {
       return await this.send(model, req, "native")
     } catch (e) {
       if (e instanceof LLMBadRequestError && isStructuredOutputRejection(e.message)) {
+        fallbackStats.promptJsonFallbacks++
+        console.warn(
+          `[openai-compat] structured-output fallback fired (provider=${this.id}, model=${model}): ${e.message}`,
+        )
         return await this.send(model, req, "prompt")
       }
       throw e
@@ -141,6 +145,22 @@ export class OpenAICompatProvider implements LLMProvider {
 export function isStructuredOutputRejection(message: string): boolean {
   const m = message.toLowerCase()
   return m.includes("output_config") || m.includes("response_format")
+}
+
+// Module-level telemetry for the prompt-JSON fallback (see the isStructuredOutputRejection
+// branch in complete() above). Counts how often the GMI-flake fallback actually fires, so
+// operators can watch it via /api/skills/debug/ping rather than grepping logs blind.
+// Process-lifetime counter, not per-request — fine for a single-process dev/debug surface;
+// a multi-instance deployment would need this centralized to be meaningful across instances.
+const fallbackStats = { promptJsonFallbacks: 0 }
+
+export function getFallbackStats(): { promptJsonFallbacks: number } {
+  return { ...fallbackStats }
+}
+
+// Test-only reset — production code never calls this.
+export function resetFallbackStats(): void {
+  fallbackStats.promptJsonFallbacks = 0
 }
 
 // The prompt-JSON fallback instruction: appended as a final user turn when the

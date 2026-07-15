@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { setServerVaultForTests } from "../vault"
 import { loadSettings, saveSettings, DEFAULT_SETTINGS } from "../../llm/settings"
@@ -11,6 +11,9 @@ describe("settings API", () => {
   beforeEach(() => {
     storage = new MemoryVaultStorage()
     setServerVaultForTests(storage)
+  })
+  afterEach(() => {
+    setServerVaultForTests(null)
   })
 
   it("GET never leaks key material in the response body", async () => {
@@ -161,6 +164,31 @@ describe("settings API", () => {
 
     const persisted = await loadSettings(storage)
     expect(persisted.baseUrls).toEqual({ openrouter: "https://custom.example/v1" })
+  })
+
+  it("two concurrent PUTs against the same storage both land (no lost update)", async () => {
+    await saveSettings(storage, DEFAULT_SETTINGS)
+
+    const [res1, res2] = await Promise.all([
+      settingsRoute.PUT(
+        new Request("http://x/api/settings", {
+          method: "PUT",
+          body: JSON.stringify({ patch: { dailyBudgetUsd: 42 } }),
+        }),
+      ),
+      settingsRoute.PUT(
+        new Request("http://x/api/settings", {
+          method: "PUT",
+          body: JSON.stringify({ patch: { keys: { openai: "sk-concurrent" } } }),
+        }),
+      ),
+    ])
+    expect(res1.status).toBe(200)
+    expect(res2.status).toBe(200)
+
+    const persisted = await loadSettings(storage)
+    expect(persisted.dailyBudgetUsd).toBe(42)
+    expect(persisted.keys.openai).toBe("sk-concurrent")
   })
 
   it("PUT with a malformed body (missing patch) → 400", async () => {

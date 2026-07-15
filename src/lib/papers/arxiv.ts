@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser"
+import { fetchWithTimeout } from "./fetch-timeout"
 import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
 
 // Drift-verified 2026-07-12 against info.arxiv.org/help/api/user-manual.html and a
@@ -199,7 +200,7 @@ export async function searchArxiv(q: ArxivQuery, deps: ArxivDeps = {}): Promise<
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let response: Response
     try {
-      response = await fetchFn(url)
+      response = await fetchWithTimeout(fetchFn, url)
     } catch (err) {
       // Network error — transient, retry with backoff.
       lastError = new PaperSourceError(err instanceof Error ? err.message : "arXiv request failed")

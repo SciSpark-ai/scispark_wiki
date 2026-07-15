@@ -1,5 +1,6 @@
 import { getServerVault } from "@/lib/server/vault"
-import { loadSettings, saveSettings, type LLMSettings } from "@/lib/llm/settings"
+import { loadSettings, DEFAULT_SETTINGS, type LLMSettings } from "@/lib/llm/settings"
+import { withSettingsWrite } from "@/lib/vault/settings-write"
 import type { ProviderId } from "@/lib/llm/types"
 
 /**
@@ -83,25 +84,45 @@ export async function PUT(req: Request): Promise<Response> {
 
   try {
     const storage = await getServerVault()
-    const current = await loadSettings(storage)
 
-    const next: LLMSettings = {
-      keys: p.keys ? mergeDeletable(current.keys, p.keys) : current.keys,
-      tierModels: {
-        fast: { ...current.tierModels.fast, ...(p.tierModels?.fast ?? {}) },
-        strong: { ...current.tierModels.strong, ...(p.tierModels?.strong ?? {}) },
-      },
-      dailyBudgetUsd: p.dailyBudgetUsd ?? current.dailyBudgetUsd,
-    }
+    // The read (current llm settings), the patch merge, and the write must
+    // happen inside a single withSettingsWrite critical section — reading via
+    // loadSettings() first and saving separately (M11) left a gap where a
+    // concurrent companion/trending save (or another /api/settings PUT) could
+    // interleave between this route's read and write, losing an update.
+    let next: LLMSettings = DEFAULT_SETTINGS
+    await withSettingsWrite(storage, (file) => {
+      const llmRaw = (file.llm !== null && typeof file.llm === "object" ? file.llm : {}) as Partial<LLMSettings>
+      const current: LLMSettings = {
+        keys: { ...DEFAULT_SETTINGS.keys, ...(llmRaw.keys ?? {}) },
+        tierModels: {
+          fast: { ...DEFAULT_SETTINGS.tierModels.fast, ...(llmRaw.tierModels?.fast ?? {}) },
+          strong: { ...DEFAULT_SETTINGS.tierModels.strong, ...(llmRaw.tierModels?.strong ?? {}) },
+        },
+        dailyBudgetUsd: llmRaw.dailyBudgetUsd ?? DEFAULT_SETTINGS.dailyBudgetUsd,
+        ...(llmRaw.baseUrls ? { baseUrls: { ...llmRaw.baseUrls } } : {}),
+      }
 
-    const mergedBaseUrls = p.baseUrls
-      ? mergeDeletable(current.baseUrls ?? {}, p.baseUrls)
-      : current.baseUrls
-    if (mergedBaseUrls && Object.keys(mergedBaseUrls).length > 0) {
-      next.baseUrls = mergedBaseUrls
-    }
+      const merged: LLMSettings = {
+        keys: p.keys ? mergeDeletable(current.keys, p.keys) : current.keys,
+        tierModels: {
+          fast: { ...current.tierModels.fast, ...(p.tierModels?.fast ?? {}) },
+          strong: { ...current.tierModels.strong, ...(p.tierModels?.strong ?? {}) },
+        },
+        dailyBudgetUsd: p.dailyBudgetUsd ?? current.dailyBudgetUsd,
+      }
 
-    await saveSettings(storage, next)
+      const mergedBaseUrls = p.baseUrls
+        ? mergeDeletable(current.baseUrls ?? {}, p.baseUrls)
+        : current.baseUrls
+      if (mergedBaseUrls && Object.keys(mergedBaseUrls).length > 0) {
+        merged.baseUrls = mergedBaseUrls
+      }
+
+      next = merged
+      return { ...file, llm: merged }
+    })
+
     return jsonResponse(200, { settings: redact(next) })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

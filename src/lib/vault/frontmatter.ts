@@ -15,7 +15,16 @@ export function parseDocument(raw: string): { frontmatter: Frontmatter; body: st
   if (!match) throw new FrontmatterError("unterminated frontmatter block")
   const end = 3 + match.index
   const yamlSrc = normalized.slice(4, end)
-  const body = normalized.slice(end + match[0].length)
+  // serializeDocument always writes exactly one blank-line spacer between the
+  // closing "---" and the body ("---\n\n<body>\n"). The terminator regex above
+  // only consumes the closing "---" line's own newline, so that mandatory
+  // spacer blank line survives as the body's first character. Strip exactly
+  // one leading "\n" here so it isn't counted as part of the body content —
+  // without this, serializeDocument(parseDocument(raw)) is not byte-identical
+  // to a `raw` that was itself produced by serializeDocument (it grows an
+  // extra blank line every round trip), which breaks any conflict check that
+  // compares freshly-serialized content against what's actually on disk.
+  const body = normalized.slice(end + match[0].length).replace(/^\n/, "")
 
   let data: unknown
   try {

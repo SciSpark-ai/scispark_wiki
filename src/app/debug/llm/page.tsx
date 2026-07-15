@@ -6,7 +6,7 @@ import { loadRedactedSettings, patchSettings, type RedactedSettings, type Settin
 import type { ProviderId, Tier } from "@/lib/llm/types"
 import type { SkillRunResult } from "@/lib/skills/types"
 import type { DebugStructuredOutput } from "@/lib/skills/debug"
-import { Meter } from "@/lib/llm/metering"
+import { SpendPanel } from "@/components/settings/SpendPanel"
 import {
   loadCompanionSettings,
   saveCompanionSettings,
@@ -78,19 +78,11 @@ export default function LlmDebugPage() {
   )
   const [structuredRunning, setStructuredRunning] = useState(false)
 
-  const [spentTodayUsd, setSpentTodayUsd] = useState<number | null>(null)
-
   const [companionChattiness, setCompanionChattiness] = useState<Chattiness>(
     DEFAULT_COMPANION_SETTINGS.chattiness,
   )
   const [companionName, setCompanionName] = useState<string>(DEFAULT_COMPANION_SETTINGS.companionName)
   const [companionSaveStatus, setCompanionSaveStatus] = useState("")
-
-  const refreshSpend = async () => {
-    const vault = await getVault()
-    const meter = new Meter(vault)
-    setSpentTodayUsd(await meter.spentTodayUsd())
-  }
 
   useEffect(() => {
     ;(async () => {
@@ -100,7 +92,6 @@ export default function LlmDebugPage() {
       setCompanionChattiness(companion.chattiness)
       setCompanionName(companion.companionName)
       setLoaded(true)
-      await refreshSpend()
     })()
   }, [])
 
@@ -108,7 +99,8 @@ export default function LlmDebugPage() {
     setSaveStatus("saving…")
     const patch: SettingsPatch = {
       tierModels: settings.tierModels,
-      dailyBudgetUsd: settings.dailyBudgetUsd,
+      // The daily budget is now edited in the SpendPanel below (its own
+      // patchSettings call), so this combined save leaves it untouched.
       // baseUrls isn't secret — the browser always knows the full desired
       // state, so send both providers explicitly ("" deletes an override
       // the user cleared locally).
@@ -151,7 +143,6 @@ export default function LlmDebugPage() {
       setPingResult(run)
     } finally {
       setPingRunning(false)
-      await refreshSpend()
     }
   }
 
@@ -163,7 +154,6 @@ export default function LlmDebugPage() {
       setStructuredResult(run)
     } finally {
       setStructuredRunning(false)
-      await refreshSpend()
     }
   }
 
@@ -180,9 +170,6 @@ export default function LlmDebugPage() {
       },
     }))
   }
-
-  const remainingUsd =
-    spentTodayUsd === null ? null : settings.dailyBudgetUsd - spentTodayUsd
 
   return (
     <div style={{ padding: 24, fontFamily: "monospace", maxWidth: 720 }}>
@@ -275,20 +262,12 @@ export default function LlmDebugPage() {
             </div>
           ))}
 
-          <h3>Daily budget (USD)</h3>
-          <input
-            type="number"
-            step="0.01"
-            value={settings.dailyBudgetUsd}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, dailyBudgetUsd: Number(e.target.value) }))
-            }
-            style={{ width: 120 }}
-          />
-
           <div style={{ marginTop: 12 }}>
             <button onClick={handleSave}>Save</button> <span>{saveStatus}</span>
           </div>
+          <p style={{ fontSize: 13, color: "#666" }}>
+            The daily budget is edited in the AI-spend panel below.
+          </p>
 
           <hr style={{ margin: "24px 0" }} />
 
@@ -327,14 +306,7 @@ export default function LlmDebugPage() {
 
           <hr style={{ margin: "24px 0" }} />
 
-          <h2>Spend</h2>
-          <p>
-            spentTodayUsd:{" "}
-            {spentTodayUsd === null ? "…" : spentTodayUsd.toFixed(4)} / dailyBudgetUsd:{" "}
-            {settings.dailyBudgetUsd.toFixed(2)} (remaining:{" "}
-            {remainingUsd === null ? "…" : remainingUsd.toFixed(4)})
-          </p>
-          <button onClick={refreshSpend}>Refresh spend</button>
+          <SpendPanel />
 
           <hr style={{ margin: "24px 0" }} />
 

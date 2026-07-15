@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest"
-import { OpenAICompatProvider, openAIProvider, openRouterProvider, isStructuredOutputRejection } from "../providers/openai-compat"
+import { describe, it, expect, beforeEach } from "vitest"
+import { OpenAICompatProvider, openAIProvider, openRouterProvider, isStructuredOutputRejection, getFallbackStats, resetFallbackStats } from "../providers/openai-compat"
 import { LLMAuthError, LLMBadRequestError, LLMRateLimitError, LLMTransientError } from "../types"
 
 /** A fetch stub that returns a scripted response per call, capturing each request body.
@@ -44,6 +44,10 @@ const OK_RESPONSE = {
 }
 
 describe("OpenAICompatProvider", () => {
+  beforeEach(() => {
+    resetFallbackStats()
+  })
+
   it("sends a chat/completions request with bearer auth and system in-array, and maps the result", async () => {
     const { fn, captured } = fakeFetch(200, OK_RESPONSE)
     const p = new OpenAICompatProvider("openai", "sk-test", "https://api.openai.com/v1", fn)
@@ -226,6 +230,36 @@ describe("OpenAICompatProvider", () => {
     expect(retryMessages[retryMessages.length - 1].role).toBe("user")
     expect(retryMessages[retryMessages.length - 1].content).toContain("JSON Schema")
     expect(result.json).toEqual({ a: 7 })
+    expect(getFallbackStats().promptJsonFallbacks).toBe(1)
+  })
+
+  it("does NOT increment fallback stats on a normal (no-fallback) structured call", async () => {
+    const { fn, captured } = fakeFetch(200, {
+      ...OK_RESPONSE,
+      choices: [{ index: 0, message: { role: "assistant", content: '{"a":1}' }, finish_reason: "stop" }],
+    })
+    const p = new OpenAICompatProvider("openai", "sk-test", "https://api.openai.com/v1", fn)
+    await p.complete("gpt-4o", {
+      messages: [{ role: "user", content: "extract" }],
+      jsonSchema: { type: "object", properties: { a: { type: "number" } }, required: ["a"], additionalProperties: false },
+      schemaName: "extraction",
+    })
+    expect(captured.url).toBe("https://api.openai.com/v1/chat/completions")
+    expect(getFallbackStats().promptJsonFallbacks).toBe(0)
+  })
+
+  it("does NOT increment fallback stats on a genuine non-fallback 400", async () => {
+    const { fn } = sequencedFetch([
+      { status: 400, body: { error: { message: "context length exceeded" } } },
+    ])
+    const p = new OpenAICompatProvider("openai", "sk-test", "https://api.gmi-serving.com/v1", fn)
+    await expect(
+      p.complete("anthropic/claude-sonnet-5", {
+        messages: [{ role: "user", content: "x" }],
+        jsonSchema: { type: "object", properties: { a: { type: "number" } }, required: ["a"], additionalProperties: false },
+      }),
+    ).rejects.toThrow(LLMBadRequestError)
+    expect(getFallbackStats().promptJsonFallbacks).toBe(0)
   })
 
   it("prompt-JSON fallback tolerates a fenced ```json block in the model's text", async () => {
