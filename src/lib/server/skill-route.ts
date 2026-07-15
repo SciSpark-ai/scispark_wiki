@@ -1,7 +1,7 @@
 import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { SearchFn } from "../skills/feed"
-import type { CountFn } from "../trending/weekly-volume"
+import type { CountFn, GroupFn } from "../trending/weekly-volume"
 import { getServerVault } from "./vault"
 
 /**
@@ -127,6 +127,8 @@ export interface SkillTestOverrides {
   fetchFn?: typeof fetch
   /** Injects a fake per-week OpenAlex counter for trending routes so tests never hit the real network for weekly-volume aggregation. */
   countFn?: CountFn
+  /** Injects a fake OpenAlex group_by counter for trending routes so tests never hit the real network for the group_by weekly-volume fast path. */
+  groupFn?: GroupFn
 }
 
 let skillTestOverrides: SkillTestOverrides = {}

@@ -2,7 +2,7 @@ import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
 import type { SearchFn } from "../skills/feed"
-import type { CountFn } from "./weekly-volume"
+import type { CountFn, GroupFn } from "./weekly-volume"
 import { readUserModel } from "../usermodel/pages"
 import { effectiveTrackedFields } from "./fields"
 import { loadTrendingSettings } from "./settings"
@@ -24,6 +24,7 @@ export async function maybeAutoRefreshTrending(
     now?: () => Date
     providerOverride?: Partial<Record<Tier, LLMProvider>>
     countFn?: CountFn
+    groupFn?: GroupFn
   },
 ): Promise<"refreshed" | "fresh" | "no-fields"> {
   const now = deps.now ?? (() => new Date())
@@ -39,6 +40,7 @@ export async function maybeAutoRefreshTrending(
     fields,
     searchFn: deps.searchFn,
     countFn: deps.countFn,
+    groupFn: deps.groupFn,
     settings: deps.settings,
     providerOverride: deps.providerOverride,
     now: deps.now,

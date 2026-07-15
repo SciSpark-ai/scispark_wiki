@@ -9,7 +9,7 @@ import type { Cadence } from "./settings"
 import { retrieveFieldCandidates } from "./retrieve"
 import { computeFieldMetrics, DEFAULT_WEEKS, type FieldMetrics, type VolumePoint } from "./metrics"
 import { buildWeekStarts } from "./weeks"
-import { fetchWeeklyVolume, type CountFn } from "./weekly-volume"
+import { fetchWeeklyVolume, type CountFn, type GroupFn } from "./weekly-volume"
 import { trendingSkill, type TrendingSurvey } from "../skills/trending"
 
 export interface FieldPanel {
@@ -38,6 +38,8 @@ export interface RunTrendingOpts {
   onProgress?: (fieldSlug: string) => void
   /** Real per-week OpenAlex work counter; when present, feeds computeFieldMetrics's realWeeklyVolume. Absent → sample-derived weeklyVolume (unchanged). */
   countFn?: CountFn
+  /** Real per-week OpenAlex work counter via one group_by request (1 credit/field); tried first, falls back to countFn's per-week path. Only used when countFn is also present (it's the fallback fetchWeeklyVolume needs). */
+  groupFn?: GroupFn
 }
 
 /**
@@ -100,7 +102,7 @@ async function runTrendingDashboardUncached(storage: VaultStorage, opts: RunTren
       let realVol: VolumePoint[] | null = null
       if (opts.countFn) {
         const weekStarts = buildWeekStarts(at, DEFAULT_WEEKS)
-        realVol = await fetchWeeklyVolume(opts.countFn, field.label, weekStarts).catch(() => null)
+        realVol = await fetchWeeklyVolume(opts.countFn, field.label, weekStarts, opts.groupFn).catch(() => null)
       }
       const metrics = computeFieldMetrics(candidates, { now: at, realWeeklyVolume: realVol ?? undefined })
 

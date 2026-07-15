@@ -3,7 +3,7 @@ import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { DEFAULT_SETTINGS } from "../../llm/settings"
 import { searchArxiv } from "../../papers/arxiv"
 import { searchOpenAlex } from "../../papers/openalex"
-import { nodeCountFn } from "../../papers/node-search"
+import { nodeCountFn, nodeGroupFn } from "../../papers/node-search"
 import { readRecentEvents } from "../../events/log"
 import { runTrendingDashboard } from "../dashboard"
 import { TrendingSurveySchema } from "../../skills/trending"
@@ -94,8 +94,12 @@ describe.skipIf(!live)("LIVE trending dashboard gate", () => {
         // so even this env-gated live run exercises the v1.1 real-count path
         // rather than the old retrieval-sample-derived weeklyVolume. Uses the
         // PRODUCTION nodeCountFn so OPENALEX_MAILTO is threaded (polite pool),
-        // matching the trending routes' wiring exactly.
+        // matching the trending routes' wiring exactly. Also wires the
+        // production nodeGroupFn (v1.1 Addendum Task 5) so this live run
+        // exercises the 1-credit group_by fast path exactly like production,
+        // falling back to nodeCountFn only if OpenAlex's group_by ever fails.
         countFn: nodeCountFn(),
+        groupFn: nodeGroupFn(),
         settings: liveSettings(),
         now: () => new Date(),
       })

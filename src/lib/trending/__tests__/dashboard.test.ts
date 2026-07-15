@@ -8,7 +8,7 @@ import { readRecentEvents } from "../../events/log"
 import { runTrendingDashboard, loadDashboard, isStale, fieldsMatchDashboard, DASHBOARD_CACHE_PATH } from "../dashboard"
 import type { TrendingDashboard } from "../dashboard"
 import { buildWeekStarts } from "../weeks"
-import type { CountFn } from "../weekly-volume"
+import type { CountFn, GroupFn } from "../weekly-volume"
 
 const NOW = () => new Date("2026-07-14T00:00:00.000Z")
 function paper(o: Partial<PaperRecord> & { title: string }): PaperRecord {
@@ -159,6 +159,22 @@ describe("runTrendingDashboard", () => {
     expect(dash.panels[0].metrics.paperCountRecent).toBe(recent)
     expect(dash.panels[0].metrics.paperCountPrior).toBe(prior)
     expect(dash.panels[0].metrics.pctChange).toBeCloseTo((recent - prior) / prior)
+  })
+
+  it("wires a real per-week series from groupFn through to the panel's metrics, preferring it over countFn", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structured(SURVEY)])
+    const searchFn: SearchFn = async () => [paper({ title: "Fresh", date: "2026-07-10", year: 2026, citationCount: 3, venue: "ACL" })]
+    const weekStarts = buildWeekStarts(NOW(), 8)
+    const groupFn: GroupFn = async () => weekStarts.map((ws, i) => ({ key: ws, count: i + 1 }))
+    const countFn: CountFn = async () => {
+      throw new Error("countFn must not be called when groupFn succeeds")
+    }
+    const dash = await runTrendingDashboard(storage, {
+      fields: [{ slug: "nlp", label: "NLP" }], searchFn, settings: SETTINGS, providerOverride: { strong: provider }, now: NOW, countFn, groupFn,
+    })
+    const expected = weekStarts.map((ws, i) => ({ weekStart: ws, count: i + 1 }))
+    expect(dash.panels[0].metrics.weeklyVolume).toEqual(expected)
   })
 
   it("falls back to the sample-derived weekly series when countFn throws (panel still produced, not dropped)", async () => {

@@ -1,7 +1,7 @@
 import { searchArxiv } from "./arxiv"
-import { searchOpenAlex, countOpenAlexWorks } from "./openalex"
+import { searchOpenAlex, countOpenAlexWorks, groupWorksByPublicationDate } from "./openalex"
 import type { SearchFn } from "../skills/feed"
-import type { CountFn } from "../trending/weekly-volume"
+import type { CountFn, GroupFn } from "../trending/weekly-volume"
 
 /**
  * Node relay-free SearchFn: calls the M3 search-core adapters (searchArxiv,
@@ -22,13 +22,14 @@ import type { CountFn } from "../trending/weekly-volume"
  */
 export function nodeSearchFn(): SearchFn {
   const mailto = process.env.OPENALEX_MAILTO
+  const apiKey = process.env.OPENALEX_API_KEY
   return async (source, query, limit) => {
     const effectiveSource = source === "s2" || source === "pubmed" ? "openalex" : source
     try {
       if (effectiveSource === "arxiv") {
         return await searchArxiv({ query, limit })
       }
-      return await searchOpenAlex({ query, limit }, { mailto })
+      return await searchOpenAlex({ query, limit }, { mailto, apiKey })
     } catch (err) {
       console.warn(`[node-search] search failed for source=${source} query="${query}":`, err)
       return []
@@ -44,5 +45,18 @@ export function nodeSearchFn(): SearchFn {
  */
 export function nodeCountFn(): CountFn {
   const mailto = process.env.OPENALEX_MAILTO
-  return (q) => countOpenAlexWorks(q, { mailto })
+  const apiKey = process.env.OPENALEX_API_KEY
+  return (q) => countOpenAlexWorks(q, { mailto, apiKey })
+}
+
+/**
+ * Node GroupFn for trending weekly-volume: calls groupWorksByPublicationDate
+ * directly (one group_by=publication_date request, 1 OpenAlex credit),
+ * threading OPENALEX_MAILTO/OPENALEX_API_KEY exactly like nodeCountFn. Tried
+ * first by fetchWeeklyVolume before falling back to nodeCountFn's per-week path.
+ */
+export function nodeGroupFn(): GroupFn {
+  const mailto = process.env.OPENALEX_MAILTO
+  const apiKey = process.env.OPENALEX_API_KEY
+  return (q) => groupWorksByPublicationDate(q, { mailto, apiKey })
 }

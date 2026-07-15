@@ -6,6 +6,9 @@ const MIN_LIMIT = 1
 const MAX_LIMIT = 50
 const DEFAULT_LIMIT = 20
 const MAX_FIELDS = 5
+// Max group_by page size per OpenAlex's docs — one grouped request covers up
+// to 200 daily buckets, comfortably spanning trending's 8-week (56-day) window.
+const GROUP_BY_PER_PAGE = 200
 
 interface OpenAlexAuthor {
   id?: string | null
@@ -68,6 +71,13 @@ export interface OpenAlexQuery {
 export interface OpenAlexDeps {
   fetchFn?: typeof fetch
   mailto?: string
+  /**
+   * OpenAlex API key (from OPENALEX_API_KEY / openalex.org/settings/api).
+   * Raises the daily credit budget from ~$0.10 (keyless) to $1/day. Sent as
+   * the `api_key` query param — NEVER logged (same privacy contract as the
+   * query text itself).
+   */
+  apiKey?: string
   /** Injectable delay for retry backoff (tests pass a no-op to avoid real waits). */
   sleep?: (ms: number) => Promise<void>
   /** Total attempts including the first (default 3). */
@@ -183,12 +193,20 @@ function clampLimit(limit: number | undefined): number {
   return Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, Math.floor(limit)))
 }
 
-function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps): string {
+interface BuildUrlOpts {
+  /** Sets group_by=<value> and forces per_page to GROUP_BY_PER_PAGE (a group_by response has no per-work rows, so the normal limit clamp doesn't apply). */
+  groupBy?: string
+}
+
+function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps, opts: BuildUrlOpts = {}): string {
   const url = new URL(OPENALEX_WORKS_URL)
   url.searchParams.set("search", q.query)
-  url.searchParams.set("per_page", String(clampLimit(q.limit)))
+  url.searchParams.set("per_page", String(opts.groupBy ? GROUP_BY_PER_PAGE : clampLimit(q.limit)))
   if (deps.mailto) {
     url.searchParams.set("mailto", deps.mailto)
+  }
+  if (deps.apiKey) {
+    url.searchParams.set("api_key", deps.apiKey)
   }
   const filterClauses: string[] = []
   if (q.fromDate) {
@@ -199,6 +217,9 @@ function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps): string {
   }
   if (filterClauses.length > 0) {
     url.searchParams.set("filter", filterClauses.join(","))
+  }
+  if (opts.groupBy) {
+    url.searchParams.set("group_by", opts.groupBy)
   }
   return url.toString()
 }
@@ -269,4 +290,46 @@ export async function countOpenAlexWorks(
   const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate, limit: 1 }, deps)
   const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexWorksResponse
   return body.meta?.count ?? 0
+}
+
+interface OpenAlexGroupByEntry {
+  key?: unknown
+  key_display_name?: unknown
+  count?: unknown
+}
+
+interface OpenAlexGroupByResponse {
+  group_by?: OpenAlexGroupByEntry[] | null
+}
+
+/**
+ * Fetches per-day work counts for a query within a date range via a SINGLE
+ * `group_by=publication_date` request — 1 OpenAlex credit, vs. 10 credits for
+ * a per_page-limited search and vs. issuing one countOpenAlexWorks call per
+ * week (8 requests x 10 credits = 80 credits for trending's 8-week window).
+ * Used by trending's weekly-volume aggregation (fetchWeeklyVolume) to derive
+ * real per-ISO-week counts from the daily buckets in one shot; falls back to
+ * countOpenAlexWorks per-week when this throws or returns nothing usable.
+ * Tolerates missing/malformed entries in the response (skips them rather than
+ * throwing) since group_by's shape isn't validated by OpenAlex the way
+ * `results[]` is.
+ */
+export async function groupWorksByPublicationDate(
+  q: { query: string; fromDate: string; toDate: string },
+  deps: OpenAlexDeps = {},
+): Promise<Array<{ key: string; count: number }>> {
+  const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate }, deps, {
+    groupBy: "publication_date",
+  })
+  const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexGroupByResponse
+  const groups = body.group_by ?? []
+  const result: Array<{ key: string; count: number }> = []
+  for (const g of groups) {
+    if (g == null) continue
+    const key = typeof g.key === "string" ? g.key : undefined
+    const count = typeof g.count === "number" ? g.count : undefined
+    if (key === undefined || count === undefined) continue
+    result.push({ key, count })
+  }
+  return result
 }

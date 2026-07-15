@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest"
-import { countOpenAlexWorks, searchOpenAlex } from "../openalex"
+import { countOpenAlexWorks, searchOpenAlex, groupWorksByPublicationDate } from "../openalex"
 import { PaperSourceError } from "../types"
 import fixture from "./fixtures/openalex-works.json"
 
@@ -457,5 +457,151 @@ describe("searchOpenAlex toDate", () => {
 
     const url = new URL(calledUrl)
     expect(url.searchParams.get("filter")).toBe("to_publication_date:2026-02-01")
+  })
+})
+
+describe("api_key param", () => {
+  it("searchOpenAlex sets api_key when deps.apiKey is provided", async () => {
+    let calledUrl = ""
+    const fetchFn = (async (url: string) => {
+      calledUrl = String(url)
+      return new Response(JSON.stringify({ results: [] }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    await searchOpenAlex({ query: "x" }, { fetchFn, apiKey: "secret-key" })
+
+    expect(new URL(calledUrl).searchParams.get("api_key")).toBe("secret-key")
+  })
+
+  it("searchOpenAlex omits api_key when deps.apiKey is absent", async () => {
+    let calledUrl = ""
+    const fetchFn = (async (url: string) => {
+      calledUrl = String(url)
+      return new Response(JSON.stringify({ results: [] }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    await searchOpenAlex({ query: "x" }, { fetchFn })
+
+    expect(new URL(calledUrl).searchParams.has("api_key")).toBe(false)
+  })
+
+  it("countOpenAlexWorks sets api_key when deps.apiKey is provided", async () => {
+    let calledUrl = ""
+    const fetchFn = (async (url: string) => {
+      calledUrl = String(url)
+      return new Response(JSON.stringify({ results: [], meta: { count: 1 } }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    await countOpenAlexWorks({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn, apiKey: "secret-key" })
+
+    expect(new URL(calledUrl).searchParams.get("api_key")).toBe("secret-key")
+  })
+
+  it("groupWorksByPublicationDate sets api_key when deps.apiKey is provided", async () => {
+    let calledUrl = ""
+    const fetchFn = (async (url: string) => {
+      calledUrl = String(url)
+      return new Response(JSON.stringify({ group_by: [] }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    await groupWorksByPublicationDate({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn, apiKey: "secret-key" })
+
+    expect(new URL(calledUrl).searchParams.get("api_key")).toBe("secret-key")
+  })
+})
+
+describe("groupWorksByPublicationDate", () => {
+  it("builds the request URL with search, filter, group_by=publication_date, and per_page=200", async () => {
+    let calledUrl = ""
+    const fetchFn = (async (url: string) => {
+      calledUrl = String(url)
+      return new Response(JSON.stringify({ group_by: [] }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    await groupWorksByPublicationDate(
+      { query: "nlp", fromDate: "2026-06-01", toDate: "2026-07-26" },
+      { fetchFn, mailto: "me@example.com" },
+    )
+
+    const url = new URL(calledUrl)
+    expect(url.origin + url.pathname).toBe("https://api.openalex.org/works")
+    expect(url.searchParams.get("search")).toBe("nlp")
+    expect(decodeURIComponent(url.searchParams.get("filter") ?? "")).toBe(
+      "from_publication_date:2026-06-01,to_publication_date:2026-07-26",
+    )
+    expect(url.searchParams.get("group_by")).toBe("publication_date")
+    expect(url.searchParams.get("per_page")).toBe("200")
+    expect(url.searchParams.get("mailto")).toBe("me@example.com")
+  })
+
+  it("parses the group_by response array into {key, count} pairs", async () => {
+    const fetchFn = (async () =>
+      new Response(
+        JSON.stringify({
+          group_by: [
+            { key: "2026-07-06", key_display_name: "2026-07-06", count: 5 },
+            { key: "2026-07-07", key_display_name: "2026-07-07", count: 2 },
+          ],
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch
+
+    const groups = await groupWorksByPublicationDate({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn })
+
+    expect(groups).toEqual([
+      { key: "2026-07-06", count: 5 },
+      { key: "2026-07-07", count: 2 },
+    ])
+  })
+
+  it("returns [] when group_by is missing from the response", async () => {
+    const fetchFn = (async () => new Response(JSON.stringify({}), { status: 200 })) as unknown as typeof fetch
+    const groups = await groupWorksByPublicationDate({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn })
+    expect(groups).toEqual([])
+  })
+
+  it("tolerates malformed entries (missing/wrong-typed key or count) by skipping them", async () => {
+    const fetchFn = (async () =>
+      new Response(
+        JSON.stringify({
+          group_by: [
+            { key: "2026-07-06", count: 5 },
+            { key: 123, count: 2 }, // wrong-typed key
+            { key: "2026-07-08" }, // missing count
+            null, // null entry
+            { count: 9 }, // missing key
+          ],
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch
+
+    const groups = await groupWorksByPublicationDate({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn })
+
+    expect(groups).toEqual([{ key: "2026-07-06", count: 5 }])
+  })
+
+  it("RETRY: recovers when a 429 is followed by a 200 (reuses the shared retry helper)", async () => {
+    let call = 0
+    const fetchFn = vi.fn(async () => {
+      call++
+      return call === 1
+        ? new Response("", { status: 429, headers: { "retry-after": "0" } })
+        : new Response(JSON.stringify({ group_by: [{ key: "2026-07-06", count: 1 }] }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    const groups = await groupWorksByPublicationDate(
+      { query: "x", fromDate: "a", toDate: "b" },
+      { fetchFn, sleep: noSleep },
+    )
+    expect(groups).toEqual([{ key: "2026-07-06", count: 1 }])
+    expect(fetchFn).toHaveBeenCalledTimes(2)
+  })
+
+  it("throws PaperSourceError with status after exhausting retries on a persistent 500", async () => {
+    const fetchFn = vi.fn(async () => new Response("", { status: 500 })) as unknown as typeof fetch
+    await expect(
+      groupWorksByPublicationDate({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn, sleep: noSleep }),
+    ).rejects.toMatchObject({ name: "PaperSourceError", status: 500 })
+    expect(fetchFn).toHaveBeenCalledTimes(3)
   })
 })
