@@ -67,12 +67,16 @@ async function readJsonFile(storage: VaultStorage): Promise<Record<string, unkno
   }
 }
 
-export async function loadTrendingSettings(storage: VaultStorage): Promise<TrendingSettings> {
-  const file = await readJsonFile(storage)
-  const t =
-    file.trending !== null && typeof file.trending === "object"
-      ? (file.trending as Record<string, unknown>)
-      : {}
+/**
+ * Validates a raw `trending` section (from the settings file or an API
+ * payload) into a full TrendingSettings, falling back to defaults for any
+ * missing/invalid field. Pure — no storage — so it's shared by the
+ * storage-backed loader below and the `/api/settings` route (which validates
+ * client-supplied trending patches with the exact same rules, including the
+ * dedupe-by-slug guard).
+ */
+export function normalizeTrendingSettings(raw: unknown): TrendingSettings {
+  const t = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {}
   const fields = Array.isArray(t.fields)
     ? dedupeFieldsBySlug(t.fields.filter(isTrackedField) as TrackedField[]).slice(0, MAX_TRACKED_FIELDS)
     : DEFAULT_TRENDING_SETTINGS.fields
@@ -80,6 +84,11 @@ export async function loadTrendingSettings(storage: VaultStorage): Promise<Trend
     fields,
     cadence: isCadence(t.cadence) ? t.cadence : DEFAULT_TRENDING_SETTINGS.cadence,
   }
+}
+
+export async function loadTrendingSettings(storage: VaultStorage): Promise<TrendingSettings> {
+  const file = await readJsonFile(storage)
+  return normalizeTrendingSettings(file.trending)
 }
 
 export async function saveTrendingSettings(storage: VaultStorage, settings: TrendingSettings): Promise<void> {

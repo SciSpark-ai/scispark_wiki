@@ -1,15 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { getVault } from "@/lib/vault/get-vault"
 import { loadRedactedSettings, patchSettings, type RedactedSettings, type SettingsPatch } from "@/lib/llm/settings-client"
+import { loadCompanionSettingsRemote, saveCompanionSettingsRemote } from "@/lib/companion/settings-client"
 import type { ProviderId, Tier } from "@/lib/llm/types"
 import type { SkillRunResult } from "@/lib/skills/types"
 import type { DebugStructuredOutput } from "@/lib/skills/debug"
 import { SpendPanel } from "@/components/settings/SpendPanel"
 import {
-  loadCompanionSettings,
-  saveCompanionSettings,
   DEFAULT_COMPANION_SETTINGS,
   SESSION_BUDGET,
   type Chattiness,
@@ -86,9 +84,8 @@ export default function LlmDebugPage() {
 
   useEffect(() => {
     ;(async () => {
-      const vault = await getVault()
       setSettings(await loadRedactedSettings())
-      const companion = await loadCompanionSettings(vault)
+      const companion = await loadCompanionSettingsRemote()
       setCompanionChattiness(companion.chattiness)
       setCompanionName(companion.companionName)
       setLoaded(true)
@@ -119,19 +116,17 @@ export default function LlmDebugPage() {
   const handleCompanionChattinessChange = async (value: Chattiness) => {
     setCompanionChattiness(value)
     setCompanionSaveStatus("saving…")
-    const vault = await getVault()
     // Save the FULL CompanionSettings — must include companionName or this
     // handler would clobber whatever name the other handler last saved.
-    await saveCompanionSettings(vault, { chattiness: value, companionName })
+    await saveCompanionSettingsRemote({ chattiness: value, companionName })
     setCompanionSaveStatus(`saved ${new Date().toLocaleTimeString()}`)
   }
 
   const handleCompanionNameSave = async () => {
     setCompanionSaveStatus("saving…")
-    const vault = await getVault()
     // Save the FULL CompanionSettings — must include chattiness or this
     // handler would clobber whatever chattiness the other handler last saved.
-    await saveCompanionSettings(vault, { chattiness: companionChattiness, companionName })
+    await saveCompanionSettingsRemote({ chattiness: companionChattiness, companionName })
     setCompanionSaveStatus(`saved ${new Date().toLocaleTimeString()}`)
   }
 

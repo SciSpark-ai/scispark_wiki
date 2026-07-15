@@ -21,7 +21,15 @@ export class RemoteVaultStorage implements VaultStorage {
   private base: string
 
   constructor(fetchFn: typeof fetch = fetch, base = "") {
-    this.fetchFn = fetchFn
+    // Every request below is issued as `this.fetchFn(...)` — a METHOD call
+    // whose receiver is this instance. The native `fetch` throws
+    // "Failed to execute 'fetch' on 'Window': Illegal invocation" when its
+    // receiver is anything but the global object, so storing the bare global
+    // here bricks every browser vault read/write. Wrap it so the underlying
+    // fetch is always invoked as a plain call (receiver = global via normal
+    // scoping). An injected fetchFn (tests, custom base) is wrapped the same
+    // way, which is harmless for the receiver-agnostic mocks used in tests.
+    this.fetchFn = ((input: RequestInfo | URL, init?: RequestInit) => fetchFn(input, init)) as typeof fetch
     this.base = base
   }
 

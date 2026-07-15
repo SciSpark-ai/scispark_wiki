@@ -17,7 +17,7 @@ import { captureIdeaAsNote } from "@/lib/reader/capture-idea"
 import { buildAskContext } from "@/lib/reader/ask-context"
 import { askRemote } from "@/lib/reader/client"
 import { applyChangesetRemote } from "@/lib/vault/changeset-client"
-import { loadCompanionSettings } from "@/lib/companion/settings"
+import { loadCompanionSettingsRemote } from "@/lib/companion/settings-client"
 import { loadBundle } from "@/lib/vault/bundle"
 import { logEvent } from "@/lib/events/log"
 
@@ -224,7 +224,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
         surroundingText: computeSurroundingText(surfaceTextRef.current, target.start, target.end),
         userQuestion: question,
       })
-      const companionSettings = await loadCompanionSettings(storage)
+      const companionSettings = await loadCompanionSettingsRemote()
       const answer = await askRemote({ ...context, companionName: companionSettings.companionName })
       setAskState({ status: "done", answer: answer.answer, citedPageIds: answer.citedPageIds })
       void logEvent(storage, { type: "reading_ask", paperKey: key })

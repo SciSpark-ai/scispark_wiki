@@ -4,7 +4,8 @@ import { useUserStore } from "@/stores/user-store";
 import { getOpenVault } from "@/lib/vault/get-vault";
 import { readUserModel } from "@/lib/usermodel/pages";
 import { effectiveTrackedFields, slugify, MAX_TRACKED_FIELDS } from "@/lib/trending/fields";
-import { loadTrendingSettings, saveTrendingSettings, type Cadence } from "@/lib/trending/settings";
+import type { Cadence } from "@/lib/trending/settings";
+import { loadTrendingSettingsRemote, saveTrendingSettingsRemote } from "@/lib/trending/settings-client";
 
 export default function ProfilePage() {
   const { user, preferences, setPreferences } = useUserStore();
@@ -31,7 +32,7 @@ export default function ProfilePage() {
       try {
         const vault = await getOpenVault();
         const [settings, userModel] = await Promise.all([
-          loadTrendingSettings(vault),
+          loadTrendingSettingsRemote(),
           readUserModel(vault),
         ]);
         const fields = effectiveTrackedFields(settings.fields, userModel.interests);
@@ -67,14 +68,13 @@ export default function ProfilePage() {
     setTrendingSaving(true);
     setTrendingError(null);
     try {
-      const vault = await getOpenVault();
       const fields = fieldLabels
         .map((label) => label.trim())
         .filter((label) => label.length > 0)
         .map((label) => ({ slug: slugify(label), label }))
         .filter((f) => f.slug.length > 0)
         .slice(0, MAX_TRACKED_FIELDS);
-      await saveTrendingSettings(vault, { fields, cadence });
+      await saveTrendingSettingsRemote({ fields, cadence });
       setFieldLabels(fields.map((f) => f.label));
       setTrendingStatus("Saved");
       setTimeout(() => setTrendingStatus(null), 2000);
