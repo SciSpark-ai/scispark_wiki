@@ -68,7 +68,30 @@ export interface OpenAlexQuery {
 export interface OpenAlexDeps {
   fetchFn?: typeof fetch
   mailto?: string
+  /** Injectable delay for retry backoff (tests pass a no-op to avoid real waits). */
+  sleep?: (ms: number) => Promise<void>
+  /** Total attempts including the first (default 3). */
+  maxAttempts?: number
 }
+
+// Mirrors arxiv.ts's retry hardening: OpenAlex is politeness-rate-limited and sheds
+// load under bursts with 429s (trending's per-week count queries fan out several
+// calls back to back). Retry those transient statuses with backoff rather than
+// failing the whole series on the first blip. Constants are kept local to this
+// file (same as arxiv.ts keeps its own) rather than shared, to avoid coupling the
+// two source modules.
+const RETRYABLE_STATUS = (status: number): boolean => status === 429 || status >= 500
+const DEFAULT_MAX_ATTEMPTS = 3
+const BACKOFF_BASE_MS = 500
+const BACKOFF_CAP_MS = 8000
+
+function backoffDelayMs(attempt: number, retryAfterHeader: string | null): number {
+  const ra = retryAfterHeader != null ? Number(retryAfterHeader) : NaN
+  if (Number.isFinite(ra) && ra > 0) return Math.min(ra * 1000, BACKOFF_CAP_MS)
+  return Math.min(BACKOFF_BASE_MS * 2 ** attempt, BACKOFF_CAP_MS)
+}
+
+const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * Extracts the trailing path segment from an OpenAlex entity URL, e.g.
@@ -181,25 +204,55 @@ function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps): string {
 }
 
 /**
+ * Shared fetch-with-retry loop used by both searchOpenAlex and
+ * countOpenAlexWorks. Attempts the request up to maxAttempts times, retrying
+ * on retryable HTTP statuses (429/5xx) and network/timeout errors with
+ * backoff (honoring Retry-After when present); returns the parsed JSON body
+ * on success or throws PaperSourceError on exhaustion / non-retryable status.
+ */
+async function fetchOpenAlexJson(url: string, deps: OpenAlexDeps): Promise<unknown> {
+  const fetchFn = deps.fetchFn ?? fetch
+  const sleep = deps.sleep ?? realSleep
+  const maxAttempts = deps.maxAttempts ?? DEFAULT_MAX_ATTEMPTS
+
+  let lastError: PaperSourceError | undefined
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let response: Response
+    try {
+      response = await fetchWithTimeout(fetchFn, url)
+    } catch (err) {
+      // Network error — transient, retry with backoff.
+      lastError = new PaperSourceError(err instanceof Error ? err.message : "OpenAlex request failed")
+      if (attempt < maxAttempts - 1) {
+        await sleep(backoffDelayMs(attempt, null))
+        continue
+      }
+      throw lastError
+    }
+
+    if (response.ok) {
+      return (await response.json()) as unknown
+    }
+
+    lastError = new PaperSourceError(`OpenAlex request failed with status ${response.status}`, response.status)
+    if (RETRYABLE_STATUS(response.status) && attempt < maxAttempts - 1) {
+      await sleep(backoffDelayMs(attempt, response.headers.get("retry-after")))
+      continue
+    }
+    throw lastError
+  }
+
+  // Unreachable: the loop returns or throws on every path.
+  throw lastError ?? new PaperSourceError("OpenAlex request failed")
+}
+
+/**
  * Searches OpenAlex's /works endpoint and maps results into the unified
  * PaperRecord schema. Never logs the query text (privacy constraint).
  */
 export async function searchOpenAlex(q: OpenAlexQuery, deps: OpenAlexDeps = {}): Promise<PaperRecord[]> {
-  const fetchFn = deps.fetchFn ?? fetch
   const url = buildUrl(q, deps)
-
-  let response: Response
-  try {
-    response = await fetchWithTimeout(fetchFn, url)
-  } catch (err) {
-    throw new PaperSourceError(err instanceof Error ? err.message : "OpenAlex request failed")
-  }
-
-  if (!response.ok) {
-    throw new PaperSourceError(`OpenAlex request failed with status ${response.status}`, response.status)
-  }
-
-  const body = (await response.json()) as OpenAlexWorksResponse
+  const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexWorksResponse
   const results = body.results ?? []
   return results.map(mapWork)
 }
@@ -213,20 +266,7 @@ export async function countOpenAlexWorks(
   q: { query: string; fromDate: string; toDate: string },
   deps: OpenAlexDeps = {},
 ): Promise<number> {
-  const fetchFn = deps.fetchFn ?? fetch
   const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate, limit: 1 }, deps)
-
-  let response: Response
-  try {
-    response = await fetchWithTimeout(fetchFn, url)
-  } catch (err) {
-    throw new PaperSourceError(err instanceof Error ? err.message : "OpenAlex request failed")
-  }
-
-  if (!response.ok) {
-    throw new PaperSourceError(`OpenAlex request failed with status ${response.status}`, response.status)
-  }
-
-  const body = (await response.json()) as OpenAlexWorksResponse
+  const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexWorksResponse
   return body.meta?.count ?? 0
 }

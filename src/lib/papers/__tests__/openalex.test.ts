@@ -11,6 +11,9 @@ function fakeFetch(body: unknown, status = 200) {
   })) as unknown as typeof fetch
 }
 
+// A no-op sleep so retry-path tests never wait on real backoff timers.
+const noSleep = async () => {}
+
 describe("searchOpenAlex", () => {
   it("maps a work record with a full set of fields (Swin Transformer fixture)", async () => {
     const record = fixture.results[0]
@@ -287,14 +290,14 @@ describe("searchOpenAlex", () => {
     })
   })
 
-  it("wraps a network-level throw in PaperSourceError without a status", async () => {
+  it("wraps a persistent network-level throw in PaperSourceError without a status (after retries)", async () => {
     const fetchFn = vi.fn(async () => {
       throw new Error("network down")
     }) as unknown as typeof fetch
 
-    await expect(searchOpenAlex({ query: "x" }, { fetchFn })).rejects.toBeInstanceOf(PaperSourceError)
+    await expect(searchOpenAlex({ query: "x" }, { fetchFn, sleep: noSleep })).rejects.toBeInstanceOf(PaperSourceError)
     try {
-      await searchOpenAlex({ query: "x" }, { fetchFn })
+      await searchOpenAlex({ query: "x" }, { fetchFn, sleep: noSleep })
       expect.unreachable()
     } catch (err) {
       expect(err).toBeInstanceOf(PaperSourceError)
@@ -306,6 +309,53 @@ describe("searchOpenAlex", () => {
     const fetchFn = fakeFetch({})
     const results = await searchOpenAlex({ query: "x" }, { fetchFn })
     expect(results).toEqual([])
+  })
+
+  it("RETRY: recovers when a 429 is followed by a 200", async () => {
+    let call = 0
+    const fetchFn = vi.fn(async () => {
+      call++
+      return call === 1
+        ? new Response("", { status: 429, headers: { "retry-after": "0" } })
+        : new Response(JSON.stringify({ results: [] }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    const results = await searchOpenAlex({ query: "x" }, { fetchFn, sleep: noSleep })
+    expect(results).toEqual([])
+    expect(fetchFn).toHaveBeenCalledTimes(2)
+  })
+
+  it("throws PaperSourceError with status after exhausting retries on a persistent 500", async () => {
+    const fetchFn = vi.fn(async () => new Response("", { status: 500 })) as unknown as typeof fetch
+
+    await expect(searchOpenAlex({ query: "x" }, { fetchFn, sleep: noSleep })).rejects.toMatchObject({
+      name: "PaperSourceError",
+      status: 500,
+    })
+    // Retried up to the default 3 attempts before giving up.
+    expect(fetchFn).toHaveBeenCalledTimes(3)
+  })
+
+  it("does NOT retry a non-retryable 4xx (e.g. 400) — throws immediately", async () => {
+    const fetchFn = vi.fn(async () => new Response("", { status: 400 })) as unknown as typeof fetch
+    await expect(searchOpenAlex({ query: "x" }, { fetchFn, sleep: noSleep })).rejects.toMatchObject({
+      name: "PaperSourceError",
+      status: 400,
+    })
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+
+  it("RETRY: recovers when a transient network throw is followed by a 200", async () => {
+    let call = 0
+    const fetchFn = vi.fn(async () => {
+      call++
+      if (call === 1) throw new Error("ECONNRESET")
+      return new Response(JSON.stringify({ results: [] }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    const results = await searchOpenAlex({ query: "x" }, { fetchFn, sleep: noSleep })
+    expect(results).toEqual([])
+    expect(fetchFn).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -330,11 +380,43 @@ describe("countOpenAlexWorks", () => {
     expect(await countOpenAlexWorks({ query: "x", fromDate: "2026-07-06", toDate: "2026-07-12" }, { fetchFn })).toBe(0)
   })
 
-  it("throws PaperSourceError on a non-200", async () => {
+  it("throws PaperSourceError after exhausting retries on a persistent 429", async () => {
     const fetchFn = (async () => new Response("", { status: 429 })) as unknown as typeof fetch
-    await expect(countOpenAlexWorks({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn })).rejects.toThrow(
-      PaperSourceError,
-    )
+    await expect(
+      countOpenAlexWorks({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn, sleep: noSleep }),
+    ).rejects.toThrow(PaperSourceError)
+  })
+
+  it("RETRY: recovers when a 429 is followed by a 200 (2 calls, returns meta.count)", async () => {
+    let call = 0
+    const fetchFn = vi.fn(async () => {
+      call++
+      return call === 1
+        ? new Response("", { status: 429, headers: { "retry-after": "0" } })
+        : new Response(JSON.stringify({ results: [], meta: { count: 42 } }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    const n = await countOpenAlexWorks({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn, sleep: noSleep })
+    expect(n).toBe(42)
+    expect(fetchFn).toHaveBeenCalledTimes(2)
+  })
+
+  it("throws PaperSourceError with status after exhausting 3 attempts on a persistent 500", async () => {
+    const fetchFn = vi.fn(async () => new Response("", { status: 500 })) as unknown as typeof fetch
+
+    await expect(
+      countOpenAlexWorks({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn, sleep: noSleep }),
+    ).rejects.toMatchObject({ name: "PaperSourceError", status: 500 })
+    expect(fetchFn).toHaveBeenCalledTimes(3)
+  })
+
+  it("does NOT retry a non-retryable 400 — throws immediately (1 call)", async () => {
+    const fetchFn = vi.fn(async () => new Response("", { status: 400 })) as unknown as typeof fetch
+
+    await expect(
+      countOpenAlexWorks({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn, sleep: noSleep }),
+    ).rejects.toMatchObject({ name: "PaperSourceError", status: 400 })
+    expect(fetchFn).toHaveBeenCalledTimes(1)
   })
 
   it("passes mailto through when provided in deps", async () => {

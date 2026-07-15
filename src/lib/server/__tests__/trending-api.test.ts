@@ -36,7 +36,8 @@ describe("trending skill routes", () => {
 
   it("POST /api/skills/trending/refresh streams per-field progress, result parses as a TrendingDashboard, and the cache is written to the test vault", async () => {
     const provider = new MockProvider([structured(SURVEY), structured(SURVEY)])
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn })
+    const countFn: CountFn = async () => 1
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn })
 
     const fields = [
       { slug: "nlp", label: "NLP" },
@@ -72,7 +73,8 @@ describe("trending skill routes", () => {
 
   it("POST /api/skills/trending/refresh: a skill failure still terminates the stream with a usable (degraded) dashboard result, not a terminal error", async () => {
     const provider = new MockProvider([new Error("llm exploded")])
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn })
+    const countFn: CountFn = async () => 1
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn })
 
     const res = await refreshRoute.POST(
       new Request("http://x/api/skills/trending/refresh", {
@@ -116,7 +118,8 @@ describe("trending skill routes", () => {
     const { saveTrendingSettings } = await import("../../trending/settings")
     await saveTrendingSettings(storage, { fields: [{ slug: "nlp", label: "NLP" }], cadence: "weekly" })
     const provider = new MockProvider([structured(SURVEY)])
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn })
+    const countFn: CountFn = async () => 1
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn })
 
     const res = await autoRefreshRoute.POST(
       new Request("http://x/api/skills/trending/auto-refresh", { method: "POST", body: JSON.stringify({}) }),
