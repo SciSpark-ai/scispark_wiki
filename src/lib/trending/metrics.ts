@@ -1,6 +1,7 @@
 import type { PaperRecord } from "../papers/types"
 import type { TrendingCandidates } from "./retrieve"
 import { paperDate } from "./paper-date"
+import { isoWeekStart, buildWeekStarts } from "./weeks"
 
 export interface VolumePoint {
   /** ISO date (YYYY-MM-DD) of the week's Monday, UTC. */
@@ -24,14 +25,6 @@ const DEFAULT_WEEKS = 8
 const TOP_MOVERS = 5
 const TOP_VENUES = 5
 const DAY_MS = 24 * 60 * 60 * 1000
-
-/** UTC Monday of the week containing `d`, as a YYYY-MM-DD string. */
-function isoWeekStart(d: Date): string {
-  const day = d.getUTCDay() // 0=Sun..6=Sat
-  const deltaToMonday = (day + 6) % 7 // Mon→0, Sun→6
-  const monday = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - deltaToMonday))
-  return monday.toISOString().slice(0, 10)
-}
 
 /**
  * Computes field-level trending metrics from candidates already retrieved by
@@ -69,15 +62,9 @@ export function computeFieldMetrics(
   const pctChange = paperCountPrior === 0 ? null : (paperCountRecent - paperCountPrior) / paperCountPrior
 
   // Weekly volume: fixed-length, zero-filled series ending at the current week.
-  const thisWeekStart = isoWeekStart(opts.now)
+  const weekStarts = buildWeekStarts(opts.now, weeks)
   const buckets = new Map<string, number>()
-  const weekStarts: string[] = []
-  const anchor = new Date(`${thisWeekStart}T00:00:00.000Z`)
-  for (let i = weeks - 1; i >= 0; i--) {
-    const ws = new Date(anchor.getTime() - i * 7 * DAY_MS).toISOString().slice(0, 10)
-    weekStarts.push(ws)
-    buckets.set(ws, 0)
-  }
+  for (const ws of weekStarts) buckets.set(ws, 0)
   for (const p of candidates.movers) {
     const d = paperDate(p)
     if (d === null) continue
