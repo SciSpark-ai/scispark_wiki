@@ -86,31 +86,6 @@ export const feedStrategySkill: SkillDefinition<{ userContextText: string }, Fee
 
 export type SearchFn = (source: string, query: string, limit: number) => Promise<PaperRecord[]>
 
-/** Response envelope shape returned by /api/search/{source} — see search-core.ts. */
-interface SearchApiEnvelope {
-  papers?: unknown
-  error?: string
-}
-
-/**
- * Browser-side `SearchFn`: hits the app's own `/api/search/{source}` proxy route.
- * A failed query (non-OK response, malformed body, or a thrown/rejected fetch) never
- * kills the feed — it resolves to `[]` so the other queries' results still come back.
- */
-export function browserSearchFn(fetchImpl: typeof fetch = fetch): SearchFn {
-  return async (source, query, limit) => {
-    try {
-      const url = `/api/search/${source}?q=${encodeURIComponent(query)}&limit=${limit}`
-      const res = await fetchImpl(url)
-      if (!res.ok) return []
-      const body = (await res.json()) as SearchApiEnvelope
-      return Array.isArray(body?.papers) ? (body.papers as PaperRecord[]) : []
-    } catch {
-      return []
-    }
-  }
-}
-
 /**
  * Reconstructs a `paperKey`-compatible dedupe key from a vault paper page's frontmatter,
  * using `paperKey` itself so the normalization (DOI stripping/lowercasing, id precedence,

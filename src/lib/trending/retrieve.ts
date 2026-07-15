@@ -36,7 +36,7 @@ function dedupe(records: PaperRecord[]): PaperRecord[] {
  * Retrieves candidate papers for a field: `recent` (published within the
  * window) and `movers` (citation-sorted). Runs both queries over the keyless
  * sources concurrently; a failed source contributes []. Pure w.r.t. storage —
- * `searchFn` is injected (browserSearchFn in the app, a node searchFn in tests).
+ * `searchFn` is injected (a `SearchFn` implementation in the app, a node searchFn in tests).
  */
 export async function retrieveFieldCandidates(
   searchFn: SearchFn,

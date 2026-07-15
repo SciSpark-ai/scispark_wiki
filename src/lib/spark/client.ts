@@ -5,7 +5,7 @@ import type { DeepSparkResult } from "./deep"
 /**
  * Browser-side callers for the spark quick/seed/deep/estimate skill routes
  * (M11 Task 8). `SparkPanel` used to build the orchestrators' deps itself
- * (`getOpenVault` + `loadSettings` + `browserSearchFn` + `runQuickSpark`/
+ * (`getOpenVault` + `loadSettings` + a `SearchFn` implementation + `runQuickSpark`/
  * `saveSeed`/`runDeepSpark`/`estimateDeepSparkCost`) — it now just POSTs to
  * these routes, which own the vault/settings/searchFn/LLM keys entirely
  * server-side, mirroring each function's prior call shape exactly so the

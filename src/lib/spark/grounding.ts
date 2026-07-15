@@ -34,7 +34,7 @@ export interface SparkGrounding {
   contextText: string
 }
 
-/** Same shape as the M5 `browserSearchFn` (src/lib/skills/feed.ts) — the app's
+/** Same shape as the M5 `SearchFn` (src/lib/skills/feed.ts) — the app's
  * `/api/search/{source}` proxy passthrough, injected so this module never
  * calls an upstream provider directly. */
 export type SearchFn = (source: string, query: string, limit: number) => Promise<PaperRecord[]>

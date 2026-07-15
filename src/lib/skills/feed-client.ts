@@ -4,7 +4,7 @@ import type { FeedResult, FeedStage } from "./feed"
 /**
  * Browser-side callers for the feed + consolidation skill routes (M11 Task 6).
  * FeedRefreshBar used to build the orchestrators' deps itself (loadSettings +
- * browserSearchFn + runFeed/runConsolidation) — it now just POSTs to these
+ * a `SearchFn` implementation + runFeed/runConsolidation) — it now just POSTs to these
  * routes, which own settings/searchFn/LLM keys entirely server-side.
  *
  * Imports `readNdjson` from `../server/ndjson` (a truly isomorphic module with
