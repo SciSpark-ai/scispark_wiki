@@ -45,4 +45,37 @@ describe("fetchWeeklyVolume", () => {
     expect(peak).toBeLessThanOrEqual(4)
     expect(vol?.length).toBe(weekStarts.length)
   })
+
+  it("preserves output order aligned to weekStarts even when count queries complete out of order", async () => {
+    // Use >= 4 weekStarts to cross the concurrency cap (MAX_CONCURRENCY = 4)
+    const weekStarts = ["2026-06-01", "2026-06-08", "2026-06-15", "2026-06-22", "2026-06-29"]
+
+    // Each week resolves with a delay inversely proportional to its index in the array.
+    // First weekStart (index 0) gets longest delay, last gets shortest.
+    // This ensures out-of-order completion (later weeks resolve first),
+    // testing that the function re-associates results back to the correct weekStarts by index.
+    const countFn: CountFn = async (q) => {
+      const index = weekStarts.indexOf(q.fromDate)
+      if (index === -1) throw new Error(`Unexpected weekStart: ${q.fromDate}`)
+
+      // Delay inversely proportional to index (first week = longest delay)
+      const delayMs = (weekStarts.length - index) * 15
+      await new Promise((r) => setTimeout(r, delayMs))
+
+      // Return a count unique to this week (100 + index), so we can verify correct re-association
+      return 100 + index
+    }
+
+    const vol = await fetchWeeklyVolume(countFn, "test-query", weekStarts)
+
+    // Assert order is preserved: output order must match input weekStarts order
+    expect(vol).not.toBeNull()
+    expect(vol!.map((v) => v.weekStart)).toEqual(weekStarts)
+
+    // Assert each count is correctly associated with its weekStart by index, not completion order
+    weekStarts.forEach((weekStart, i) => {
+      const point = vol!.find((v) => v.weekStart === weekStart)
+      expect(point?.count).toBe(100 + i)
+    })
+  })
 })
