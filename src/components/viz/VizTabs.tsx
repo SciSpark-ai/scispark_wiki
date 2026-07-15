@@ -15,7 +15,7 @@ interface VizTabsProps {
 }
 
 /** The dashboard's Graph|Timeline|Citations|Authors tab bar, styled as the
- * app's pill toggles (mirrors the specialty-filter chips in FeedTabs). */
+ * app's pill toggles. */
 export function VizTabs({ active, onChange }: VizTabsProps) {
   return (
     <div className="flex gap-2" role="tablist" aria-label="Dashboard views">
