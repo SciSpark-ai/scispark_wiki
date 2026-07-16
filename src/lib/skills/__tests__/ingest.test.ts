@@ -6,13 +6,15 @@ import { DEFAULT_SETTINGS, type LLMSettings } from "../../llm/settings"
 import type { LLMResult } from "../../llm/types"
 import type { PaperRecord } from "../../papers/types"
 import { parseDocument } from "../../vault/frontmatter"
-import { composePage } from "../../wiki/authoring"
+import { composePage, type PageDraft } from "../../wiki/authoring"
 import type { AnalysisResult } from "../ingest-analysis"
 import { runSkill } from "../runner"
 import {
+  dedupeAuthorFiles,
   GenerationSchema,
   ingestSkill,
   undoIngest,
+  type GenerationFile,
   type GenerationResult,
   type IngestInput,
   type IngestOutput,
@@ -684,5 +686,79 @@ describe("undoIngest", () => {
     const storage = new MemoryVaultStorage()
     await seedVault(storage)
     await expect(undoIngest(storage, "cs-missing")).rejects.toThrow(/not found/i)
+  })
+})
+
+describe("dedupeAuthorFiles (F8 — author page dedup)", () => {
+  const lalorSkeleton: PageDraft = {
+    path: "wiki/authors/a5074790393.md",
+    frontmatter: {
+      type: "author",
+      title: "Edmund C. Lalor",
+      created: TODAY,
+      updated: TODAY,
+      tags: [],
+      related: [],
+      sources: [],
+      openalex: "A5074790393",
+    },
+    body: "# Edmund C. Lalor\n",
+  }
+
+  const gen = (over: Partial<GenerationFile>): GenerationFile => ({
+    path: "wiki/x.md",
+    type: "concept",
+    title: "X",
+    tags: [],
+    related: [],
+    body: "# X\n",
+    ...over,
+  })
+
+  it("drops an LLM author page that duplicates a deterministic author by name slug", () => {
+    const dup = gen({
+      path: "wiki/authors/edmund-c-lalor.md",
+      type: "author",
+      title: "Edmund C. Lalor",
+      body: "# Edmund C. Lalor\n",
+    })
+    const out = dedupeAuthorFiles([dup], [lalorSkeleton])
+    expect(out).toHaveLength(0)
+  })
+
+  it("rewrites body wikilinks and related refs from the dropped name slug to the canonical id slug", () => {
+    const dup = gen({ path: "wiki/authors/edmund-c-lalor.md", type: "author", title: "Edmund C. Lalor" })
+    const concept = gen({
+      path: "wiki/methods/trf-estimation.md",
+      type: "method",
+      title: "TRF Estimation",
+      related: ["edmund-c-lalor", "ridge-regularization"],
+      body: "# TRF Estimation\n\nPopularized by [[edmund-c-lalor]] and used with [[edmund-c-lalor|Ed Lalor]].\n",
+    })
+    const out = dedupeAuthorFiles([dup, concept], [lalorSkeleton])
+    expect(out).toHaveLength(1)
+    const kept = out[0]
+    expect(kept.path).toBe("wiki/methods/trf-estimation.md")
+    expect(kept.body).toContain("[[a5074790393]]")
+    expect(kept.body).toContain("[[a5074790393|Ed Lalor]]")
+    expect(kept.body).not.toContain("edmund-c-lalor")
+    expect(kept.related).toEqual(["a5074790393", "ridge-regularization"])
+  })
+
+  it("keeps LLM author pages for authors not among the paper's deterministic authors", () => {
+    const other = gen({
+      path: "wiki/authors/jane-doe.md",
+      type: "author",
+      title: "Jane Doe",
+      body: "# Jane Doe\n",
+    })
+    const out = dedupeAuthorFiles([other], [lalorSkeleton])
+    expect(out).toHaveLength(1)
+    expect(out[0].path).toBe("wiki/authors/jane-doe.md")
+  })
+
+  it("is a no-op when there are no deterministic author drafts", () => {
+    const files = [gen({ path: "wiki/authors/edmund-c-lalor.md", type: "author", title: "Edmund C. Lalor" })]
+    expect(dedupeAuthorFiles(files, [])).toEqual(files)
   })
 })
