@@ -57,6 +57,24 @@ describe("seedUserModel", () => {
     expect(feedback).toContain("- (none yet)")
   })
 
+  it("splits a comma/semicolon-separated topics answer into one bullet per topic", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedUserModel(
+      storage,
+      {
+        role: "postdoc",
+        fields: "auditory neuroscience",
+        topics: "cortical tracking of speech, the FFR; auditory attention decoding",
+        feedPrefs: "",
+      },
+      () => new Date(2026, 6, 12, 9, 0, 0),
+    )
+    const interests = await storage.read(USER_MODEL_PATHS.interests)
+    expect(interests).toContain("- cortical tracking of speech")
+    expect(interests).toContain("- the FFR")
+    expect(interests).toContain("- auditory attention decoding")
+  })
+
   it("throws when profile.md already exists (refuses to re-seed)", async () => {
     const storage = new MemoryVaultStorage()
     await seedUserModel(storage, answers, () => new Date(2026, 6, 12, 9, 0, 0))

@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useUserStore } from "@/stores/user-store";
 import { getOpenVault } from "@/lib/vault/get-vault";
@@ -6,15 +7,37 @@ import { readUserModel } from "@/lib/usermodel/pages";
 import { effectiveTrackedFields, slugify, MAX_TRACKED_FIELDS } from "@/lib/trending/fields";
 import { loadTrendingSettings, saveTrendingSettings, type Cadence } from "@/lib/trending/settings";
 
-export default function ProfilePage() {
-  const { user, preferences, setPreferences } = useUserStore();
+/**
+ * Parses a user-model markdown page (e.g. profile.md) into its `## ` sections
+ * for read-only display, skipping the top-level `# ` title and any preamble
+ * note before the first section. Only sections with body text are returned.
+ */
+function parseProfileSections(md: string): { heading: string; body: string }[] {
+  const sections: { heading: string; body: string }[] = [];
+  let current: { heading: string; body: string[] } | null = null;
+  for (const line of md.split("\n")) {
+    const h = line.match(/^##\s+(.*\S)\s*$/);
+    if (h) {
+      if (current)
+        sections.push({ heading: current.heading, body: current.body.join("\n").trim() });
+      current = { heading: h[1].trim(), body: [] };
+    } else if (current) {
+      current.body.push(line);
+    }
+  }
+  if (current)
+    sections.push({ heading: current.heading, body: current.body.join("\n").trim() });
+  return sections.filter((s) => s.body.length > 0);
+}
 
-  const [specialty, setSpecialty] = useState(preferences.specialty);
-  const [role, setRole] = useState(preferences.role);
-  const [literatureHabits, setLiteratureHabits] = useState(
-    preferences.literatureHabits
-  );
+export default function ProfilePage() {
+  const { user } = useUserStore();
+
   const [language, setLanguage] = useState<"EN" | "ZH">("EN");
+
+  // The real profile.md content (seeded by onboarding, agent-maintained),
+  // shown read-only in place of the old fork-mock clinical preferences card.
+  const [profileText, setProfileText] = useState<string | null>(null);
 
   // Trending fields + cadence — loaded from .scispark/settings.json,
   // seeded from interests.md's Active topics when no settings are saved yet.
@@ -28,20 +51,38 @@ export default function ProfilePage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      let vault;
       try {
-        const vault = await getOpenVault();
-        const [settings, userModel] = await Promise.all([
-          loadTrendingSettings(vault),
-          readUserModel(vault),
-        ]);
-        const fields = effectiveTrackedFields(settings.fields, userModel.interests);
-        if (cancelled) return;
-        setFieldLabels(fields.map((f) => f.label));
-        setCadence(settings.cadence);
+        vault = await getOpenVault();
       } catch (e) {
         if (!cancelled) {
           setTrendingError(e instanceof Error ? e.message : String(e));
+          setTrendingLoading(false);
         }
+        return;
+      }
+
+      // The read-only profile card reads the plain user-model pages, which are
+      // always reachable. Load it independently so a trending-settings failure
+      // (e.g. the settings file being unreachable via the vault API) can't
+      // blank the profile card too.
+      let interests: string | null = null;
+      try {
+        const userModel = await readUserModel(vault);
+        if (!cancelled) setProfileText(userModel.profile);
+        interests = userModel.interests;
+      } catch (e) {
+        if (!cancelled) setTrendingError(e instanceof Error ? e.message : String(e));
+      }
+
+      try {
+        const settings = await loadTrendingSettings(vault);
+        if (cancelled) return;
+        const fields = effectiveTrackedFields(settings.fields, interests);
+        setFieldLabels(fields.map((f) => f.label));
+        setCadence(settings.cadence);
+      } catch (e) {
+        if (!cancelled) setTrendingError(e instanceof Error ? e.message : String(e));
       } finally {
         if (!cancelled) setTrendingLoading(false);
       }
@@ -86,21 +127,7 @@ export default function ProfilePage() {
   }
 
   const avatarInitial = user?.name?.charAt(0)?.toUpperCase() ?? "?";
-
-  function handleSpecialtyChange(value: string) {
-    setSpecialty(value);
-    setPreferences({ specialty: value });
-  }
-
-  function handleRoleChange(value: string) {
-    setRole(value);
-    setPreferences({ role: value });
-  }
-
-  function handleLiteratureHabitsChange(value: string) {
-    setLiteratureHabits(value);
-    setPreferences({ literatureHabits: value });
-  }
+  const profileSections = profileText ? parseProfileSections(profileText) : [];
 
   return (
     <div className="p-7">
@@ -123,103 +150,39 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Section 2: Preferences */}
+      {/* Section 2: Research profile (real user-model page, read-only) */}
       <div className="bg-white rounded-[14px] border border-border-warm/30 p-6 mt-4">
-        <h2 className="font-heading text-[18px] text-espresso mb-4">
-          Preferences
+        <h2 className="font-heading text-[18px] text-espresso mb-1">
+          Research profile
         </h2>
-        <div className="space-y-5">
-          {/* Specialty */}
-          <div>
-            <label className="block text-[13px] text-muted-text font-medium uppercase tracking-[0.06em] mb-1.5">
-              Specialty
-            </label>
-            <select
-              value={specialty}
-              onChange={(e) => handleSpecialtyChange(e.target.value)}
-              className="w-full bg-light-surface border border-border-warm/30 rounded-[10px] px-3 py-2.5 text-[14px] text-espresso focus:outline-none focus:border-orange/50"
-            >
-              {[
-                "Psychiatry",
-                "Neurology",
-                "Cardiology",
-                "Oncology",
-                "Pediatrics",
-                "Internal Medicine",
-                "Other",
-              ].map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
+        <p className="text-[13px] text-muted-text mb-4">
+          Seeded from onboarding and maintained by SciSpark&rsquo;s agents from
+          your activity.
+        </p>
+        {trendingLoading ? (
+          <p className="text-[14px] text-muted-text">Loading…</p>
+        ) : profileSections.length === 0 ? (
+          <p className="text-[14px] text-muted-text">
+            No profile yet.{" "}
+            <Link href="/onboarding" className="text-orange hover:underline">
+              Complete onboarding
+            </Link>{" "}
+            to build one.
+          </p>
+        ) : (
+          <div className="space-y-5">
+            {profileSections.map((section) => (
+              <div key={section.heading}>
+                <label className="block text-[13px] text-muted-text font-medium uppercase tracking-[0.06em] mb-1.5">
+                  {section.heading}
+                </label>
+                <p className="text-[14px] text-espresso whitespace-pre-line leading-[1.55]">
+                  {section.body}
+                </p>
+              </div>
+            ))}
           </div>
-
-          {/* Role */}
-          <div>
-            <label className="block text-[13px] text-muted-text font-medium uppercase tracking-[0.06em] mb-1.5">
-              Role
-            </label>
-            <select
-              value={role}
-              onChange={(e) => handleRoleChange(e.target.value)}
-              className="w-full bg-light-surface border border-border-warm/30 rounded-[10px] px-3 py-2.5 text-[14px] text-espresso focus:outline-none focus:border-orange/50"
-            >
-              {[
-                "Attending Physician",
-                "Researcher",
-                "Resident",
-                "Fellow",
-                "NP/PA",
-              ].map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Interests */}
-          <div>
-            <label className="block text-[13px] text-muted-text font-medium uppercase tracking-[0.06em] mb-1.5">
-              Interests
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {preferences.interests.map((interest) => (
-                <span
-                  key={interest}
-                  className="px-3 py-1 rounded-pill text-[13px] bg-card-surface text-espresso border border-border-warm/30"
-                >
-                  {interest}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Literature Habits */}
-          <div>
-            <label className="block text-[13px] text-muted-text font-medium uppercase tracking-[0.06em] mb-1.5">
-              Literature Habits
-            </label>
-            <select
-              value={literatureHabits}
-              onChange={(e) => handleLiteratureHabitsChange(e.target.value)}
-              className="w-full bg-light-surface border border-border-warm/30 rounded-[10px] px-3 py-2.5 text-[14px] text-espresso focus:outline-none focus:border-orange/50"
-            >
-              {[
-                "PubMed alerts",
-                "Journal subscriptions",
-                "Colleague recommendations",
-                "Twitter/X",
-                "I don't (that's why I'm here)",
-              ].map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Section 2.5: Trending fields */}
