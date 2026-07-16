@@ -165,3 +165,27 @@
   padding: 0.1rem 0.5rem;
   margin: 0.15rem 0;
 }
+
+/* Paper figures relayed through /api/fetch (sanitizer rewrites <img src>). */
+.reader-surface img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Native MathML Core equations (LaTeXML markup passed through the
+   sanitizer). LaTeXML lays display equations out as "equation tables" —
+   those must not inherit the data-table borders above. */
+.reader-surface math[display="block"] { margin: 0.5rem 0; }
+.reader-surface table.ltx_equationgroup,
+.reader-surface table.ltx_equation {
+  width: auto;
+  margin: 0.75rem auto;
+}
+.reader-surface table.ltx_equationgroup td,
+.reader-surface table.ltx_equationgroup th,
+.reader-surface table.ltx_equation td,
+.reader-surface table.ltx_equation th {
+  border: none;
+  padding: 0.1rem 0.3rem;
+  vertical-align: middle;
+}

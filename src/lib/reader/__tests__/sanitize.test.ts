@@ -105,3 +105,120 @@ describe("sanitizePaperHtml", () => {
     expect(first).toBe(second)
   })
 })
+
+describe("sanitizePaperHtml — figure images", () => {
+  const resolveToRelay = (raw: string) =>
+    raw.startsWith("extracted/") ? "/api/fetch?url=" + encodeURIComponent("https://arxiv.org/html/v1/" + raw) : null
+
+  it("keeps an <img> whose src the resolver rewrites through the relay", () => {
+    const out = sanitizePaperHtml(
+      '<figure><img src="extracted/5852395/F2.jpg" alt="Refer to caption" width="598" height="255" onerror="p0wn()"><figcaption>Fig 1</figcaption></figure>',
+      { resolveImageSrc: resolveToRelay },
+    )
+    expect(out).toContain("<img")
+    expect(out).toContain('src="/api/fetch?url=' + encodeURIComponent("https://arxiv.org/html/v1/extracted/5852395/F2.jpg").replace(/&/g, "&amp;"))
+    expect(out).toContain('alt="Refer to caption"')
+    expect(out).toContain('width="598"')
+    expect(out).toContain('loading="lazy"')
+    expect(out).not.toContain("onerror")
+    expect(out).not.toContain("p0wn")
+    expect(out).toContain("Fig 1")
+  })
+
+  it("replaces an <img> the resolver rejects with the [figure] placeholder", () => {
+    const out = sanitizePaperHtml('<img src="https://evil.example.com/track.png">', {
+      resolveImageSrc: resolveToRelay,
+    })
+    expect(out).not.toContain("<img")
+    expect(out).not.toContain("evil.example.com")
+    expect(out).toContain('class="reader-figure-placeholder"')
+  })
+
+  it("keeps placeholder behavior when no resolver is provided (default)", () => {
+    const out = sanitizePaperHtml('<img src="extracted/5852395/F2.jpg">')
+    expect(out).not.toContain("<img")
+    expect(out).toContain('class="reader-figure-placeholder"')
+  })
+
+  it("never trusts the document's own src after resolution — the resolver's output is the only src", () => {
+    // A crafted src that the resolver rewrites still can't smuggle its raw
+    // value through: the output src must be exactly the resolver's return.
+    const out = sanitizePaperHtml('<img src="extracted/x.png?a=1&b=2">', {
+      resolveImageSrc: () => "/api/fetch?url=SAFE",
+    })
+    expect(out).toContain('src="/api/fetch?url=SAFE"')
+    expect(out).not.toContain("a=1")
+  })
+})
+
+describe("sanitizePaperHtml — MathML equations", () => {
+  // Shape emitted by arXiv's LaTeXML: presentation MathML wrapped in
+  // <semantics>, with content-MathML and the raw LaTeX source as
+  // annotations. Browsers render MathML Core natively (semantics renders
+  // its first child), so presentation markup must survive while the
+  // annotations must be dropped WITH their contents.
+  const LATEXML_EQUATION =
+    '<math alttext="\\hat{r}(t,n)" display="inline" class="ltx_Math">' +
+    "<semantics>" +
+    '<mrow><mover accent="true"><mi>r</mi><mo stretchy="false">^</mo></mover>' +
+    "<mo>⁢</mo>" +
+    '<mrow><mo stretchy="false">(</mo><mi>t</mi><mo>,</mo><mi>n</mi><mo stretchy="false">)</mo></mrow></mrow>' +
+    '<annotation-xml encoding="MathML-Content"><apply><ci>r</ci></apply></annotation-xml>' +
+    '<annotation encoding="application/x-tex">\\hat{r}(t,n)</annotation>' +
+    "</semantics></math>"
+
+  it("keeps presentation MathML so browsers render it natively", () => {
+    const out = sanitizePaperHtml(`<p>Where ${LATEXML_EQUATION} is the estimate.</p>`)
+    expect(out).toContain("<math")
+    expect(out).toContain("<mover")
+    expect(out).toContain("<mi>r</mi>")
+    expect(out).toContain("<mo")
+    expect(out).toContain("is the estimate.")
+  })
+
+  it("keeps inert math attributes needed for correct rendering", () => {
+    const out = sanitizePaperHtml(LATEXML_EQUATION)
+    expect(out).toContain('display="inline"')
+    expect(out).toContain('stretchy="false"')
+    expect(out).toContain('accent="true"')
+  })
+
+  it("drops annotation and annotation-xml INCLUDING their contents (no LaTeX source leaking as text)", () => {
+    const out = sanitizePaperHtml(LATEXML_EQUATION)
+    expect(out).not.toContain("annotation")
+    expect(out).not.toContain("x-tex")
+    // The raw LaTeX source must not leak into VISIBLE text (it legitimately
+    // survives in <math alttext="…">, which screen readers use and layout
+    // never shows).
+    const probe = document.createElement("div")
+    probe.innerHTML = out
+    expect(probe.textContent).not.toContain("\\hat{r}")
+    // Content-MathML apply/ci must not survive either.
+    expect(out).not.toContain("<apply")
+    expect(out).not.toContain("<ci")
+  })
+
+  it("keeps display-block equations (the LaTeXML equation-table cells)", () => {
+    const out = sanitizePaperHtml(
+      '<table class="ltx_equationgroup"><tbody><tr><td>' +
+        '<math display="block"><mrow><mi>s</mi><mo>=</mo><mn>1</mn></mrow></math>' +
+        "</td></tr></tbody></table>",
+    )
+    expect(out).toContain('display="block"')
+    expect(out).toContain("<mn>1</mn>")
+  })
+
+  it("never lets script content smuggle through MathML annotation or namespace tricks", () => {
+    const out = sanitizePaperHtml(
+      "<math><semantics>" +
+        '<annotation-xml encoding="text/html"><script>steal()</script><img src="http://evil.example.com/x.png" onerror="p0wn()"></annotation-xml>' +
+        "</semantics></math>" +
+        "<math><mtext><script>evil()</script></mtext></math>",
+    )
+    expect(out).not.toContain("<script")
+    expect(out).not.toContain("steal")
+    expect(out).not.toContain("evil()")
+    expect(out).not.toContain("onerror")
+    expect(out).not.toContain("evil.example.com")
+  })
+})
