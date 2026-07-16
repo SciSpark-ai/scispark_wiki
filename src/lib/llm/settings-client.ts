@@ -7,7 +7,10 @@ export type { RedactedSettings } from "@/app/api/settings/route"
  * stored key; `""` deletes it; an omitted provider is left untouched. */
 export type SettingsPatch = Partial<LLMSettings>
 
-async function errorMessageFor(res: Response): Promise<string> {
+/** Extracts a human-readable error from a failed `/api/settings` response —
+ * the JSON `{error}` body when present, otherwise the status text. Shared by
+ * the companion/trending settings clients (same route, same error shape). */
+export async function errorMessageFor(res: Response): Promise<string> {
   const text = await res.text().catch(() => "")
   if (text) {
     try {

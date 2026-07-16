@@ -5,7 +5,8 @@ import { useUserStore } from "@/stores/user-store";
 import { getOpenVault } from "@/lib/vault/get-vault";
 import { readUserModel } from "@/lib/usermodel/pages";
 import { effectiveTrackedFields, slugify, MAX_TRACKED_FIELDS } from "@/lib/trending/fields";
-import { loadTrendingSettings, saveTrendingSettings, type Cadence } from "@/lib/trending/settings";
+import type { Cadence } from "@/lib/trending/settings";
+import { loadTrendingSettingsRemote, saveTrendingSettingsRemote } from "@/lib/trending/settings-client";
 
 /**
  * Parses a user-model markdown page (e.g. profile.md) into its `## ` sections
@@ -39,8 +40,8 @@ export default function ProfilePage() {
   // shown read-only in place of the old fork-mock clinical preferences card.
   const [profileText, setProfileText] = useState<string | null>(null);
 
-  // Trending fields + cadence — loaded from .scispark/settings.json,
-  // seeded from interests.md's Active topics when no settings are saved yet.
+  // Trending fields + cadence — read/written through /api/settings, seeded from
+  // interests.md's Active topics when no settings are saved yet.
   const [trendingLoading, setTrendingLoading] = useState(true);
   const [fieldLabels, setFieldLabels] = useState<string[]>([]);
   const [cadence, setCadence] = useState<Cadence>("weekly");
@@ -51,23 +52,12 @@ export default function ProfilePage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      let vault;
-      try {
-        vault = await getOpenVault();
-      } catch (e) {
-        if (!cancelled) {
-          setTrendingError(e instanceof Error ? e.message : String(e));
-          setTrendingLoading(false);
-        }
-        return;
-      }
-
       // The read-only profile card reads the plain user-model pages, which are
-      // always reachable. Load it independently so a trending-settings failure
-      // (e.g. the settings file being unreachable via the vault API) can't
-      // blank the profile card too.
+      // always reachable. Load it independently of the trending settings so a
+      // settings-load failure can't blank the profile card too.
       let interests: string | null = null;
       try {
+        const vault = await getOpenVault();
         const userModel = await readUserModel(vault);
         if (!cancelled) setProfileText(userModel.profile);
         interests = userModel.interests;
@@ -76,7 +66,7 @@ export default function ProfilePage() {
       }
 
       try {
-        const settings = await loadTrendingSettings(vault);
+        const settings = await loadTrendingSettingsRemote();
         if (cancelled) return;
         const fields = effectiveTrackedFields(settings.fields, interests);
         setFieldLabels(fields.map((f) => f.label));
@@ -108,14 +98,13 @@ export default function ProfilePage() {
     setTrendingSaving(true);
     setTrendingError(null);
     try {
-      const vault = await getOpenVault();
       const fields = fieldLabels
         .map((label) => label.trim())
         .filter((label) => label.length > 0)
         .map((label) => ({ slug: slugify(label), label }))
         .filter((f) => f.slug.length > 0)
         .slice(0, MAX_TRACKED_FIELDS);
-      await saveTrendingSettings(vault, { fields, cadence });
+      await saveTrendingSettingsRemote({ fields, cadence });
       setFieldLabels(fields.map((f) => f.label));
       setTrendingStatus("Saved");
       setTimeout(() => setTrendingStatus(null), 2000);

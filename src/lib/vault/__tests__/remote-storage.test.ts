@@ -26,13 +26,37 @@ describe("RemoteVaultStorage (against real route handlers)", () => {
     setServerVaultForTests(new MemoryVaultStorage())
     return new RemoteVaultStorage(routeFetch(), "http://local")
   })
+
+  // Regression: the browser's native `fetch` throws "Illegal invocation" when
+  // called with a receiver other than the global object. Requests are issued
+  // as `this.fetchFn(...)` (a method call, receiver = the storage instance),
+  // so the underlying fetch must be invoked such that ITS receiver is never
+  // the instance — otherwise every browser vault read/write bricks. A
+  // receiver-agnostic mock (like routeFetch) can't catch this, so assert the
+  // receiver directly with a plain `function` that records its `this`.
+  it("never invokes the underlying fetch with the storage instance as receiver", async () => {
+    const holder: { storage?: RemoteVaultStorage } = {}
+    let calledAsMethodOfInstance = false
+    const recordingFetch = function (this: unknown) {
+      if (this === holder.storage) calledAsMethodOfInstance = true
+      return Promise.resolve(new Response(new Uint8Array(), { status: 200 }))
+    } as unknown as typeof fetch
+
+    holder.storage = new RemoteVaultStorage(recordingFetch, "http://local")
+    await holder.storage.readBinary("foo.md")
+
+    // Broken code stored the bare global and did `this.fetchFn(...)`, making the
+    // native fetch's receiver the instance → "Illegal invocation" in a browser.
+    expect(calledAsMethodOfInstance).toBe(false)
+  })
 })
 
-// Regression: the default fetchFn must invoke the global fetch with the global
-// receiver. Assigning the bare `fetch` to a property and calling it via
-// `this.fetchFn(...)` rebinds `this` to the instance, which real browsers reject
-// with "Failed to execute 'fetch' on 'Window': Illegal invocation". Reproduce
-// that receiver check here so the wrapper default can't regress.
+// Regression for the *default* fetchFn specifically: getVault() constructs
+// `new RemoteVaultStorage()` with no args, so the no-arg default is the real
+// production path. The test above injects a fetchFn and so never exercises the
+// `= fetch` default — a future change back to storing the bare global as the
+// default would still pass it, but brick the app. Reproduce the browser's
+// receiver check against a strict global fetch through the no-arg constructor.
 describe("RemoteVaultStorage default fetchFn receiver", () => {
   const originalFetch = globalThis.fetch
 
@@ -41,8 +65,6 @@ describe("RemoteVaultStorage default fetchFn receiver", () => {
   })
 
   it("calls the global fetch without rebinding `this` to the instance", async () => {
-    // A fetch that throws Illegal-invocation-style when its receiver is not the
-    // global object — the same guard native browser fetch applies.
     const strictFetch = function (this: unknown) {
       if (this !== undefined && this !== globalThis) {
         throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation")
