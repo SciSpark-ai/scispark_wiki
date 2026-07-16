@@ -65,6 +65,41 @@ export async function listHighlights(storage: VaultStorage, paperKey: string): P
   return readHighlightsRaw(storage, paperKey)
 }
 
+/**
+ * `listHighlights` with bounded retries for TRANSPORT failures. A missing or
+ * corrupt file already resolves to [] without throwing (see listHighlights);
+ * what CAN throw is the storage read itself — over `RemoteVaultStorage`
+ * that's any non-404 HTTP failure (dev server mid-restart, transient network
+ * error). Before this, the reader's mount-time load had no recovery path: a
+ * single rejected fetch left the session with zero highlights, silently —
+ * "saved on disk but never re-painted after reload."
+ *
+ * After `attempts` consecutive failures, logs the last error and resolves []
+ * (the reader still works, just without painted highlights). `sleep` is
+ * injectable so tests don't wait out real backoff delays.
+ */
+export async function listHighlightsWithRetry(
+  storage: VaultStorage,
+  paperKey: string,
+  opts: { attempts?: number; delayMs?: number; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<Highlight[]> {
+  const attempts = opts.attempts ?? 3
+  const delayMs = opts.delayMs ?? 300
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+
+  let lastError: unknown
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await listHighlights(storage, paperKey)
+    } catch (err) {
+      lastError = err
+      if (attempt < attempts) await sleep(delayMs * attempt)
+    }
+  }
+  console.error(`listHighlightsWithRetry: all ${attempts} attempts failed for ${paperKey}`, lastError)
+  return []
+}
+
 /** Appends one highlight, serialized against concurrent add/update/remove
  * calls on the same storage so writes never drop entries. */
 export async function addHighlight(storage: VaultStorage, paperKey: string, h: Highlight): Promise<void> {

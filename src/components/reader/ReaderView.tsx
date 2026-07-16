@@ -7,11 +7,12 @@ import type { SurfaceSelection } from "./HtmlSurface"
 import SelectionBubble from "./SelectionBubble"
 import HighlightLayer from "./HighlightLayer"
 import AskPanel, { type AskState } from "./AskPanel"
+import CaptureIdeaCard from "./CaptureIdeaCard"
 import type { ReaderContent } from "@/lib/reader/load"
 import { paperKey, type PaperRecord } from "@/lib/papers/types"
 import type { VaultStorage } from "@/lib/vault/storage"
 import type { Highlight } from "@/lib/highlights/types"
-import { listHighlights, addHighlight, removeHighlight, makeHighlightId } from "@/lib/highlights/store"
+import { listHighlights, listHighlightsWithRetry, addHighlight, removeHighlight, makeHighlightId } from "@/lib/highlights/store"
 import { createAnchor } from "@/lib/highlights/anchor"
 import { captureIdeaAsNote } from "@/lib/reader/capture-idea"
 import { buildAskContext } from "@/lib/reader/ask-context"
@@ -111,6 +112,14 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
   const addingHighlightRef = useRef(false)
   const [askState, setAskState] = useState<AskState>({ status: "idle" })
   const [captureNotice, setCaptureNotice] = useState<{ path: string } | null>(null)
+  // The passage "Capture idea" was invoked on, snapshotted independently of
+  // the live selection (same pattern as askTarget): typing in the card's
+  // textarea collapses the native selection, which must not dismiss the card.
+  const [captureState, setCaptureState] = useState<{
+    target: PendingSelection
+    saving: boolean
+    error: string | null
+  } | null>(null)
 
   // Read from a ref inside async handlers so a stale closure over an earlier
   // render's `surfaceText` can never anchor/ask against outdated text.
@@ -125,7 +134,9 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const existing = await listHighlights(storage, key)
+      // Retrying load: a single transient fetch failure (e.g. dev server
+      // mid-restart) must not leave the whole session with zero highlights.
+      const existing = await listHighlightsWithRetry(storage, key)
       if (!cancelled) setHighlights(existing)
 
       void logEvent(storage, { type: "reader_open", paperKey: key, title: paper.title })
@@ -233,26 +244,39 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
     }
   }
 
-  async function handleCapture() {
+  // Open the inline capture card (replaces the old blocking window.prompt,
+  // which embedded webviews don't implement at all — it threw in the in-app
+  // preview browser).
+  function handleCapture() {
     if (!pendingSelection) return
-    const thought = window.prompt("Add a thought (optional):", "") ?? ""
-    const selectionText = pendingSelection.text
+    setCaptureState({ target: pendingSelection, saving: false, error: null })
     clearSelection()
+  }
+
+  async function submitCapture(thought: string) {
+    if (!captureState) return
+    setCaptureState({ ...captureState, saving: true, error: null })
     try {
       const { path } = await captureIdeaAsNote({
         storage,
         paperKey: key,
         paperTitle: paper.title,
         sourcePageId,
-        selection: selectionText,
+        selection: captureState.target.text,
         thought,
         today: new Date().toISOString().slice(0, 10),
         apply: (_storage, changeset) => applyChangesetRemote(changeset),
       })
+      setCaptureState(null)
       setCaptureNotice({ path })
-    } catch {
-      // Best-effort UI notice only: applyChangeset is all-or-nothing, so a
-      // throw here means nothing was partially written.
+    } catch (err) {
+      // applyChangeset is all-or-nothing, so nothing was partially written —
+      // surface the reason on the card instead of failing silently.
+      setCaptureState({
+        target: captureState.target,
+        saving: false,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 
@@ -323,8 +347,20 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
           selection={pendingSelection}
           onAsk={beginAsk}
           onHighlight={() => void handleHighlight()}
-          onCapture={() => void handleCapture()}
+          onCapture={handleCapture}
         />
+
+        {captureState && (
+          <CaptureIdeaCard
+            selectionText={captureState.target.text}
+            saving={captureState.saving}
+            error={captureState.error}
+            anchorTop={captureState.target.rectTop}
+            anchorLeft={captureState.target.rectLeft}
+            onSave={(thought) => void submitCapture(thought)}
+            onCancel={() => setCaptureState(null)}
+          />
+        )}
 
         {captureNotice && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 border border-border-warm rounded-pill bg-espresso text-white px-4 py-2 text-[13px] shadow-lg flex items-center gap-2 z-50">

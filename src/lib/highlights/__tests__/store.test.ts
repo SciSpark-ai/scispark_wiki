@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { paperKey, type PaperRecord } from "../../papers/types"
 import { sanitizeSlug, snapshotSource } from "../../wiki/acquire"
@@ -7,6 +7,7 @@ import {
   highlightsPath,
   makeHighlightId,
   listHighlights,
+  listHighlightsWithRetry,
   addHighlight,
   updateHighlight,
   removeHighlight,
@@ -186,6 +187,68 @@ describe("makeHighlightId", () => {
     expect(id1).not.toBe(id2)
     expect(id1).toMatch(/^h_\d+_\d+$/)
     expect(id2).toMatch(/^h_\d+_\d+$/)
+  })
+})
+
+describe("listHighlightsWithRetry", () => {
+  /** Storage whose reads reject `failures` times before delegating — the
+   * transport-level failure shape (RemoteVaultStorage throws on non-404
+   * errors, e.g. a dev server mid-restart), NOT a missing file (that's a
+   * null read and listHighlights already maps it to []). */
+  function flakyStorage(inner: MemoryVaultStorage, failures: number): MemoryVaultStorage {
+    let remaining = failures
+    return new Proxy(inner, {
+      get(target, prop, receiver) {
+        if (prop === "read") {
+          return async (path: string) => {
+            if (remaining > 0) {
+              remaining -= 1
+              throw new Error("fetch failed: server restarting")
+            }
+            return target.read(path)
+          }
+        }
+        return Reflect.get(target, prop, receiver)
+      },
+    })
+  }
+
+  const noSleep = () => Promise.resolve()
+
+  it("recovers from a transient read failure and returns the stored highlights", async () => {
+    const inner = new MemoryVaultStorage()
+    const key = paperKey(samplePaper)
+    const h = makeHighlight()
+    await addHighlight(inner, key, h)
+
+    const storage = flakyStorage(inner, 2)
+    const listed = await listHighlightsWithRetry(storage, key, { sleep: noSleep })
+    expect(listed).toEqual([h])
+  })
+
+  it("returns [] and logs after exhausting all attempts", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      const storage = flakyStorage(new MemoryVaultStorage(), Number.POSITIVE_INFINITY)
+      const listed = await listHighlightsWithRetry(storage, paperKey(samplePaper), { sleep: noSleep })
+      expect(listed).toEqual([])
+      expect(errorSpy).toHaveBeenCalledOnce()
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it("still resolves [] (no retries burned) for a plainly missing file", async () => {
+    const storage = new MemoryVaultStorage()
+    let sleeps = 0
+    const listed = await listHighlightsWithRetry(storage, paperKey(samplePaper), {
+      sleep: () => {
+        sleeps += 1
+        return Promise.resolve()
+      },
+    })
+    expect(listed).toEqual([])
+    expect(sleeps).toBe(0)
   })
 })
 
