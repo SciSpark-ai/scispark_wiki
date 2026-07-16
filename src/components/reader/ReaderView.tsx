@@ -54,6 +54,22 @@ function pageHref(idOrPath: string): string {
 }
 
 /**
+ * The URL the paper's HTML originally came from, for figure-src resolution
+ * (see `buildFigureSrcResolver`): a fresh acquire carries it on the content;
+ * a snapshot-hit doesn't, so fall back to the paper record's own htmlUrl,
+ * then to the arXiv-id-derived HTML home (the snapshot's own `<base href>`
+ * supplies the exact versioned path — only the origin needs to be right).
+ * Undefined ⇒ figures stay placeholders, never a wrong-host fetch.
+ */
+function figureSourceUrl(content: ReaderContent, paper: PaperRecord): string | undefined {
+  if (content.kind !== "html") return undefined
+  if (content.sourceUrl) return content.sourceUrl
+  if (paper.htmlUrl) return paper.htmlUrl
+  if (paper.ids.arxiv) return `https://arxiv.org/html/${paper.ids.arxiv}`
+  return undefined
+}
+
+/**
  * Best-effort lookup of this paper's own wiki page id (if it has been
  * ingested), for capture-idea's `related[]` link. Reconstructs a comparable
  * `PaperRecord` from each `type: paper` page's frontmatter ids, the same
@@ -309,6 +325,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
           <div className="relative">
             <HtmlSurface
               html={content.html}
+              sourceUrl={figureSourceUrl(content, paper)}
               onPlainText={setSurfaceText}
               onSelectionChange={handleHtmlSelectionChange}
               onContainerReady={setSurfaceRoot}

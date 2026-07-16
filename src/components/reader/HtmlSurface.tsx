@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { sanitizePaperHtml } from "@/lib/reader/sanitize"
+import { buildFigureSrcResolver } from "@/lib/reader/figures"
 import { plainTextOf, rangeToOffsets } from "@/lib/reader/dom-offsets"
 
 /** A completed, non-collapsed text selection inside a reading surface,
@@ -23,6 +24,11 @@ export interface HtmlSurfaceProps {
   /** Untrusted paper HTML (arXiv/PMC full text) — sanitized here via
    * `sanitizePaperHtml` before render; never passed through as-is. */
   html: string
+  /** URL the paper HTML was originally fetched from — enables figure
+   * rendering (img srcs resolve against the document's <base> + this URL's
+   * origin and rewrite through /api/fetch). Omitted ⇒ every figure stays a
+   * `[figure]` placeholder. */
+  sourceUrl?: string
   /** Emitted after every render that changes the sanitized content, with
    * the surface's flattened plain text (`plainTextOf(container)`), so
    * highlights anchor against the same text this surface actually
@@ -52,7 +58,7 @@ export interface HtmlSurfaceProps {
  * `PdfSurface` uses for its own `.highlightOverlay`), using the container
  * handed back via `onContainerReady` as `surfaceRoot`.
  */
-export default function HtmlSurface({ html, onPlainText, onSelectionChange, onContainerReady }: HtmlSurfaceProps) {
+export default function HtmlSurface({ html, sourceUrl, onPlainText, onSelectionChange, onContainerReady }: HtmlSurfaceProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
 
   // Callback props are read from refs so a new function identity on every
@@ -74,8 +80,11 @@ export default function HtmlSurface({ html, onPlainText, onSelectionChange, onCo
   // PdfSurface, but this makes the component self-safe regardless.)
   const [sanitizedHtml, setSanitizedHtml] = useState("")
   useEffect(() => {
-    setSanitizedHtml(sanitizePaperHtml(html))
-  }, [html])
+    // The resolver reads the RAW html (the <base href> lives in <head>,
+    // which sanitization drops), so it's built here from the same input.
+    const resolveImageSrc = buildFigureSrcResolver(html, sourceUrl)
+    setSanitizedHtml(sanitizePaperHtml(html, { resolveImageSrc }))
+  }, [html, sourceUrl])
 
   // The dangerouslySetInnerHTML wrapper must be REFERENTIALLY stable across
   // re-renders: React 19.2 re-applies innerHTML (destroying and recreating

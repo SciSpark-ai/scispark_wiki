@@ -27,7 +27,21 @@ const IP_BUCKET_CAPACITY = 20
 const IP_BUCKET_REFILL_PER_SEC = 0.5
 const RATE_LIMIT_RETRY_AFTER_SECONDS = "5"
 
-const ALLOWED_CONTENT_TYPES = new Set(["application/pdf", "text/html", "application/xml", "text/xml", "text/plain"])
+// Raster image types cover paper figures relayed for the in-app reader
+// (M6 follow-up). image/svg+xml stays deliberately excluded: SVG can carry
+// script, and while <img> contexts won't run it, this relay serves bytes on
+// OUR origin — a directly-navigated SVG would execute there.
+const ALLOWED_CONTENT_TYPES = new Set([
+  "application/pdf",
+  "text/html",
+  "application/xml",
+  "text/xml",
+  "text/plain",
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+])
 
 const RELAY_CACHE_CONTROL = "public, s-maxage=3600"
 
@@ -198,6 +212,9 @@ export async function handleFetchRelay(
 
   const outHeaders = new Headers()
   outHeaders.set("Content-Type", contentType)
+  // Belt-and-suspenders for the image types above: the browser must never
+  // re-interpret a relayed body as something scriptable on our origin.
+  outHeaders.set("X-Content-Type-Options", "nosniff")
   // Deliberately NOT copying upstream Content-Length: the byte cap can abort
   // the stream mid-body, which would make an advertised length wrong (and an
   // upstream could lie about it in the first place). Chunked transfer

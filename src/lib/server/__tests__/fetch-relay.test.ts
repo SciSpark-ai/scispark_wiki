@@ -187,6 +187,38 @@ describe("handleFetchRelay", () => {
     expect(res.status).toBe(415)
   })
 
+  it("passes through paper figure image types (png/jpeg/gif/webp)", async () => {
+    for (const type of ["image/png", "image/jpeg", "image/gif", "image/webp"]) {
+      const fetchFn = vi.fn(async () => textStreamResponse(["binary-ish"], { headers: { "content-type": type } }))
+      const res = await handleFetchRelay("https://arxiv.org/html/2409.08710v1/extracted/F2.jpg", "ip-img-" + type, {
+        fetchFn,
+        ipBuckets: freshBucket(),
+      })
+      expect(res.status).toBe(200)
+      expect(res.headers.get("content-type")).toBe(type)
+    }
+  })
+
+  it("still rejects svg (scriptable image type) with 415", async () => {
+    const fetchFn = vi.fn(async () =>
+      textStreamResponse(["<svg onload=evil()/>"], { headers: { "content-type": "image/svg+xml" } }),
+    )
+    const res = await handleFetchRelay("https://arxiv.org/x.svg", "ip-svg", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.status).toBe(415)
+  })
+
+  it("sets X-Content-Type-Options: nosniff on relayed responses", async () => {
+    const fetchFn = vi.fn(async () => textStreamResponse(["x"], { headers: { "content-type": "image/png" } }))
+    const res = await handleFetchRelay("https://arxiv.org/y.png", "ip-nosniff", {
+      fetchFn,
+      ipBuckets: freshBucket(),
+    })
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff")
+  })
+
   it("strips upstream Set-Cookie from the response", async () => {
     const fetchFn = vi.fn(async () =>
       textStreamResponse(["hi"], { headers: { "set-cookie": "sess=abc123; HttpOnly" } }),
