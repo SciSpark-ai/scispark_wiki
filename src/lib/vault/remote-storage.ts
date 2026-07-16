@@ -20,7 +20,13 @@ export class RemoteVaultStorage implements VaultStorage {
   private fetchFn: typeof fetch
   private base: string
 
-  constructor(fetchFn: typeof fetch = fetch, base = "") {
+  constructor(fetchFn: typeof fetch = (...args) => fetch(...args), base = "") {
+    // NB: the default must be a wrapper, not the bare `fetch`. Assigning the
+    // native `fetch` to a property and later invoking it as `this.fetchFn(...)`
+    // rebinds `this` to the instance, which makes browsers throw
+    // "Failed to execute 'fetch' on 'Window': Illegal invocation". The wrapper
+    // calls `fetch` with the correct (global) receiver. Tests inject their own
+    // fetchFn, so only this real-browser default path was affected.
     this.fetchFn = fetchFn
     this.base = base
   }
