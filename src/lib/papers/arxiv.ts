@@ -56,6 +56,16 @@ interface ArxivFeedResponse {
 export interface ArxivQuery {
   query: string
   limit?: number
+  /**
+   * Ranking preference, chosen upstream by intent extraction (not by this
+   * adapter): "relevance" → arXiv's relevance ranking (omit sortBy); "date" or
+   * OMITTED → newest-first (submittedDate desc). Omitted defaults to date to
+   * preserve arXiv's historical newest-first behavior for server-side callers
+   * (feed/spark/trending via `nodeSearchFn`, which pass no sort); the /papers
+   * box passes an explicit value from the Search-Intent Skill. An empty/
+   * whitespace query always browses newest-first regardless of this field.
+   */
+  sort?: "relevance" | "date"
 }
 
 export interface ArxivDeps {
@@ -177,12 +187,62 @@ function clampLimit(limit: number | undefined): number {
   return Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, Math.floor(limit)))
 }
 
-function buildUrl(q: ArxivQuery): string {
-  const url = new URL(ARXIV_QUERY_URL)
-  url.searchParams.set("search_query", `all:${q.query}`)
-  url.searchParams.set("max_results", String(clampLimit(q.limit)))
+// arXiv's native query syntax: field prefixes (the default `all:` plus
+// `ti:`/`au:`/`abs:`/`cat:`/…) and UPPERCASE boolean operators (AND/OR/ANDNOT).
+// The Feed strategy prompt explicitly instructs the LLM to emit these ("supports
+// field prefixes and boolean operators — use them when they sharpen the query"),
+// and those queries reach this adapter unchanged via `nodeSearchFn`. Such a
+// query is already structured and must be handed to arXiv's parser VERBATIM —
+// wrapping each whitespace token in `all:` and AND-joining would turn
+// `a OR b` into `all:a AND all:OR AND all:b` (requires the literal word "OR",
+// forces AND) and an `ANDNOT x` exclusion into a requirement, yielding ~0
+// results. Only PLAIN free-text queries (the /papers box) get the AND-join.
+const ARXIV_FIELD_PREFIX = /(?:^|[\s(])(?:all|ti|abs|au|co|jr|cat|rn|id):/i
+const ARXIV_BOOLEAN = /(?:^|\s)(?:AND|OR|ANDNOT)(?:\s|$)/
+
+function isStructuredArxivQuery(raw: string): boolean {
+  return ARXIV_FIELD_PREFIX.test(raw) || ARXIV_BOOLEAN.test(raw)
+}
+
+function applySort(url: URL, sort: ArxivQuery["sort"]): void {
+  // "relevance" → omit sortBy so arXiv relevance-ranks. "date" OR omitted →
+  // newest-first (arXiv's historical default here — preserved so server-side
+  // callers that pass no sort keep their prior behavior).
+  if (sort === "relevance") return
   url.searchParams.set("sortBy", "submittedDate")
   url.searchParams.set("sortOrder", "descending")
+}
+
+function buildUrl(q: ArxivQuery): string {
+  const url = new URL(ARXIV_QUERY_URL)
+  url.searchParams.set("max_results", String(clampLimit(q.limit)))
+
+  const trimmed = q.query.trim()
+  const terms = trimmed.split(/\s+/).filter((t) => t !== "")
+
+  if (terms.length === 0) {
+    // Browse mode (no keywords): surface the newest submissions.
+    url.searchParams.set("search_query", "all:")
+    url.searchParams.set("sortBy", "submittedDate")
+    url.searchParams.set("sortOrder", "descending")
+    return url.toString()
+  }
+
+  if (isStructuredArxivQuery(trimmed)) {
+    // Already arXiv syntax (field prefixes / boolean operators) — pass through
+    // untouched so arXiv parses it as intended.
+    url.searchParams.set("search_query", trimmed)
+  } else {
+    // Plain free-text keyword search. arXiv's `all:` match across space-separated
+    // terms is loose (OR-ish), so the top page becomes papers that merely share a
+    // common token (e.g. "attention", "decoding"), not the on-topic literature.
+    // Require EVERY term via explicit AND clauses for precision. (Verified
+    // 2026-07-15: an EEG auditory-attention search returned watermark/vision/
+    // quantum ML papers under the old loose match.)
+    url.searchParams.set("search_query", terms.map((t) => `all:${t}`).join(" AND "))
+  }
+
+  applySort(url, q.sort)
   return url.toString()
 }
 

@@ -66,6 +66,12 @@ export interface OpenAlexQuery {
   limit?: number
   fromDate?: string
   toDate?: string
+  /**
+   * Ranking preference, chosen upstream by intent extraction: "date" →
+   * newest-first (sort=publication_date:desc); "relevance" or omitted →
+   * OpenAlex's default relevance_score ranking for a `search` query.
+   */
+  sort?: "relevance" | "date"
 }
 
 export interface OpenAlexDeps {
@@ -220,6 +226,11 @@ function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps, opts: BuildUrlOpts = {})
   }
   if (opts.groupBy) {
     url.searchParams.set("group_by", opts.groupBy)
+  } else if (q.sort === "date") {
+    // Recency-intent search: newest-first. Relevance ("relevance"/omitted) is
+    // OpenAlex's default for a `search` query, so we leave sort unset there.
+    // Never applied to a group_by request (it has no per-work ordering).
+    url.searchParams.set("sort", "publication_date:desc")
   }
   return url.toString()
 }

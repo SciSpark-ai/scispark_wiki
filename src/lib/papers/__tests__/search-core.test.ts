@@ -215,6 +215,50 @@ describe("handleSearch", () => {
     expect(arxivAdapter).toHaveBeenCalledWith(expect.not.objectContaining({ fromDate: expect.anything() }), expect.anything())
   })
 
+  it("threads sort:'date' to the arxiv and openalex adapters", async () => {
+    const arxivAdapter = stubAdapter([])
+    const openalexAdapter = stubAdapter([])
+    const deps = freshDeps({
+      adapters: {
+        arxiv: arxivAdapter as unknown as typeof import("../arxiv").searchArxiv,
+        openalex: openalexAdapter as unknown as typeof import("../openalex").searchOpenAlex,
+      },
+    })
+
+    await handleSearch("arxiv", { q: "recent papers", sort: "date" }, deps)
+    await handleSearch("openalex", { q: "recent papers", sort: "date" }, deps)
+
+    expect(arxivAdapter).toHaveBeenCalledWith(expect.objectContaining({ sort: "date" }), expect.anything())
+    expect(openalexAdapter).toHaveBeenCalledWith(expect.objectContaining({ sort: "date" }), expect.anything())
+  })
+
+  it("passes undefined sort for a missing or unknown value, so the adapter applies its own default", async () => {
+    const adapter = stubAdapter([])
+    // Distinct queries so neither call collides in the cache.
+    const deps = freshDeps({ adapters: { arxiv: adapter as unknown as typeof import("../arxiv").searchArxiv } })
+
+    await handleSearch("arxiv", { q: "omitted-sort query" }, deps) // sort omitted
+    await handleSearch("arxiv", { q: "unknown-sort query", sort: "citations" }, deps) // unknown value
+
+    // undefined reaches the adapter (not a fabricated "relevance"), so each
+    // adapter keeps its historical default and an unknown value never leaks
+    // through to the outbound URL.
+    expect(adapter).toHaveBeenNthCalledWith(1, expect.objectContaining({ sort: undefined }), expect.anything())
+    expect(adapter).toHaveBeenNthCalledWith(2, expect.objectContaining({ sort: undefined }), expect.anything())
+  })
+
+  it("caches relevance and date variants of the same query separately", async () => {
+    const adapter = stubAdapter([makePaper("Result")])
+    const deps = freshDeps({ adapters: { arxiv: adapter as unknown as typeof import("../arxiv").searchArxiv } })
+
+    await handleSearch("arxiv", { q: "same query", sort: "relevance" }, deps)
+    await handleSearch("arxiv", { q: "same query", sort: "relevance" }, deps) // cache hit
+    await handleSearch("arxiv", { q: "same query", sort: "date" }, deps) // distinct key → miss
+
+    // 2 distinct cache keys → 2 upstream calls (the 2nd relevance call was a hit).
+    expect(adapter).toHaveBeenCalledTimes(2)
+  })
+
   it("single-flight: two concurrent identical requests share one upstream call", async () => {
     let resolveFn: (papers: PaperRecord[]) => void = () => {}
     const deferred = new Promise<PaperRecord[]>((resolve) => {

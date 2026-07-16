@@ -186,7 +186,7 @@ describe("searchArxiv", () => {
     expect(paper.title).toBe("A Legacy-Format Paper")
   })
 
-  it("builds the request URL with search_query, max_results clamp, sortBy, and sortOrder", async () => {
+  it("AND-joins field-prefixed terms for a plain keyword query (precision, not loose OR-ish match)", async () => {
     const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
 
     await searchArxiv({ query: "quantum computing", limit: 500 }, { fetchFn })
@@ -196,11 +196,119 @@ describe("searchArxiv", () => {
     const url = new URL(calledUrl.toString())
     expect(url.protocol).toBe("https:")
     expect(url.origin + url.pathname).toBe("https://export.arxiv.org/api/query")
-    expect(url.searchParams.get("search_query")).toBe("all:quantum computing")
+    // Every term is required (precision) instead of arXiv's loose OR-ish match.
+    expect(url.searchParams.get("search_query")).toBe("all:quantum AND all:computing")
     // limit clamped to max 50 even though 500 was requested
     expect(url.searchParams.get("max_results")).toBe("50")
+  })
+
+  it("AND-joins every term of a multi-word topical query (regression: relevance flood)", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    await searchArxiv({ query: "auditory attention decoding EEG", sort: "relevance" }, { fetchFn })
+
+    const url = new URL((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string)
+    expect(url.searchParams.get("search_query")).toBe(
+      "all:auditory AND all:attention AND all:decoding AND all:EEG"
+    )
+    // Explicit relevance intent → arXiv relevance ranking (no submittedDate sort).
+    expect(url.searchParams.get("sortBy")).toBeNull()
+  })
+
+  it("collapses surrounding and repeated whitespace between terms", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    await searchArxiv({ query: "  auditory   EEG  " }, { fetchFn })
+
+    const url = new URL((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string)
+    expect(url.searchParams.get("search_query")).toBe("all:auditory AND all:EEG")
+  })
+
+  it("keeps a single-term query as a single field-prefixed clause", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    await searchArxiv({ query: "transformer", sort: "relevance" }, { fetchFn })
+
+    const url = new URL((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string)
+    expect(url.searchParams.get("search_query")).toBe("all:transformer")
+    expect(url.searchParams.get("sortBy")).toBeNull()
+  })
+
+  it("defaults an OMITTED sort to newest-first (preserving arXiv's historical order for server callers)", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    // No sort passed — the shape nodeSearchFn uses for feed/spark/trending.
+    await searchArxiv({ query: "auditory attention decoding" }, { fetchFn })
+
+    const url = new URL((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string)
+    // Still AND-precision on the query...
+    expect(url.searchParams.get("search_query")).toBe("all:auditory AND all:attention AND all:decoding")
+    // ...but newest-first, unchanged from arXiv's prior always-date behavior.
     expect(url.searchParams.get("sortBy")).toBe("submittedDate")
     expect(url.searchParams.get("sortOrder")).toBe("descending")
+  })
+
+  it("passes a boolean-operator query through VERBATIM (no all:/AND mangling) — feed strategy regression", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    // The Feed strategy prompt is told to emit arXiv boolean operators. Wrapping
+    // each token in all:/AND would turn this into `all:speech AND all:separation
+    // AND all:OR AND ...` → ~0 results.
+    await searchArxiv({ query: "speech separation OR source separation" }, { fetchFn })
+
+    const url = new URL((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string)
+    expect(url.searchParams.get("search_query")).toBe("speech separation OR source separation")
+  })
+
+  it("passes a field-prefixed query (cat:/ti:) through VERBATIM", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    await searchArxiv({ query: "cat:cs.LG neural decoding" }, { fetchFn })
+
+    const url = new URL((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string)
+    expect(url.searchParams.get("search_query")).toBe("cat:cs.LG neural decoding")
+  })
+
+  it("passes an ANDNOT exclusion query through VERBATIM (not inverted into a requirement)", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    await searchArxiv({ query: "transformer ANDNOT quantum" }, { fetchFn })
+
+    const url = new URL((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string)
+    expect(url.searchParams.get("search_query")).toBe("transformer ANDNOT quantum")
+  })
+
+  it("falls back to newest-first browse for an empty/whitespace-only query", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    await searchArxiv({ query: "   " }, { fetchFn })
+
+    const url = new URL((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string)
+    expect(url.searchParams.get("sortBy")).toBe("submittedDate")
+    expect(url.searchParams.get("sortOrder")).toBe("descending")
+  })
+
+  it("sorts by newest-first (submittedDate desc) when sort:'date' intent is passed, keeping AND precision", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    await searchArxiv({ query: "recent transformer papers", sort: "date" }, { fetchFn })
+
+    const url = new URL((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string)
+    // Precision is preserved even under a recency-intent search.
+    expect(url.searchParams.get("search_query")).toBe(
+      "all:recent AND all:transformer AND all:papers"
+    )
+    expect(url.searchParams.get("sortBy")).toBe("submittedDate")
+    expect(url.searchParams.get("sortOrder")).toBe("descending")
+  })
+
+  it("uses relevance ranking when sort:'relevance' intent is passed", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    await searchArxiv({ query: "transformer attention", sort: "relevance" }, { fetchFn })
+
+    const url = new URL((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string)
+    expect(url.searchParams.get("sortBy")).toBeNull()
   })
 
   it("clamps a limit below 1 up to 1 and defaults to 20 when omitted", async () => {
@@ -352,4 +460,27 @@ describe("searchArxiv", () => {
 
     expect(paper.venue).toBeUndefined()
   })
+})
+
+// Opt-in live gate — hits the real arXiv API, never runs in CI. Enable with:
+//   LIVE_ARXIV=1 npx vitest run src/lib/papers/__tests__/arxiv.test.ts
+// Guards the reported regression end-to-end: a topical multi-word query must
+// return on-topic papers, not the newest off-topic ML submissions.
+const LIVE_ARXIV = process.env.LIVE_ARXIV === "1"
+describe.skipIf(!LIVE_ARXIV)("searchArxiv (live)", () => {
+  it("returns on-topic results for a multi-word topical query", async () => {
+    const papers = await searchArxiv({ query: "auditory attention decoding EEG", limit: 10, sort: "relevance" })
+    expect(papers.length).toBeGreaterThan(0)
+    // The canonical auditory-attention-decoding literature centers on these
+    // terms; a relevance-flooded result set (vision/quantum/watermark papers)
+    // would match none of them.
+    const onTopic = papers.filter((p) => {
+      const hay = `${p.title} ${p.abstract ?? ""}`.toLowerCase()
+      return (
+        (hay.includes("auditory") || hay.includes("eeg") || hay.includes("speech")) &&
+        hay.includes("attention")
+      )
+    })
+    expect(onTopic.length).toBeGreaterThan(0)
+  }, 30_000)
 })
