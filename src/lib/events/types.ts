@@ -1,6 +1,6 @@
 export type SciSparkEvent =
   | { type: "onboarding_completed" }
-  | { type: "search"; source: string; query: string }
+  | { type: "search"; source: string; query: string; sort?: "relevance" | "date" }
   | { type: "paper_view"; paperKey: string; title: string }
   | { type: "digest_generated"; paperKey: string; title: string; costUsd?: number }
   | { type: "ingest"; paperKey: string; title: string; changesetId: string }

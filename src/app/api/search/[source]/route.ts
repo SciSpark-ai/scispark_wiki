@@ -8,6 +8,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ source: str
     q: searchParams.get("q"),
     limit: searchParams.get("limit"),
     from: searchParams.get("from"),
+    sort: searchParams.get("sort"),
   }
   const { status, body, headers } = await handleSearch(source, params, { env: process.env })
   return NextResponse.json(body, { status, headers })

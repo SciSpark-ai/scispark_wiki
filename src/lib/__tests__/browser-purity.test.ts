@@ -58,6 +58,7 @@ const CLIENT_LIB_FILES = [
   join("src", "lib", "spark", "client.ts"),
   join("src", "lib", "skills", "feed-client.ts"),
   join("src", "lib", "skills", "ingest-client.ts"),
+  join("src", "lib", "skills", "search-intent-client.ts"),
   join("src", "lib", "companion", "client.ts"),
   join("src", "lib", "companion", "settings-client.ts"),
   join("src", "lib", "trending", "settings-client.ts"),

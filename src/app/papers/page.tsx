@@ -7,6 +7,7 @@ import { paperKey, type PaperRecord, type SourceId } from "@/lib/papers/types"
 import type { DigestResult } from "@/lib/skills/digest"
 import type { IngestOutput } from "@/lib/skills/ingest"
 import { generateDigestRemote, ingestRemote, undoIngestRemote, type IngestPhase } from "@/lib/skills/ingest-client"
+import { classifySearchIntentRemote } from "@/lib/skills/search-intent-client"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadFeed } from "@/lib/skills/feed"
 import { logEvent } from "@/lib/events/log"
@@ -111,11 +112,15 @@ function PapersPageContent() {
     setSearchError(null)
     setResults(null)
     try {
-      const res = await fetch(`/api/search/${source}?q=${encodeURIComponent(q)}`)
+      // Intent extraction runs BEFORE the search (Search-Intent Skill): classify
+      // whether the user wants the most RELEVANT or the most RECENT papers, then
+      // rank accordingly. Never throws — degrades to "relevance" on any failure.
+      const sort = await classifySearchIntentRemote(q)
+      const res = await fetch(`/api/search/${source}?q=${encodeURIComponent(q)}&sort=${sort}`)
       const body = await res.json()
       if (res.ok && Array.isArray(body?.papers)) {
         setResults(body.papers as PaperRecord[])
-        void getOpenVault().then((vault) => logEvent(vault, { type: "search", source, query: q }))
+        void getOpenVault().then((vault) => logEvent(vault, { type: "search", source, query: q, sort }))
       } else {
         setSearchError(typeof body?.error === "string" ? body.error : `search failed (status ${res.status})`)
       }

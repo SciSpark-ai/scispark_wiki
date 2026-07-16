@@ -71,6 +71,8 @@ export interface HandleSearchParams {
   q?: string | null
   limit?: string | null
   from?: string | null
+  /** Ranking preference, chosen upstream by the Search-Intent Skill. Only "date" is honored; anything else (incl. missing) means relevance. */
+  sort?: string | null
 }
 
 function isSourceKey(source: string): source is SourceKey {
@@ -103,14 +105,16 @@ function callAdapter(
   q: string,
   limit: number,
   from: string | undefined,
+  sort: "relevance" | "date" | undefined,
   fetchFn: typeof fetch | undefined,
   env: Record<string, string | undefined> | undefined,
 ): Promise<PaperRecord[]> {
   switch (source) {
     case "arxiv":
-      return adapters.arxiv({ query: q, limit }, { fetchFn })
+      return adapters.arxiv({ query: q, limit, sort }, { fetchFn })
     case "openalex":
-      return adapters.openalex({ query: q, limit, fromDate: from }, { fetchFn, mailto: env?.OPENALEX_MAILTO })
+      return adapters.openalex({ query: q, limit, fromDate: from, sort }, { fetchFn, mailto: env?.OPENALEX_MAILTO })
+    // s2/pubmed have no sort seam yet — they keep their own default ordering.
     case "s2":
       return adapters.s2({ query: q, limit }, { fetchFn, apiKey: env?.S2_API_KEY })
     case "pubmed":
@@ -152,8 +156,15 @@ export async function handleSearch(
 
   const limit = parseLimit(params.limit)
   const from = nonEmpty(params.from)
+  // `sort` is an OPTIONAL override. Recognize only "date"/"relevance"; anything
+  // else (incl. missing or an unknown value) becomes undefined so each adapter
+  // applies its OWN historical default (arXiv → newest-first, OpenAlex →
+  // relevance) — this keeps every existing no-sort caller unregressed and
+  // prevents an unknown value from ever reaching an adapter / the outbound URL.
+  const sort: "relevance" | "date" | undefined =
+    params.sort === "date" ? "date" : params.sort === "relevance" ? "relevance" : undefined
 
-  const cacheKey = JSON.stringify([source, q, limit, from ?? null])
+  const cacheKey = JSON.stringify([source, q, limit, from ?? null, sort ?? null])
 
   const cache = deps.cache ?? defaultCache
   const cached = cache.get(cacheKey)
@@ -172,7 +183,7 @@ export async function handleSearch(
       return { status: 429, body: { error: "rate limited" }, headers: { "Retry-After": BUCKET_RETRY_AFTER_SECONDS } }
     }
 
-    inflight = callAdapter(source, adapters, q, limit, from, deps.fetchFn, deps.env)
+    inflight = callAdapter(source, adapters, q, limit, from, sort, deps.fetchFn, deps.env)
     inFlight.set(cacheKey, inflight)
     const settled = inflight
     // .finally's derived promise re-throws on rejection; since nothing else

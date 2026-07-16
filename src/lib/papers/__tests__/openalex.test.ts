@@ -238,6 +238,32 @@ describe("searchOpenAlex", () => {
     expect(url.searchParams.get("filter")).toBe("from_publication_date:2023-01-01")
   })
 
+  it("sets sort=publication_date:desc for a recency-intent query (sort:'date')", async () => {
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ results: [] }),
+    })) as unknown as typeof fetch
+
+    await searchOpenAlex({ query: "recent transformers", sort: "date" }, { fetchFn })
+
+    const url = new URL((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string)
+    expect(url.searchParams.get("sort")).toBe("publication_date:desc")
+  })
+
+  it("omits sort for a relevance-intent query (OpenAlex default ranking)", async () => {
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ results: [] }),
+    })) as unknown as typeof fetch
+
+    await searchOpenAlex({ query: "transformers", sort: "relevance" }, { fetchFn })
+
+    const url = new URL((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string)
+    expect(url.searchParams.get("sort")).toBeNull()
+  })
+
   it("clamps a limit below 1 up to 1", async () => {
     const fetchFn = vi.fn(async () => ({
       ok: true,
@@ -532,6 +558,10 @@ describe("groupWorksByPublicationDate", () => {
     expect(url.searchParams.get("group_by")).toBe("publication_date")
     expect(url.searchParams.get("per_page")).toBe("200")
     expect(url.searchParams.get("mailto")).toBe("me@example.com")
+    // Regression guard: a group_by request must NEVER carry sort=... — OpenAlex
+    // ignores/rejects sort on grouped queries, which would silently break
+    // trending's per-week volume aggregation. buildUrl's `else if` enforces this.
+    expect(url.searchParams.get("sort")).toBeNull()
   })
 
   it("parses the group_by response array into {key, count} pairs", async () => {
