@@ -73,6 +73,24 @@ describe("OpenAICompatProvider", () => {
     expect(result.stopReason).toBe("stop")
   })
 
+  it("aborts and throws a transient 'timed out' error when the request exceeds timeoutMs (a hung provider never blocks forever)", async () => {
+    // A fetch that never resolves on its own — it only settles when the
+    // provider's timeout fires controller.abort() (mirrors a hung GMI response).
+    const hangingFetch = ((_url: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal
+        if (signal) signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")))
+      })) as typeof fetch
+
+    const p = new OpenAICompatProvider("openai", "sk-test", "https://api.openai.com/v1", hangingFetch, 10)
+    await expect(p.complete("gpt-4o", { messages: [{ role: "user", content: "hi" }] })).rejects.toBeInstanceOf(
+      LLMTransientError,
+    )
+    await expect(
+      p.complete("gpt-4o", { messages: [{ role: "user", content: "hi" }] }),
+    ).rejects.toThrow(/timed out/)
+  })
+
   it("sends response_format json_schema shape with strict:false and strips top-level $schema, when jsonSchema is set", async () => {
     const { fn, captured } = fakeFetch(200, {
       ...OK_RESPONSE,

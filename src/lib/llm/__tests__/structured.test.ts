@@ -83,6 +83,9 @@ describe("completeStructured", () => {
     const err = thrown as StructuredOutputError
     expect(err.attempts).toEqual([badOutput1, badOutput2])
     expect(p.calls).toHaveLength(2)
+    // The failure still spent provider tokens on BOTH attempts — carried on the
+    // error so the harness can meter it (never a silent bill).
+    expect(err.usage).toEqual({ inputTokens: 20, outputTokens: 10 })
   })
 
   it("validates from result.json when the provider returns json directly (no text parsing)", async () => {

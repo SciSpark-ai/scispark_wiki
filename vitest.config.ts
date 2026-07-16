@@ -7,6 +7,7 @@ export default defineConfig({
       "src/lib/**/__tests__/**/*.test.ts",
       "src/stores/**/__tests__/**/*.test.ts",
       "src/components/**/__tests__/**/*.test.ts",
+      "src/components/**/__tests__/**/*.test.tsx",
     ],
     environment: "node",
   },

@@ -2,7 +2,18 @@ import { z } from "zod"
 import { LLMError, type LLMProvider, type LLMRequest, type LLMUsage } from "./types"
 
 export class StructuredOutputError extends LLMError {
-  constructor(message: string, public attempts: string[]) {
+  constructor(
+    message: string,
+    public attempts: string[],
+    /**
+     * Provider tokens actually spent across every attempt before giving up. A
+     * structured call that fails validation still calls the model (often twice)
+     * and still costs real money — the harness meters this so a failed call is
+     * never silently billed. Defaults to zero for the unreachable-fallthrough
+     * throw where no request was made.
+     */
+    public usage: LLMUsage = { inputTokens: 0, outputTokens: 0 },
+  ) {
     super(message)
   }
 }
@@ -66,6 +77,7 @@ export async function completeStructured<T>(
       throw new StructuredOutputError(
         `Structured output validation failed after ${attempts.length} attempts: ${parseError}`,
         attempts,
+        usage,
       )
     }
 

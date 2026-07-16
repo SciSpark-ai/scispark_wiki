@@ -217,6 +217,47 @@ describe("runSkill", () => {
     expect(records[0].runId).toBe(run.runId)
   })
 
+  it("llmStructured FAILURE still meters the tokens the failed call spent (no silent bill for a null)", async () => {
+    const storage = new MemoryVaultStorage()
+    // Two schema-invalid responses → completeStructured exhausts its 2 attempts
+    // and throws, but both attempts spent provider tokens.
+    const provider = new MockProvider([
+      result({ text: JSON.stringify({ wrong: 1 }), usage: { inputTokens: 15, outputTokens: 6 } }),
+      result({ text: JSON.stringify({ wrong: 2 }), usage: { inputTokens: 5, outputTokens: 2 } }),
+    ])
+    const schema = z.object({ x: z.number() })
+    const skill = defineSkill<void, { x: number }>({
+      name: "failing-structured-skill",
+      version: "1.0.0",
+      async run(ctx) {
+        return ctx.llmStructured("strong", { messages: [{ role: "user", content: "give json" }] }, schema)
+      },
+    })
+
+    const run = await runSkill({
+      skill,
+      input: undefined,
+      storage,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+
+    // The run rejected (skill sees the failure) …
+    expect(run.status).toBe("error")
+    expect(run.output).toBeUndefined()
+    // … but the spend is honest: both failed attempts' usage is summed onto the
+    // run's totals AND written to the usage log, so it shows in the spend panel.
+    expect(run.usage).toEqual({ inputTokens: 20, outputTokens: 8 })
+    expect(run.costUsd).toBeGreaterThan(0)
+
+    const meter = new Meter(storage, NOW)
+    const records = await meter.recordsForDay("2026-07-12")
+    expect(records).toHaveLength(1)
+    expect(records[0].skill).toBe("failing-structured-skill")
+    expect(records[0].usage).toEqual({ inputTokens: 20, outputTokens: 8 })
+  })
+
   it("two concurrent runSkill calls sharing one storage: union of both runs' meter records is complete (no lost lines)", async () => {
     const storage = new MemoryVaultStorage()
 

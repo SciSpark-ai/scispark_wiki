@@ -126,8 +126,8 @@ describe.skipIf(!live)("LIVE trending dashboard gate", () => {
       } else {
         // Acceptable for the gate (GMI backend-replica flake etc.) as long as
         // the failure surfaces an error string rather than silently vanishing.
-        expect(panel.error).toBeTruthy()
-        console.log("[live-trending] survey unavailable, error:", panel.error)
+        expect(panel.surveyError).toBeTruthy()
+        console.log("[live-trending] survey unavailable, error:", panel.surveyError)
       }
 
       // runTrendingDashboard doesn't return cost directly (TrendingDashboard has

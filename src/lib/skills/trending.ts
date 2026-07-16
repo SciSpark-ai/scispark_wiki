@@ -76,7 +76,12 @@ export const trendingSkill: SkillDefinition<TrendingSkillInput, TrendingSurvey> 
           { role: "system", content: buildSystemPrompt() },
           { role: "user", content: buildUserMessage(input) },
         ],
-        maxTokens: 2048,
+        // 4096 (was 2048): the survey JSON is small, but a strong-tier model on
+        // GMI can spend a chunk of the completion budget on reasoning tokens —
+        // at 2048 that truncated the JSON mid-object, which then failed to parse
+        // and surfaced as a survey failure. This matches feed/digest's budget and
+        // leaves ample headroom for the emitted survey.
+        maxTokens: 4096,
       },
       TrendingSurveySchema,
     )

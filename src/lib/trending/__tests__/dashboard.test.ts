@@ -48,7 +48,7 @@ describe("runTrendingDashboard", () => {
       fields: [{ slug: "nlp", label: "NLP" }], searchFn, settings: SETTINGS, providerOverride: { strong: provider }, now: NOW,
     })
     expect(dash.panels[0].survey).toBeNull()
-    expect(dash.panels[0].error).toBeTruthy()
+    expect(dash.panels[0].surveyError).toBeTruthy()
     expect(dash.panels[0].metrics.paperCountRecent).toBe(1) // metrics still computed
   })
 
@@ -91,7 +91,7 @@ describe("runTrendingDashboard", () => {
     expect(nlp?.survey).toEqual(SURVEY)
     expect(nlp?.metrics.paperCountRecent).toBe(1)
     expect(bio?.survey).toBeNull()
-    expect(bio?.error).toBeTruthy()
+    expect(bio?.surveyError).toBeTruthy()
     // Degraded panel still carries valid, empty-but-well-formed metrics.
     expect(bio?.metrics.paperCountRecent).toBe(0)
     expect(bio?.metrics.topMovers).toEqual([])
@@ -190,7 +190,7 @@ describe("runTrendingDashboard", () => {
     expect(dash.panels).toHaveLength(1)
     expect(dash.panels[0].metrics.weeklyVolume.length).toBe(8) // sample-derived fallback, still well-formed
     expect(dash.panels[0].survey).toEqual(SURVEY) // panel not degraded by the countFn failure
-    expect(dash.panels[0].error).toBeUndefined()
+    expect(dash.panels[0].surveyError).toBeUndefined()
   })
 
   it("different storage instances do not share an in-flight run", async () => {

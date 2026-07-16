@@ -16,7 +16,14 @@ export interface FieldPanel {
   field: TrackedField
   metrics: FieldMetrics
   survey: TrendingSurvey | null
-  error?: string
+  /**
+   * Present iff the qualitative survey failed for this field (the LLM call
+   * erred, the run was budget-exceeded, or retrieval/metrics threw). Carries
+   * the real reason so the failure is surfaced to the user instead of a silent
+   * `survey: null` — a null with no `surveyError` genuinely means "no survey
+   * requested/needed", a null WITH one means "we tried and it failed, here's why".
+   */
+  surveyError?: string
   generatedAt: string
 }
 export interface TrendingDashboard {
@@ -107,7 +114,7 @@ async function runTrendingDashboardUncached(storage: VaultStorage, opts: RunTren
       const metrics = computeFieldMetrics(candidates, { now: at, realWeeklyVolume: realVol ?? undefined })
 
       let survey: TrendingSurvey | null = null
-      let error: string | undefined
+      let surveyError: string | undefined
       const run = await runSkill({
         skill: trendingSkill,
         input: { field, recent: candidates.recent, movers: candidates.movers },
@@ -120,10 +127,15 @@ async function runTrendingDashboardUncached(storage: VaultStorage, opts: RunTren
         survey = run.output
         costUsd += run.costUsd
       } else {
-        error = run.error ?? `trending skill finished with status "${run.status}"`
+        // The survey failed. Record WHY (never a silent null) and still count
+        // whatever the failed run spent — a structured-output call that erred
+        // after burning provider tokens is metered by the harness, so its cost
+        // belongs in this refresh's event just like a successful one's.
+        surveyError = run.error ?? `trending skill finished with status "${run.status}"`
+        costUsd += run.costUsd
       }
 
-      panels.push({ field, metrics, survey, error, generatedAt })
+      panels.push({ field, metrics, survey, surveyError, generatedAt })
     } catch (err) {
       // Outer safety net for anything unexpected thrown by retrieval or metrics
       // computation (the skill-failure path above is handled separately and
@@ -137,7 +149,7 @@ async function runTrendingDashboardUncached(storage: VaultStorage, opts: RunTren
         field,
         metrics: computeFieldMetrics({ recent: [], movers: [] }, { now: new Date(generatedAt) }),
         survey: null,
-        error: err instanceof Error ? err.message : String(err),
+        surveyError: err instanceof Error ? err.message : String(err),
         generatedAt,
       })
     }
