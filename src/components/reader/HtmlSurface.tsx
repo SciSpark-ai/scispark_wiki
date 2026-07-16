@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { sanitizePaperHtml } from "@/lib/reader/sanitize"
 import { plainTextOf, rangeToOffsets } from "@/lib/reader/dom-offsets"
 
@@ -76,6 +76,17 @@ export default function HtmlSurface({ html, onPlainText, onSelectionChange, onCo
   useEffect(() => {
     setSanitizedHtml(sanitizePaperHtml(html))
   }, [html])
+
+  // The dangerouslySetInnerHTML wrapper must be REFERENTIALLY stable across
+  // re-renders: React 19.2 re-applies innerHTML (destroying and recreating
+  // every child node) whenever the wrapper OBJECT identity changes, even
+  // when the __html string inside is identical. An inline `{{__html: …}}`
+  // literal therefore nuked the surface's DOM on every parent re-render —
+  // which fires per selectionchange during a drag — killing the user's
+  // in-progress text selection (the browser clamps the anchor to the
+  // container when its nodes are destroyed: "selects everything before the
+  // cursor, gone on release").
+  const innerHtml = useMemo(() => ({ __html: sanitizedHtml }), [sanitizedHtml])
 
   // Emit the surface's flattened plain text after every render that changes
   // the sanitized content, so callers (highlight anchoring) always work
@@ -158,7 +169,7 @@ export default function HtmlSurface({ html, onPlainText, onSelectionChange, onCo
       className="reader-surface font-body text-[15px]/[26px] text-espresso max-w-[68ch]"
       // Content is sanitized via sanitizePaperHtml immediately above — see
       // that module's doc comment for the allowlist/hook this relies on.
-      dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+      dangerouslySetInnerHTML={innerHtml}
       onMouseUp={handleSelection}
       onKeyUp={handleSelection}
       onClick={handleClick}
