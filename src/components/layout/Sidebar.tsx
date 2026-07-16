@@ -10,6 +10,7 @@ import {
   FolderOpen,
   Network,
   PanelLeftClose,
+  Settings,
   Sparkles,
   TrendingUp,
 } from "lucide-react";
@@ -36,6 +37,7 @@ export const navItems = [
   { key: "spark", label: "Spark", href: "/spark", icon: Sparkles },
   { key: "dashboard", label: "Dashboard", href: "/viz", icon: Network },
   { key: "history", label: "History", href: "/history", icon: Clock },
+  { key: "settings", label: "Settings", href: "/settings", icon: Settings },
 ] as const;
 
 interface SidebarProps {

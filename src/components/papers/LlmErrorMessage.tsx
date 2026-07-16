@@ -3,7 +3,7 @@ import Link from "next/link"
 /**
  * Renders an error message from the digest/ingest flow. When the message
  * matches MissingKeyError's text (see src/lib/llm/settings.ts), adds a link
- * to /debug/llm so the user can configure API keys instead of just seeing a
+ * to /settings so the user can connect a provider instead of just seeing a
  * dead end.
  */
 export function LlmErrorMessage({ message }: { message: string }) {
@@ -14,10 +14,10 @@ export function LlmErrorMessage({ message }: { message: string }) {
       <div className="text-[13px]/[14px] text-espresso">{message}</div>
       {isMissingKey && (
         <Link
-          href="/debug/llm"
+          href="/settings"
           className="mt-1.5 inline-block text-[13px] text-orange font-medium tracking-body hover:text-orange-light transition-colors"
         >
-          Configure API keys →
+          Connect a provider →
         </Link>
       )}
     </div>
