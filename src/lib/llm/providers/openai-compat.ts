@@ -3,12 +3,23 @@ import {
   LLMAuthError, LLMBadRequestError, LLMRateLimitError, LLMTransientError,
 } from "../types"
 
+// Per-request wall-clock ceiling for an LLM HTTP call. Chosen generously — a
+// strong-tier completion legitimately runs tens of seconds — so it never trips a
+// healthy call, only bounds a hung one. Without it, a provider that accepts the
+// connection then never responds (observed on GMI's flaky Anthropic passthrough)
+// hangs the caller forever: a sequential skill loop (e.g. the trending refresh)
+// then never reaches its persist step even though earlier calls already billed.
+// On timeout the request aborts → surfaces as a transient error → withRetry
+// retries a bounded number of times, then the caller degrades gracefully.
+export const DEFAULT_LLM_TIMEOUT_MS = 120_000
+
 export class OpenAICompatProvider implements LLMProvider {
   constructor(
     readonly id: "openai" | "openrouter",
     private apiKey: string,
     private baseUrl: string,
     private fetchFn: typeof fetch = fetch,
+    private timeoutMs: number = DEFAULT_LLM_TIMEOUT_MS,
   ) {}
 
   async complete(model: string, req: LLMRequest): Promise<LLMResult> {
@@ -85,55 +96,78 @@ export class OpenAICompatProvider implements LLMProvider {
         : {}),
     }
 
-    let res: Response
+    // Abort the whole request (connection, headers, AND body read) if it
+    // exceeds `timeoutMs`. The timer stays armed until this method exits via the
+    // `finally`, so a provider that streams headers then stalls on the body is
+    // caught too, not just a pre-header hang.
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
     try {
-      res = await this.fetchFn(`${this.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${this.apiKey}`,
-          ...(this.id === "openrouter"
-            ? {
-                // OpenRouter attribution convention (openrouter.ai/docs/app-attribution).
-                // X-Title is the legacy header name; X-OpenRouter-Title is the current
-                // documented name as of 2026. Both are still honored, so send both.
-                "HTTP-Referer": "https://scispark.ai",
-                "X-Title": "SciSpark",
-                "X-OpenRouter-Title": "SciSpark",
-              }
-            : {}),
-        },
-        body: JSON.stringify(body),
-      })
-    } catch (e) {
-      throw new LLMTransientError(e instanceof Error ? e.message : "network error")
-    }
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "")
-      if (res.status === 401 || res.status === 403) throw new LLMAuthError(text || `HTTP ${res.status}`)
-      if (res.status === 429) {
-        // NB: header absent → get() returns null and Number(null) === 0 — must not become a 0ms hint
-        const raw = res.headers.get("retry-after")
-        const ra = raw != null ? Number(raw) : NaN
-        throw new LLMRateLimitError(text || "rate limited", Number.isFinite(ra) && ra > 0 ? ra * 1000 : undefined)
+      let res: Response
+      try {
+        res = await this.fetchFn(`${this.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${this.apiKey}`,
+            ...(this.id === "openrouter"
+              ? {
+                  // OpenRouter attribution convention (openrouter.ai/docs/app-attribution).
+                  // X-Title is the legacy header name; X-OpenRouter-Title is the current
+                  // documented name as of 2026. Both are still honored, so send both.
+                  "HTTP-Referer": "https://scispark.ai",
+                  "X-Title": "SciSpark",
+                  "X-OpenRouter-Title": "SciSpark",
+                }
+              : {}),
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        })
+      } catch (e) {
+        // A timeout-abort and a genuine network error both land here; both are
+        // transient (withRetry retries them), but label the timeout distinctly.
+        throw controller.signal.aborted
+          ? new LLMTransientError(`request timed out after ${this.timeoutMs}ms`)
+          : new LLMTransientError(e instanceof Error ? e.message : "network error")
       }
-      if (res.status >= 500) throw new LLMTransientError(text || `HTTP ${res.status}`)
-      throw new LLMBadRequestError(text || `HTTP ${res.status}`)
-    }
 
-    const data = (await res.json()) as ChatCompletionResponse
-    const text: string = data.choices?.[0]?.message?.content ?? ""
-    return {
-      text,
-      json: req.jsonSchema ? safeParse(text) : undefined,
-      usage: {
-        inputTokens: data.usage?.prompt_tokens ?? 0,
-        outputTokens: data.usage?.completion_tokens ?? 0,
-      },
-      model: data.model ?? model,
-      provider: this.id,
-      stopReason: data.choices?.[0]?.finish_reason ?? "unknown",
+      if (!res.ok) {
+        const text = await res.text().catch(() => "")
+        if (res.status === 401 || res.status === 403) throw new LLMAuthError(text || `HTTP ${res.status}`)
+        if (res.status === 429) {
+          // NB: header absent → get() returns null and Number(null) === 0 — must not become a 0ms hint
+          const raw = res.headers.get("retry-after")
+          const ra = raw != null ? Number(raw) : NaN
+          throw new LLMRateLimitError(text || "rate limited", Number.isFinite(ra) && ra > 0 ? ra * 1000 : undefined)
+        }
+        if (res.status >= 500) throw new LLMTransientError(text || `HTTP ${res.status}`)
+        throw new LLMBadRequestError(text || `HTTP ${res.status}`)
+      }
+
+      let data: ChatCompletionResponse
+      try {
+        data = (await res.json()) as ChatCompletionResponse
+      } catch (e) {
+        // Only remap the timeout-abort case; a genuine malformed-body error
+        // keeps its original shape/behavior (unchanged from before this guard).
+        if (controller.signal.aborted) throw new LLMTransientError(`request timed out after ${this.timeoutMs}ms`)
+        throw e
+      }
+      const text: string = data.choices?.[0]?.message?.content ?? ""
+      return {
+        text,
+        json: req.jsonSchema ? safeParse(text) : undefined,
+        usage: {
+          inputTokens: data.usage?.prompt_tokens ?? 0,
+          outputTokens: data.usage?.completion_tokens ?? 0,
+        },
+        model: data.model ?? model,
+        provider: this.id,
+        stopReason: data.choices?.[0]?.finish_reason ?? "unknown",
+      }
+    } finally {
+      clearTimeout(timer)
     }
   }
 }

@@ -4,7 +4,7 @@ import type { LLMProvider, LLMUsage, ProviderId, Tier } from "../llm/types"
 import { loadSettings, resolveTier, buildProvider, type LLMSettings } from "../llm/settings"
 import { Meter, checkBudget, BudgetExceededError } from "../llm/metering"
 import { withRetry } from "../llm/retry"
-import { completeStructured } from "../llm/structured"
+import { completeStructured, StructuredOutputError } from "../llm/structured"
 import { estimateCostUsd } from "../llm/pricing"
 import type { SkillContext, SkillDefinition, SkillRunResult } from "./types"
 
@@ -106,9 +106,21 @@ export async function runSkill<I, O>(opts: {
         id: provider.id,
         complete: (m, r) => withRetry(() => provider.complete(m, r), opts.retryOpts),
       }
-      const { value, usage } = await completeStructured(retryingProvider, model, req, schema)
-      await meterAndContinue({ provider: provider.id, model, usage })
-      return value
+      try {
+        const { value, usage } = await completeStructured(retryingProvider, model, req, schema)
+        await meterAndContinue({ provider: provider.id, model, usage })
+        return value
+      } catch (e) {
+        // A structured-output call that FAILS validation still called the model
+        // (usually twice) and still spent provider tokens. Meter that spend before
+        // the error propagates so failures are never silently billed — the run
+        // still rejects (the skill sees the error), but the cost lands in the
+        // usage log / budget just like a successful call's would.
+        if (e instanceof StructuredOutputError && (e.usage.inputTokens > 0 || e.usage.outputTokens > 0)) {
+          await meterAndContinue({ provider: provider.id, model, usage: e.usage })
+        }
+        throw e
+      }
     },
     log(msg) {
       logs.push(msg)

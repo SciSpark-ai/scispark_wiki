@@ -3,7 +3,7 @@ import { PublicationVolumeChart } from "./PublicationVolumeChart"
 import { MomentumStat } from "./MomentumStat"
 
 export function FieldPanelView({ panel }: { panel: FieldPanel }) {
-  const { field, metrics, survey } = panel
+  const { field, metrics, survey, surveyError } = panel
   return (
     <section className="border border-border-warm rounded-card bg-light-surface px-5 py-4">
       <div className="flex items-center justify-between gap-3">
@@ -53,9 +53,16 @@ export function FieldPanelView({ panel }: { panel: FieldPanel }) {
           <p className="mt-4 text-[13px] text-espresso tracking-body">{survey.momentum}</p>
         </>
       ) : (
-        <p className="mt-4 text-[13px] text-muted-text">
-          Couldn&rsquo;t generate the trend summary for this field. The numbers above are still current.
-        </p>
+        <div className="mt-4">
+          <p className="text-[13px] text-muted-text">
+            Couldn&rsquo;t generate the trend summary for this field. The numbers above are still current.
+          </p>
+          {surveyError && (
+            <p className="mt-1 text-[12px] text-muted-text/80 break-words">
+              <span className="font-medium">Reason:</span> {surveyError}
+            </p>
+          )}
+        </div>
       )}
     </section>
   )

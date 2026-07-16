@@ -73,6 +73,36 @@ describe("trending skill routes", () => {
     expect(await storage.read(DASHBOARD_CACHE_PATH)).not.toBeNull()
   })
 
+  it("POST /api/skills/trending/refresh: a second refresh rewrites dashboard.json with an ADVANCED generatedAt", async () => {
+    const countFn: CountFn = async () => 1
+    const groupFn: GroupFn = async () => []
+    const fields = [{ slug: "nlp", label: "NLP" }]
+    const callRefresh = async (): Promise<TrendingDashboard> => {
+      // Fresh provider per call — MockProvider drains its queued responses.
+      setSkillTestOverrides({ providerOverride: { strong: new MockProvider([structured(SURVEY)]) }, searchFn: fakeSearchFn, countFn, groupFn })
+      const res = await refreshRoute.POST(
+        new Request("http://x/api/skills/trending/refresh", { method: "POST", body: JSON.stringify({ fields }) }),
+      )
+      return (await readNdjson(res, () => undefined)) as TrendingDashboard
+    }
+
+    const first = await callRefresh()
+    const diskAfterFirst = await loadDashboard(storage)
+    expect(diskAfterFirst!.generatedAt).toBe(first.generatedAt)
+
+    // A real clock gap so the second run's generatedAt is strictly later.
+    await new Promise((r) => setTimeout(r, 5))
+    const second = await callRefresh()
+    const diskAfterSecond = await loadDashboard(storage)
+
+    // The manual refresh must have rewritten the cache, not silently no-op'd:
+    // the persisted generatedAt tracks the second run and is strictly later.
+    expect(diskAfterSecond!.generatedAt).toBe(second.generatedAt)
+    expect(new Date(diskAfterSecond!.generatedAt).getTime()).toBeGreaterThan(
+      new Date(diskAfterFirst!.generatedAt).getTime(),
+    )
+  })
+
   it("POST /api/skills/trending/refresh: a skill failure still terminates the stream with a usable (degraded) dashboard result, not a terminal error", async () => {
     const provider = new MockProvider([new Error("llm exploded")])
     const countFn: CountFn = async () => 1
@@ -87,7 +117,14 @@ describe("trending skill routes", () => {
     )
     const result = (await readNdjson(res, () => undefined)) as TrendingDashboard
     expect(result.panels[0].survey).toBeNull()
-    expect(result.panels[0].error).toBeTruthy()
+    expect(result.panels[0].surveyError).toBeTruthy()
+    // Even a degraded (survey-failed) refresh must persist the dashboard to
+    // disk with a fresh generatedAt — a failed survey never blocks the write.
+    const cached = await loadDashboard(storage)
+    expect(cached).not.toBeNull()
+    expect(cached!.panels[0].survey).toBeNull()
+    expect(cached!.panels[0].surveyError).toBeTruthy()
+    expect(cached!.generatedAt).toBe(result.generatedAt)
   })
 
   it("POST /api/skills/trending/refresh: setSkillTestOverrides countFn is wired through to a real per-week series in the result", async () => {
