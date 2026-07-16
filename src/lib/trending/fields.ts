@@ -7,6 +7,13 @@ export interface TrackedField {
 
 export const MAX_TRACKED_FIELDS = 3
 
+/**
+ * Upper bound on a tracked field's label length. Free-text onboarding answers
+ * can be arbitrarily long; a field label doubles as an OpenAlex query, so keep
+ * it short enough to match real works instead of a whole sentence.
+ */
+export const MAX_FIELD_LABEL_LEN = 60
+
 export function slugify(label: string): string {
   return label
     .toLowerCase()
@@ -15,10 +22,45 @@ export function slugify(label: string): string {
 }
 
 /**
+ * Splits free-text topic input (a bullet, an onboarding answer) into discrete
+ * topic labels. Splits on newlines, commas, and semicolons; trims; strips a
+ * leading list conjunction ("and X"); drops blanks; dedups by slug. Preserves
+ * the user's wording (no truncation) — callers that need short labels truncate
+ * separately. Pure.
+ */
+export function splitTopics(raw: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const piece of raw.split(/[\n,;]+/)) {
+    const label = piece.trim().replace(/^and\s+/i, "").trim()
+    if (label.length === 0) continue
+    const slug = slugify(label)
+    if (slug.length === 0 || seen.has(slug)) continue
+    seen.add(slug)
+    out.push(label)
+  }
+  return out
+}
+
+/**
+ * Truncates a topic label to MAX_FIELD_LABEL_LEN at a word boundary, so an
+ * over-long single clause still yields a clean, queryable field label. Pure.
+ */
+function shortFieldLabel(label: string): string {
+  if (label.length <= MAX_FIELD_LABEL_LEN) return label
+  const cut = label.slice(0, MAX_FIELD_LABEL_LEN)
+  const lastSpace = cut.lastIndexOf(" ")
+  return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trim()
+}
+
+/**
  * Parses the `## Active topics` section of interests.md into up to
  * MAX_TRACKED_FIELDS research-area fields. Only that section is read (Rising/
- * Fading are momentum notes, not tracked fields). Returns [] when the section
- * is absent or empty. Pure.
+ * Fading are momentum notes, not tracked fields). Each bullet is split on
+ * commas/semicolons into discrete topics (so a single free-text onboarding
+ * answer stored as one bullet yields distinct fields, not one giant slug), then
+ * truncated to a clean short label and deduped by slug. Returns [] when the
+ * section is absent or empty. Pure.
  */
 export function deriveTrackedFields(interestsMarkdown: string | null): TrackedField[] {
   if (!interestsMarkdown) return []
@@ -26,15 +68,22 @@ export function deriveTrackedFields(interestsMarkdown: string | null): TrackedFi
   const start = lines.findIndex((l) => /^##\s+Active topics\s*$/i.test(l.trim()))
   if (start === -1) return []
 
-  const fields: TrackedField[] = []
+  const bullets: string[] = []
   for (let i = start + 1; i < lines.length; i++) {
     const line = lines[i].trim()
     if (line.startsWith("## ")) break // next section
     const m = line.match(/^-\s+(.*\S)\s*$/)
     if (!m) continue
-    const label = m[1].trim()
+    bullets.push(m[1].trim())
+  }
+
+  const fields: TrackedField[] = []
+  const seen = new Set<string>()
+  for (const topic of splitTopics(bullets.join("\n"))) {
+    const label = shortFieldLabel(topic)
     const slug = slugify(label)
-    if (slug.length === 0) continue
+    if (slug.length === 0 || seen.has(slug)) continue
+    seen.add(slug)
     fields.push({ slug, label })
     if (fields.length >= MAX_TRACKED_FIELDS) break
   }

@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { seedSessions } from "@/lib/mock-data/seed-chat";
 
 export interface ChatSource {
   title: string;
@@ -35,7 +34,10 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
-  sessions: [...seedSessions],
+  // No seed sessions: KB chat (/chat, /history) is still fork-mock and not part
+  // of the v1 real surface, so the clinical seed conversations must not surface
+  // as "Recent Chats" on the real pages. Real sessions are created on demand.
+  sessions: [],
 
   createSession: (question: string) => {
     const id =

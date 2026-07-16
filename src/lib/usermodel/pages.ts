@@ -1,4 +1,5 @@
 import type { VaultStorage } from "../vault/storage"
+import { splitTopics } from "../trending/fields"
 
 export const USER_MODEL_PATHS = {
   profile: "profile.md",
@@ -62,11 +63,11 @@ function buildProfile(answers: OnboardingAnswers, now: Date): string {
 }
 
 function buildInterests(answers: OnboardingAnswers): string {
-  const topics = answers.topics
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => `- ${line}`)
+  // Split on newlines AND commas/semicolons so a free-text answer becomes one
+  // topic per bullet — the trending dashboard derives its tracked fields from
+  // these bullets, and a single blob bullet would become one unqueryable field.
+  const topics = splitTopics(answers.topics)
+    .map((topic) => `- ${topic}`)
     .join("\n")
 
   return [
