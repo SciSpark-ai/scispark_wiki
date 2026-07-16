@@ -316,12 +316,71 @@ async function composeLlmFile(
   return { path: file.path, type, content: composePage({ path: file.path, frontmatter, body: file.body }) }
 }
 
+/** Final path segment without its `.md` extension — a page's wikilink slug. */
+function pathToSlug(path: string): string {
+  return (path.split("/").pop() ?? path).replace(/\.md$/i, "")
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+/**
+ * Authors are code-owned: `buildAuthorSkeletons` deterministically creates one page per
+ * paper author, keyed by OpenAlex id (e.g. `wiki/authors/a5074790393.md`). The generation
+ * model, which cross-references authors by name, sometimes ALSO emits an author page keyed
+ * by the name slug (`wiki/authors/edmund-c-lalor.md`) — a different path, so the existing
+ * path-collision drop misses it and the author ends up with two pages (one in the graph
+ * for each). This drops any LLM `author` file that matches a deterministic author by its
+ * id slug or name slug, and rewrites the surviving files' body wikilinks and `related`
+ * refs from the dropped name slug to the canonical id slug so no cross-reference dangles.
+ */
+export function dedupeAuthorFiles(llmFiles: GenerationFile[], authorDrafts: PageDraft[]): GenerationFile[] {
+  // name/id slug -> canonical id slug, for every deterministic author page.
+  const canonicalByKey = new Map<string, string>()
+  for (const draft of authorDrafts) {
+    const canonical = pathToSlug(draft.path)
+    canonicalByKey.set(canonical, canonical)
+    const nameSlug = slugifyTitle(String(draft.frontmatter.title ?? ""))
+    if (nameSlug && nameSlug !== canonical) canonicalByKey.set(nameSlug, canonical)
+  }
+  if (canonicalByKey.size === 0) return llmFiles
+
+  const rename = new Map<string, string>()
+  const kept: GenerationFile[] = []
+  for (const file of llmFiles) {
+    if (file.type.trim().toLowerCase() === "author") {
+      const fileSlug = pathToSlug(file.path)
+      const canonical = canonicalByKey.get(fileSlug) ?? canonicalByKey.get(slugifyTitle(file.title))
+      if (canonical && canonical !== fileSlug) {
+        rename.set(fileSlug, canonical)
+        rename.set(slugifyTitle(file.title), canonical)
+        continue // duplicate of a deterministic author page — drop it
+      }
+    }
+    kept.push(file)
+  }
+  if (rename.size === 0) return kept
+
+  return kept.map((file) => {
+    let body = file.body
+    for (const [from, to] of rename) {
+      // [[slug]] and [[slug|Display]] wikilinks in the body.
+      body = body.replace(new RegExp(`\\[\\[${escapeRegExp(from)}(\\|[^\\]]*)?\\]\\]`, "g"), `[[${to}$1]]`)
+    }
+    const related = file.related.map((slug) => rename.get(slug) ?? slug)
+    return { ...file, body, related }
+  })
+}
+
 /**
  * Merges one generation attempt with the deterministic drafts and validates the lot.
  * Deterministic drafts always win a path collision: any LLM file at the paper page path
  * or an author-skeleton path is silently dropped (per the M4 rule that code owns those
  * pages), NOT flagged as an error — the model was told not to write them, but a collision
- * there is recoverable without a retry.
+ * there is recoverable without a retry. Author pages the model emitted under a name slug
+ * (rather than the id-keyed skeleton path) are deduped separately, since they don't share
+ * the skeleton's path — see `dedupeAuthorFiles`.
  */
 async function prepareFiles(
   storage: VaultStorage,
@@ -331,7 +390,11 @@ async function prepareFiles(
   opts: { today: string; sources: string[] },
 ): Promise<{ files: ComposedFile[]; errors: string[] }> {
   const deterministicPaths = new Set(deterministic.map((d) => d.path))
-  const llmFiles = generation.files.filter((f) => !deterministicPaths.has(f.path))
+  const pathFiltered = generation.files.filter((f) => !deterministicPaths.has(f.path))
+  const authorDrafts = deterministic.filter(
+    (d) => String(d.frontmatter.type ?? "").toLowerCase() === "author",
+  )
+  const llmFiles = dedupeAuthorFiles(pathFiltered, authorDrafts)
 
   const composed: ComposedFile[] = deterministic.map((draft) => ({
     path: draft.path,
