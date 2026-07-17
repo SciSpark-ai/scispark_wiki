@@ -55,8 +55,22 @@ describe("runFeed", () => {
       llmResult(
         {
           items: [
-            { index: 0, whyThis: "strong results", whyYou: "matches your interests", whyNow: "just released" },
-            { index: 1, whyThis: "novel method", whyYou: "adjacent topic", whyNow: "trending" },
+            {
+              index: 0,
+              whyThis: "strong results",
+              whyYou: "matches your interests",
+              whyNow: "just released",
+              tldr: "A new sparse-attention method that cuts compute in half.",
+              tags: ["sparse attention", "efficiency"],
+            },
+            {
+              index: 1,
+              whyThis: "novel method",
+              whyYou: "adjacent topic",
+              whyNow: "trending",
+              tldr: "Proposes a novel routing mechanism for mixture-of-experts models.",
+              tags: ["mixture-of-experts", "routing"],
+            },
           ],
         },
         "claude-opus-4-8",
@@ -88,8 +102,12 @@ describe("runFeed", () => {
     expect(result.items[0].whyThis).toBe("strong results")
     expect(result.items[0].whyYou).toBe("matches your interests")
     expect(result.items[0].whyNow).toBe("just released")
+    expect(result.items[0].tldr).toBe("A new sparse-attention method that cuts compute in half.")
+    expect(result.items[0].tags).toEqual(["sparse attention", "efficiency"])
     expect(result.items[1].paper.title).toBe("Paper C")
     expect(result.items[1].score).toBe(70)
+    expect(result.items[1].tldr).toBe("Proposes a novel routing mechanism for mixture-of-experts models.")
+    expect(result.items[1].tags).toEqual(["mixture-of-experts", "routing"])
     expect(result.stats.retrieved).toBe(3)
     expect(result.stats.ranked).toBe(3)
     expect(result.strategy).toEqual(ONE_QUERY_STRATEGY)
@@ -122,7 +140,7 @@ describe("runFeed", () => {
       llmResult(ONE_QUERY_STRATEGY, "claude-opus-4-8"),
       // Re-rank: pick top20[0], which should resolve to Candidate-25 (highest score, from batch 2).
       llmResult(
-        { items: [{ index: 0, whyThis: "t", whyYou: "y", whyNow: "n" }] },
+        { items: [{ index: 0, whyThis: "t", whyYou: "y", whyNow: "n", tldr: "d", tags: ["x"] }] },
         "claude-opus-4-8",
       ),
     ])
@@ -176,8 +194,8 @@ describe("runFeed", () => {
       llmResult(
         {
           items: [
-            { index: 0, whyThis: "t", whyYou: "y", whyNow: "n" },
-            { index: 99, whyThis: "bad", whyYou: "bad", whyNow: "bad" }, // out of top20 range, dropped
+            { index: 0, whyThis: "t", whyYou: "y", whyNow: "n", tldr: "d", tags: ["x"] },
+            { index: 99, whyThis: "bad", whyYou: "bad", whyNow: "bad", tldr: "bad", tags: ["bad"] }, // out of top20 range, dropped
           ],
         },
         "claude-opus-4-8",
@@ -221,9 +239,9 @@ describe("runFeed", () => {
       llmResult(
         {
           items: [
-            { index: 0, whyThis: "t1", whyYou: "y1", whyNow: "n1" },
-            { index: 0, whyThis: "t2", whyYou: "y2", whyNow: "n2" }, // duplicate, dropped
-            { index: 1, whyThis: "t3", whyYou: "y3", whyNow: "n3" },
+            { index: 0, whyThis: "t1", whyYou: "y1", whyNow: "n1", tldr: "d1", tags: ["x1"] },
+            { index: 0, whyThis: "t2", whyYou: "y2", whyNow: "n2", tldr: "d2", tags: ["x2"] }, // duplicate, dropped
+            { index: 1, whyThis: "t3", whyYou: "y3", whyNow: "n3", tldr: "d3", tags: ["x3"] },
           ],
         },
         "claude-opus-4-8",
@@ -328,7 +346,10 @@ describe("loadFeed", () => {
 
     const strategyProvider = new MockProvider([
       llmResult(ONE_QUERY_STRATEGY, "claude-opus-4-8"),
-      llmResult({ items: [{ index: 0, whyThis: "t", whyYou: "y", whyNow: "n" }] }, "claude-opus-4-8"),
+      llmResult(
+        { items: [{ index: 0, whyThis: "t", whyYou: "y", whyNow: "n", tldr: "d", tags: ["x"] }] },
+        "claude-opus-4-8",
+      ),
     ])
     const rankProvider = new MockProvider([llmResult({ scores: [{ index: 0, score: 90 }] }, "claude-haiku-4-5")])
 
@@ -341,5 +362,33 @@ describe("loadFeed", () => {
 
     const loaded = await loadFeed(storage)
     expect(loaded).toEqual(result)
+  })
+
+  it("loads a cache written before tldr/tags existed, with them left undefined on the FeedItem", async () => {
+    const storage = new MemoryVaultStorage()
+    const legacyCache = {
+      generatedAt: NOW().toISOString(),
+      items: [
+        {
+          paper: paper({ title: "Paper A", ids: { arxiv: "1" } }),
+          score: 90,
+          whyThis: "t",
+          whyYou: "y",
+          whyNow: "n",
+          // no tldr/tags — simulates a cache written before this feature existed
+        },
+      ],
+      costUsd: 0.01,
+      strategy: ONE_QUERY_STRATEGY,
+      stats: { retrieved: 1, ranked: 1 },
+    }
+    await storage.write(FEED_CACHE_PATH, JSON.stringify(legacyCache))
+
+    const loaded = await loadFeed(storage)
+    expect(loaded).not.toBeNull()
+    expect(loaded!.items).toHaveLength(1)
+    expect(loaded!.items[0].whyThis).toBe("t")
+    expect(loaded!.items[0].tldr).toBeUndefined()
+    expect(loaded!.items[0].tags).toBeUndefined()
   })
 })
