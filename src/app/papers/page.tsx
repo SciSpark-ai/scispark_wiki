@@ -354,7 +354,7 @@ function PapersPageContent() {
 
               {digestState.status === "error" && <LlmErrorMessage message={digestState.message} />}
               {digestState.status === "done" && (
-                <DigestPanel digest={digestState.digest} fromCache={digestState.fromCache} costUsd={digestState.costUsd} />
+                <DigestPanel digest={digestState.digest} fromCache={digestState.fromCache} />
               )}
 
               {ingestBusy && (
