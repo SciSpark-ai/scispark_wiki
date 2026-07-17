@@ -10,7 +10,7 @@ const VARIANT: Record<Variant, string> = {
   quiet: "text-muted-text hover:text-espresso",
 }
 const SIZE: Record<Size, string> = {
-  sm: "text-[12px] px-3 py-1",
+  sm: "text-[13px] px-3 py-1", // compact padding, same type size as md
   md: "text-[13px] px-4 py-1.5",
 }
 
