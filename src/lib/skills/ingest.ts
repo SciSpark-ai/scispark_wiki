@@ -491,6 +491,7 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
       today,
       sources,
       dir: paperDir,
+      status: "ingested",
     })
     // Re-ingest of a known paper: merge frontmatter with the existing page (created
     // preserved, custom keys carried over, sources/tags/projects unioned) — see

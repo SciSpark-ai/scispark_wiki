@@ -63,6 +63,10 @@ export interface DigestLike {
   limitations?: string
 }
 
+/** Three-tier save model: "saved" (tier-1, deterministic bookmark stub) →
+ * "enriched" (reserved for a future tier) → "ingested" (full agent ingest). */
+export type PaperStatus = "saved" | "enriched" | "ingested"
+
 export interface BuildPaperPageOpts {
   digest?: DigestLike
   fullText: boolean
@@ -71,6 +75,7 @@ export interface BuildPaperPageOpts {
   sources?: string[]
   /** Directory the paper page is written under. Defaults to "wiki/papers" — callers with schema-routed vaults should pass `loadRouting(storage)["paper"]`. */
   dir?: string
+  status?: PaperStatus
 }
 
 function buildDigestSection(digest: DigestLike): string {
@@ -135,6 +140,7 @@ export function buildPaperPage(paper: PaperRecord, opts: BuildPaperPageOpts): Pa
   if (paper.ids.pmid !== undefined) frontmatter.pmid = paper.ids.pmid
   if (paper.year !== undefined) frontmatter.year = paper.year
   if (paper.venue !== undefined) frontmatter.venue = paper.venue
+  if (opts.status !== undefined) frontmatter.status = opts.status
 
   const sections: string[] = [`# ${paper.title}`]
   if (opts.digest) sections.push(buildDigestSection(opts.digest))
