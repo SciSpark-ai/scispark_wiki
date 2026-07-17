@@ -18,6 +18,57 @@ const REQUIRED_FRONTMATTER_KEYS = [
 ] as const
 const ARRAY_FRONTMATTER_KEYS = ["tags", "related", "sources"] as const
 
+/**
+ * Frontmatter keys the duplicate-author merge logic below already understands
+ * structurally: the seven required keys plus `openalex` (the structured id
+ * `buildAuthorSkeletons` — src/lib/wiki/authoring.ts — writes onto id-keyed
+ * author pages). `Frontmatter` carries an index signature, so a page can
+ * legally have OTHER hand-added keys (e.g. `orcid`) that neither
+ * `classifyDuplicate` nor `buildMergeIntoCanonicalFix` has any specific
+ * handling for — those are "unknown" relative to this set and must never be
+ * silently dropped by a duplicate-author fix (see `unknownFrontmatterKeys`/
+ * `unknownFrontmatterEntries` below).
+ */
+const KNOWN_AUTHOR_FRONTMATTER_KEYS = new Set<string>([...REQUIRED_FRONTMATTER_KEYS, "openalex"])
+
+/** `frontmatter`'s keys that fall outside `KNOWN_AUTHOR_FRONTMATTER_KEYS`. */
+function unknownFrontmatterKeys(frontmatter: Frontmatter): string[] {
+  return Object.keys(frontmatter as Record<string, unknown>).filter((k) => !KNOWN_AUTHOR_FRONTMATTER_KEYS.has(k))
+}
+
+/** `frontmatter` narrowed to just its unknown key/value pairs (see
+ * `unknownFrontmatterKeys`) — spread this into a merged frontmatter object to
+ * carry those pairs forward without hardcoding their names. */
+function unknownFrontmatterEntries(frontmatter: Frontmatter): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const key of unknownFrontmatterKeys(frontmatter)) {
+    out[key] = (frontmatter as Record<string, unknown>)[key]
+  }
+  return out
+}
+
+/** Structural equality good enough for frontmatter values (strings, arrays,
+ * plain objects) — used to compare an unknown key's value across two pages. */
+function frontmatterValuesEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
+/**
+ * True iff every unknown key (see `unknownFrontmatterKeys`) that `extra`
+ * carries also exists on `canonical` with an equal value — i.e. deleting
+ * `extra` (branch 1, the trivial fix) would not lose any hand-added
+ * frontmatter that isn't already represented on the canonical page.
+ */
+function unknownExtraKeysCoveredByCanonical(canonical: Frontmatter, extra: Frontmatter): boolean {
+  const canonicalMap = canonical as Record<string, unknown>
+  for (const key of unknownFrontmatterKeys(extra)) {
+    if (!(key in canonicalMap) || !frontmatterValuesEqual(canonicalMap[key], (extra as Record<string, unknown>)[key])) {
+      return false
+    }
+  }
+  return true
+}
+
 function basename(path: string): string {
   return path.split("/").pop() ?? path
 }
@@ -397,12 +448,14 @@ type DuplicateResolution =
 
 /**
  * Decides how to resolve one duplicate pair without ever losing content:
- * - "trivial": the extra page is a skeleton whose Papers list and
- *   tags/related/sources are all already covered by the canonical — deleting
- *   it loses nothing.
+ * - "trivial": the extra page is a skeleton whose Papers list, tags/related/
+ *   sources, AND any hand-added unknown frontmatter keys (e.g. `orcid` — see
+ *   `unknownExtraKeysCoveredByCanonical`) are all already covered by the
+ *   canonical — deleting it loses nothing.
  * - "merge-into-canonical": the extra carries content (biography prose, richer
  *   frontmatter, or a unique paper) and the CANONICAL is a bare skeleton — the
- *   fix absorbs the extra into the canonical before deleting the extra.
+ *   fix absorbs the extra into the canonical (including any unknown
+ *   frontmatter keys the extra alone carries) before deleting the extra.
  * - "manual": both pages carry substantive, potentially divergent content —
  *   no automatic fix; the finding is advisory so a human merges by hand.
  */
@@ -418,7 +471,8 @@ function classifyDuplicate(canonical: WikiPage, extra: WikiPage, extraSlug: stri
       isSubset(extra.frontmatter.tags, canonical.frontmatter.tags) &&
       isSubset(extra.frontmatter.sources, canonical.frontmatter.sources) &&
       isSubset(extraRelated, canonical.frontmatter.related) &&
-      isSubset(extraPapers, canonicalPapers)
+      isSubset(extraPapers, canonicalPapers) &&
+      unknownExtraKeysCoveredByCanonical(canonical.frontmatter, extra.frontmatter)
     if (trivial) return { kind: "trivial" }
   }
 
@@ -483,7 +537,9 @@ function buildTrivialFix(bundle: Bundle, extra: WikiPage, canonicalSlug: string)
 
 /**
  * Branch 2 (extra rich, canonical skeleton): fold the extra's content INTO the
- * canonical page — union tags/related/sources, keep the canonical's
+ * canonical page — union tags/related/sources, union any hand-added unknown
+ * frontmatter keys the extra alone carries (canonical's value wins on a
+ * conflicting key — see `unknownFrontmatterEntries`), keep the canonical's
  * title/created + OpenAlex id, bump `updated`, and use the extra's body (its
  * biography) with the canonical's `## Papers` entries merged in (deduped;
  * appended as a Papers section if the extra has none). Then rewrite referrers
@@ -513,6 +569,7 @@ function buildMergeIntoCanonicalFix(bundle: Bundle, canonical: WikiPage, extra: 
     ...renamedRelated(extra.frontmatter.related, extraSlug, canonicalSlug),
   ]).filter((s) => s !== canonicalSlug)
   const mergedFrontmatter: Frontmatter = {
+    ...unknownFrontmatterEntries(extra.frontmatter),
     ...canonical.frontmatter,
     tags: dedupeStable([...canonical.frontmatter.tags, ...extra.frontmatter.tags]),
     related: mergedRelated,

@@ -37,3 +37,22 @@ export interface LintFinding {
    */
   fixes?: FileChange[]
 }
+
+/**
+ * What actually happened when `applyLintFix` (src/lib/lint/run.ts) processed a
+ * Fix click, recomputed at apply time:
+ * - "applied": a real changeset (or, for index-drift, the deterministic
+ *   index rewrite) was written.
+ * - "resolved": the fresh recompute no longer finds this finding at all — a
+ *   sibling fix or a manual edit already resolved it out-of-band. Safe to
+ *   dismiss the review item.
+ * - "needs-manual": the fresh recompute still finds this exact finding, but
+ *   it no longer has a mechanical fix (e.g. a sibling fix reclassified a
+ *   duplicate-author pair from "merge-into-canonical" to advisory-only).
+ *   NOT safe to dismiss — the vault still needs a human fix.
+ *
+ * Lives here (not in run.ts, which pulls in server-only VaultStorage/skills
+ * imports) so the browser-side inbox UI can import the type without tripping
+ * the browser-purity gate.
+ */
+export type LintFixOutcome = "applied" | "resolved" | "needs-manual"

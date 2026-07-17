@@ -141,7 +141,7 @@ describe("lint skill routes", () => {
   })
 
   describe("POST /api/skills/lint/fix", () => {
-    it("applies a lint finding's fix to the test vault, returning {changesetId}", async () => {
+    it("applies a lint finding's fix to the test vault, returning {changesetId, outcome}", async () => {
       await storage.write(
         "wiki/concepts/a.md",
         serializeDocument(fm("concept", "A"), "See [[nonexistent-page]] for details."),
@@ -165,8 +165,9 @@ describe("lint skill routes", () => {
         }),
       )
       expect(fixRes.status).toBe(200)
-      const fixBody = (await fixRes.json()) as { result: { changesetId: string } }
+      const fixBody = (await fixRes.json()) as { result: { changesetId: string; outcome: string } }
       expect(fixBody.result.changesetId).toBeTruthy()
+      expect(fixBody.result.outcome).toBe("applied")
 
       const after = await storage.read("wiki/concepts/a.md")
       expect(after).not.toContain("[[nonexistent-page]]")

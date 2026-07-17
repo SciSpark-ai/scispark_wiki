@@ -46,6 +46,12 @@ export default function WikiInboxPage() {
   const [error, setError] = useState<string | null>(null)
   const [lintState, setLintState] = useState<LintState>({ status: "idle" })
   const [deepEstimate, setDeepEstimate] = useState<number | null>(null)
+  // Ids of items whose last Fix click came back "needs-manual" (see
+  // applyLintFixRemote/applyLintFix): the vault changed since lint ran and
+  // this finding is no longer mechanically fixable, but it's still real — the
+  // item stays in the list (never dismissed) and this drives a small inline
+  // notice on it, per the applyLintFix outcome contract in src/lib/lint/types.ts.
+  const [needsManualIds, setNeedsManualIds] = useState<Set<string>>(new Set())
 
   async function refresh() {
     setLoading(true)
@@ -90,14 +96,32 @@ export default function WikiInboxPage() {
     }
   }
 
-  /** Applies a lint finding's mechanical fix, then dismisses the review item
-   * (applyLintFixRemote/applyLintFix does not itself archive the item — see
-   * src/lib/lint/run.ts — so this UI does it after a successful apply, per
-   * the task-10 brief). */
+  /** Applies a lint finding's mechanical fix. `outcome` decides what happens
+   * next (src/lib/lint/types.ts#LintFixOutcome):
+   * - "applied"/"resolved": the item is done — dismiss it (applyLintFixRemote/
+   *   applyLintFix does not itself archive the item — see src/lib/lint/run.ts —
+   *   so this UI does it after a successful/no-op-but-resolved apply, per the
+   *   task-10 brief).
+   * - "needs-manual": the vault changed since lint ran and this finding got
+   *   reclassified to advisory-only — it's still unresolved, so the item is
+   *   NOT dismissed (dismissing it would make an unmerged duplicate silently
+   *   disappear until the next lint run); instead a small notice is shown on
+   *   it, per the C6 finding fix.
+   */
   async function handleFix(id: string) {
     setFixing(id)
     try {
-      await applyLintFixRemote(id)
+      const { outcome } = await applyLintFixRemote(id)
+      if (outcome === "needs-manual") {
+        setNeedsManualIds((prev) => new Set(prev).add(id))
+        return
+      }
+      setNeedsManualIds((prev) => {
+        if (!prev.has(id)) return prev
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
       const vault = await getOpenVault()
       await dismissReview(vault, id)
       await refresh()
@@ -241,6 +265,12 @@ export default function WikiInboxPage() {
 
               <div className="mt-2 font-heading text-[16px] text-espresso tracking-heading-card">{item.title}</div>
               <div className="mt-1 text-[13px]/[14px] text-muted-text">{item.description}</div>
+
+              {needsManualIds.has(item.id) && (
+                <p className="mt-1 text-[12px] text-muted-text/80">
+                  The vault changed — this now needs a manual merge. Re-run Lint vault to refresh.
+                </p>
+              )}
 
               {item.pages.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-2">

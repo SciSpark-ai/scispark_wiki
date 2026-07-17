@@ -462,6 +462,84 @@ describe("findDuplicateAuthors", () => {
     expect(body).not.toContain("x-author")
   })
 
+  // --- Finding 1: unknown (hand-added) frontmatter keys must survive a merge ---
+  it("branch 1: an extra with a unique unknown frontmatter key (e.g. orcid) is NOT trivial, even though tags/related/sources/papers are otherwise a subset", async () => {
+    const s = new MemoryVaultStorage()
+    // Canonical is rich (not skeleton-shaped) but otherwise its
+    // tags/related/sources cover the extra's — the extra's ONLY unique content
+    // is the "orcid" key, which the canonical does not carry at all.
+    await s.write(
+      "wiki/authors/a5074790393.md",
+      serializeDocument(fm("author", "Edmund C. Lalor"), richBody("Edmund C. Lalor")),
+    )
+    await s.write(
+      "wiki/authors/edmund-c-lalor.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { orcid: "0000-0002-1825-0097" }), "# Edmund C. Lalor"),
+    )
+    const b = await loadBundle(s)
+
+    const findings = findDuplicateAuthors(b)
+    expect(findings).toHaveLength(1)
+    // Not trivial: deleting the extra would silently drop its orcid. Canonical
+    // isn't skeleton-shaped either, so this falls all the way to manual/advisory.
+    expect(findings[0].description).not.toContain("adds no content")
+    expect(findings[0].fixes).toBeUndefined()
+    expect(findings[0].fix).toBeUndefined()
+  })
+
+  it("branch 1: an extra whose unique unknown key IS already present with an equal value on the canonical stays trivial", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write(
+      "wiki/authors/a5074790393.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { orcid: "0000-0002-1825-0097" }), skeletonBody("Edmund C. Lalor")),
+    )
+    await s.write(
+      "wiki/authors/edmund-c-lalor.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { orcid: "0000-0002-1825-0097" }), skeletonBody("Edmund C. Lalor")),
+    )
+    const b = await loadBundle(s)
+
+    const findings = findDuplicateAuthors(b)
+    expect(findings).toHaveLength(1)
+    expect(findings[0].description).toContain("adds no content")
+    expect(findings[0].fixes).toBeDefined()
+  })
+
+  it("branch 2: unions the extra's unique unknown frontmatter key (e.g. orcid) onto the merged canonical instead of dropping it", async () => {
+    const s = new MemoryVaultStorage()
+    const canonicalFm = fm("author", "Edmund C. Lalor", { openalex: "A5074790393", sources: [] })
+    const canonicalBody = "# Edmund C. Lalor\n\n## Papers\n\n- [[the-paper]]"
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(canonicalFm, canonicalBody))
+
+    const richFm = fm("author", "Edmund C. Lalor", { tags: ["neuroscience"], orcid: "0000-0002-1825-0097" })
+    const richBodyText = "# Edmund C. Lalor\n\nBio.\n\n## Research contributions\n\nTRF."
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(richFm, richBodyText))
+    const b = await loadBundle(s)
+
+    const findings = findDuplicateAuthors(b)
+    expect(findings).toHaveLength(1)
+    const canonicalFix = findings[0].fixes!.find((c) => c.path === "wiki/authors/a5074790393.md")!
+    const parsed = parseDocument(canonicalFix.after!)
+    expect(parsed.frontmatter.orcid).toBe("0000-0002-1825-0097")
+  })
+
+  it("branch 2: when both pages carry the same unknown key with different values, the canonical's value wins", async () => {
+    const s = new MemoryVaultStorage()
+    const canonicalFm = fm("author", "Edmund C. Lalor", { openalex: "A5074790393", sources: [], orcid: "CANONICAL-ID" })
+    const canonicalBody = "# Edmund C. Lalor\n\n## Papers\n\n- [[the-paper]]"
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(canonicalFm, canonicalBody))
+
+    const richFm = fm("author", "Edmund C. Lalor", { tags: ["neuroscience"], orcid: "EXTRA-ID" })
+    const richBodyText = "# Edmund C. Lalor\n\nBio.\n\n## Research contributions\n\nTRF."
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(richFm, richBodyText))
+    const b = await loadBundle(s)
+
+    const findings = findDuplicateAuthors(b)
+    const canonicalFix = findings[0].fixes!.find((c) => c.path === "wiki/authors/a5074790393.md")!
+    const parsed = parseDocument(canonicalFix.after!)
+    expect(parsed.frontmatter.orcid).toBe("CANONICAL-ID")
+  })
+
   // --- Branch 3: both pages substantive -> advisory, no auto-fix ---
   it("branch 3 (both rich): emits an advisory finding with NO fix/fixes and a merge-by-hand description", async () => {
     const s = new MemoryVaultStorage()

@@ -11,7 +11,7 @@ import { logEvent } from "../events/log"
 import type { ReviewItem } from "../wiki/review-queue"
 import { listReviews } from "../wiki/review-queue"
 import { runDeterministicChecks, findDuplicateAuthors } from "./checks"
-import type { LintFinding } from "./types"
+import type { LintFinding, LintFixOutcome } from "./types"
 
 // ---------------------------------------------------------------------------
 // Lint orchestrator (M12 Task 8, per docs/superpowers/sdd/m12-task-8-brief.md):
@@ -246,45 +246,76 @@ async function findReviewItem(storage: VaultStorage, reviewId: string): Promise<
  * changeset id. */
 export const INDEX_DRIFT_FIX_SENTINEL = "index-rebuild"
 
-/** Returned when a mechanical fix is a no-op at apply time — the finding is no
- * longer present (a sibling fix or a manual edit already resolved it). Not a
- * real, loadable changeset id; the UI dismisses the stale item on this. */
+/**
+ * Returned when a mechanical fix does not produce a new changeset at apply
+ * time. This covers TWO different outcomes the caller must not conflate — see
+ * the returned `outcome` (`LintFixOutcome`, ./types) to tell them apart:
+ * - "resolved": the finding is genuinely gone (a sibling fix or a manual edit
+ *   already resolved it). Safe for the UI to dismiss the review item.
+ * - "needs-manual": the finding is still there, just reclassified to
+ *   advisory-only since lint time (e.g. a sibling duplicate-author fix
+ *   changed this exact pair's classification). NOT safe to dismiss.
+ * Not a real, loadable changeset id either way.
+ */
 export const LINT_FIX_NOOP_SENTINEL = "lint-fix-noop"
 
-/** Locates the fresh finding that corresponds to a stored review item: same
- * lintKind, same target file, and — when the item carries one — the same
- * `fixTarget` discriminator (the broken slug), so one of several same-kind
- * findings on a page is matched exactly rather than by list order. */
-function matchFreshFinding(findings: LintFinding[], item: ReviewItem): LintFinding | undefined {
+/**
+ * Locates the fresh finding matching a stored review item's IDENTITY (same
+ * lintKind, same target page, and — when the item carries one — the same
+ * `fixTarget` discriminator) REGARDLESS of whether that fresh finding still
+ * carries a `fix`. Used to tell "the finding is fully gone" (a sibling fix or
+ * manual edit resolved it — outcome "resolved") apart from "the finding is
+ * still there but no longer has a safe mechanical fix" (e.g. a sibling
+ * duplicate-author fix reclassified this exact pair to advisory-only —
+ * outcome "needs-manual") — a match that requires a `fix` to be present can't
+ * make that distinction, since it would look identical (no match) in both
+ * cases.
+ */
+function matchFreshFindingByIdentity(findings: LintFinding[], item: ReviewItem): LintFinding | undefined {
   return findings.find(
     (f) =>
-      f.fix != null &&
       f.lintKind === item.lintKind &&
-      f.fix.path === item.fix!.path &&
+      f.pages.includes(item.pages[0]) &&
       (item.fixTarget === undefined || f.fixTarget === item.fixTarget),
   )
 }
 
 /**
  * Applies a stored lint finding's mechanical fix as an undoable changeset.
+ * The result's `outcome` (see `LintFixOutcome` in ./types) tells the caller
+ * what actually happened, since `changesetId === LINT_FIX_NOOP_SENTINEL` is
+ * ambiguous by itself — it covers BOTH "already resolved, safe to dismiss"
+ * and "still broken, reclassified to advisory, do NOT dismiss" (this used to
+ * be conflated into one silent no-op — see the "needs-manual" case below).
  *
  * - "index-drift": recomputes index.md directly through the deterministic
- *   index-builder (writeIndex) and returns INDEX_DRIFT_FIX_SENTINEL (see the
- *   module comment for why it bypasses the changeset machinery).
+ *   index-builder (writeIndex) and returns INDEX_DRIFT_FIX_SENTINEL / outcome
+ *   "applied" (see the module comment for why it bypasses the changeset
+ *   machinery).
  * - "duplicate-author": RECOMPUTES findDuplicateAuthors against the current
- *   vault, re-finds this finding by `fixTarget` (the duplicate page's id),
- *   and applies its whole `fixes` list as one atomic multi-file changeset
- *   (see the module comment). LINT_FIX_NOOP_SENTINEL if it's gone.
+ *   vault, re-finds this finding by `fixTarget` (the duplicate page's id).
+ *   - No match at all -> outcome "resolved" (the pair is gone — e.g. the
+ *     duplicate was deleted out-of-band).
+ *   - A match exists but no longer carries `fixes` (a sibling fix or manual
+ *     edit reclassified this exact pair to advisory-only) -> outcome
+ *     "needs-manual" — the finding is still real, nothing is written.
+ *   - Otherwise applies the whole `fixes` list as one atomic multi-file
+ *     changeset -> outcome "applied" (see the module comment).
  * - every other mechanical fix (broken-link, bad-frontmatter): RECOMPUTES the
  *   deterministic checks against the current vault and rebuilds the fix so
  *   `before` always matches disk, even after a sibling fix on the same page has
  *   already been applied — this is what stops the second Fix click from
  *   throwing ChangesetConflictError. Undo works via the normal loadChangeset +
- *   revertChangeset path (same as ingest changesets). If the finding is already
- *   resolved, returns LINT_FIX_NOOP_SENTINEL (a clean no-op, no throw). See the
+ *   revertChangeset path (same as ingest changesets). Distinguishes "resolved"
+ *   (no trace of this finding's identity in the fresh recompute) from
+ *   "needs-manual" (the finding's identity still matches but the fresh
+ *   version has no `fix`) the same way as duplicate-author above. See the
  *   module comment for the full rationale and the bad-frontmatter fallback.
  */
-export async function applyLintFix(storage: VaultStorage, reviewId: string): Promise<{ changesetId: string }> {
+export async function applyLintFix(
+  storage: VaultStorage,
+  reviewId: string,
+): Promise<{ changesetId: string; outcome: LintFixOutcome }> {
   const item = await findReviewItem(storage, reviewId)
   if (!item) throw new Error(`review item not found: ${reviewId}`)
   if (!item.fix && !item.fixes) throw new Error(`review item ${reviewId} has no fix to apply`)
@@ -292,7 +323,7 @@ export async function applyLintFix(storage: VaultStorage, reviewId: string): Pro
   if (item.lintKind === "index-drift") {
     const bundle = await loadBundle(storage)
     await writeIndex(storage, bundle)
-    return { changesetId: INDEX_DRIFT_FIX_SENTINEL }
+    return { changesetId: INDEX_DRIFT_FIX_SENTINEL, outcome: "applied" }
   }
 
   if (item.lintKind === "duplicate-author") {
@@ -302,7 +333,10 @@ export async function applyLintFix(storage: VaultStorage, reviewId: string): Pro
     // landed since this finding was written).
     const bundle = await loadBundle(storage)
     const match = findDuplicateAuthors(bundle).find((f) => f.fixTarget === item.fixTarget)
-    if (!match?.fixes || match.fixes.length === 0) return { changesetId: LINT_FIX_NOOP_SENTINEL }
+    if (!match) return { changesetId: LINT_FIX_NOOP_SENTINEL, outcome: "resolved" }
+    if (!match.fixes || match.fixes.length === 0) {
+      return { changesetId: LINT_FIX_NOOP_SENTINEL, outcome: "needs-manual" }
+    }
 
     const changeset: Changeset = {
       id: makeChangesetId(),
@@ -315,7 +349,7 @@ export async function applyLintFix(storage: VaultStorage, reviewId: string): Pro
     if ((await loadChangeset(storage, changeset.id)) === null) {
       throw new Error(`applyChangeset for ${changeset.id} did not persist a changeset record`)
     }
-    return { changesetId: changeset.id }
+    return { changesetId: changeset.id, outcome: "applied" }
   }
 
   // Every OTHER lintKind's mechanical fix is single-file (index-drift and
@@ -323,36 +357,44 @@ export async function applyLintFix(storage: VaultStorage, reviewId: string): Pro
   if (!item.fix) throw new Error(`review item ${reviewId} has no single-file fix to apply`)
 
   // Recompute the deterministic checks against the CURRENT vault and re-find
-  // this finding, so `before` is derived from the live page rather than the
-  // (possibly sibling-mutated) copy stored at lint time.
+  // this finding's identity, so `before` is derived from the live page rather
+  // than the (possibly sibling-mutated) copy stored at lint time.
   const bundle = await loadBundle(storage)
   const storedIndex = await storage.read("index.md")
   const freshFindings = runDeterministicChecks(bundle, { storedIndex })
-  const match = matchFreshFinding(freshFindings, item)
+  const identityMatch = matchFreshFindingByIdentity(freshFindings, item)
 
   // The change to apply: before = current on-disk content (guarantees the
   // conflict check passes), after = the freshly-recomputed, schema-validated fix.
   let change: { path: string; before: string | null; after: string } | null = null
 
-  if (match?.fix) {
-    const current = await storage.read(match.fix.path)
-    if (current !== null) change = { path: match.fix.path, before: current, after: match.fix.after }
-  }
-
-  if (!change) {
-    // No reconstructable fresh finding. Fall back to the stored fix, but only
-    // when the page is byte-identical to lint time (so `before` still matches
-    // disk and applyChangeset won't conflict). Covers the bad-frontmatter
-    // "missing updated" fix, whose page parseDocument rejects — so it never
-    // appears in a fresh loadBundle. If disk has since changed, the finding was
-    // resolved elsewhere → clean no-op.
+  if (identityMatch === undefined) {
+    // No trace of this finding's identity in the fresh recompute at all. Fall
+    // back to the stored fix, but only when the page is byte-identical to
+    // lint time (so `before` still matches disk and applyChangeset won't
+    // conflict). Covers the bad-frontmatter "missing updated" fix, whose page
+    // parseDocument rejects — so it never appears in a fresh loadBundle
+    // (matched or not). If disk has since changed too, the finding was
+    // resolved elsewhere.
     const current = await storage.read(item.fix.path)
     if (current !== null && current === item.fix.before) {
       change = { path: item.fix.path, before: item.fix.before, after: item.fix.after }
+    } else {
+      return { changesetId: LINT_FIX_NOOP_SENTINEL, outcome: "resolved" }
     }
+  } else if (identityMatch.fix) {
+    const current = await storage.read(identityMatch.fix.path)
+    if (current !== null) {
+      change = { path: identityMatch.fix.path, before: current, after: identityMatch.fix.after }
+    } else {
+      return { changesetId: LINT_FIX_NOOP_SENTINEL, outcome: "resolved" }
+    }
+  } else {
+    // The finding's identity still matches, but the fresh recompute no longer
+    // has a mechanical `fix` for it (reclassified to advisory-only). Still
+    // real — do not dismiss it, do not write anything.
+    return { changesetId: LINT_FIX_NOOP_SENTINEL, outcome: "needs-manual" }
   }
-
-  if (!change) return { changesetId: LINT_FIX_NOOP_SENTINEL }
 
   const changeset: Changeset = {
     id: makeChangesetId(),
@@ -368,5 +410,5 @@ export async function applyLintFix(storage: VaultStorage, reviewId: string): Pro
     throw new Error(`applyChangeset for ${changeset.id} did not persist a changeset record`)
   }
 
-  return { changesetId: changeset.id }
+  return { changesetId: changeset.id, outcome: "applied" }
 }
