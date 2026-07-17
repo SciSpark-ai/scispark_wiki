@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
-import { buildPaperPage } from "../../wiki/authoring"
+import { buildPaperPage, paperSlug } from "../../wiki/authoring"
 import { buildSaveStubChangeset } from "../save"
 import { applyChangeset } from "../../vault/changesets"
 import { loadBundle } from "../../vault/bundle"
+import { loadRouting } from "../../wiki/schema-routing"
 import type { PaperRecord } from "../types"
 
 const PAPER: PaperRecord = {
@@ -29,6 +30,30 @@ describe("buildSaveStubChangeset", () => {
     expect(page?.frontmatter.status).toBe("saved")
     expect(page?.frontmatter.full_text).toBe(false)
     // second call: page exists → null
+    expect(await buildSaveStubChangeset(s, PAPER, "2026-07-17")).toBeNull()
+  })
+
+  it("respects a custom schema.md routing for the paper type (no duplicate vs ingest paths)", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write(
+      "schema.md",
+      "## Page Types\n\n| paper | wiki/library |\n",
+    )
+    // Sanity: confirm the routing actually parses to the custom dir before
+    // trusting the save-path assertion below.
+    expect((await loadRouting(s))["paper"]).toBe("wiki/library")
+
+    const slug = paperSlug(PAPER)
+    const cs = await buildSaveStubChangeset(s, PAPER, "2026-07-17")
+    expect(cs).not.toBeNull()
+    expect(cs!.changes[0].path).toBe(`wiki/library/${slug}.md`)
+    await applyChangeset(s, cs!)
+
+    const bundle = await loadBundle(s)
+    expect(bundle.pages.has(`wiki/library/${slug}`)).toBe(true)
+    expect(bundle.pages.has(`wiki/papers/${slug}`)).toBe(false)
+
+    // Re-save is a no-op at the routed dir, not a duplicate.
     expect(await buildSaveStubChangeset(s, PAPER, "2026-07-17")).toBeNull()
   })
 })
