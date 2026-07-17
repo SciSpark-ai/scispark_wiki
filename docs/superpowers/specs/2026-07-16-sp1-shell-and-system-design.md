@@ -1,7 +1,7 @@
 # SP1 — Shell & System (UI/UX redesign, part 1 of 6)
 
 **Date:** 2026-07-16
-**Status:** Draft for Tong's review
+**Status:** Built (SP1) — 2026-07-17, branch `uiux/sp1-shell-system`, 1465 tests green, whole-branch review READY
 **Origin:** Tong's live walk-through of the app (2026-07-16) + Claude's full-surface audit.
 Full raw punch-list: session scratchpad `uiux-audit.md`; the durable subset is folded in here
 and into the SP2–SP6 scopes below.
