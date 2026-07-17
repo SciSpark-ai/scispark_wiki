@@ -31,9 +31,18 @@ export default function WikiIndexPage() {
   }, [])
 
   useEffect(() => {
-    refresh().catch((e) => setError(e instanceof Error ? e.message : String(e)))
+    let cancelled = false
+    ;(async () => {
+      try {
+        await refresh()
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [refresh])
-
 
   const handleNewNote = async () => {
     if (!storage) return
@@ -94,7 +103,6 @@ export default function WikiIndexPage() {
           <div className="mt-6">
             <Tree bundle={bundle} />
           </div>
-
 
           {bundle.errors.length > 0 && (
             <section className="mt-8">
