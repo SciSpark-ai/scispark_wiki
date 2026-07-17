@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState, type FormEvent } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { paperKey, type PaperRecord, type SourceId } from "@/lib/papers/types"
+import { displayTitle } from "@/lib/papers/title"
 import type { DigestResult } from "@/lib/skills/digest"
 import type { IngestOutput } from "@/lib/skills/ingest"
 import { generateDigestRemote, ingestRemote, undoIngestRemote, type IngestPhase } from "@/lib/skills/ingest-client"
@@ -12,10 +13,14 @@ import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadFeed } from "@/lib/skills/feed"
 import { logEvent } from "@/lib/events/log"
 import { writeReaderHandoff } from "@/lib/reader/handoff"
+import { wikiHref } from "@/lib/wiki/href"
 import { PaperResultItem } from "@/components/papers/PaperResultItem"
 import { DigestPanel } from "@/components/papers/DigestPanel"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { useCompanion } from "@/components/companion/useCompanion"
+import { PageHeader } from "@/components/ui/PageHeader"
+import { Button } from "@/components/ui/Button"
+import { LoadingState } from "@/components/ui/LoadingState"
 
 const SOURCES: SourceId[] = ["arxiv", "openalex", "s2", "pubmed"]
 
@@ -43,12 +48,6 @@ const INGEST_PHASE_LABEL: Record<IngestPhase, string> = {
   snapshotting: "Snapshotting source…",
   digesting: "Generating digest…",
   ingesting: "Ingesting into wiki…",
-}
-
-/** wiki page id (e.g. "wiki/papers/foo" or "wiki/papers/foo.md") -> the /wiki/<...> route for it. */
-function pageHref(idOrPath: string): string {
-  const id = idOrPath.replace(/\.md$/, "")
-  return `/wiki/${id}` // full id in URL: the /wiki/[...id] route joins segments back to the bundle id (e.g. /wiki/wiki/concepts/foo)
 }
 
 function PapersPageContent() {
@@ -206,12 +205,10 @@ function PapersPageContent() {
 
   return (
     <div className="p-7">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="font-heading text-[28px] text-espresso tracking-heading">Papers</h1>
-        <Link href="/wiki/inbox" className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1">
-          Review inbox
-        </Link>
-      </div>
+      <PageHeader
+        title="Papers"
+        actions={<Link href="/wiki/inbox" className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1">Review inbox</Link>}
+      />
 
       <form onSubmit={handleSearch} className="mt-4 flex flex-wrap items-center gap-2">
         <select
@@ -231,13 +228,9 @@ function PapersPageContent() {
           placeholder="Search papers…"
           className="flex-1 min-w-[220px] text-[13px] text-espresso border border-border-warm rounded-pill px-3 py-1.5 bg-light-surface"
         />
-        <button
-          type="submit"
-          disabled={searching || !query.trim()}
-          className="text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium disabled:opacity-50"
-        >
+        <Button type="submit" disabled={searching || !query.trim()}>
           {searching ? "Searching…" : "Search"}
-        </button>
+        </Button>
       </form>
 
       {searchError && (
@@ -269,7 +262,7 @@ function PapersPageContent() {
             <div className="text-[13px] text-muted-text tracking-body">Select a result to see details.</div>
           ) : (
             <div className="border border-border-warm rounded-card px-4 py-3 bg-light-surface">
-              <h2 className="font-heading text-[20px] text-espresso tracking-heading-card">{selected.title}</h2>
+              <h2 className="font-heading text-[20px] text-espresso tracking-heading-card">{displayTitle(selected.title)}</h2>
               <div className="mt-1 text-[12px] text-muted-text tracking-body">
                 {selected.authors.map((a) => a.name).join(", ") || "Unknown authors"}
               </div>
@@ -328,33 +321,20 @@ function PapersPageContent() {
               </div>
 
               <div className="mt-4 flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleGenerateDigest}
-                  disabled={digestState.status === "loading"}
-                  className="text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium disabled:opacity-50"
-                >
+                <Button onClick={handleGenerateDigest} disabled={digestState.status === "loading"}>
                   {digestState.status === "loading" ? "Generating…" : "Generate digest"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleIngest}
-                  disabled={ingestBusy}
-                  className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1 disabled:opacity-50"
-                >
+                </Button>
+                <Button variant="secondary" size="sm" onClick={handleIngest} disabled={ingestBusy}>
                   Add to knowledge base
-                </button>
-                <button
-                  onClick={handleReadFullPaper}
-                  className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1"
-                >
+                </Button>
+                <Button variant="secondary" size="sm" onClick={handleReadFullPaper}>
                   Read full paper
-                </button>
+                </Button>
               </div>
 
               {digestState.status === "error" && <LlmErrorMessage message={digestState.message} />}
               {digestState.status === "done" && (
-                <DigestPanel digest={digestState.digest} fromCache={digestState.fromCache} costUsd={digestState.costUsd} />
+                <DigestPanel digest={digestState.digest} fromCache={digestState.fromCache} />
               )}
 
               {ingestBusy && (
@@ -375,7 +355,7 @@ function PapersPageContent() {
                       <ul className="mt-1 space-y-0.5">
                         {ingestState.output.pages.created.map((path) => (
                           <li key={path}>
-                            <Link href={pageHref(path)} className="text-[13px] text-orange hover:text-orange-light">
+                            <Link href={wikiHref(path)} className="text-[13px] text-orange hover:text-orange-light">
                               {path}
                             </Link>
                           </li>
@@ -390,7 +370,7 @@ function PapersPageContent() {
                       <ul className="mt-1 space-y-0.5">
                         {ingestState.output.pages.updated.map((path) => (
                           <li key={path}>
-                            <Link href={pageHref(path)} className="text-[13px] text-orange hover:text-orange-light">
+                            <Link href={wikiHref(path)} className="text-[13px] text-orange hover:text-orange-light">
                               {path}
                             </Link>
                           </li>
@@ -407,14 +387,14 @@ function PapersPageContent() {
                   </div>
 
                   <div className="mt-2 flex items-center gap-2">
-                    <button
-                      type="button"
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       onClick={handleUndo}
                       disabled={ingestState.undoing || ingestState.undone}
-                      className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1 disabled:opacity-50"
                     >
                       {ingestState.undone ? "Undone" : ingestState.undoing ? "Undoing…" : "Undo"}
-                    </button>
+                    </Button>
                     {ingestState.undoError && <span className="text-[12px] text-red-700">{ingestState.undoError}</span>}
                   </div>
                 </div>
@@ -442,7 +422,13 @@ function PapersPageContent() {
 
 export default function PapersPage() {
   return (
-    <Suspense fallback={<div className="p-7 text-[14px] text-muted-text">Loading…</div>}>
+    <Suspense
+      fallback={
+        <div className="p-7">
+          <LoadingState />
+        </div>
+      }
+    >
       <PapersPageContent />
     </Suspense>
   )

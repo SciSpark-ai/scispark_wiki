@@ -103,7 +103,7 @@ export function SpendPanel() {
   const pct = budgetUsd > 0 ? Math.min(100, (todayUsd / budgetUsd) * 100) : 0
 
   return (
-    <div className="bg-white rounded-[14px] border border-border-warm/30 p-6">
+    <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-heading text-[18px] text-espresso">AI spend</h2>
         <button

@@ -1,23 +1,56 @@
 @import "tailwindcss";
 
+/* Semantic theme variables — the single source of color truth.
+   Light is the brand identity (cream/espresso/orange); dark derives from the
+   same hues. Tailwind utility names are mapped below and never change. */
+:root {
+  --bg-page: #fefaf5;
+  --bg-warm: #f6f0e9;
+  --surface-card: #efe7dd;
+  --surface-light: #faf6f2;
+  --text-primary: #2b180a;
+  --text-secondary: #3e2407;
+  --text-muted: #94877c;
+  --accent: #f97316;
+  --accent-light: #fb923c;
+  --tan: #dab697;
+  --border: #e8d3c0;
+  --gold: #fde68a;
+}
+
+[data-theme="dark"] {
+  --bg-page: #161009;
+  --bg-warm: #1e150c;
+  --surface-card: #2b1e11;
+  --surface-light: #241a10;
+  --text-primary: #f4ead9;
+  --text-secondary: #e6d6c0;
+  --text-muted: #a09080;
+  --accent: #f97316;
+  --accent-light: #fb923c;
+  --tan: #8a6b4f;
+  --border: #3c2c1b;
+  --gold: #8a7326;
+}
+
 @theme inline {
   --font-sans: var(--font-geist-sans), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-halant), Georgia, serif;
   --font-body: var(--font-geist-sans), system-ui, sans-serif;
 
-  --color-page-bg: #fefaf5;
-  --color-page-warm: #f6f0e9;
-  --color-card-surface: #efe7dd;
-  --color-light-surface: #faf6f2;
-  --color-espresso: #2b180a;
-  --color-secondary-dark: #3e2407;
-  --color-muted-text: #94877c;
-  --color-orange: #f97316;
-  --color-orange-light: #fb923c;
-  --color-warm-tan: #dab697;
-  --color-border-warm: #e8d3c0;
-  --color-gold: #fde68a;
+  --color-page-bg: var(--bg-page);
+  --color-page-warm: var(--bg-warm);
+  --color-card-surface: var(--surface-card);
+  --color-light-surface: var(--surface-light);
+  --color-espresso: var(--text-primary);
+  --color-secondary-dark: var(--text-secondary);
+  --color-muted-text: var(--text-muted);
+  --color-orange: var(--accent);
+  --color-orange-light: var(--accent-light);
+  --color-warm-tan: var(--tan);
+  --color-border-warm: var(--border);
+  --color-gold: var(--gold);
 
   --tracking-heading-tight: -0.07em;
   --tracking-heading: -0.06em;
@@ -33,8 +66,8 @@
 
 @layer base {
   body {
-    background-color: #fefaf5;
-    color: #2b180a;
+    background-color: var(--bg-page);
+    color: var(--text-primary);
     font-family: var(--font-body);
   }
   html, body {
@@ -44,8 +77,8 @@
     scroll-behavior: smooth;
   }
   ::selection {
-    background-color: #e8d3c0;
-    color: #2b180a;
+    background-color: var(--border);
+    color: var(--text-primary);
   }
 }
 

@@ -9,12 +9,7 @@ import { formatDeepSparkConfirm, describeDeepOutcome, isDevelopButtonDisabled } 
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { SeedCard, type SeedSaveState } from "./SeedCard"
 import { DeepProgress } from "./DeepProgress"
-
-/** wiki page id -> the /wiki/<...> route (same idiom every gallery page in
- * this repo defines locally — see src/app/papers/page.tsx, src/app/wiki/inbox/page.tsx). */
-function pageHref(id: string): string {
-  return `/wiki/${id}`
-}
+import { wikiHref } from "@/lib/wiki/href"
 
 type QuickState =
   | { status: "idle" }
@@ -223,7 +218,7 @@ function DeepOutcomeCard({ outcome, costUsd }: { outcome: DeepSparkOutcome; cost
       <div className="mt-1 text-[13px]/[18px] text-espresso">{display.message}</div>
       {outcome.kind === "idea" && (
         <Link
-          href={pageHref(outcome.ideaPageId)}
+          href={wikiHref(outcome.ideaPageId)}
           className="mt-2 inline-block text-[13px] text-orange hover:text-orange-light font-medium"
         >
           View idea page →

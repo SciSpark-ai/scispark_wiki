@@ -6,6 +6,7 @@ import {
   MAX_TRACKED_FIELDS,
   slugify,
   splitTopics,
+  truncateFieldLabel,
 } from "../fields"
 
 const INTERESTS = `# Interests
@@ -61,9 +62,24 @@ describe("deriveTrackedFields", () => {
     const long = Array.from({ length: 30 }, (_, i) => `word${i}`).join(" ")
     const md = `## Active topics\n\n- ${long}\n`
     const [field] = deriveTrackedFields(md)
-    expect(field.label.length).toBeLessThanOrEqual(MAX_FIELD_LABEL_LEN)
+    expect(field.label.length).toBeLessThanOrEqual(MAX_FIELD_LABEL_LEN + 1) // +1 for ellipsis
     expect(field.label).not.toMatch(/\s$/)
-    expect(long.startsWith(field.label)).toBe(true)
+    // Label should start with content from the long string (ignoring the ellipsis)
+    const labelWithoutEllipsis = field.label.replace(/…$/, "")
+    expect(long.startsWith(labelWithoutEllipsis)).toBe(true)
+  })
+})
+
+describe("truncateFieldLabel (C9)", () => {
+  it("leaves short labels alone", () => {
+    expect(truncateFieldLabel("Natural Language Processing")).toBe("Natural Language Processing")
+  })
+
+  it("never leaves a dangling open-paren fragment and marks truncation", () => {
+    const label = "auditory attention decoding (EEG-based cocktail party paradigms and beyond)"
+    const out = truncateFieldLabel(label)
+    expect(out).not.toMatch(/\([^)]*$/)
+    expect(out.endsWith("…")).toBe(true)
   })
 })
 

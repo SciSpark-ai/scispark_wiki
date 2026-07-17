@@ -234,7 +234,7 @@ export function ConnectAiCard() {
   const saveDisabled = saving || (!apiKey.trim() && !keySaved) || missingCustomFields
 
   return (
-    <div className="bg-white rounded-[14px] border border-border-warm/30 p-6">
+    <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6">
       <div className="flex items-center justify-between mb-1">
         <h2 className="font-heading text-[18px] text-espresso">Connect your AI</h2>
         <span

@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useState, type FormEvent } from "react"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
+import { wikiHref } from "@/lib/wiki/href"
 
 export type AskState =
   | { status: "idle" }
@@ -18,12 +19,6 @@ export interface AskPanelProps {
   selectionText: string | null
   state: AskState
   onAsk: (question: string) => void
-}
-
-/** wiki bundle id (e.g. "wiki/concepts/foo") -> its /wiki/<...> route,
- * matching the pageHref convention in src/app/papers/page.tsx. */
-function wikiHref(id: string): string {
-  return `/wiki/${id}`
 }
 
 /**

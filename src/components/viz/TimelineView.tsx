@@ -3,8 +3,10 @@
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { scaleLinear } from "d3-scale"
+import { displayTitle } from "@/lib/papers/title"
 import type { Timeline, TimelineItem } from "@/lib/viz/timeline"
 import { topLanes, OTHER_LANE_ID } from "@/lib/viz/layout"
+import { wikiHref } from "@/lib/wiki/href"
 
 const MAX_LANES = 12
 const ROW_HEIGHT = 36
@@ -129,7 +131,7 @@ export default function TimelineView({ timeline }: TimelineViewProps) {
   const totalWidth = LABEL_WIDTH + chartWidth + GUTTER_WIDTH + RIGHT_PADDING
   const totalHeight = AXIS_TOP + selectedLanes.length * ROW_HEIGHT + 12
 
-  const goTo = (id: string) => router.push(`/wiki/${id}`)
+  const goTo = (id: string) => router.push(wikiHref(id))
 
   return (
     <div>
@@ -218,7 +220,7 @@ export default function TimelineView({ timeline }: TimelineViewProps) {
                       className="cursor-pointer"
                       onClick={() => goTo(item.id)}
                     >
-                      <title>{`${item.title} (${item.year}) — ${item.type}`}</title>
+                      <title>{`${displayTitle(String(item.title ?? ""))} (${item.year}) — ${item.type}`}</title>
                     </circle>
                   )
                 })}
@@ -232,7 +234,7 @@ export default function TimelineView({ timeline }: TimelineViewProps) {
                     className="cursor-pointer"
                     onClick={() => goTo(item.id)}
                   >
-                    <title>{`${item.title} (undated) — ${item.type}`}</title>
+                    <title>{`${displayTitle(String(item.title ?? ""))} (undated) — ${item.type}`}</title>
                   </circle>
                 ))}
                 {undatedItems.length > 6 && (

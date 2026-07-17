@@ -17,6 +17,7 @@ const BASE: SettingsResponse = {
   },
   companion: { chattiness: "medium", companionName: "Ember" },
   trending: { fields: [], cadence: "weekly" },
+  ui: { theme: "system" },
 }
 
 describe("companion settings client", () => {

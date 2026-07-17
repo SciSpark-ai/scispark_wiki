@@ -10,6 +10,7 @@ import AskPanel, { type AskState } from "./AskPanel"
 import CaptureIdeaCard from "./CaptureIdeaCard"
 import type { ReaderContent } from "@/lib/reader/load"
 import { paperKey, type PaperRecord } from "@/lib/papers/types"
+import { displayTitle } from "@/lib/papers/title"
 import type { VaultStorage } from "@/lib/vault/storage"
 import type { Highlight } from "@/lib/highlights/types"
 import { listHighlights, listHighlightsWithRetry, addHighlight, removeHighlight, makeHighlightId } from "@/lib/highlights/store"
@@ -21,6 +22,7 @@ import { applyChangesetRemote } from "@/lib/vault/changeset-client"
 import { loadCompanionSettingsRemote } from "@/lib/companion/settings-client"
 import { loadBundle } from "@/lib/vault/bundle"
 import { logEvent } from "@/lib/events/log"
+import { wikiHref } from "@/lib/wiki/href"
 
 // pdf.js and DOMPurify both touch DOMMatrix/canvas/window and must never run
 // during SSR — both surfaces are client-only, per the M6 plan's SSR
@@ -45,12 +47,6 @@ function computeSurroundingText(text: string, start: number, end: number): strin
   const from = Math.max(0, start - SURROUND_RADIUS)
   const to = Math.min(text.length, end + SURROUND_RADIUS)
   return text.slice(from, to)
-}
-
-/** wiki page id (e.g. "wiki/papers/foo") -> its /wiki/<...> route, matching
- * the pageHref convention in src/app/papers/page.tsx. */
-function pageHref(idOrPath: string): string {
-  return `/wiki/${idOrPath.replace(/\.md$/, "")}`
 }
 
 /**
@@ -300,7 +296,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
     return (
       <div className="p-7">
         <div className="border border-border-warm rounded-card px-4 py-3 bg-light-surface max-w-2xl">
-          <h1 className="font-heading text-[20px] text-espresso tracking-heading-card">{paper.title}</h1>
+          <h1 className="font-heading text-[20px] text-espresso tracking-heading-card">{displayTitle(paper.title)}</h1>
           <div className="mt-2 text-[13px] text-muted-text tracking-body">{content.reason}</div>
           {paper.abstract && (
             <div className="mt-3 text-[13px]/[19px] text-espresso whitespace-pre-wrap">{paper.abstract}</div>
@@ -319,7 +315,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
   return (
     <div className="flex h-full min-h-0">
       <div className="flex-1 min-w-0 overflow-y-auto p-7">
-        <h1 className="font-heading text-[22px] text-espresso tracking-heading mb-4 max-w-[68ch]">{paper.title}</h1>
+        <h1 className="font-heading text-[22px] text-espresso tracking-heading mb-4 max-w-[68ch]">{displayTitle(paper.title)}</h1>
 
         {content.kind === "html" && (
           <div className="relative">
@@ -382,7 +378,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
         {captureNotice && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 border border-border-warm rounded-pill bg-espresso text-white px-4 py-2 text-[13px] shadow-lg flex items-center gap-2 z-50">
             Idea captured.
-            <Link href={pageHref(captureNotice.path)} className="text-orange-light font-medium">
+            <Link href={wikiHref(captureNotice.path)} className="text-orange-light font-medium">
               View note
             </Link>
           </div>

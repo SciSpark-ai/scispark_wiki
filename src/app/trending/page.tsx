@@ -15,6 +15,9 @@ import {
 import { refreshTrendingDashboard } from "@/lib/trending/client"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { FieldPanelView } from "@/components/trending/FieldPanelView"
+import { PageHeader } from "@/components/ui/PageHeader"
+import { Button } from "@/components/ui/Button"
+import { LoadingState } from "@/components/ui/LoadingState"
 
 type State =
   | { status: "loading" }
@@ -113,33 +116,33 @@ export default function TrendingPage() {
 
   return (
     <div className="p-7">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="font-heading text-[28px] text-espresso tracking-heading">Trending in your fields</h1>
-        {state.status === "ready" && (
-          <div className="flex items-center gap-3">
-            {refreshing && refreshingField && (
-              <span className="text-[12px] text-muted-text">Gathering trends… ({refreshingField})</span>
-            )}
-            <span className="text-[12px] text-muted-text">Updated {formatUpdated(state.dashboard.generatedAt)}</span>
-            <button
-              onClick={refresh}
-              disabled={refreshing}
-              className="text-[13px] text-white bg-orange hover:bg-orange/90 disabled:opacity-50 rounded-pill px-4 py-1.5 font-medium"
-            >
-              {refreshing ? "Refreshing…" : "Refresh"}
-            </button>
-          </div>
-        )}
-      </div>
+      <PageHeader
+        title="Trending in your fields"
+        actions={
+          state.status === "ready" ? (
+            <>
+              {refreshing && refreshingField && (
+                <span className="text-[12px] text-muted-text">Gathering trends… ({refreshingField})</span>
+              )}
+              <span className="text-[12px] text-muted-text">Updated {formatUpdated(state.dashboard.generatedAt)}</span>
+              <Button onClick={refresh} disabled={refreshing}>
+                {refreshing ? "Refreshing…" : "Refresh"}
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
 
       {state.status === "loading" && (
-        <p className="mt-6 text-[14px] text-muted-text">
-          {refreshing
-            ? refreshingField
-              ? `Gathering your fields’ trends… (${refreshingField})`
-              : "Gathering your fields’ trends…"
-            : "Loading…"}
-        </p>
+        <LoadingState
+          label={
+            refreshing
+              ? refreshingField
+                ? `Gathering your fields’ trends… (${refreshingField})`
+                : "Gathering your fields’ trends…"
+              : "Loading…"
+          }
+        />
       )}
       {state.status === "empty" && (
         <div className="mt-8 border border-border-warm rounded-card px-5 py-6 bg-light-surface max-w-lg">
@@ -155,13 +158,9 @@ export default function TrendingPage() {
       {state.status === "error" && (
         <div className="mt-6">
           <LlmErrorMessage message={state.message} />
-          <button
-            onClick={refresh}
-            disabled={refreshing}
-            className="mt-3 text-[13px] text-white bg-orange hover:bg-orange/90 disabled:opacity-50 rounded-pill px-4 py-1.5 font-medium"
-          >
+          <Button onClick={refresh} disabled={refreshing} className="mt-3">
             {refreshing ? "Retrying…" : "Retry"}
-          </button>
+          </Button>
         </div>
       )}
       {state.status === "ready" && (

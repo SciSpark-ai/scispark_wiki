@@ -81,7 +81,7 @@ export default function ProjectsPage() {
 
       {/* Search */}
       <div className="mt-5">
-        <div className="flex items-center gap-2 bg-white border border-border-warm rounded-[10px] px-3 py-2.5">
+        <div className="flex items-center gap-2 bg-light-surface border border-border-warm rounded-[10px] px-3 py-2.5">
           <Search size={16} className="text-muted-text flex-shrink-0" />
           <input
             type="text"
@@ -99,7 +99,7 @@ export default function ProjectsPage() {
           <div
             key={project.id}
             onClick={() => router.push(`/projects/${project.id}`)}
-            className="bg-white border border-border-warm/30 rounded-[14px] p-5 cursor-pointer hover:shadow-sm transition-all group"
+            className="bg-light-surface border border-border-warm/30 rounded-[14px] p-5 cursor-pointer hover:shadow-sm transition-all group"
           >
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">

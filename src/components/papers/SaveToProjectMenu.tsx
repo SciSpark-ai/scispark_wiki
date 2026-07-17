@@ -62,7 +62,7 @@ export function SaveToProjectMenu({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -2, scale: 0.98 }}
           transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-          className="absolute top-full left-0 mt-2 z-40 bg-white border border-border-warm/40 rounded-[14px] shadow-xl w-[300px] overflow-hidden"
+          className="absolute top-full left-0 mt-2 z-40 bg-light-surface border border-border-warm/40 rounded-[14px] shadow-xl w-[300px] overflow-hidden"
         >
           <p className="px-4 pt-3 pb-2 text-[15px] font-semibold text-espresso">
             Save to…

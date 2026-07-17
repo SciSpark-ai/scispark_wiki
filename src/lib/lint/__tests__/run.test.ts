@@ -151,7 +151,8 @@ describe("applyLintFix", () => {
     const before = await s.read("wiki/concepts/a.md")
     expect(before).toContain("[[nonexistent-page]]")
 
-    const { changesetId } = await applyLintFix(s, brokenLinkItem.id)
+    const { changesetId, outcome } = await applyLintFix(s, brokenLinkItem.id)
+    expect(outcome).toBe("applied")
     const after = await s.read("wiki/concepts/a.md")
     expect(after).not.toContain("[[nonexistent-page]]")
     expect(after).toContain("nonexistent-page")
@@ -198,7 +199,8 @@ describe("applyLintFix", () => {
     }
     await s.write(".scispark/review/manual-bad-fm-1.json", JSON.stringify(item, null, 2))
 
-    const { changesetId } = await applyLintFix(s, "manual-bad-fm-1")
+    const { changesetId, outcome } = await applyLintFix(s, "manual-bad-fm-1")
+    expect(outcome).toBe("applied")
     const fixed = await s.read("wiki/concepts/foo.md")
     expect(fixed).toBe(after)
     expect(fixed).toContain("updated: 2026-07-01")
@@ -218,7 +220,8 @@ describe("applyLintFix", () => {
     const reviews = await listReviews(s)
     const driftItem = reviews.find((r) => r.lintKind === "index-drift")!
 
-    const { changesetId } = await applyLintFix(s, driftItem.id)
+    const { changesetId, outcome } = await applyLintFix(s, driftItem.id)
+    expect(outcome).toBe("applied")
     // No real changeset record is created for this fix (index.md is a protected
     // path and the fix bypasses applyChangeset entirely) — the returned id is a
     // non-persisted sentinel, documented in run.ts.
@@ -250,6 +253,7 @@ describe("applyLintFix", () => {
     // Apply the first fix — a real changeset, not a no-op.
     const first = await applyLintFix(s, brokenItems[0].id)
     expect(first.changesetId).not.toBe(LINT_FIX_NOOP_SENTINEL)
+    expect(first.outcome).toBe("applied")
     expect(await loadChangeset(s, first.changesetId)).not.toBeNull()
 
     // Apply the second fix — must NOT throw ChangesetConflictError, must remove
@@ -257,6 +261,7 @@ describe("applyLintFix", () => {
     const second = await applyLintFix(s, brokenItems[1].id)
     expect(second.changesetId).not.toBe(LINT_FIX_NOOP_SENTINEL)
     expect(second.changesetId).not.toBe(first.changesetId)
+    expect(second.outcome).toBe("applied")
 
     const finalContent = await s.read("wiki/concepts/a.md")
     expect(finalContent).not.toContain("[[")
@@ -271,7 +276,131 @@ describe("applyLintFix", () => {
     expect(refreshed.filter((f) => f.lintKind === "broken-link")).toHaveLength(0)
   })
 
-  it("a fix whose finding is already resolved (sibling fixed it / it's gone) is a clean no-op — no throw, sentinel id, nothing written", async () => {
+  it("duplicate-author (branch 2): applies the multi-file merge changeset (folds the rich duplicate into the skeleton canonical, rewrites the referring page, deletes the duplicate), and undo restores everything", async () => {
+    const s = new MemoryVaultStorage()
+    // Real Lalor case: skeleton canonical (empty frontmatter, Papers only) +
+    // rich name-slug duplicate carrying the biography and frontmatter.
+    const canonicalBody = "# Edmund C. Lalor\n\n## Papers\n\n- [[the-paper]]"
+    await s.write(
+      "wiki/authors/a5074790393.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { openalex: "A5074790393", sources: [] }), canonicalBody),
+    )
+    const richBody =
+      "# Edmund C. Lalor\n\nEdmund C. Lalor is a senior author on [[the-paper]].\n\n## Research contributions\n\nTRF estimation."
+    await s.write(
+      "wiki/authors/edmund-c-lalor.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { tags: ["neuroscience"], related: ["mtrf-toolbox"] }), richBody),
+    )
+    await s.write(
+      "wiki/papers/p1.md",
+      serializeDocument(fm("paper", "Some Paper", { related: ["edmund-c-lalor"] }), "By [[edmund-c-lalor]]."),
+    )
+
+    await runLintDeterministic(s, { now: NOW })
+    const reviews = await listReviews(s)
+    const dupItem = reviews.find((r) => r.lintKind === "duplicate-author")!
+    expect(dupItem).toBeDefined()
+    expect(dupItem.fixes).toBeDefined()
+
+    const canonicalBefore = await s.read("wiki/authors/a5074790393.md")
+    const paperBefore = await s.read("wiki/papers/p1.md")
+    const dupBefore = await s.read("wiki/authors/edmund-c-lalor.md")
+
+    const { changesetId, outcome } = await applyLintFix(s, dupItem.id)
+    expect(changesetId).not.toBe(LINT_FIX_NOOP_SENTINEL)
+    expect(outcome).toBe("applied")
+
+    // Duplicate deleted; its biography folded into the canonical; canonical's
+    // Papers entry preserved; openalex id kept; referring page repointed.
+    expect(await s.read("wiki/authors/edmund-c-lalor.md")).toBeNull()
+    const merged = await loadBundle(s)
+    const canonicalNow = merged.pages.get("wiki/authors/a5074790393")!
+    expect(canonicalNow.body).toContain("senior author")
+    expect(canonicalNow.body).toContain("## Research contributions")
+    expect(canonicalNow.body).toContain("- [[the-paper]]")
+    expect(canonicalNow.frontmatter.openalex).toBe("A5074790393")
+    expect(canonicalNow.frontmatter.tags).toEqual(["neuroscience"])
+    expect(canonicalNow.frontmatter.related).toEqual(["mtrf-toolbox"])
+    const paperAfter = await s.read("wiki/papers/p1.md")
+    expect(paperAfter).toContain("[[a5074790393]]")
+    expect(paperAfter).not.toContain("edmund-c-lalor")
+    expect(merged.pages.get("wiki/papers/p1")?.frontmatter.related).toEqual(["a5074790393"])
+
+    // Undo restores all three files exactly.
+    const cs = await loadChangeset(s, changesetId)
+    expect(cs).not.toBeNull()
+    await revertChangeset(s, cs!)
+    expect(await s.read("wiki/authors/a5074790393.md")).toBe(canonicalBefore)
+    expect(await s.read("wiki/authors/edmund-c-lalor.md")).toBe(dupBefore)
+    expect(await s.read("wiki/papers/p1.md")).toBe(paperBefore)
+  })
+
+  it("duplicate-author: a fix whose finding is already resolved is a clean no-op, outcome 'resolved'", async () => {
+    const s = new MemoryVaultStorage()
+    const canonicalBody = "# Edmund C. Lalor\n\n## Papers\n\n- [[the-paper]]"
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor", { openalex: "A5074790393", sources: [] }), canonicalBody))
+    await s.write(
+      "wiki/authors/edmund-c-lalor.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { tags: ["neuroscience"] }), "# Edmund C. Lalor\n\nBiography prose here.\n\n## Notes\n\nMore."),
+    )
+
+    await runLintDeterministic(s, { now: NOW })
+    const reviews = await listReviews(s)
+    const dupItem = reviews.find((r) => r.lintKind === "duplicate-author")!
+    expect(dupItem.fixes).toBeDefined()
+
+    // Resolved out-of-band: the duplicate page is deleted before Fix is clicked.
+    await s.delete("wiki/authors/edmund-c-lalor.md")
+
+    const res = await applyLintFix(s, dupItem.id)
+    expect(res.changesetId).toBe(LINT_FIX_NOOP_SENTINEL)
+    expect(res.outcome).toBe("resolved")
+  })
+
+  it("duplicate-author: reclassified to advisory-only by the time Fix is clicked (a sibling change made the canonical no longer a bare skeleton) returns 'needs-manual', not 'resolved' — the finding is still there and the page is left untouched", async () => {
+    const s = new MemoryVaultStorage()
+    const canonicalBody = "# Edmund C. Lalor\n\n## Papers\n\n- [[the-paper]]"
+    await s.write(
+      "wiki/authors/a5074790393.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { openalex: "A5074790393", sources: [] }), canonicalBody),
+    )
+    const richBody =
+      "# Edmund C. Lalor\n\nEdmund C. Lalor is a senior author on [[the-paper]].\n\n## Research contributions\n\nTRF estimation."
+    await s.write(
+      "wiki/authors/edmund-c-lalor.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { tags: ["neuroscience"] }), richBody),
+    )
+
+    await runLintDeterministic(s, { now: NOW })
+    const reviews = await listReviews(s)
+    const dupItem = reviews.find((r) => r.lintKind === "duplicate-author")!
+    // Originally classified merge-into-canonical (canonical is a bare skeleton).
+    expect(dupItem.fixes).toBeDefined()
+
+    // Sibling change lands before Fix is clicked: the canonical page picks up
+    // its own tags/sources, so it's no longer a bare-skeleton-with-empty-
+    // frontmatter — classifyDuplicate now falls through to "manual" for this
+    // exact same pair (both pages still exist, both still substantive).
+    await s.write(
+      "wiki/authors/a5074790393.md",
+      serializeDocument(
+        fm("author", "Edmund C. Lalor", { openalex: "A5074790393", tags: ["neuroscience"], sources: ["x.pdf"] }),
+        canonicalBody,
+      ),
+    )
+    const canonicalBeforeApply = await s.read("wiki/authors/a5074790393.md")
+    const extraBeforeApply = await s.read("wiki/authors/edmund-c-lalor.md")
+
+    const res = await applyLintFix(s, dupItem.id)
+    expect(res.changesetId).toBe(LINT_FIX_NOOP_SENTINEL)
+    expect(res.outcome).toBe("needs-manual")
+
+    // Nothing was written — neither page changed, no changeset was created.
+    expect(await s.read("wiki/authors/a5074790393.md")).toBe(canonicalBeforeApply)
+    expect(await s.read("wiki/authors/edmund-c-lalor.md")).toBe(extraBeforeApply)
+  })
+
+  it("a fix whose finding is already resolved (sibling fixed it / it's gone) is a clean no-op — no throw, sentinel id, nothing written, outcome 'resolved'", async () => {
     const s = new MemoryVaultStorage()
     await s.write("wiki/concepts/a.md", serializeDocument(fm("concept", "A"), "See [[ghost]] for details."))
 
@@ -286,6 +415,7 @@ describe("applyLintFix", () => {
 
     const res = await applyLintFix(s, brokenItem.id)
     expect(res.changesetId).toBe(LINT_FIX_NOOP_SENTINEL)
+    expect(res.outcome).toBe("resolved")
     // No changeset was persisted and the page was left untouched.
     expect(await loadChangeset(s, res.changesetId)).toBeNull()
     expect(await s.read("wiki/concepts/a.md")).toBe(contentBefore)

@@ -1,5 +1,5 @@
 import { readNdjson } from "../server/ndjson"
-import type { LintFinding } from "./types"
+import type { LintFinding, LintFixOutcome } from "./types"
 
 /**
  * Browser-side callers for the lint skill routes (M12 Task 9), mirroring
@@ -104,12 +104,15 @@ export async function estimateLintCost(fetchFn: typeof fetch = fetch): Promise<n
 
 /**
  * POST /api/skills/lint/fix with `{reviewId}`; resolves with
- * `{changesetId}`, same shape as a direct `applyLintFix` call.
+ * `{changesetId, outcome}`, same shape as a direct `applyLintFix` call.
+ * `outcome` ("applied" | "resolved" | "needs-manual") is what callers should
+ * branch on — see `src/lib/lint/run.ts#applyLintFix`'s comment for why a bare
+ * changesetId can't tell "safe to dismiss" apart from "still needs a human".
  */
 export async function applyLintFixRemote(
   reviewId: string,
   fetchFn: typeof fetch = fetch,
-): Promise<{ changesetId: string }> {
+): Promise<{ changesetId: string; outcome: LintFixOutcome }> {
   const res = await fetchFn("/api/skills/lint/fix", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -118,6 +121,6 @@ export async function applyLintFixRemote(
   if (!res.ok) {
     throw new Error(await readErrorMessage(res, `lint fix failed (${res.status})`))
   }
-  const body = (await res.json()) as { result: { changesetId: string } }
+  const body = (await res.json()) as { result: { changesetId: string; outcome: LintFixOutcome } }
   return body.result
 }

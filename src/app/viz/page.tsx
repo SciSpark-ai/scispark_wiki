@@ -15,6 +15,8 @@ import { VizTabs, type VizTab } from "@/components/viz/VizTabs"
 import TimelineView from "@/components/viz/TimelineView"
 import CitationFlowView, { type CitationPaper } from "@/components/viz/CitationFlowView"
 import AuthorNetworkView from "@/components/viz/AuthorNetworkView"
+import { PageHeader } from "@/components/ui/PageHeader"
+import { LoadingState } from "@/components/ui/LoadingState"
 
 // Sigma.js touches WebGL/canvas at import time — loaded client-only, same
 // discipline as PdfSurface (src/components/reader/ReaderView.tsx).
@@ -114,30 +116,28 @@ export default function VizPage() {
 
   return (
     <div className="p-7">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="font-heading text-[28px] text-espresso tracking-heading">Dashboard</h1>
-          <p className="mt-1 text-[13px] text-muted-text tracking-body">
-            Derived from your wiki — recomputed live, nothing stored.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <VizTabs active={tab} onChange={setTab} />
-          <button
-            type="button"
-            onClick={() => void handleRecompute()}
-            disabled={busy || !bundle}
-            className="text-[13px] text-espresso hover:text-orange disabled:opacity-50 rounded-pill border border-border-warm px-3 py-1.5 transition-colors"
-          >
-            {busy ? "Recomputing…" : "Recompute"}
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        description="Derived from your wiki — recomputed live, nothing stored."
+        actions={
+          <>
+            <VizTabs active={tab} onChange={setTab} />
+            <button
+              type="button"
+              onClick={() => void handleRecompute()}
+              disabled={busy || !bundle}
+              className="text-[13px] text-espresso hover:text-orange disabled:opacity-50 rounded-pill border border-border-warm px-3 py-1.5 transition-colors"
+            >
+              {busy ? "Recomputing…" : "Recompute"}
+            </button>
+          </>
+        }
+      />
 
       {error && <p className="mt-3 text-[13px] text-red-600">Error: {error}</p>}
 
       {!bundle || !graph ? (
-        <p className="mt-6 text-[14px] text-muted-text">Loading vault…</p>
+        <LoadingState label="Loading vault…" />
       ) : graph.nodes.length === 0 ? (
         <div className="mt-8 border border-border-warm rounded-card px-5 py-6 bg-light-surface max-w-xl">
           <h2 className="font-heading text-[18px] text-espresso tracking-heading-card">Nothing to visualize yet</h2>

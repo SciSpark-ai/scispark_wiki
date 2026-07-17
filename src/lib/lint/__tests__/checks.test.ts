@@ -10,6 +10,7 @@ import {
   findBrokenLinks,
   findBadFrontmatter,
   findIndexDrift,
+  findDuplicateAuthors,
   runDeterministicChecks,
 } from "../checks"
 
@@ -251,6 +252,309 @@ describe("findBadFrontmatter", () => {
   })
 })
 
+describe("findDuplicateAuthors", () => {
+  // A `buildAuthorSkeletons`-shaped page: H1 + a `## Papers` bullet list, empty
+  // tags/related/sources (matching wiki/authors/a5074790393.md in the real vault).
+  const skeletonBody = (name: string, paperSlug = "some-paper") =>
+    `# ${name}\n\n## Papers\n\n- [[${paperSlug}]]`
+
+  // A rich LLM-authored author page: biography prose + `##` sections, no
+  // `## Papers` section (matching wiki/authors/edmund-c-lalor.md in the real vault).
+  const richBody = (name: string) =>
+    `# ${name}\n\n${name} is a senior author on [[some-paper]], introducing the [[mtrf-toolbox]].\n\n` +
+    `## Research contributions\n\nFormalized regularized regression approaches, applied to [[speech-eeg]].\n\n` +
+    `## Collaborators\n\nCo-authored with several others.`
+
+  it("flags an author with both an id-keyed and a name-keyed page (C6)", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor"), skeletonBody("Edmund C. Lalor")))
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "Edmund C. Lalor", { tags: ["neuroscience"] }), richBody("Edmund C. Lalor")))
+    await s.write("wiki/authors/a5035188059.md", serializeDocument(fm("author", "Adam Bednar"), skeletonBody("Adam Bednar")))
+    const b = await loadBundle(s)
+
+    const findings = runDeterministicChecks(b).filter((f) => f.lintKind === "duplicate-author")
+    expect(findings).toHaveLength(1)
+    expect(findings[0].title).toContain("Edmund C. Lalor")
+    expect(findings[0].pages).toEqual(["wiki/authors/a5074790393", "wiki/authors/edmund-c-lalor"])
+    expect(findings[0].fixTarget).toBe("wiki/authors/edmund-c-lalor")
+  })
+
+  it("clean bundle: a lone id-keyed author page (no name-slug duplicate) is not flagged", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5035188059.md", serializeDocument(fm("author", "Adam Bednar"), skeletonBody("Adam Bednar")))
+    const b = await loadBundle(s)
+    expect(findDuplicateAuthors(b)).toEqual([])
+  })
+
+  it("a lone name-slug page with no id-keyed sibling is not flagged (nothing unambiguous to merge onto)", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "Edmund C. Lalor"), richBody("Edmund C. Lalor")))
+    const b = await loadBundle(s)
+    expect(findDuplicateAuthors(b)).toEqual([])
+  })
+
+  it("normalization collapses case and punctuation/whitespace differences", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor"), skeletonBody("Edmund C. Lalor")))
+    // Same person, different casing/punctuation spacing on the duplicate's title.
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "edmund   c lalor"), richBody("Edmund C. Lalor")))
+    const b = await loadBundle(s)
+    expect(findDuplicateAuthors(b)).toHaveLength(1)
+  })
+
+  it("a group with two id-keyed pages sharing a normalized title is left unflagged (no unambiguous canonical)", async () => {
+    const s = new MemoryVaultStorage()
+    // Two distinct OpenAlex ids, same display name -- could be two different
+    // real people; there's no safe merge target to guess.
+    await s.write("wiki/authors/a1111.md", serializeDocument(fm("author", "J. Smith"), skeletonBody("J. Smith")))
+    await s.write("wiki/authors/a2222.md", serializeDocument(fm("author", "J. Smith"), skeletonBody("J. Smith")))
+    const b = await loadBundle(s)
+    expect(findDuplicateAuthors(b)).toEqual([])
+  })
+
+  it("non-author pages sharing a normalized title are never considered", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Shared Title"), skeletonBody("Shared Title")))
+    await s.write("wiki/concepts/shared-title.md", serializeDocument(fm("concept", "Shared Title"), "Not an author."))
+    const b = await loadBundle(s)
+    expect(findDuplicateAuthors(b)).toEqual([])
+  })
+
+  // --- Branch 1: extra is a trivial skeleton (canonical already covers it) ---
+  it("branch 1 (extra trivial): deletes the skeleton duplicate, rewrites referrers, leaves canonical untouched", async () => {
+    const s = new MemoryVaultStorage()
+    // Canonical is the richer page here (has the paper + a tag); the extra is a
+    // bare skeleton whose single Papers entry the canonical already lists.
+    await s.write(
+      "wiki/authors/a5074790393.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { tags: ["neuroscience"] }), skeletonBody("Edmund C. Lalor", "the-paper")),
+    )
+    const dupePage = serializeDocument(fm("author", "Edmund C. Lalor"), skeletonBody("Edmund C. Lalor", "the-paper"))
+    await s.write("wiki/authors/edmund-c-lalor.md", dupePage)
+    await s.write(
+      "wiki/papers/p1.md",
+      serializeDocument(fm("paper", "Some Paper", { related: ["edmund-c-lalor"] }), "By [[edmund-c-lalor|Lalor]]."),
+    )
+    const b = await loadBundle(s)
+
+    const findings = findDuplicateAuthors(b)
+    expect(findings).toHaveLength(1)
+    expect(findings[0].description).toContain("adds no content")
+    const fixes = findings[0].fixes!
+    expect(fixes).toBeDefined()
+
+    // Referring paper: wikilink renamed (alias preserved), related[] renamed.
+    const paperFix = fixes.find((c) => c.path === "wiki/papers/p1.md")!
+    expect(paperFix.after).toContain("[[a5074790393|Lalor]]")
+    expect(paperFix.after).not.toContain("edmund-c-lalor")
+    expect(parseDocument(paperFix.after!).frontmatter.related).toEqual(["a5074790393"])
+
+    // Duplicate deleted; canonical NOT in the change set (untouched).
+    const deleteFix = fixes.find((c) => c.path === "wiki/authors/edmund-c-lalor.md")!
+    expect(deleteFix.before).toBe(dupePage)
+    expect(deleteFix.after).toBeNull()
+    expect(fixes.find((c) => c.path === "wiki/authors/a5074790393.md")).toBeUndefined()
+  })
+
+  it("branch 1: a referring page's related[] already pointing at the canonical slug is deduped after the rename", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor"), skeletonBody("Edmund C. Lalor")))
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "Edmund C. Lalor"), skeletonBody("Edmund C. Lalor")))
+    await s.write(
+      "wiki/papers/p1.md",
+      serializeDocument(fm("paper", "Some Paper", { related: ["a5074790393", "edmund-c-lalor"] }), "Body."),
+    )
+    const b = await loadBundle(s)
+
+    const findings = findDuplicateAuthors(b)
+    expect(findings[0].description).toContain("adds no content")
+    const paperFix = findings[0].fixes!.find((c) => c.path === "wiki/papers/p1.md")!
+    expect(parseDocument(paperFix.after!).frontmatter.related).toEqual(["a5074790393"])
+  })
+
+  // --- Branch 2: extra rich, canonical skeleton (the real Lalor case) ---
+  it("branch 2 (canonical skeleton): folds the duplicate's biography + frontmatter into the canonical, then deletes the duplicate — nothing lost", async () => {
+    const s = new MemoryVaultStorage()
+    // Reconstruction of the real eeg-auditory-vault case: canonical is a bare
+    // skeleton (empty frontmatter, `## Papers` only, has the openalex id); the
+    // name-slug duplicate carries the full biography + rich frontmatter.
+    const canonicalFm = fm("author", "Edmund C. Lalor", { openalex: "A5074790393", sources: [] })
+    const canonicalBody = "# Edmund C. Lalor\n\n## Papers\n\n- [[10-3389-fnhum-2016-00604]]"
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(canonicalFm, canonicalBody))
+
+    const richFm = fm("author", "Edmund C. Lalor", {
+      tags: ["author", "neuroscience", "eeg"],
+      related: ["mtrf-toolbox", "temporal-response-function-trf-estimation"],
+      sources: ["doi:10.3389/fnhum.2016.00604"],
+    })
+    const richBodyText =
+      "# Edmund C. Lalor\n\n" +
+      "Edmund C. Lalor is a senior/corresponding author on [[10-3389-fnhum-2016-00604]], introducing the [[mtrf-toolbox]].\n\n" +
+      "## Research contributions\n\n" +
+      "Formalized regularized regression approaches for TRF estimation.\n\n" +
+      "## Collaborators\n\n" +
+      "Co-authored with Michael J. Crosse, Giovanni M. Di Liberto, and Adam Bednar."
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(richFm, richBodyText))
+    const b = await loadBundle(s)
+
+    const findings = findDuplicateAuthors(b)
+    expect(findings).toHaveLength(1)
+    expect(findings[0].description).toContain("biography")
+    const fixes = findings[0].fixes!
+
+    // The canonical page is REWRITTEN (not just the extra deleted).
+    const canonicalFix = fixes.find((c) => c.path === "wiki/authors/a5074790393.md")!
+    expect(canonicalFix).toBeDefined()
+    const parsed = parseDocument(canonicalFix.after!)
+
+    // Biography prose survived, folded into the canonical.
+    expect(parsed.body).toContain("senior/corresponding author")
+    expect(parsed.body).toContain("## Research contributions")
+    expect(parsed.body).toContain("## Collaborators")
+    // The canonical skeleton's Papers entry is preserved (appended as a section).
+    expect(parsed.body).toContain("## Papers")
+    expect(parsed.body).toContain("- [[10-3389-fnhum-2016-00604]]")
+
+    // Frontmatter: unioned lists, canonical's openalex id + title/created kept.
+    expect(parsed.frontmatter.openalex).toBe("A5074790393")
+    expect(parsed.frontmatter.title).toBe("Edmund C. Lalor")
+    expect(parsed.frontmatter.tags).toEqual(["author", "neuroscience", "eeg"])
+    expect(parsed.frontmatter.related).toEqual(["mtrf-toolbox", "temporal-response-function-trf-estimation"])
+    expect(parsed.frontmatter.sources).toEqual(["doi:10.3389/fnhum.2016.00604"])
+
+    // The duplicate page is still deleted.
+    const deleteFix = fixes.find((c) => c.path === "wiki/authors/edmund-c-lalor.md")!
+    expect(deleteFix.after).toBeNull()
+  })
+
+  it("branch 2: merges the canonical's Papers list INTO the duplicate's existing Papers section, deduping shared entries", async () => {
+    const s = new MemoryVaultStorage()
+    const canonicalBody = "# X Author\n\n## Papers\n\n- [[paper-a]]\n- [[paper-shared]]"
+    await s.write("wiki/authors/a999.md", serializeDocument(fm("author", "X Author", { sources: [] }), canonicalBody))
+    const richBodyText =
+      "# X Author\n\nX Author studies things.\n\n" +
+      "## Papers\n\n- [[paper-shared]]\n- [[paper-b]]"
+    await s.write("wiki/authors/x-author.md", serializeDocument(fm("author", "X Author", { tags: ["t"] }), richBodyText))
+    const b = await loadBundle(s)
+
+    const canonicalFix = findDuplicateAuthors(b)[0].fixes!.find((c) => c.path === "wiki/authors/a999.md")!
+    const body = parseDocument(canonicalFix.after!).body
+    // The extra's own entries come first, then the canonical's unique one; the
+    // shared entry appears exactly once.
+    expect(body).toContain("- [[paper-shared]]")
+    expect(body).toContain("- [[paper-b]]")
+    expect(body).toContain("- [[paper-a]]")
+    expect((body.match(/\[\[paper-shared\]\]/g) ?? []).length).toBe(1)
+  })
+
+  it("branch 2: renames an extra→canonical self-reference inside the duplicate's own body before it becomes the canonical body", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a999.md", serializeDocument(fm("author", "X Author", { sources: [] }), "# X Author\n\n## Papers\n\n- [[paper-a]]"))
+    // The rich duplicate body references its OWN name slug — after the merge it
+    // must point at the canonical id slug, not the (deleted) name slug.
+    const richBodyText = "# X Author\n\nSee [[x-author|my page]] and [[paper-a]].\n\n## Notes\n\nMore."
+    await s.write("wiki/authors/x-author.md", serializeDocument(fm("author", "X Author"), richBodyText))
+    const b = await loadBundle(s)
+
+    const canonicalFix = findDuplicateAuthors(b)[0].fixes!.find((c) => c.path === "wiki/authors/a999.md")!
+    const body = parseDocument(canonicalFix.after!).body
+    expect(body).toContain("[[a999|my page]]")
+    expect(body).not.toContain("x-author")
+  })
+
+  // --- Finding 1: unknown (hand-added) frontmatter keys must survive a merge ---
+  it("branch 1: an extra with a unique unknown frontmatter key (e.g. orcid) is NOT trivial, even though tags/related/sources/papers are otherwise a subset", async () => {
+    const s = new MemoryVaultStorage()
+    // Canonical is rich (not skeleton-shaped) but otherwise its
+    // tags/related/sources cover the extra's — the extra's ONLY unique content
+    // is the "orcid" key, which the canonical does not carry at all.
+    await s.write(
+      "wiki/authors/a5074790393.md",
+      serializeDocument(fm("author", "Edmund C. Lalor"), richBody("Edmund C. Lalor")),
+    )
+    await s.write(
+      "wiki/authors/edmund-c-lalor.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { orcid: "0000-0002-1825-0097" }), "# Edmund C. Lalor"),
+    )
+    const b = await loadBundle(s)
+
+    const findings = findDuplicateAuthors(b)
+    expect(findings).toHaveLength(1)
+    // Not trivial: deleting the extra would silently drop its orcid. Canonical
+    // isn't skeleton-shaped either, so this falls all the way to manual/advisory.
+    expect(findings[0].description).not.toContain("adds no content")
+    expect(findings[0].fixes).toBeUndefined()
+    expect(findings[0].fix).toBeUndefined()
+  })
+
+  it("branch 1: an extra whose unique unknown key IS already present with an equal value on the canonical stays trivial", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write(
+      "wiki/authors/a5074790393.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { orcid: "0000-0002-1825-0097" }), skeletonBody("Edmund C. Lalor")),
+    )
+    await s.write(
+      "wiki/authors/edmund-c-lalor.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { orcid: "0000-0002-1825-0097" }), skeletonBody("Edmund C. Lalor")),
+    )
+    const b = await loadBundle(s)
+
+    const findings = findDuplicateAuthors(b)
+    expect(findings).toHaveLength(1)
+    expect(findings[0].description).toContain("adds no content")
+    expect(findings[0].fixes).toBeDefined()
+  })
+
+  it("branch 2: unions the extra's unique unknown frontmatter key (e.g. orcid) onto the merged canonical instead of dropping it", async () => {
+    const s = new MemoryVaultStorage()
+    const canonicalFm = fm("author", "Edmund C. Lalor", { openalex: "A5074790393", sources: [] })
+    const canonicalBody = "# Edmund C. Lalor\n\n## Papers\n\n- [[the-paper]]"
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(canonicalFm, canonicalBody))
+
+    const richFm = fm("author", "Edmund C. Lalor", { tags: ["neuroscience"], orcid: "0000-0002-1825-0097" })
+    const richBodyText = "# Edmund C. Lalor\n\nBio.\n\n## Research contributions\n\nTRF."
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(richFm, richBodyText))
+    const b = await loadBundle(s)
+
+    const findings = findDuplicateAuthors(b)
+    expect(findings).toHaveLength(1)
+    const canonicalFix = findings[0].fixes!.find((c) => c.path === "wiki/authors/a5074790393.md")!
+    const parsed = parseDocument(canonicalFix.after!)
+    expect(parsed.frontmatter.orcid).toBe("0000-0002-1825-0097")
+  })
+
+  it("branch 2: when both pages carry the same unknown key with different values, the canonical's value wins", async () => {
+    const s = new MemoryVaultStorage()
+    const canonicalFm = fm("author", "Edmund C. Lalor", { openalex: "A5074790393", sources: [], orcid: "CANONICAL-ID" })
+    const canonicalBody = "# Edmund C. Lalor\n\n## Papers\n\n- [[the-paper]]"
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(canonicalFm, canonicalBody))
+
+    const richFm = fm("author", "Edmund C. Lalor", { tags: ["neuroscience"], orcid: "EXTRA-ID" })
+    const richBodyText = "# Edmund C. Lalor\n\nBio.\n\n## Research contributions\n\nTRF."
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(richFm, richBodyText))
+    const b = await loadBundle(s)
+
+    const findings = findDuplicateAuthors(b)
+    const canonicalFix = findings[0].fixes!.find((c) => c.path === "wiki/authors/a5074790393.md")!
+    const parsed = parseDocument(canonicalFix.after!)
+    expect(parsed.frontmatter.orcid).toBe("CANONICAL-ID")
+  })
+
+  // --- Branch 3: both pages substantive -> advisory, no auto-fix ---
+  it("branch 3 (both rich): emits an advisory finding with NO fix/fixes and a merge-by-hand description", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor", { tags: ["neuroscience"] }), richBody("Edmund C. Lalor")))
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "Edmund C. Lalor", { tags: ["eeg"] }), richBody("Edmund C. Lalor")))
+    const b = await loadBundle(s)
+
+    const findings = findDuplicateAuthors(b)
+    expect(findings).toHaveLength(1)
+    expect(findings[0].fixes).toBeUndefined()
+    expect(findings[0].fix).toBeUndefined()
+    expect(findings[0].description).toContain("by hand")
+  })
+})
+
 describe("findIndexDrift", () => {
   it("clean: stored index matches the recomputed index -> no findings", async () => {
     const s = new MemoryVaultStorage()
@@ -284,7 +588,7 @@ describe("findIndexDrift", () => {
 })
 
 describe("runDeterministicChecks", () => {
-  it("composes all four sub-checks, index-drift only when storedIndex is supplied", async () => {
+  it("composes all five sub-checks, index-drift only when storedIndex is supplied", async () => {
     const s = new MemoryVaultStorage()
     await s.write(
       "wiki/concepts/lonely.md",
@@ -298,6 +602,15 @@ describe("runDeterministicChecks", () => {
 
     const withIndex = runDeterministicChecks(b, { storedIndex: "stale" })
     expect(withIndex.map((f) => f.lintKind).sort()).toEqual(["broken-link", "index-drift", "orphan"])
+  })
+
+  it("includes duplicate-author findings in the composed output", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Bio."))
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Bio."))
+    const b = await loadBundle(s)
+    const kinds = runDeterministicChecks(b).map((f) => f.lintKind)
+    expect(kinds).toContain("duplicate-author")
   })
 
   it("clean bundle with a correct index yields zero findings", async () => {

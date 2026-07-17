@@ -18,6 +18,9 @@ interface UIState {
   setRightPanel: (content: ReactNode | null) => void;
   setShowRightPanel: (show: boolean) => void;
   toggleRightPanel: () => void;
+  settingsModalSection: string | null;
+  openSettingsModal: (section?: string) => void;
+  closeSettingsModal: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -40,4 +43,7 @@ export const useUIStore = create<UIState>((set) => ({
   setShowRightPanel: (show) => set({ showRightPanel: show }),
   toggleRightPanel: () =>
     set((s) => ({ showRightPanel: !s.showRightPanel })),
+  settingsModalSection: null,
+  openSettingsModal: (section = "ai") => set({ settingsModalSection: section }),
+  closeSettingsModal: () => set({ settingsModalSection: null }),
 }));

@@ -3,7 +3,7 @@ import { resolveLink } from "../vault/bundle"
 import { parseDocument, serializeDocument } from "../vault/frontmatter"
 import { buildIndexMarkdown } from "../vault/index-builder"
 import { PAGE_TYPES, RESERVED_FILES } from "../vault/types"
-import type { Frontmatter } from "../vault/types"
+import type { Frontmatter, FileChange, WikiPage } from "../vault/types"
 import { extractWikilinks, findWikilinkMatches } from "../vault/wikilinks"
 import type { LintFinding } from "./types"
 
@@ -17,6 +17,57 @@ const REQUIRED_FRONTMATTER_KEYS = [
   "sources",
 ] as const
 const ARRAY_FRONTMATTER_KEYS = ["tags", "related", "sources"] as const
+
+/**
+ * Frontmatter keys the duplicate-author merge logic below already understands
+ * structurally: the seven required keys plus `openalex` (the structured id
+ * `buildAuthorSkeletons` — src/lib/wiki/authoring.ts — writes onto id-keyed
+ * author pages). `Frontmatter` carries an index signature, so a page can
+ * legally have OTHER hand-added keys (e.g. `orcid`) that neither
+ * `classifyDuplicate` nor `buildMergeIntoCanonicalFix` has any specific
+ * handling for — those are "unknown" relative to this set and must never be
+ * silently dropped by a duplicate-author fix (see `unknownFrontmatterKeys`/
+ * `unknownFrontmatterEntries` below).
+ */
+const KNOWN_AUTHOR_FRONTMATTER_KEYS = new Set<string>([...REQUIRED_FRONTMATTER_KEYS, "openalex"])
+
+/** `frontmatter`'s keys that fall outside `KNOWN_AUTHOR_FRONTMATTER_KEYS`. */
+function unknownFrontmatterKeys(frontmatter: Frontmatter): string[] {
+  return Object.keys(frontmatter as Record<string, unknown>).filter((k) => !KNOWN_AUTHOR_FRONTMATTER_KEYS.has(k))
+}
+
+/** `frontmatter` narrowed to just its unknown key/value pairs (see
+ * `unknownFrontmatterKeys`) — spread this into a merged frontmatter object to
+ * carry those pairs forward without hardcoding their names. */
+function unknownFrontmatterEntries(frontmatter: Frontmatter): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const key of unknownFrontmatterKeys(frontmatter)) {
+    out[key] = (frontmatter as Record<string, unknown>)[key]
+  }
+  return out
+}
+
+/** Structural equality good enough for frontmatter values (strings, arrays,
+ * plain objects) — used to compare an unknown key's value across two pages. */
+function frontmatterValuesEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
+/**
+ * True iff every unknown key (see `unknownFrontmatterKeys`) that `extra`
+ * carries also exists on `canonical` with an equal value — i.e. deleting
+ * `extra` (branch 1, the trivial fix) would not lose any hand-added
+ * frontmatter that isn't already represented on the canonical page.
+ */
+function unknownExtraKeysCoveredByCanonical(canonical: Frontmatter, extra: Frontmatter): boolean {
+  const canonicalMap = canonical as Record<string, unknown>
+  for (const key of unknownFrontmatterKeys(extra)) {
+    if (!(key in canonicalMap) || !frontmatterValuesEqual(canonicalMap[key], (extra as Record<string, unknown>)[key])) {
+      return false
+    }
+  }
+  return true
+}
 
 function basename(path: string): string {
   return path.split("/").pop() ?? path
@@ -245,6 +296,388 @@ export function findIndexDrift(bundle: Bundle, storedIndex: string | null | unde
   ]
 }
 
+const ID_KEYED_AUTHOR_SLUG = /^a\d+$/
+
+/** Final path segment of a bundle page id — its wikilink slug (bundle ids
+ * never carry the ".md" extension, unlike `WikiPage.path`). */
+function slugOf(id: string): string {
+  return id.split("/").pop() ?? id
+}
+
+/** Normalizes an author's display title for duplicate grouping, per the C6
+ * spec: case-fold and collapse periods/whitespace so "Edmund C. Lalor" and
+ * "edmund c lalor" group together regardless of punctuation/casing drift
+ * between the deterministic id-keyed skeleton and an LLM-authored name-slug
+ * page. */
+function normalizeAuthorTitle(title: string): string {
+  return title.toLowerCase().replace(/[.\s]+/g, " ").trim()
+}
+
+function dedupeStable(items: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const item of items) {
+    if (seen.has(item)) continue
+    seen.add(item)
+    out.push(item)
+  }
+  return out
+}
+
+/**
+ * Same span-based rewrite as `neutralizeWikilink` above, but RENAMES the slug
+ * (keeping the link, and any alias, intact) instead of flattening it to plain
+ * text — used by the duplicate-author merge fix to repoint every `[[extra]]`
+ * reference at the canonical id-keyed slug.
+ */
+function renameWikilink(body: string, fromSlug: string, toSlug: string): string {
+  const matches = findWikilinkMatches(body).filter((m) => m.slug === fromSlug)
+  let out = body
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const m = matches[i]
+    const replacement = m.alias !== undefined ? `[[${toSlug}|${m.alias}]]` : `[[${toSlug}]]`
+    out = out.slice(0, m.start) + replacement + out.slice(m.end)
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Author-page body/frontmatter shape helpers, for classifying which of the two
+// duplicate pages (if either) is a bare skeleton safe to overwrite. An author
+// page written by `buildAuthorSkeletons` (src/lib/wiki/authoring.ts) has the
+// shape `# <name>\n\n## Papers\n\n- [[paper]]\n` with empty tags/related/sources
+// — nothing an LLM-authored biography page adds. The C6 merge must never
+// silently delete the RICHER of the two pages (the review found the real Lalor
+// case deleted the biography), so it first works out which page is the skeleton.
+// ---------------------------------------------------------------------------
+
+interface BodySection {
+  heading: string
+  content: string
+}
+
+/** Splits an author page body into the intro (everything before the first `##`
+ * heading — the `# <name>` H1 plus any lead prose) and its `##` sections. */
+function splitAuthorBody(body: string): { intro: string; sections: BodySection[] } {
+  const introLines: string[] = []
+  const sections: Array<{ heading: string; lines: string[] }> = []
+  let current: { heading: string; lines: string[] } | null = null
+  for (const line of body.split("\n")) {
+    const h2 = /^##\s+(.*)$/.exec(line)
+    if (h2) {
+      current = { heading: h2[1].trim(), lines: [] }
+      sections.push(current)
+    } else if (current) {
+      current.lines.push(line)
+    } else {
+      introLines.push(line)
+    }
+  }
+  return {
+    intro: introLines.join("\n"),
+    sections: sections.map((s) => ({ heading: s.heading, content: s.lines.join("\n") })),
+  }
+}
+
+/** True iff the intro is just the `# <name>` H1 (plus blank lines) — no lead
+ * biography prose. */
+function introIsHeadingOnly(intro: string): boolean {
+  const nonEmpty = intro.split("\n").map((l) => l.trim()).filter(Boolean)
+  return nonEmpty.length === 0 || (nonEmpty.length === 1 && /^#\s+/.test(nonEmpty[0]))
+}
+
+/** The `- ...` bullet lines (trimmed) of a section's content. */
+function bulletItems(content: string): string[] {
+  return content.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("-"))
+}
+
+/** True iff every non-empty line of `content` is a `- ` bullet (a Papers list). */
+function contentIsBulletList(content: string): boolean {
+  return content.split("\n").map((l) => l.trim()).filter(Boolean).every((l) => l.startsWith("-"))
+}
+
+function findPapersSection(sections: BodySection[]): BodySection | undefined {
+  return sections.find((s) => s.heading.toLowerCase() === "papers")
+}
+
+/** True iff `body` is a `buildAuthorSkeletons`-shaped skeleton: an H1-only
+ * intro and, at most, a single `## Papers` section whose content is a bullet
+ * list — i.e. it carries no biography prose or other sections. */
+function isSkeletonAuthorBody(body: string): boolean {
+  const { intro, sections } = splitAuthorBody(body)
+  if (!introIsHeadingOnly(intro)) return false
+  if (sections.length === 0) return true
+  if (sections.length !== 1) return false
+  const only = sections[0]
+  return only.heading.toLowerCase() === "papers" && contentIsBulletList(only.content)
+}
+
+function isSubset(candidate: string[], of: string[]): boolean {
+  const set = new Set(of)
+  return candidate.every((x) => set.has(x))
+}
+
+/** The extra page's `related[]` renamed extra→canonical and stripped of any
+ * self-reference to the canonical slug — the form it would take once merged. */
+function renamedRelated(related: string[], extraSlug: string, canonicalSlug: string): string[] {
+  return related.map((s) => (s === extraSlug ? canonicalSlug : s)).filter((s) => s !== canonicalSlug)
+}
+
+/** The later of two `YYYY-MM-DD` date strings (lexicographic compare is
+ * correct for that format); used to bump the merged canonical's `updated`. */
+function laterDate(a: string, b: string): string {
+  return a >= b ? a : b
+}
+
+/** Rebuilds a body from its intro + sections with normalized `\n\n` spacing.
+ * Used only when the merge actually restructures the body (branch 2). */
+function rebuildBody(intro: string, sections: BodySection[]): string {
+  const parts: string[] = []
+  const introTrim = intro.trim()
+  if (introTrim) parts.push(introTrim)
+  for (const s of sections) {
+    parts.push(`## ${s.heading}\n\n${s.content.trim()}`.trimEnd())
+  }
+  return parts.join("\n\n") + "\n"
+}
+
+type DuplicateResolution =
+  | { kind: "trivial" } // extra adds nothing — delete it, rewrite referrers
+  | { kind: "merge-into-canonical" } // extra is richer, canonical is a skeleton — absorb then delete
+  | { kind: "manual" } // both substantive — advisory only, no auto-fix
+
+/**
+ * Decides how to resolve one duplicate pair without ever losing content:
+ * - "trivial": the extra page is a skeleton whose Papers list, tags/related/
+ *   sources, AND any hand-added unknown frontmatter keys (e.g. `orcid` — see
+ *   `unknownExtraKeysCoveredByCanonical`) are all already covered by the
+ *   canonical — deleting it loses nothing.
+ * - "merge-into-canonical": the extra carries content (biography prose, richer
+ *   frontmatter, or a unique paper) and the CANONICAL is a bare skeleton — the
+ *   fix absorbs the extra into the canonical (including any unknown
+ *   frontmatter keys the extra alone carries) before deleting the extra.
+ * - "manual": both pages carry substantive, potentially divergent content —
+ *   no automatic fix; the finding is advisory so a human merges by hand.
+ */
+function classifyDuplicate(canonical: WikiPage, extra: WikiPage, extraSlug: string, canonicalSlug: string): DuplicateResolution {
+  const extraSkeleton = isSkeletonAuthorBody(extra.body)
+  const canonicalSkeleton = isSkeletonAuthorBody(canonical.body)
+
+  if (extraSkeleton) {
+    const extraPapers = bulletItems(findPapersSection(splitAuthorBody(extra.body).sections)?.content ?? "")
+    const canonicalPapers = bulletItems(findPapersSection(splitAuthorBody(canonical.body).sections)?.content ?? "")
+    const extraRelated = renamedRelated(extra.frontmatter.related, extraSlug, canonicalSlug)
+    const trivial =
+      isSubset(extra.frontmatter.tags, canonical.frontmatter.tags) &&
+      isSubset(extra.frontmatter.sources, canonical.frontmatter.sources) &&
+      isSubset(extraRelated, canonical.frontmatter.related) &&
+      isSubset(extraPapers, canonicalPapers) &&
+      unknownExtraKeysCoveredByCanonical(canonical.frontmatter, extra.frontmatter)
+    if (trivial) return { kind: "trivial" }
+  }
+
+  const canonicalFrontmatterEmpty =
+    canonical.frontmatter.tags.length === 0 &&
+    canonical.frontmatter.related.length === 0 &&
+    canonical.frontmatter.sources.length === 0
+  if (canonicalSkeleton && canonicalFrontmatterEmpty) return { kind: "merge-into-canonical" }
+
+  return { kind: "manual" }
+}
+
+/**
+ * Rewrites every page OTHER than the ones in `skip` whose body wikilinks or
+ * `related[]` reference `extraSlug`, repointing them at `canonicalSlug` (same
+ * rename-and-dedupe semantics as `dedupeAuthorFiles` in src/lib/skills/ingest.ts,
+ * which prevents this duplication on NEW ingests but can't retroactively fix a
+ * vault that already has both pages).
+ */
+function rewriteReferrers(
+  bundle: Bundle,
+  extraSlug: string,
+  canonicalSlug: string,
+  skip: ReadonlySet<string>,
+): FileChange[] {
+  const changes: FileChange[] = []
+  for (const page of bundle.pages.values()) {
+    if (skip.has(page.id)) continue
+
+    const linksToExtra = findWikilinkMatches(page.body).some((m) => m.slug === extraSlug)
+    const relatedHasExtra = page.frontmatter.related.includes(extraSlug)
+    if (!linksToExtra && !relatedHasExtra) continue
+
+    const newBody = linksToExtra ? renameWikilink(page.body, extraSlug, canonicalSlug) : page.body
+    const newRelated = relatedHasExtra
+      ? dedupeStable(page.frontmatter.related.map((slug) => (slug === extraSlug ? canonicalSlug : slug)))
+      : page.frontmatter.related
+    const newFrontmatter: Frontmatter = { ...page.frontmatter, related: newRelated }
+
+    changes.push({
+      path: page.path,
+      before: serializeDocument(page.frontmatter, page.body),
+      after: serializeDocument(newFrontmatter, newBody),
+    })
+  }
+  return changes
+}
+
+/** A `delete this file` change (before = current serialized content). */
+function deletePageChange(page: WikiPage): FileChange {
+  return { path: page.path, before: serializeDocument(page.frontmatter, page.body), after: null }
+}
+
+/**
+ * Branch 1 (extra trivial): keep the canonical as-is, rewrite every referrer
+ * from the extra slug to the canonical slug, and delete the extra page.
+ */
+function buildTrivialFix(bundle: Bundle, extra: WikiPage, canonicalSlug: string): FileChange[] {
+  const extraSlug = slugOf(extra.id)
+  return [...rewriteReferrers(bundle, extraSlug, canonicalSlug, new Set([extra.id])), deletePageChange(extra)]
+}
+
+/**
+ * Branch 2 (extra rich, canonical skeleton): fold the extra's content INTO the
+ * canonical page — union tags/related/sources, union any hand-added unknown
+ * frontmatter keys the extra alone carries (canonical's value wins on a
+ * conflicting key — see `unknownFrontmatterEntries`), keep the canonical's
+ * title/created + OpenAlex id, bump `updated`, and use the extra's body (its
+ * biography) with the canonical's `## Papers` entries merged in (deduped;
+ * appended as a Papers section if the extra has none). Then rewrite referrers
+ * and delete the extra — nothing from either page is lost.
+ */
+function buildMergeIntoCanonicalFix(bundle: Bundle, canonical: WikiPage, extra: WikiPage, canonicalSlug: string): FileChange[] {
+  const extraSlug = slugOf(extra.id)
+
+  // Body: the extra's biography, with extra→canonical self-references renamed,
+  // and the canonical skeleton's Papers list folded in.
+  const renamedExtraBody = renameWikilink(extra.body, extraSlug, canonicalSlug)
+  const { intro, sections } = splitAuthorBody(renamedExtraBody)
+  const canonicalPapers = bulletItems(findPapersSection(splitAuthorBody(canonical.body).sections)?.content ?? "")
+  const existingPapers = findPapersSection(sections)
+  if (existingPapers) {
+    const merged = dedupeStable([...bulletItems(existingPapers.content), ...canonicalPapers])
+    existingPapers.content = merged.join("\n")
+  } else if (canonicalPapers.length > 0) {
+    sections.push({ heading: "Papers", content: canonicalPapers.join("\n") })
+  }
+  const mergedBody = rebuildBody(intro, sections)
+
+  // Frontmatter: keep canonical's base (type/title/created + openalex etc.),
+  // union the three list fields, bump updated to the later of the two.
+  const mergedRelated = dedupeStable([
+    ...canonical.frontmatter.related,
+    ...renamedRelated(extra.frontmatter.related, extraSlug, canonicalSlug),
+  ]).filter((s) => s !== canonicalSlug)
+  const mergedFrontmatter: Frontmatter = {
+    ...unknownFrontmatterEntries(extra.frontmatter),
+    ...canonical.frontmatter,
+    tags: dedupeStable([...canonical.frontmatter.tags, ...extra.frontmatter.tags]),
+    related: mergedRelated,
+    sources: dedupeStable([...canonical.frontmatter.sources, ...extra.frontmatter.sources]),
+    updated: laterDate(String(canonical.frontmatter.updated), String(extra.frontmatter.updated)),
+  }
+
+  const canonicalChange: FileChange = {
+    path: canonical.path,
+    before: serializeDocument(canonical.frontmatter, canonical.body),
+    after: serializeDocument(mergedFrontmatter, mergedBody),
+  }
+
+  return [
+    canonicalChange,
+    ...rewriteReferrers(bundle, extraSlug, canonicalSlug, new Set([extra.id, canonical.id])),
+    deletePageChange(extra),
+  ]
+}
+
+/**
+ * The ingest pipeline's `dedupeAuthorFiles` (src/lib/skills/ingest.ts:338)
+ * stops a NEW ingest from creating a second author page under a name slug
+ * when a deterministic OpenAlex-id-keyed page already exists for that
+ * author — but a vault ingested BEFORE that fix landed can still carry both:
+ * `wiki/authors/a5074790393.md` (id-keyed, code-owned) AND
+ * `wiki/authors/edmund-c-lalor.md` (name-slug, LLM-authored) for the same
+ * person. This groups `author` pages by normalized title (see
+ * `normalizeAuthorTitle`) and, for every group containing EXACTLY one
+ * id-keyed page (`/^a\d+$/`) plus at least one other page, flags each extra
+ * page as a duplicate — one finding per extra page. Groups with zero or more
+ * than one id-keyed page are left unflagged: with no single unambiguous
+ * canonical page there's no safe merge target to guess (e.g. two distinct
+ * real people who happen to share a display name).
+ *
+ * The fix is chosen per pair by `classifyDuplicate` so it NEVER silently
+ * deletes the richer of the two pages: the trivial case deletes the skeleton
+ * extra; the "canonical is a skeleton" case folds the extra's biography +
+ * frontmatter into the canonical first; and the "both substantive" case is
+ * advisory only (no auto-fix — the description tells the user to merge by hand).
+ */
+export function findDuplicateAuthors(bundle: Bundle): LintFinding[] {
+  const groups = new Map<string, WikiPage[]>()
+  for (const page of bundle.pages.values()) {
+    if (page.frontmatter.type !== "author") continue
+    const key = normalizeAuthorTitle(page.frontmatter.title)
+    const bucket = groups.get(key)
+    if (bucket) bucket.push(page)
+    else groups.set(key, [page])
+  }
+
+  const findings: LintFinding[] = []
+  for (const pages of groups.values()) {
+    if (pages.length < 2) continue
+    const idKeyed = pages.filter((p) => ID_KEYED_AUTHOR_SLUG.test(slugOf(p.id)))
+    if (idKeyed.length !== 1) continue
+
+    const canonical = idKeyed[0]
+    const canonicalSlug = slugOf(canonical.id)
+    const extras = pages.filter((p) => p.id !== canonical.id)
+
+    for (const extra of extras) {
+      const extraSlug = slugOf(extra.id)
+      const resolution = classifyDuplicate(canonical, extra, extraSlug, canonicalSlug)
+      const base = {
+        lintKind: "duplicate-author" as const,
+        title: `"${canonical.frontmatter.title}" has duplicate author pages`,
+        pages: [canonical.id, extra.id],
+        fixTarget: extra.id,
+      }
+      const bothRepresent =
+        `"${extra.id}" and "${canonical.id}" both represent "${canonical.frontmatter.title}". `
+
+      if (resolution.kind === "trivial") {
+        findings.push({
+          ...base,
+          description:
+            bothRepresent +
+            `The duplicate adds no content beyond the canonical, so the fix rewrites every ` +
+            `reference from "${extraSlug}" to "${canonicalSlug}" and removes the duplicate page.`,
+          fixes: buildTrivialFix(bundle, extra, canonicalSlug),
+        })
+      } else if (resolution.kind === "merge-into-canonical") {
+        findings.push({
+          ...base,
+          description:
+            bothRepresent +
+            `The canonical page is a bare skeleton, so the fix keeps the biography and details ` +
+            `from the duplicate and folds them into "${canonicalSlug}" (unioning tags/related/` +
+            `sources and merging its Papers list), rewrites every reference to it, and removes ` +
+            `the duplicate page.`,
+          fixes: buildMergeIntoCanonicalFix(bundle, canonical, extra, canonicalSlug),
+        })
+      } else {
+        findings.push({
+          ...base,
+          description:
+            bothRepresent +
+            `Both pages have substantive, differing content, so no automatic fix is offered ` +
+            `(it could lose content) — merge "${extraSlug}" into "${canonicalSlug}" by hand, then ` +
+            `delete the duplicate.`,
+        })
+      }
+    }
+  }
+  return findings
+}
+
 export function runDeterministicChecks(
   bundle: Bundle,
   opts: { storedIndex?: string | null } = {},
@@ -253,6 +686,7 @@ export function runDeterministicChecks(
     ...findOrphans(bundle),
     ...findBrokenLinks(bundle),
     ...findBadFrontmatter(bundle),
+    ...findDuplicateAuthors(bundle),
     ...findIndexDrift(bundle, opts.storedIndex),
   ]
 }

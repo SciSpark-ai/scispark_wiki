@@ -3,8 +3,10 @@
 import { useId, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { linkHorizontal } from "d3-shape"
+import { displayTitle } from "@/lib/papers/title"
 import type { CitationEdge, CitationFlow } from "@/lib/viz/citations"
 import { yearColumns } from "@/lib/viz/layout"
+import { wikiHref } from "@/lib/wiki/href"
 
 const NODE_RADIUS = 6
 const COL_WIDTH = 130
@@ -100,7 +102,7 @@ export default function CitationFlowView({ papers, flow, fetchState, onFetch }: 
 
   const papersById = useMemo(() => new Map(papers.map((p) => [p.id, p] as const)), [papers])
 
-  const goTo = (id: string) => router.push(`/wiki/${id}`)
+  const goTo = (id: string) => router.push(wikiHref(id))
 
   const nodeOpacity = (id: string): number => {
     if (!hovered) return 1
@@ -212,8 +214,8 @@ export default function CitationFlowView({ papers, flow, fetchState, onFetch }: 
                         onMouseEnter={() => setHovered({ kind: "edge", citing: edge.citing, cited: edge.cited })}
                         onMouseLeave={() => setHovered(null)}
                       >
-                        <title>{`${papersById.get(edge.citing)?.title ?? edge.citing} cites ${
-                          papersById.get(edge.cited)?.title ?? edge.cited
+                        <title>{`${displayTitle(String(papersById.get(edge.citing)?.title ?? edge.citing))} cites ${
+                          displayTitle(String(papersById.get(edge.cited)?.title ?? edge.cited))
                         }`}</title>
                       </path>
                     )
@@ -235,7 +237,7 @@ export default function CitationFlowView({ papers, flow, fetchState, onFetch }: 
                         onMouseLeave={() => setHovered(null)}
                         onClick={() => goTo(paper.id)}
                       >
-                        <title>{`${paper.title}${paper.year > 0 ? ` (${paper.year})` : ""}`}</title>
+                        <title>{`${displayTitle(String(paper.title ?? ""))}${paper.year > 0 ? ` (${paper.year})` : ""}`}</title>
                       </circle>
                     )
                   })}
@@ -257,7 +259,7 @@ export default function CitationFlowView({ papers, flow, fetchState, onFetch }: 
                       onClick={() => goTo(p.id)}
                       className="text-[12px] text-espresso hover:text-orange text-left tracking-body"
                     >
-                      {p.title}
+                      {displayTitle(String(p.title ?? ""))}
                     </button>
                   </li>
                 ))}

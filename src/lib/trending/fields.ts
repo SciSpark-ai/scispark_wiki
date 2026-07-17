@@ -44,13 +44,19 @@ export function splitTopics(raw: string): string[] {
 
 /**
  * Truncates a topic label to MAX_FIELD_LABEL_LEN at a word boundary, so an
- * over-long single clause still yields a clean, queryable field label. Pure.
+ * over-long single clause still yields a clean, queryable field label.
+ * Strips dangling unclosed parens (C9) and marks truncation with ellipsis. Pure.
  */
-function shortFieldLabel(label: string): string {
+export function truncateFieldLabel(label: string): string {
   if (label.length <= MAX_FIELD_LABEL_LEN) return label
   const cut = label.slice(0, MAX_FIELD_LABEL_LEN)
   const lastSpace = cut.lastIndexOf(" ")
-  return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trim()
+  let result = (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trim()
+  // Strip dangling open-paren fragment (C9)
+  result = result.replace(/\s*\([^)]*$/, "")
+  // Mark truncation with ellipsis (append only if result is shorter than input)
+  if (result.length < label.length) result += "…"
+  return result
 }
 
 /**
@@ -80,7 +86,7 @@ export function deriveTrackedFields(interestsMarkdown: string | null): TrackedFi
   const fields: TrackedField[] = []
   const seen = new Set<string>()
   for (const topic of splitTopics(bullets.join("\n"))) {
-    const label = shortFieldLabel(topic)
+    const label = truncateFieldLabel(topic)
     const slug = slugify(label)
     if (slug.length === 0 || seen.has(slug)) continue
     seen.add(slug)

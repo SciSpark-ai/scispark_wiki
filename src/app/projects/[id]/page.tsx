@@ -385,7 +385,7 @@ export default function ProjectDetailPage() {
               {project.chats.map((chat) => (
                 <div
                   key={chat.id}
-                  className="bg-white border border-border-warm/30 rounded-[12px] p-4 cursor-pointer hover:shadow-sm transition-all group"
+                  className="bg-light-surface border border-border-warm/30 rounded-[12px] p-4 cursor-pointer hover:shadow-sm transition-all group"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3">
@@ -455,15 +455,15 @@ export default function ProjectDetailPage() {
           Quick Actions
         </h3>
         <div className="space-y-2">
-          <button className="w-full flex items-center gap-2 px-3 py-2.5 bg-white border border-border-warm/30 rounded-[10px] text-[13px] text-espresso hover:bg-card-surface/50 transition-colors">
+          <button className="w-full flex items-center gap-2 px-3 py-2.5 bg-light-surface border border-border-warm/30 rounded-[10px] text-[13px] text-espresso hover:bg-card-surface/50 transition-colors">
             <Sparkles size={14} className="text-orange" />
             Ask AI about this project
           </button>
-          <button className="w-full flex items-center gap-2 px-3 py-2.5 bg-white border border-border-warm/30 rounded-[10px] text-[13px] text-espresso hover:bg-card-surface/50 transition-colors">
+          <button className="w-full flex items-center gap-2 px-3 py-2.5 bg-light-surface border border-border-warm/30 rounded-[10px] text-[13px] text-espresso hover:bg-card-surface/50 transition-colors">
             <Upload size={14} className="text-muted-text" />
             Import papers
           </button>
-          <button className="w-full flex items-center gap-2 px-3 py-2.5 bg-white border border-border-warm/30 rounded-[10px] text-[13px] text-espresso hover:bg-card-surface/50 transition-colors">
+          <button className="w-full flex items-center gap-2 px-3 py-2.5 bg-light-surface border border-border-warm/30 rounded-[10px] text-[13px] text-espresso hover:bg-card-surface/50 transition-colors">
             <ExternalLink size={14} className="text-muted-text" />
             Export project
           </button>

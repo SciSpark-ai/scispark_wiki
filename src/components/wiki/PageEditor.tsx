@@ -68,11 +68,11 @@ export function PageEditor({ value, onChange, bundle }: PageEditorProps) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           spellCheck={false}
-          className="w-full min-h-[420px] p-4 font-mono text-[13px] text-espresso bg-white outline-none resize-y leading-[1.6]"
+          className="w-full min-h-[420px] p-4 font-mono text-[13px] text-espresso bg-light-surface outline-none resize-y leading-[1.6]"
           placeholder="Write markdown here. Use [[slug]] or [[slug|label]] to link other wiki pages."
         />
       ) : (
-        <div className="min-h-[420px] p-4 bg-white overflow-y-auto">
+        <div className="min-h-[420px] p-4 bg-light-surface overflow-y-auto">
           {value.trim() === "" ? (
             <p className="text-[13px] text-muted-text">Nothing to preview yet.</p>
           ) : (

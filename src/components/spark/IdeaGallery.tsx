@@ -3,12 +3,7 @@
 import Link from "next/link"
 import type { Bundle } from "@/lib/vault/bundle"
 import { formatGroundingCount } from "@/lib/spark/ui-format"
-
-/** wiki page id -> the /wiki/<...> route (same idiom every gallery page in
- * this repo defines locally — see src/app/papers/page.tsx, src/app/wiki/inbox/page.tsx). */
-function pageHref(id: string): string {
-  return `/wiki/${id}`
-}
+import { wikiHref } from "@/lib/wiki/href"
 
 interface IdeaGalleryProps {
   bundle: Bundle
@@ -36,7 +31,7 @@ export function IdeaGallery({ bundle }: IdeaGalleryProps) {
         return (
           <Link
             key={page.id}
-            href={pageHref(page.id)}
+            href={wikiHref(page.id)}
             className="block border border-border-warm rounded-card px-3 py-2 bg-light-surface hover:bg-card-surface/50 transition-colors"
           >
             <div className="font-heading text-[15px] text-espresso tracking-heading-card truncate">

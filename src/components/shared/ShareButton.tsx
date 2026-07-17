@@ -77,7 +77,7 @@ export function ShareButton({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-20 bg-white rounded-[10px] border border-border-warm/30 shadow-lg py-1 min-w-[180px]">
+        <div className="absolute right-0 top-full mt-1 z-20 bg-light-surface rounded-[10px] border border-border-warm/30 shadow-lg py-1 min-w-[180px]">
           <button
             onClick={(e) => {
               e.stopPropagation();

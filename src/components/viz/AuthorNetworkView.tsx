@@ -6,6 +6,7 @@ import { forceSimulation, forceManyBody, forceLink, forceCollide, forceCenter } 
 import type { SimulationNodeDatum, SimulationLinkDatum } from "d3-force"
 import type { AuthorNetwork } from "@/lib/viz/authors"
 import { topAuthorsByPaperCount, edgesAmongNodes } from "@/lib/viz/layout"
+import { wikiHref } from "@/lib/wiki/href"
 
 const MAX_NODES = 200
 const MAX_LABELS = 20
@@ -160,7 +161,7 @@ export default function AuthorNetworkView({ network }: AuthorNetworkViewProps) {
   }, [links])
 
   const goTo = (node: SimNode) => {
-    if (node.pageId) router.push(`/wiki/${node.pageId}`)
+    if (node.pageId) router.push(wikiHref(node.pageId))
   }
 
   const nodeOpacity = (id: string): number => {

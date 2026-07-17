@@ -1,19 +1,17 @@
 import type { DigestResult } from "@/lib/skills/digest"
 
-/** Renders a generated digest's sections plus its cache/cost provenance line. */
+/** Renders a generated digest's sections plus its cache/generation provenance line. */
 export function DigestPanel({
   digest,
   fromCache,
-  costUsd,
 }: {
   digest: DigestResult
   fromCache: boolean
-  costUsd?: number
 }) {
   return (
     <div className="mt-3 border border-border-warm rounded-card px-3 py-2 bg-light-surface">
       <div className="text-[11px] uppercase tracking-wide text-muted-text">
-        {fromCache ? "from cache" : costUsd !== undefined ? `cost: $${costUsd.toFixed(4)}` : "generated"}
+        {fromCache ? "from cache" : "AI digest"}
       </div>
 
       <div className="mt-2 text-[13px]/[14px] text-espresso whitespace-pre-wrap">{digest.summary}</div>

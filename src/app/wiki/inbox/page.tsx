@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { displayTitle } from "@/lib/papers/title"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { listReviews, dismissReview, type ReviewItem } from "@/lib/wiki/review-queue"
 import { loadBundle, resolveLink, type Bundle } from "@/lib/vault/bundle"
@@ -11,8 +12,18 @@ import {
   estimateLintCost,
   applyLintFixRemote,
 } from "@/lib/lint/client"
-import { formatDeepLintConfirm, formatLintFindingCount, formatLintPairProgress, lintKindLabel } from "@/lib/lint/ui-format"
+import {
+  formatDeepLintConfirm,
+  formatDeepLintLabel,
+  formatLintFindingCount,
+  formatLintPairProgress,
+  lintKindLabel,
+} from "@/lib/lint/ui-format"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
+import { wikiHref } from "@/lib/wiki/href"
+import { PageHeader } from "@/components/ui/PageHeader"
+import { Button } from "@/components/ui/Button"
+import { LoadingState } from "@/components/ui/LoadingState"
 
 const KIND_LABEL: Record<ReviewItem["kind"], string> = {
   contradiction: "Contradiction",
@@ -20,11 +31,6 @@ const KIND_LABEL: Record<ReviewItem["kind"], string> = {
   "missing-page": "Missing page",
   suggestion: "Suggestion",
   "lint-finding": "Lint",
-}
-
-/** wiki page id (e.g. "wiki/papers/foo") -> the /wiki/<...> route for it. */
-function pageHref(id: string): string {
-  return `/wiki/${id}` // full id in URL: the /wiki/[...id] route joins segments back to the bundle id (e.g. /wiki/wiki/concepts/foo)
 }
 
 type LintState =
@@ -42,6 +48,13 @@ export default function WikiInboxPage() {
   const [fixing, setFixing] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [lintState, setLintState] = useState<LintState>({ status: "idle" })
+  const [deepEstimate, setDeepEstimate] = useState<number | null>(null)
+  // Ids of items whose last Fix click came back "needs-manual" (see
+  // applyLintFixRemote/applyLintFix): the vault changed since lint ran and
+  // this finding is no longer mechanically fixable, but it's still real — the
+  // item stays in the list (never dismissed) and this drives a small inline
+  // notice on it, per the applyLintFix outcome contract in src/lib/lint/types.ts.
+  const [needsManualIds, setNeedsManualIds] = useState<Set<string>>(new Set())
 
   async function refresh() {
     setLoading(true)
@@ -62,6 +75,17 @@ export default function WikiInboxPage() {
     refresh()
   }, [])
 
+  // Loads the deep-lint cost estimate for the button label only (best-effort
+  // — a failure here just leaves deepEstimate null, which formatDeepLintLabel
+  // renders as the plain "Run deep lint" label, never a bare "~$"; the
+  // confirm-dialog flow in handleDeepLint below re-fetches its own estimate
+  // and is unaffected by this failing).
+  useEffect(() => {
+    estimateLintCost()
+      .then(setDeepEstimate)
+      .catch(() => setDeepEstimate(null))
+  }, [])
+
   async function handleDismiss(id: string) {
     setDismissing(id)
     try {
@@ -75,14 +99,32 @@ export default function WikiInboxPage() {
     }
   }
 
-  /** Applies a lint finding's mechanical fix, then dismisses the review item
-   * (applyLintFixRemote/applyLintFix does not itself archive the item — see
-   * src/lib/lint/run.ts — so this UI does it after a successful apply, per
-   * the task-10 brief). */
+  /** Applies a lint finding's mechanical fix. `outcome` decides what happens
+   * next (src/lib/lint/types.ts#LintFixOutcome):
+   * - "applied"/"resolved": the item is done — dismiss it (applyLintFixRemote/
+   *   applyLintFix does not itself archive the item — see src/lib/lint/run.ts —
+   *   so this UI does it after a successful/no-op-but-resolved apply, per the
+   *   task-10 brief).
+   * - "needs-manual": the vault changed since lint ran and this finding got
+   *   reclassified to advisory-only — it's still unresolved, so the item is
+   *   NOT dismissed (dismissing it would make an unmerged duplicate silently
+   *   disappear until the next lint run); instead a small notice is shown on
+   *   it, per the C6 finding fix.
+   */
   async function handleFix(id: string) {
     setFixing(id)
     try {
-      await applyLintFixRemote(id)
+      const { outcome } = await applyLintFixRemote(id)
+      if (outcome === "needs-manual") {
+        setNeedsManualIds((prev) => new Set(prev).add(id))
+        return
+      }
+      setNeedsManualIds((prev) => {
+        if (!prev.has(id)) return prev
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
       const vault = await getOpenVault()
       await dismissReview(vault, id)
       await refresh()
@@ -133,34 +175,26 @@ export default function WikiInboxPage() {
 
   return (
     <div className="p-7">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="font-heading text-[28px] text-espresso tracking-heading">Review inbox</h1>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={handleLintVault}
-            disabled={lintBusy}
-            className="text-[13px] text-white bg-orange hover:bg-orange/90 disabled:opacity-50 rounded-pill px-4 py-1.5 font-medium transition-colors"
-          >
-            {lintState.status === "running-deterministic" ? "Linting…" : "Lint vault"}
-          </button>
-          <button
-            type="button"
-            onClick={handleDeepLint}
-            disabled={lintBusy}
-            className="text-[13px] text-espresso rounded-pill border border-border-warm px-4 py-1.5 disabled:opacity-50"
-          >
-            {lintState.status === "running-deep"
-              ? lintState.progress
-                ? formatLintPairProgress(lintState.progress)
-                : "Estimating…"
-              : "Run deep lint (~$)"}
-          </button>
-          <Link href="/wiki" className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1">
-            Back to wiki
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="Review inbox"
+        actions={
+          <>
+            <Button onClick={handleLintVault} disabled={lintBusy}>
+              {lintState.status === "running-deterministic" ? "Linting…" : "Lint vault"}
+            </Button>
+            <Button variant="secondary" onClick={handleDeepLint} disabled={lintBusy}>
+              {lintState.status === "running-deep"
+                ? lintState.progress
+                  ? formatLintPairProgress(lintState.progress)
+                  : "Estimating…"
+                : formatDeepLintLabel(deepEstimate)}
+            </Button>
+            <Link href="/wiki" className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1">
+              Back to wiki
+            </Link>
+          </>
+        }
+      />
 
       {lintState.status === "done" && (
         <p className="mt-3 text-[13px] text-muted-text tracking-body">
@@ -176,7 +210,7 @@ export default function WikiInboxPage() {
       )}
 
       {loading ? (
-        <div className="mt-6 text-[13px] text-muted-text tracking-body">Loading…</div>
+        <LoadingState />
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <p className="text-[14px] text-muted-text tracking-body">Nothing needs review right now.</p>
@@ -203,37 +237,42 @@ export default function WikiInboxPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  {item.fix && (
-                    <button
-                      type="button"
+                  {(item.fix || item.fixes) && (
+                    <Button
+                      size="sm"
                       onClick={() => handleFix(item.id)}
                       disabled={fixing === item.id || dismissing === item.id}
-                      className="text-[13px] text-white bg-orange hover:bg-orange/90 disabled:opacity-50 rounded-pill px-3 py-1 font-medium transition-colors"
                     >
                       {fixing === item.id ? "Fixing…" : "Fix"}
-                    </button>
+                    </Button>
                   )}
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => handleDismiss(item.id)}
                     disabled={dismissing === item.id || fixing === item.id}
-                    className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1 disabled:opacity-50"
                   >
                     {dismissing === item.id ? "Dismissing…" : "Dismiss"}
-                  </button>
+                  </Button>
                 </div>
               </div>
 
               <div className="mt-2 font-heading text-[16px] text-espresso tracking-heading-card">{item.title}</div>
               <div className="mt-1 text-[13px]/[14px] text-muted-text">{item.description}</div>
 
+              {needsManualIds.has(item.id) && (
+                <p className="mt-1 text-[12px] text-muted-text/80">
+                  The vault changed — this now needs a manual merge. Re-run Lint vault to refresh.
+                </p>
+              )}
+
               {item.pages.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {item.pages.map((slug) => {
                     const page = bundle ? resolveLink(bundle, slug) : null
                     return page ? (
-                      <Link key={slug} href={pageHref(page.id)} className="text-[12px] text-orange hover:text-orange-light">
-                        {page.frontmatter.title}
+                      <Link key={slug} href={wikiHref(page.id)} className="text-[12px] text-orange hover:text-orange-light">
+                        {displayTitle(String(page.frontmatter.title ?? ""))}
                       </Link>
                     ) : (
                       <Link

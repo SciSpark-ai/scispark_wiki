@@ -45,7 +45,7 @@ export default function NewChatPage() {
               handleSubmit();
             }}
           >
-            <div className="bg-white border border-border-warm rounded-[16px] px-5 pt-4 pb-3">
+            <div className="bg-light-surface border border-border-warm rounded-[16px] px-5 pt-4 pb-3">
               <div className="flex items-start gap-3">
                 <Search size={18} className="text-muted-text flex-shrink-0 mt-1" />
                 <textarea

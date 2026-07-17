@@ -13,8 +13,10 @@ export interface DigestRouteResult {
 
 /**
  * POST /api/skills/digest — body `{paper}`, JSON result `{digest, fromCache,
- * costUsd}` (the same fields the papers page renders in `DigestPanel`).
- * Runs full-text acquisition + the Digest Skill entirely server-side (M11
+ * costUsd}`; the papers page renders `digest`/`fromCache` via `DigestPanel`
+ * (`costUsd` is metered/logged to `.scispark/usage`, not displayed here —
+ * AI spend lives in Settings). Runs full-text acquisition + the Digest Skill
+ * entirely server-side (M11
  * local-runtime pivot): the browser never holds LLM keys or calls
  * `generateDigest` itself. Acquisition goes through `serverRelayFetch`
  * (see that file's doc comment) rather than a real HTTP call back to this

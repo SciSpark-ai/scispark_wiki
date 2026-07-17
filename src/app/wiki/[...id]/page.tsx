@@ -7,6 +7,8 @@ import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadBundle, type Bundle } from "@/lib/vault/bundle"
 import { serializeDocument } from "@/lib/vault/frontmatter"
 import { appendLog } from "@/lib/vault/index-builder"
+import { displayTitle } from "@/lib/papers/title"
+import { wikiHref, resolveWikiRouteId } from "@/lib/wiki/href"
 import type { VaultStorage } from "@/lib/vault/storage"
 import type { WikiPage } from "@/lib/vault/types"
 import { PageEditor } from "@/components/wiki/PageEditor"
@@ -20,10 +22,13 @@ export default function WikiPageDetail() {
   const params = useParams()
   const router = useRouter()
   // Next 16 catch-all ([...id]): params.id is always string[] for a
-  // required catch-all segment. Joined back into the vault-relative id
-  // (e.g. "wiki/concepts/foo") per the brief's routing contract.
+  // required catch-all segment. Joined back into URL segments, then resolved
+  // to the vault-relative bundle id (e.g. "wiki/concepts/foo") via the
+  // shared helper — this accepts BOTH the canonical URL ("concepts/foo")
+  // and legacy doubled links ("wiki/concepts/foo"), per C5.
   const rawId = params?.id
-  const id = Array.isArray(rawId) ? rawId.join("/") : (rawId ?? "")
+  const joined = Array.isArray(rawId) ? rawId.join("/") : (rawId ?? "")
+  const id = resolveWikiRouteId(joined)
 
   const [storage, setStorage] = useState<VaultStorage | null>(null)
   const [bundle, setBundle] = useState<Bundle | null>(null)
@@ -58,6 +63,11 @@ export default function WikiPageDetail() {
     }
   }, [load])
 
+  // Legacy doubled links (/wiki/wiki/...) — settle on the canonical URL.
+  useEffect(() => {
+    if (joined.startsWith("wiki/")) router.replace(wikiHref(id))
+  }, [joined, id, router])
+
   const handleSave = async () => {
     if (!storage || !page) return
     try {
@@ -74,7 +84,7 @@ export default function WikiPageDetail() {
 
   const handleDelete = async () => {
     if (!storage || !page) return
-    if (!window.confirm(`Delete "${page.frontmatter.title}"? This cannot be undone.`)) return
+    if (!window.confirm(`Delete "${displayTitle(String(page.frontmatter.title ?? ""))}"? This cannot be undone.`)) return
     try {
       await storage.delete(page.path)
       await appendLog(storage, { date: today(), op: "delete", summary: page.id })
@@ -127,7 +137,7 @@ export default function WikiPageDetail() {
           </div>
         </div>
 
-        <h1 className="font-heading text-[24px] text-espresso tracking-heading">{fm.title}</h1>
+        <h1 className="font-heading text-[24px] text-espresso tracking-heading">{displayTitle(String(fm.title ?? ""))}</h1>
 
         <div className="flex flex-wrap items-center gap-2 mt-3 mb-5">
           <span className="text-[12px] uppercase tracking-wide px-2 py-0.5 rounded-pill bg-card-surface text-espresso">
