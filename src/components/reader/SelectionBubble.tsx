@@ -83,12 +83,12 @@ export default function SelectionBubble({ selection, onAsk, onHighlight, onCaptu
       role="toolbar"
       aria-label="Selection actions"
       style={style}
-      className="flex items-center gap-1 rounded-pill border border-border-warm bg-espresso px-1.5 py-1 shadow-lg"
+      className="flex items-center gap-1 rounded-pill border border-border-warm bg-light-surface px-1.5 py-1 shadow-lg"
     >
       <button
         type="button"
         onClick={onAsk}
-        className="text-[12px] font-medium tracking-body text-white px-2.5 py-1 rounded-pill hover:bg-white/10 transition-colors"
+        className="text-[12px] font-medium tracking-body text-espresso px-2.5 py-1 rounded-pill hover:bg-card-surface transition-colors"
       >
         Ask
       </button>
@@ -96,7 +96,7 @@ export default function SelectionBubble({ selection, onAsk, onHighlight, onCaptu
         <button
           type="button"
           onClick={onHighlight}
-          className="text-[12px] font-medium tracking-body text-white px-2.5 py-1 rounded-pill hover:bg-white/10 transition-colors"
+          className="text-[12px] font-medium tracking-body text-espresso px-2.5 py-1 rounded-pill hover:bg-card-surface transition-colors"
         >
           Highlight
         </button>
@@ -104,7 +104,7 @@ export default function SelectionBubble({ selection, onAsk, onHighlight, onCaptu
       <button
         type="button"
         onClick={onCapture}
-        className="text-[12px] font-medium tracking-body text-orange-light px-2.5 py-1 rounded-pill hover:bg-white/10 transition-colors"
+        className="text-[12px] font-medium tracking-body text-orange-light px-2.5 py-1 rounded-pill hover:bg-card-surface transition-colors"
       >
         Capture idea
       </button>
