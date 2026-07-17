@@ -6,7 +6,10 @@ import type { SurfaceSelection } from "./HtmlSurface"
 export interface SelectionBubbleProps {
   selection: SurfaceSelection | null
   onAsk: () => void
-  onHighlight: () => void
+  /** Omit to hide the Highlight action entirely — used by callers (e.g. a
+   * future paper page via `AskableSurface`'s `enableHighlight`) that don't
+   * support persistent highlighting on this surface. */
+  onHighlight?: () => void
   onCapture: () => void
 }
 
@@ -89,13 +92,15 @@ export default function SelectionBubble({ selection, onAsk, onHighlight, onCaptu
       >
         Ask
       </button>
-      <button
-        type="button"
-        onClick={onHighlight}
-        className="text-[12px] font-medium tracking-body text-white px-2.5 py-1 rounded-pill hover:bg-white/10 transition-colors"
-      >
-        Highlight
-      </button>
+      {onHighlight && (
+        <button
+          type="button"
+          onClick={onHighlight}
+          className="text-[12px] font-medium tracking-body text-white px-2.5 py-1 rounded-pill hover:bg-white/10 transition-colors"
+        >
+          Highlight
+        </button>
+      )}
       <button
         type="button"
         onClick={onCapture}
