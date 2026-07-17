@@ -2,21 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import {
   Home,
-  MessageSquarePlus,
-  BookOpen,
-  Clock,
-  FolderOpen,
-  Network,
-  PanelLeftClose,
-  Settings,
-  Sparkles,
+  Search as SearchIcon,
   TrendingUp,
+  BookOpen,
+  Network,
+  FolderOpen,
+  Sparkles,
+  MessageSquarePlus,
+  Clock,
+  PanelLeftClose,
+  type LucideIcon,
 } from "lucide-react";
 import { useUserStore } from "@/stores/user-store";
 import { useUIStore } from "@/stores/ui-store";
-import { useChatStore } from "@/stores/chat-store";
 
 function UserAvatar() {
   const user = useUserStore((s) => s.user);
@@ -28,32 +29,73 @@ function UserAvatar() {
   );
 }
 
-export const navItems = [
-  { key: "home", label: "Home", href: "/", icon: Home },
-  { key: "chat", label: "New Chat", href: "/chat", icon: MessageSquarePlus },
-  { key: "projects", label: "Projects", href: "/projects", icon: FolderOpen },
-  { key: "library", label: "Library", href: "/library", icon: BookOpen },
-  { key: "trending", label: "Trending", href: "/trending", icon: TrendingUp },
-  { key: "spark", label: "Spark", href: "/spark", icon: Sparkles },
-  { key: "dashboard", label: "Dashboard", href: "/viz", icon: Network },
-  { key: "history", label: "History", href: "/history", icon: Clock },
-  { key: "settings", label: "Settings", href: "/settings", icon: Settings },
-] as const;
+interface NavItem {
+  key: string;
+  label: string;
+  href: string;
+  icon: LucideIcon;
+}
+
+interface NavGroup {
+  heading: string;
+  items: NavItem[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    heading: "Discover",
+    items: [
+      { key: "home", label: "Home", href: "/", icon: Home },
+      { key: "search", label: "Search", href: "/papers", icon: SearchIcon },
+      { key: "trending", label: "Trending", href: "/trending", icon: TrendingUp },
+    ],
+  },
+  {
+    heading: "Knowledge",
+    items: [
+      { key: "wiki", label: "Wiki", href: "/wiki", icon: BookOpen },
+      { key: "graph", label: "Graph", href: "/viz", icon: Network },
+      { key: "projects", label: "Projects", href: "/projects", icon: FolderOpen },
+    ],
+  },
+  {
+    heading: "Tools",
+    items: [
+      { key: "spark", label: "Spark", href: "/spark", icon: Sparkles },
+      { key: "chat", label: "Chat", href: "/chat", icon: MessageSquarePlus },
+    ],
+  },
+];
+
+const HISTORY_ITEM: NavItem = { key: "history", label: "History", href: "/history", icon: Clock };
 
 interface SidebarProps {
   collapsed?: boolean;
+}
+
+function isItemActive(pathname: string, href: string): boolean {
+  return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
 export function Sidebar({ collapsed = false }: SidebarProps) {
   const pathname = usePathname();
   const onboardingComplete = useUserStore((s) => s.onboardingComplete);
   const toggleDesktopSidebar = useUIStore((s) => s.toggleDesktopSidebar);
-  const sessions = useChatStore((s) => s.sessions);
-  const recentChats = [...sessions]
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, 5);
+  const openSettingsModal = useUIStore((s) => s.openSettingsModal);
   const isOnboarding = pathname === "/onboarding";
   const disabled = isOnboarding && !onboardingComplete;
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onDown(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [menuOpen]);
 
   const fadeLabel = `whitespace-nowrap transition-opacity duration-150 ${
     collapsed ? "opacity-0" : "opacity-100"
@@ -61,6 +103,26 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
   const fadeBlock = `transition-opacity duration-150 ${
     collapsed ? "opacity-0 pointer-events-none" : "opacity-100"
   }`;
+
+  function renderItem(item: NavItem) {
+    const isActive = isItemActive(pathname, item.href);
+    const Icon = item.icon;
+
+    return (
+      <Link
+        key={item.key}
+        href={item.href}
+        className={`flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[15px] tracking-body transition-colors ${
+          isActive
+            ? "bg-card-surface text-espresso font-medium"
+            : "text-muted-text hover:bg-card-surface/50"
+        }`}
+      >
+        <Icon size={18} strokeWidth={1.8} className="flex-shrink-0" />
+        <span className={fadeLabel}>{item.label}</span>
+      </Link>
+    );
+  }
 
   return (
     <aside className="w-[240px] bg-page-warm flex flex-col h-full p-3 flex-shrink-0">
@@ -80,84 +142,63 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
         </span>
       </div>
 
-      {/* Nav items — icons always at same position */}
-      <nav className={disabled ? "opacity-40 pointer-events-none" : ""}>
-        {navItems.map((item) => {
-          const isActive =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.href);
-          const Icon = item.icon;
-
-          return (
-            <Link
-              key={item.key}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[15px] tracking-body transition-colors ${
-                isActive
-                  ? "bg-card-surface text-espresso font-medium"
-                  : "text-muted-text hover:bg-card-surface/50"
-              }`}
+      {/* Grouped nav — icons always at same position */}
+      <nav className={`flex-1 min-h-0 overflow-y-auto ${disabled ? "opacity-40 pointer-events-none" : ""}`}>
+        {NAV_GROUPS.map((group) => (
+          <div key={group.heading}>
+            <div
+              className={`px-3 pt-4 pb-1 text-[10px] uppercase tracking-wide text-muted-text ${collapsed ? "hidden" : ""}`}
             >
-              <Icon size={18} strokeWidth={1.8} className="flex-shrink-0" />
-              <span className={fadeLabel}>{item.label}</span>
-            </Link>
-          );
-        })}
+              {group.heading}
+            </div>
+            {group.items.map(renderItem)}
+          </div>
+        ))}
+        <hr className="border-border-warm mx-[10px] my-[14px]" />
+        {renderItem(HISTORY_ITEM)}
       </nav>
 
-      {/* Recent chats — hidden when collapsed */}
-      <div
-        className={`flex-1 min-h-0 flex flex-col ${fadeBlock} ${disabled ? "opacity-40 pointer-events-none" : ""}`}
-      >
-        <hr className="border-border-warm mx-[10px] my-[14px] flex-shrink-0" />
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <p className="text-[13px] uppercase tracking-[0.06em] text-muted-text font-medium px-3 pb-2">
-            Recent Chats
-          </p>
-          {recentChats.length === 0 ? (
-            <p className="text-[13px] text-muted-text/60 px-3 py-1">
-              No conversations yet
-            </p>
-          ) : (
-            recentChats.map((chat) => (
-              <Link
-                key={chat.id}
-                href={`/chat/${chat.id}`}
-                className={`block text-[14px] text-muted-text px-3 py-1.5 rounded-[6px] truncate leading-[1.4] hover:bg-card-surface/50 transition-colors ${
-                  pathname === `/chat/${chat.id}`
-                    ? "bg-card-surface text-espresso font-medium"
-                    : ""
-                }`}
-              >
-                {chat.title}
-              </Link>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* User profile — hidden when collapsed */}
+      {/* Account menu — hidden when collapsed */}
       <div className={`${fadeBlock} ${disabled ? "opacity-40 pointer-events-none" : ""}`}>
         <hr className="border-border-warm mx-[10px] my-[14px]" />
-        <Link
-          href="/profile"
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-[10px] transition-colors ${
-            pathname === "/profile"
-              ? "bg-card-surface"
-              : "hover:bg-card-surface/50"
-          }`}
-        >
-          <UserAvatar />
-          <div className="flex-1 min-w-0">
-            <p className="text-[14px] text-espresso font-medium truncate tracking-body">
-              {useUserStore.getState().user?.name ?? "User"}
-            </p>
-            <p className="text-[12px] text-muted-text truncate tracking-body">
-              {useUserStore.getState().user?.email ?? ""}
-            </p>
-          </div>
-        </Link>
+        <div ref={menuRef} className="relative">
+          {menuOpen && (
+            <div className="absolute bottom-full left-0 mb-2 w-48 rounded-card border border-border-warm bg-light-surface py-1 shadow-lg">
+              <Link
+                href="/profile"
+                className="block px-4 py-2 text-[13px] text-espresso hover:bg-card-surface"
+                onClick={() => setMenuOpen(false)}
+              >
+                Profile
+              </Link>
+              <button
+                type="button"
+                className="block w-full px-4 py-2 text-left text-[13px] text-espresso hover:bg-card-surface"
+                onClick={() => {
+                  setMenuOpen(false);
+                  openSettingsModal("ai");
+                }}
+              >
+                Settings
+              </button>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-[10px] transition-colors hover:bg-card-surface/50 w-full text-left"
+          >
+            <UserAvatar />
+            <div className="flex-1 min-w-0">
+              <p className="text-[14px] text-espresso font-medium truncate tracking-body">
+                {useUserStore.getState().user?.name ?? "User"}
+              </p>
+              <p className="text-[12px] text-muted-text truncate tracking-body">
+                {useUserStore.getState().user?.email ?? ""}
+              </p>
+            </div>
+          </button>
+        </div>
       </div>
     </aside>
   );
