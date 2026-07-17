@@ -8,6 +8,8 @@ import forceAtlas2 from "graphology-layout-forceatlas2"
 import type { KnowledgeGraph } from "@/lib/viz/graph"
 import { PAGE_TYPES, type PageType } from "@/lib/vault/types"
 import { wikiHref } from "@/lib/wiki/href"
+import { displayTitle } from "@/lib/papers/title"
+import { truncateGraphLabel } from "./labels"
 
 // sigma and graphology-layout-forceatlas2 both touch WebGL/canvas at import
 // time — this module must only ever be loaded client-side via
@@ -171,7 +173,7 @@ export default function GraphView({ graph }: GraphViewProps) {
         y: pos.y,
         size: clampedScale(node.degree, minDegree, maxDegree, MIN_NODE_SIZE, MAX_NODE_SIZE),
         color: COMMUNITY_COLORS[node.community % COMMUNITY_COLORS.length],
-        label: node.title,
+        label: truncateGraphLabel(displayTitle(node.title)),
         // NOT `type` — sigma's DisplayData.type selects the rendering
         // program (circle/etc). Our page type lives in a separate attribute.
         pageType: node.type,
