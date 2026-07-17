@@ -15,7 +15,9 @@ import { paperKey, type PaperRecord } from "./types"
  * present; it's never used by `loadReaderContent`/`acquireFullText` for a
  * page reconstructed this way since the snapshot always exists first.
  */
-function paperRecordFromFrontmatter(fm: Frontmatter): PaperRecord {
+/** Exported (SP2 Task 5) so `/api/skills/enrich` can rebuild a `PaperRecord`
+ * from a paper page's frontmatter without duplicating this logic. */
+export function paperRecordFromFrontmatter(fm: Frontmatter): PaperRecord {
   const doi = typeof fm.doi === "string" ? fm.doi : undefined
   const arxiv = typeof fm.arxiv === "string" ? fm.arxiv : undefined
   const openalex = typeof fm.openalex === "string" ? fm.openalex : undefined
