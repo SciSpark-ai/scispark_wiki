@@ -218,7 +218,7 @@ export default function WikiInboxPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  {item.fix && (
+                  {(item.fix || item.fixes) && (
                     <button
                       type="button"
                       onClick={() => handleFix(item.id)}

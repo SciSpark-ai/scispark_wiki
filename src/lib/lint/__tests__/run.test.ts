@@ -271,6 +271,58 @@ describe("applyLintFix", () => {
     expect(refreshed.filter((f) => f.lintKind === "broken-link")).toHaveLength(0)
   })
 
+  it("duplicate-author: applies the multi-file merge changeset (rewrites the referring page, deletes the duplicate), and undo restores both", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Canonical bio."))
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Duplicate bio."))
+    await s.write(
+      "wiki/papers/p1.md",
+      serializeDocument(fm("paper", "Some Paper", { related: ["edmund-c-lalor"] }), "By [[edmund-c-lalor]]."),
+    )
+
+    await runLintDeterministic(s, { now: NOW })
+    const reviews = await listReviews(s)
+    const dupItem = reviews.find((r) => r.lintKind === "duplicate-author")!
+    expect(dupItem).toBeDefined()
+    expect(dupItem.fixes).toBeDefined()
+
+    const paperBefore = await s.read("wiki/papers/p1.md")
+    const dupBefore = await s.read("wiki/authors/edmund-c-lalor.md")
+
+    const { changesetId } = await applyLintFix(s, dupItem.id)
+    expect(changesetId).not.toBe(LINT_FIX_NOOP_SENTINEL)
+
+    expect(await s.read("wiki/authors/edmund-c-lalor.md")).toBeNull()
+    const paperAfter = await s.read("wiki/papers/p1.md")
+    expect(paperAfter).toContain("[[a5074790393]]")
+    expect(paperAfter).not.toContain("edmund-c-lalor")
+    const parsedPaper = await loadBundle(s)
+    expect(parsedPaper.pages.get("wiki/papers/p1")?.frontmatter.related).toEqual(["a5074790393"])
+
+    // Undo restores both files exactly.
+    const cs = await loadChangeset(s, changesetId)
+    expect(cs).not.toBeNull()
+    await revertChangeset(s, cs!)
+    expect(await s.read("wiki/authors/edmund-c-lalor.md")).toBe(dupBefore)
+    expect(await s.read("wiki/papers/p1.md")).toBe(paperBefore)
+  })
+
+  it("duplicate-author: a fix whose finding is already resolved is a clean no-op", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Canonical bio."))
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Duplicate bio."))
+
+    await runLintDeterministic(s, { now: NOW })
+    const reviews = await listReviews(s)
+    const dupItem = reviews.find((r) => r.lintKind === "duplicate-author")!
+
+    // Resolved out-of-band: the duplicate page is deleted before Fix is clicked.
+    await s.delete("wiki/authors/edmund-c-lalor.md")
+
+    const res = await applyLintFix(s, dupItem.id)
+    expect(res.changesetId).toBe(LINT_FIX_NOOP_SENTINEL)
+  })
+
   it("a fix whose finding is already resolved (sibling fixed it / it's gone) is a clean no-op — no throw, sentinel id, nothing written", async () => {
     const s = new MemoryVaultStorage()
     await s.write("wiki/concepts/a.md", serializeDocument(fm("concept", "A"), "See [[ghost]] for details."))

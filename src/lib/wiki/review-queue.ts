@@ -1,5 +1,5 @@
 import type { VaultStorage } from "../vault/storage"
-import type { Changeset } from "../vault/types"
+import type { Changeset, FileChange } from "../vault/types"
 import type { LintKind } from "../lint/types"
 
 /**
@@ -37,6 +37,13 @@ export interface ReviewItem {
    * (src/lib/lint/run.ts) will apply as a one-file changeset.
    */
   fix?: { path: string; before: string | null; after: string }
+  /**
+   * Present only for kind "lint-finding" items whose mechanical fix touches
+   * MORE than one file (src/lib/lint/types.ts#LintFinding.fixes) — what
+   * applyLintFix will apply as one atomic multi-file changeset. Mutually
+   * exclusive with `fix` above.
+   */
+  fixes?: FileChange[]
 }
 
 /**

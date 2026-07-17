@@ -28,6 +28,7 @@ const LINT_KIND_LABEL: Record<LintKind, string> = {
   "broken-link": "Broken link",
   "bad-frontmatter": "Bad frontmatter",
   "index-drift": "Index drift",
+  "duplicate-author": "Duplicate author",
   contradiction: "Contradiction",
   "stale-claim": "Stale claim",
 }

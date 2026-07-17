@@ -3,7 +3,7 @@ import { resolveLink } from "../vault/bundle"
 import { parseDocument, serializeDocument } from "../vault/frontmatter"
 import { buildIndexMarkdown } from "../vault/index-builder"
 import { PAGE_TYPES, RESERVED_FILES } from "../vault/types"
-import type { Frontmatter } from "../vault/types"
+import type { Frontmatter, FileChange, WikiPage } from "../vault/types"
 import { extractWikilinks, findWikilinkMatches } from "../vault/wikilinks"
 import type { LintFinding } from "./types"
 
@@ -245,6 +245,147 @@ export function findIndexDrift(bundle: Bundle, storedIndex: string | null | unde
   ]
 }
 
+const ID_KEYED_AUTHOR_SLUG = /^a\d+$/
+
+/** Final path segment of a bundle page id — its wikilink slug (bundle ids
+ * never carry the ".md" extension, unlike `WikiPage.path`). */
+function slugOf(id: string): string {
+  return id.split("/").pop() ?? id
+}
+
+/** Normalizes an author's display title for duplicate grouping, per the C6
+ * spec: case-fold and collapse periods/whitespace so "Edmund C. Lalor" and
+ * "edmund c lalor" group together regardless of punctuation/casing drift
+ * between the deterministic id-keyed skeleton and an LLM-authored name-slug
+ * page. */
+function normalizeAuthorTitle(title: string): string {
+  return title.toLowerCase().replace(/[.\s]+/g, " ").trim()
+}
+
+function dedupeStable(items: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const item of items) {
+    if (seen.has(item)) continue
+    seen.add(item)
+    out.push(item)
+  }
+  return out
+}
+
+/**
+ * Same span-based rewrite as `neutralizeWikilink` above, but RENAMES the slug
+ * (keeping the link, and any alias, intact) instead of flattening it to plain
+ * text — used by the duplicate-author merge fix to repoint every `[[extra]]`
+ * reference at the canonical id-keyed slug.
+ */
+function renameWikilink(body: string, fromSlug: string, toSlug: string): string {
+  const matches = findWikilinkMatches(body).filter((m) => m.slug === fromSlug)
+  let out = body
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const m = matches[i]
+    const replacement = m.alias !== undefined ? `[[${toSlug}|${m.alias}]]` : `[[${toSlug}]]`
+    out = out.slice(0, m.start) + replacement + out.slice(m.end)
+  }
+  return out
+}
+
+/**
+ * Builds the merge changes for one duplicate-author finding: rewrites every
+ * OTHER page's body wikilinks and `related[]` entries that reference
+ * `extraSlug` to `canonicalSlug` instead (same rename-and-dedupe semantics as
+ * `dedupeAuthorFiles` in src/lib/skills/ingest.ts, which prevents this
+ * duplication on NEW ingests but can't retroactively fix a vault that already
+ * has both pages), then deletes the duplicate page itself (`after: null`).
+ * Order doesn't matter to `applyChangeset` (it applies the whole list
+ * atomically), but the deletion is appended last for readability.
+ */
+function buildDuplicateAuthorFix(bundle: Bundle, extraPage: WikiPage, canonicalSlug: string): FileChange[] {
+  const extraSlug = slugOf(extraPage.id)
+  const changes: FileChange[] = []
+
+  for (const page of bundle.pages.values()) {
+    if (page.id === extraPage.id) continue
+
+    const linksToExtra = findWikilinkMatches(page.body).some((m) => m.slug === extraSlug)
+    const relatedHasExtra = page.frontmatter.related.includes(extraSlug)
+    if (!linksToExtra && !relatedHasExtra) continue
+
+    const newBody = linksToExtra ? renameWikilink(page.body, extraSlug, canonicalSlug) : page.body
+    const newRelated = relatedHasExtra
+      ? dedupeStable(page.frontmatter.related.map((slug) => (slug === extraSlug ? canonicalSlug : slug)))
+      : page.frontmatter.related
+    const newFrontmatter: Frontmatter = { ...page.frontmatter, related: newRelated }
+
+    changes.push({
+      path: page.path,
+      before: serializeDocument(page.frontmatter, page.body),
+      after: serializeDocument(newFrontmatter, newBody),
+    })
+  }
+
+  changes.push({
+    path: extraPage.path,
+    before: serializeDocument(extraPage.frontmatter, extraPage.body),
+    after: null,
+  })
+
+  return changes
+}
+
+/**
+ * The ingest pipeline's `dedupeAuthorFiles` (src/lib/skills/ingest.ts:338)
+ * stops a NEW ingest from creating a second author page under a name slug
+ * when a deterministic OpenAlex-id-keyed page already exists for that
+ * author — but a vault ingested BEFORE that fix landed can still carry both:
+ * `wiki/authors/a5074790393.md` (id-keyed, code-owned) AND
+ * `wiki/authors/edmund-c-lalor.md` (name-slug, LLM-authored) for the same
+ * person. This groups `author` pages by normalized title (see
+ * `normalizeAuthorTitle`) and, for every group containing EXACTLY one
+ * id-keyed page (`/^a\d+$/`) plus at least one other page, flags each extra
+ * page as a duplicate — one finding per extra page, each carrying a
+ * mechanical merge fix (see `buildDuplicateAuthorFix`). Groups with zero or
+ * more than one id-keyed page are left unflagged: with no single
+ * unambiguous canonical page there's no safe merge target to guess (e.g. two
+ * distinct real people who happen to share a display name).
+ */
+export function findDuplicateAuthors(bundle: Bundle): LintFinding[] {
+  const groups = new Map<string, WikiPage[]>()
+  for (const page of bundle.pages.values()) {
+    if (page.frontmatter.type !== "author") continue
+    const key = normalizeAuthorTitle(page.frontmatter.title)
+    const bucket = groups.get(key)
+    if (bucket) bucket.push(page)
+    else groups.set(key, [page])
+  }
+
+  const findings: LintFinding[] = []
+  for (const pages of groups.values()) {
+    if (pages.length < 2) continue
+    const idKeyed = pages.filter((p) => ID_KEYED_AUTHOR_SLUG.test(slugOf(p.id)))
+    if (idKeyed.length !== 1) continue
+
+    const canonical = idKeyed[0]
+    const canonicalSlug = slugOf(canonical.id)
+    const extras = pages.filter((p) => p.id !== canonical.id)
+
+    for (const extra of extras) {
+      findings.push({
+        lintKind: "duplicate-author",
+        title: `"${canonical.frontmatter.title}" has duplicate author pages`,
+        description:
+          `"${extra.id}" and "${canonical.id}" both represent "${canonical.frontmatter.title}". ` +
+          `Merging rewrites every reference from "${slugOf(extra.id)}" to the canonical ` +
+          `"${canonicalSlug}" and removes the duplicate page.`,
+        pages: [canonical.id, extra.id],
+        fixTarget: extra.id,
+        fixes: buildDuplicateAuthorFix(bundle, extra, canonicalSlug),
+      })
+    }
+  }
+  return findings
+}
+
 export function runDeterministicChecks(
   bundle: Bundle,
   opts: { storedIndex?: string | null } = {},
@@ -253,6 +394,7 @@ export function runDeterministicChecks(
     ...findOrphans(bundle),
     ...findBrokenLinks(bundle),
     ...findBadFrontmatter(bundle),
+    ...findDuplicateAuthors(bundle),
     ...findIndexDrift(bundle, opts.storedIndex),
   ]
 }

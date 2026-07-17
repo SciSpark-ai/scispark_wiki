@@ -10,7 +10,7 @@ import { lintScreenSkill, lintJudgeSkill } from "../skills/lint"
 import { logEvent } from "../events/log"
 import type { ReviewItem } from "../wiki/review-queue"
 import { listReviews } from "../wiki/review-queue"
-import { runDeterministicChecks } from "./checks"
+import { runDeterministicChecks, findDuplicateAuthors } from "./checks"
 import type { LintFinding } from "./types"
 
 // ---------------------------------------------------------------------------
@@ -54,6 +54,17 @@ import type { LintFinding } from "./types"
 // never appears in a fresh loadBundle; for that case applyLintFix falls back to
 // the stored fix, but only when the page is still byte-identical to lint time
 // (so `before` matches disk), otherwise no-op.
+//
+// duplicate-author (C6) is the one mechanical fix that spans MULTIPLE files
+// (every page referencing the duplicate, plus deleting the duplicate itself)
+// — it carries `fixes: FileChange[]` (see LintFinding.fixes) instead of the
+// single-file `fix`. applyLintFix follows the same recompute-at-apply
+// principle as the single-file fixes above, just re-running
+// `findDuplicateAuthors` fresh against a `loadBundle` read at apply time (so
+// every `before` in the rebuilt `fixes` list is already current-disk-content,
+// no extra re-read needed) and re-finding this exact finding by its
+// `fixTarget` (the duplicate page's id) before applying the whole list as one
+// atomic changeset.
 // ---------------------------------------------------------------------------
 
 const REVIEW_DIR = ".scispark/review"
@@ -87,6 +98,7 @@ async function writeFindingsAsReviews(
       pages: finding.pages,
       ...(finding.fixTarget !== undefined ? { fixTarget: finding.fixTarget } : {}),
       ...(finding.fix ? { fix: finding.fix } : {}),
+      ...(finding.fixes ? { fixes: finding.fixes } : {}),
     }
     try {
       await storage.write(`${REVIEW_DIR}/${id}.json`, JSON.stringify(item, null, 2))
@@ -259,6 +271,10 @@ function matchFreshFinding(findings: LintFinding[], item: ReviewItem): LintFindi
  * - "index-drift": recomputes index.md directly through the deterministic
  *   index-builder (writeIndex) and returns INDEX_DRIFT_FIX_SENTINEL (see the
  *   module comment for why it bypasses the changeset machinery).
+ * - "duplicate-author": RECOMPUTES findDuplicateAuthors against the current
+ *   vault, re-finds this finding by `fixTarget` (the duplicate page's id),
+ *   and applies its whole `fixes` list as one atomic multi-file changeset
+ *   (see the module comment). LINT_FIX_NOOP_SENTINEL if it's gone.
  * - every other mechanical fix (broken-link, bad-frontmatter): RECOMPUTES the
  *   deterministic checks against the current vault and rebuilds the fix so
  *   `before` always matches disk, even after a sibling fix on the same page has
@@ -271,13 +287,40 @@ function matchFreshFinding(findings: LintFinding[], item: ReviewItem): LintFindi
 export async function applyLintFix(storage: VaultStorage, reviewId: string): Promise<{ changesetId: string }> {
   const item = await findReviewItem(storage, reviewId)
   if (!item) throw new Error(`review item not found: ${reviewId}`)
-  if (!item.fix) throw new Error(`review item ${reviewId} has no fix to apply`)
+  if (!item.fix && !item.fixes) throw new Error(`review item ${reviewId} has no fix to apply`)
 
   if (item.lintKind === "index-drift") {
     const bundle = await loadBundle(storage)
     await writeIndex(storage, bundle)
     return { changesetId: INDEX_DRIFT_FIX_SENTINEL }
   }
+
+  if (item.lintKind === "duplicate-author") {
+    // Recompute fresh (see the module comment) rather than replaying the
+    // stored `fixes` — the review item's snapshot could be stale (a manual
+    // edit, or another duplicate-author fix on the same canonical author,
+    // landed since this finding was written).
+    const bundle = await loadBundle(storage)
+    const match = findDuplicateAuthors(bundle).find((f) => f.fixTarget === item.fixTarget)
+    if (!match?.fixes || match.fixes.length === 0) return { changesetId: LINT_FIX_NOOP_SENTINEL }
+
+    const changeset: Changeset = {
+      id: makeChangesetId(),
+      skill: "lint",
+      model: "none",
+      timestamp: new Date().toISOString(),
+      changes: match.fixes,
+    }
+    await applyChangeset(storage, changeset)
+    if ((await loadChangeset(storage, changeset.id)) === null) {
+      throw new Error(`applyChangeset for ${changeset.id} did not persist a changeset record`)
+    }
+    return { changesetId: changeset.id }
+  }
+
+  // Every OTHER lintKind's mechanical fix is single-file (index-drift and
+  // duplicate-author, the only `fixes`-only kinds, both returned above).
+  if (!item.fix) throw new Error(`review item ${reviewId} has no single-file fix to apply`)
 
   // Recompute the deterministic checks against the CURRENT vault and re-find
   // this finding, so `before` is derived from the live page rather than the

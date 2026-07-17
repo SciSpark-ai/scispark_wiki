@@ -10,6 +10,7 @@ import {
   findBrokenLinks,
   findBadFrontmatter,
   findIndexDrift,
+  findDuplicateAuthors,
   runDeterministicChecks,
 } from "../checks"
 
@@ -251,6 +252,113 @@ describe("findBadFrontmatter", () => {
   })
 })
 
+describe("findDuplicateAuthors", () => {
+  it("flags an author with both an id-keyed and a name-keyed page (C6)", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Bio."))
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Bio."))
+    await s.write("wiki/authors/a5035188059.md", serializeDocument(fm("author", "Adam Bednar"), "Bio."))
+    const b = await loadBundle(s)
+
+    const findings = runDeterministicChecks(b).filter((f) => f.lintKind === "duplicate-author")
+    expect(findings).toHaveLength(1)
+    expect(findings[0].title).toContain("Edmund C. Lalor")
+    expect(findings[0].pages).toEqual(["wiki/authors/a5074790393", "wiki/authors/edmund-c-lalor"])
+    expect(findings[0].fixTarget).toBe("wiki/authors/edmund-c-lalor")
+  })
+
+  it("clean bundle: a lone id-keyed author page (no name-slug duplicate) is not flagged", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5035188059.md", serializeDocument(fm("author", "Adam Bednar"), "Bio."))
+    const b = await loadBundle(s)
+    expect(findDuplicateAuthors(b)).toEqual([])
+  })
+
+  it("a lone name-slug page with no id-keyed sibling is not flagged (nothing unambiguous to merge onto)", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Bio."))
+    const b = await loadBundle(s)
+    expect(findDuplicateAuthors(b)).toEqual([])
+  })
+
+  it("normalization collapses case and punctuation/whitespace differences", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Bio."))
+    // Same person, different casing/punctuation spacing on the duplicate's title.
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "edmund   c lalor"), "Bio."))
+    const b = await loadBundle(s)
+    expect(findDuplicateAuthors(b)).toHaveLength(1)
+  })
+
+  it("a group with two id-keyed pages sharing a normalized title is left unflagged (no unambiguous canonical)", async () => {
+    const s = new MemoryVaultStorage()
+    // Two distinct OpenAlex ids, same display name -- could be two different
+    // real people; there's no safe merge target to guess.
+    await s.write("wiki/authors/a1111.md", serializeDocument(fm("author", "J. Smith"), "Bio."))
+    await s.write("wiki/authors/a2222.md", serializeDocument(fm("author", "J. Smith"), "Bio."))
+    const b = await loadBundle(s)
+    expect(findDuplicateAuthors(b)).toEqual([])
+  })
+
+  it("non-author pages sharing a normalized title are never considered", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Shared Title"), "Bio."))
+    await s.write("wiki/concepts/shared-title.md", serializeDocument(fm("concept", "Shared Title"), "Not an author."))
+    const b = await loadBundle(s)
+    expect(findDuplicateAuthors(b)).toEqual([])
+  })
+
+  it("the merge fix rewrites wikilinks and related[] from the name slug to the id slug across the bundle, and deletes the name-slug page", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Canonical bio."))
+    const dupePage = serializeDocument(fm("author", "Edmund C. Lalor"), "Duplicate bio.")
+    await s.write("wiki/authors/edmund-c-lalor.md", dupePage)
+    await s.write(
+      "wiki/papers/p1.md",
+      serializeDocument(fm("paper", "Some Paper", { related: ["edmund-c-lalor"] }), "By [[edmund-c-lalor|Lalor]]."),
+    )
+    const b = await loadBundle(s)
+
+    const findings = findDuplicateAuthors(b)
+    expect(findings).toHaveLength(1)
+    const fixes = findings[0].fixes!
+    expect(fixes).toBeDefined()
+
+    // The referring paper page: wikilink renamed (alias preserved), related[] renamed.
+    const paperFix = fixes.find((c) => c.path === "wiki/papers/p1.md")!
+    expect(paperFix).toBeDefined()
+    expect(paperFix.after).toContain("[[a5074790393|Lalor]]")
+    expect(paperFix.after).not.toContain("edmund-c-lalor")
+    const parsedPaper = parseDocument(paperFix.after!)
+    expect(parsedPaper.frontmatter.related).toEqual(["a5074790393"])
+
+    // The duplicate page itself: deleted (after: null), before matches disk.
+    const deleteFix = fixes.find((c) => c.path === "wiki/authors/edmund-c-lalor.md")!
+    expect(deleteFix).toBeDefined()
+    expect(deleteFix.before).toBe(dupePage)
+    expect(deleteFix.after).toBeNull()
+
+    // The canonical page is untouched (no self-reference to rewrite).
+    expect(fixes.find((c) => c.path === "wiki/authors/a5074790393.md")).toBeUndefined()
+  })
+
+  it("a related[] entry already pointing at the canonical slug is deduped after the rename, not duplicated", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Bio."))
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Bio."))
+    await s.write(
+      "wiki/papers/p1.md",
+      serializeDocument(fm("paper", "Some Paper", { related: ["a5074790393", "edmund-c-lalor"] }), "Body."),
+    )
+    const b = await loadBundle(s)
+
+    const findings = findDuplicateAuthors(b)
+    const paperFix = findings[0].fixes!.find((c) => c.path === "wiki/papers/p1.md")!
+    const parsedPaper = parseDocument(paperFix.after!)
+    expect(parsedPaper.frontmatter.related).toEqual(["a5074790393"])
+  })
+})
+
 describe("findIndexDrift", () => {
   it("clean: stored index matches the recomputed index -> no findings", async () => {
     const s = new MemoryVaultStorage()
@@ -284,7 +392,7 @@ describe("findIndexDrift", () => {
 })
 
 describe("runDeterministicChecks", () => {
-  it("composes all four sub-checks, index-drift only when storedIndex is supplied", async () => {
+  it("composes all five sub-checks, index-drift only when storedIndex is supplied", async () => {
     const s = new MemoryVaultStorage()
     await s.write(
       "wiki/concepts/lonely.md",
@@ -298,6 +406,15 @@ describe("runDeterministicChecks", () => {
 
     const withIndex = runDeterministicChecks(b, { storedIndex: "stale" })
     expect(withIndex.map((f) => f.lintKind).sort()).toEqual(["broken-link", "index-drift", "orphan"])
+  })
+
+  it("includes duplicate-author findings in the composed output", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Bio."))
+    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Bio."))
+    const b = await loadBundle(s)
+    const kinds = runDeterministicChecks(b).map((f) => f.lintKind)
+    expect(kinds).toContain("duplicate-author")
   })
 
   it("clean bundle with a correct index yields zero findings", async () => {
