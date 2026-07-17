@@ -43,3 +43,10 @@ export function lintKindLabel(kind: LintKind): string {
 export function formatLintPairProgress(progress: { index: number; total: number }): string {
   return `Judging pair ${progress.index + 1} of ${progress.total}…`
 }
+
+/** "Run deep lint (~$0.02)" once the on-mount cost estimate has loaded, or
+ * plain "Run deep lint" while it's loading/unavailable — never a bare "~$"
+ * (M12 UI/UX SP1 Task 9, C3). */
+export function formatDeepLintLabel(estimate: number | null): string {
+  return estimate === null ? "Run deep lint" : `Run deep lint (~$${estimate.toFixed(2)})`
+}

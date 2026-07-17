@@ -12,7 +12,13 @@ import {
   estimateLintCost,
   applyLintFixRemote,
 } from "@/lib/lint/client"
-import { formatDeepLintConfirm, formatLintFindingCount, formatLintPairProgress, lintKindLabel } from "@/lib/lint/ui-format"
+import {
+  formatDeepLintConfirm,
+  formatDeepLintLabel,
+  formatLintFindingCount,
+  formatLintPairProgress,
+  lintKindLabel,
+} from "@/lib/lint/ui-format"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 
 const KIND_LABEL: Record<ReviewItem["kind"], string> = {
@@ -43,6 +49,7 @@ export default function WikiInboxPage() {
   const [fixing, setFixing] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [lintState, setLintState] = useState<LintState>({ status: "idle" })
+  const [deepEstimate, setDeepEstimate] = useState<number | null>(null)
 
   async function refresh() {
     setLoading(true)
@@ -61,6 +68,17 @@ export default function WikiInboxPage() {
 
   useEffect(() => {
     refresh()
+  }, [])
+
+  // Loads the deep-lint cost estimate for the button label only (best-effort
+  // — a failure here just leaves deepEstimate null, which formatDeepLintLabel
+  // renders as the plain "Run deep lint" label, never a bare "~$"; the
+  // confirm-dialog flow in handleDeepLint below re-fetches its own estimate
+  // and is unaffected by this failing).
+  useEffect(() => {
+    estimateLintCost()
+      .then(setDeepEstimate)
+      .catch(() => setDeepEstimate(null))
   }, [])
 
   async function handleDismiss(id: string) {
@@ -155,7 +173,7 @@ export default function WikiInboxPage() {
               ? lintState.progress
                 ? formatLintPairProgress(lintState.progress)
                 : "Estimating…"
-              : "Run deep lint (~$)"}
+              : formatDeepLintLabel(deepEstimate)}
           </button>
           <Link href="/wiki" className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1">
             Back to wiki

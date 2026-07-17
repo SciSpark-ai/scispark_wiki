@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest"
-import { formatDeepLintConfirm, formatLintFindingCount, lintKindLabel, formatLintPairProgress } from "../ui-format"
+import {
+  formatDeepLintConfirm,
+  formatLintFindingCount,
+  lintKindLabel,
+  formatLintPairProgress,
+  formatDeepLintLabel,
+} from "../ui-format"
 
 describe("formatDeepLintConfirm", () => {
   it("formats to 2 decimal places with the proceed prompt", () => {
@@ -49,5 +55,15 @@ describe("formatLintPairProgress", () => {
   it("1-indexes the pair for display", () => {
     expect(formatLintPairProgress({ index: 0, total: 5 })).toBe("Judging pair 1 of 5…")
     expect(formatLintPairProgress({ index: 4, total: 5 })).toBe("Judging pair 5 of 5…")
+  })
+})
+
+describe("formatDeepLintLabel", () => {
+  it("shows the plain label when the estimate is null", () => {
+    expect(formatDeepLintLabel(null)).toBe("Run deep lint")
+  })
+
+  it("shows the real estimate to 2 decimal places once loaded", () => {
+    expect(formatDeepLintLabel(0.02)).toBe("Run deep lint (~$0.02)")
   })
 })
