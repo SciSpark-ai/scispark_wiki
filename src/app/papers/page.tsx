@@ -10,7 +10,7 @@ import type { IngestOutput } from "@/lib/skills/ingest"
 import { generateDigestRemote, ingestRemote, undoIngestRemote, type IngestPhase } from "@/lib/skills/ingest-client"
 import { classifySearchIntentRemote } from "@/lib/skills/search-intent-client"
 import { getOpenVault } from "@/lib/vault/get-vault"
-import { loadFeed } from "@/lib/skills/feed"
+import { resolvePaperByKey } from "@/lib/papers/resolve"
 import { logEvent } from "@/lib/events/log"
 import { writeReaderHandoff } from "@/lib/reader/handoff"
 import { wikiHref } from "@/lib/wiki/href"
@@ -82,8 +82,9 @@ function PapersPageContent() {
   const [digestState, setDigestState] = useState<DigestState>({ status: "idle" })
   const [ingestState, setIngestState] = useState<IngestState>({ phase: "idle" })
 
-  // Deep-link from the home feed's "Read & digest" action: `?paperKey=` is looked
-  // up in the feed cache and preselected, same as clicking a search result.
+  // Deep-link from the home feed's "Read & digest" action: `?paperKey=` is
+  // resolved (feed cache → ingested wiki page → reader handoff) and
+  // preselected, same as clicking a search result.
   useEffect(() => {
     const key = searchParams.get("paperKey")
     if (!key) return
@@ -91,9 +92,8 @@ function PapersPageContent() {
     ;(async () => {
       try {
         const vault = await getOpenVault()
-        const feed = await loadFeed(vault)
-        const item = feed?.items.find((it) => paperKey(it.paper) === key)
-        if (!cancelled && item) handleSelect(item.paper)
+        const paper = await resolvePaperByKey(vault, key)
+        if (!cancelled && paper) handleSelect(paper)
       } catch {
         // Best-effort deep link — a missing/corrupt cache just leaves nothing preselected.
       }
