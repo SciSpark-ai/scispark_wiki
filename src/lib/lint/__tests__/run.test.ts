@@ -271,10 +271,21 @@ describe("applyLintFix", () => {
     expect(refreshed.filter((f) => f.lintKind === "broken-link")).toHaveLength(0)
   })
 
-  it("duplicate-author: applies the multi-file merge changeset (rewrites the referring page, deletes the duplicate), and undo restores both", async () => {
+  it("duplicate-author (branch 2): applies the multi-file merge changeset (folds the rich duplicate into the skeleton canonical, rewrites the referring page, deletes the duplicate), and undo restores everything", async () => {
     const s = new MemoryVaultStorage()
-    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Canonical bio."))
-    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Duplicate bio."))
+    // Real Lalor case: skeleton canonical (empty frontmatter, Papers only) +
+    // rich name-slug duplicate carrying the biography and frontmatter.
+    const canonicalBody = "# Edmund C. Lalor\n\n## Papers\n\n- [[the-paper]]"
+    await s.write(
+      "wiki/authors/a5074790393.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { openalex: "A5074790393", sources: [] }), canonicalBody),
+    )
+    const richBody =
+      "# Edmund C. Lalor\n\nEdmund C. Lalor is a senior author on [[the-paper]].\n\n## Research contributions\n\nTRF estimation."
+    await s.write(
+      "wiki/authors/edmund-c-lalor.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { tags: ["neuroscience"], related: ["mtrf-toolbox"] }), richBody),
+    )
     await s.write(
       "wiki/papers/p1.md",
       serializeDocument(fm("paper", "Some Paper", { related: ["edmund-c-lalor"] }), "By [[edmund-c-lalor]]."),
@@ -286,35 +297,51 @@ describe("applyLintFix", () => {
     expect(dupItem).toBeDefined()
     expect(dupItem.fixes).toBeDefined()
 
+    const canonicalBefore = await s.read("wiki/authors/a5074790393.md")
     const paperBefore = await s.read("wiki/papers/p1.md")
     const dupBefore = await s.read("wiki/authors/edmund-c-lalor.md")
 
     const { changesetId } = await applyLintFix(s, dupItem.id)
     expect(changesetId).not.toBe(LINT_FIX_NOOP_SENTINEL)
 
+    // Duplicate deleted; its biography folded into the canonical; canonical's
+    // Papers entry preserved; openalex id kept; referring page repointed.
     expect(await s.read("wiki/authors/edmund-c-lalor.md")).toBeNull()
+    const merged = await loadBundle(s)
+    const canonicalNow = merged.pages.get("wiki/authors/a5074790393")!
+    expect(canonicalNow.body).toContain("senior author")
+    expect(canonicalNow.body).toContain("## Research contributions")
+    expect(canonicalNow.body).toContain("- [[the-paper]]")
+    expect(canonicalNow.frontmatter.openalex).toBe("A5074790393")
+    expect(canonicalNow.frontmatter.tags).toEqual(["neuroscience"])
+    expect(canonicalNow.frontmatter.related).toEqual(["mtrf-toolbox"])
     const paperAfter = await s.read("wiki/papers/p1.md")
     expect(paperAfter).toContain("[[a5074790393]]")
     expect(paperAfter).not.toContain("edmund-c-lalor")
-    const parsedPaper = await loadBundle(s)
-    expect(parsedPaper.pages.get("wiki/papers/p1")?.frontmatter.related).toEqual(["a5074790393"])
+    expect(merged.pages.get("wiki/papers/p1")?.frontmatter.related).toEqual(["a5074790393"])
 
-    // Undo restores both files exactly.
+    // Undo restores all three files exactly.
     const cs = await loadChangeset(s, changesetId)
     expect(cs).not.toBeNull()
     await revertChangeset(s, cs!)
+    expect(await s.read("wiki/authors/a5074790393.md")).toBe(canonicalBefore)
     expect(await s.read("wiki/authors/edmund-c-lalor.md")).toBe(dupBefore)
     expect(await s.read("wiki/papers/p1.md")).toBe(paperBefore)
   })
 
   it("duplicate-author: a fix whose finding is already resolved is a clean no-op", async () => {
     const s = new MemoryVaultStorage()
-    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Canonical bio."))
-    await s.write("wiki/authors/edmund-c-lalor.md", serializeDocument(fm("author", "Edmund C. Lalor"), "Duplicate bio."))
+    const canonicalBody = "# Edmund C. Lalor\n\n## Papers\n\n- [[the-paper]]"
+    await s.write("wiki/authors/a5074790393.md", serializeDocument(fm("author", "Edmund C. Lalor", { openalex: "A5074790393", sources: [] }), canonicalBody))
+    await s.write(
+      "wiki/authors/edmund-c-lalor.md",
+      serializeDocument(fm("author", "Edmund C. Lalor", { tags: ["neuroscience"] }), "# Edmund C. Lalor\n\nBiography prose here.\n\n## Notes\n\nMore."),
+    )
 
     await runLintDeterministic(s, { now: NOW })
     const reviews = await listReviews(s)
     const dupItem = reviews.find((r) => r.lintKind === "duplicate-author")!
+    expect(dupItem.fixes).toBeDefined()
 
     // Resolved out-of-band: the duplicate page is deleted before Fix is clicked.
     await s.delete("wiki/authors/edmund-c-lalor.md")
