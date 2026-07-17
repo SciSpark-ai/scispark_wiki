@@ -8,6 +8,7 @@ import { loadBundle, type Bundle } from "@/lib/vault/bundle"
 import { serializeDocument } from "@/lib/vault/frontmatter"
 import { appendLog } from "@/lib/vault/index-builder"
 import { displayTitle } from "@/lib/papers/title"
+import { wikiHref, resolveWikiRouteId } from "@/lib/wiki/href"
 import type { VaultStorage } from "@/lib/vault/storage"
 import type { WikiPage } from "@/lib/vault/types"
 import { PageEditor } from "@/components/wiki/PageEditor"
@@ -21,10 +22,13 @@ export default function WikiPageDetail() {
   const params = useParams()
   const router = useRouter()
   // Next 16 catch-all ([...id]): params.id is always string[] for a
-  // required catch-all segment. Joined back into the vault-relative id
-  // (e.g. "wiki/concepts/foo") per the brief's routing contract.
+  // required catch-all segment. Joined back into URL segments, then resolved
+  // to the vault-relative bundle id (e.g. "wiki/concepts/foo") via the
+  // shared helper — this accepts BOTH the canonical URL ("concepts/foo")
+  // and legacy doubled links ("wiki/concepts/foo"), per C5.
   const rawId = params?.id
-  const id = Array.isArray(rawId) ? rawId.join("/") : (rawId ?? "")
+  const joined = Array.isArray(rawId) ? rawId.join("/") : (rawId ?? "")
+  const id = resolveWikiRouteId(joined)
 
   const [storage, setStorage] = useState<VaultStorage | null>(null)
   const [bundle, setBundle] = useState<Bundle | null>(null)
@@ -58,6 +62,11 @@ export default function WikiPageDetail() {
       cancelled = true
     }
   }, [load])
+
+  // Legacy doubled links (/wiki/wiki/...) — settle on the canonical URL.
+  useEffect(() => {
+    if (joined.startsWith("wiki/")) router.replace(wikiHref(id))
+  }, [joined, id, router])
 
   const handleSave = async () => {
     if (!storage || !page) return

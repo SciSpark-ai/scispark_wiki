@@ -22,6 +22,7 @@ import { applyChangesetRemote } from "@/lib/vault/changeset-client"
 import { loadCompanionSettingsRemote } from "@/lib/companion/settings-client"
 import { loadBundle } from "@/lib/vault/bundle"
 import { logEvent } from "@/lib/events/log"
+import { wikiHref } from "@/lib/wiki/href"
 
 // pdf.js and DOMPurify both touch DOMMatrix/canvas/window and must never run
 // during SSR — both surfaces are client-only, per the M6 plan's SSR
@@ -46,12 +47,6 @@ function computeSurroundingText(text: string, start: number, end: number): strin
   const from = Math.max(0, start - SURROUND_RADIUS)
   const to = Math.min(text.length, end + SURROUND_RADIUS)
   return text.slice(from, to)
-}
-
-/** wiki page id (e.g. "wiki/papers/foo") -> its /wiki/<...> route, matching
- * the pageHref convention in src/app/papers/page.tsx. */
-function pageHref(idOrPath: string): string {
-  return `/wiki/${idOrPath.replace(/\.md$/, "")}`
 }
 
 /**
@@ -383,7 +378,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
         {captureNotice && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 border border-border-warm rounded-pill bg-espresso text-white px-4 py-2 text-[13px] shadow-lg flex items-center gap-2 z-50">
             Idea captured.
-            <Link href={pageHref(captureNotice.path)} className="text-orange-light font-medium">
+            <Link href={wikiHref(captureNotice.path)} className="text-orange-light font-medium">
               View note
             </Link>
           </div>

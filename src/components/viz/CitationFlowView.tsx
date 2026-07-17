@@ -6,6 +6,7 @@ import { linkHorizontal } from "d3-shape"
 import { displayTitle } from "@/lib/papers/title"
 import type { CitationEdge, CitationFlow } from "@/lib/viz/citations"
 import { yearColumns } from "@/lib/viz/layout"
+import { wikiHref } from "@/lib/wiki/href"
 
 const NODE_RADIUS = 6
 const COL_WIDTH = 130
@@ -101,7 +102,7 @@ export default function CitationFlowView({ papers, flow, fetchState, onFetch }: 
 
   const papersById = useMemo(() => new Map(papers.map((p) => [p.id, p] as const)), [papers])
 
-  const goTo = (id: string) => router.push(`/wiki/${id}`)
+  const goTo = (id: string) => router.push(wikiHref(id))
 
   const nodeOpacity = (id: string): number => {
     if (!hovered) return 1

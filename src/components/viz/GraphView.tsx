@@ -7,6 +7,7 @@ import Sigma from "sigma"
 import forceAtlas2 from "graphology-layout-forceatlas2"
 import type { KnowledgeGraph } from "@/lib/viz/graph"
 import { PAGE_TYPES, type PageType } from "@/lib/vault/types"
+import { wikiHref } from "@/lib/wiki/href"
 
 // sigma and graphology-layout-forceatlas2 both touch WebGL/canvas at import
 // time — this module must only ever be loaded client-side via
@@ -236,7 +237,7 @@ export default function GraphView({ graph }: GraphViewProps) {
       sigmaInstance.refresh()
     })
     sigmaInstance.on("clickNode", ({ node }) => {
-      router.push(`/wiki/${node}`)
+      router.push(wikiHref(node))
     })
 
     sigmaRef.current = sigmaInstance

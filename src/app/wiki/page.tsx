@@ -7,6 +7,7 @@ import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadBundle, type Bundle } from "@/lib/vault/bundle"
 import { reviewCount } from "@/lib/wiki/review-queue"
 import { composePage } from "@/lib/wiki/authoring"
+import { wikiHref } from "@/lib/wiki/href"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { Tree } from "@/components/wiki/Tree"
 
@@ -64,7 +65,7 @@ export default function WikiIndexPage() {
         body: "# Untitled note\n",
       })
       await storage.write(path, content)
-      router.push(`/wiki/${path.slice(0, -".md".length)}`)
+      router.push(wikiHref(path))
     } catch (e) {
       setBusy(false)
       setError(e instanceof Error ? e.message : String(e))

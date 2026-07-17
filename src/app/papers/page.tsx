@@ -13,6 +13,7 @@ import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadFeed } from "@/lib/skills/feed"
 import { logEvent } from "@/lib/events/log"
 import { writeReaderHandoff } from "@/lib/reader/handoff"
+import { wikiHref } from "@/lib/wiki/href"
 import { PaperResultItem } from "@/components/papers/PaperResultItem"
 import { DigestPanel } from "@/components/papers/DigestPanel"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
@@ -44,12 +45,6 @@ const INGEST_PHASE_LABEL: Record<IngestPhase, string> = {
   snapshotting: "Snapshotting source…",
   digesting: "Generating digest…",
   ingesting: "Ingesting into wiki…",
-}
-
-/** wiki page id (e.g. "wiki/papers/foo" or "wiki/papers/foo.md") -> the /wiki/<...> route for it. */
-function pageHref(idOrPath: string): string {
-  const id = idOrPath.replace(/\.md$/, "")
-  return `/wiki/${id}` // full id in URL: the /wiki/[...id] route joins segments back to the bundle id (e.g. /wiki/wiki/concepts/foo)
 }
 
 function PapersPageContent() {
@@ -376,7 +371,7 @@ function PapersPageContent() {
                       <ul className="mt-1 space-y-0.5">
                         {ingestState.output.pages.created.map((path) => (
                           <li key={path}>
-                            <Link href={pageHref(path)} className="text-[13px] text-orange hover:text-orange-light">
+                            <Link href={wikiHref(path)} className="text-[13px] text-orange hover:text-orange-light">
                               {path}
                             </Link>
                           </li>
@@ -391,7 +386,7 @@ function PapersPageContent() {
                       <ul className="mt-1 space-y-0.5">
                         {ingestState.output.pages.updated.map((path) => (
                           <li key={path}>
-                            <Link href={pageHref(path)} className="text-[13px] text-orange hover:text-orange-light">
+                            <Link href={wikiHref(path)} className="text-[13px] text-orange hover:text-orange-light">
                               {path}
                             </Link>
                           </li>

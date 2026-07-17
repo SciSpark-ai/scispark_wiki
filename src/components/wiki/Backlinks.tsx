@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { backlinks, type Bundle } from "@/lib/vault/bundle"
+import { wikiHref } from "@/lib/wiki/href"
 
 interface BacklinksProps {
   bundle: Bundle
@@ -21,7 +22,7 @@ export function Backlinks({ bundle, id }: BacklinksProps) {
         const page = bundle.pages.get(sourceId)
         return (
           <li key={sourceId}>
-            <Link href={`/wiki/${sourceId}`} className="text-[13px] text-orange hover:underline">
+            <Link href={wikiHref(sourceId)} className="text-[13px] text-orange hover:underline">
               {page?.frontmatter.title ?? sourceId}
             </Link>
           </li>

@@ -4,6 +4,7 @@ import Link from "next/link"
 import { displayTitle } from "@/lib/papers/title"
 import type { Bundle } from "@/lib/vault/bundle"
 import { PAGE_TYPES } from "@/lib/vault/types"
+import { wikiHref } from "@/lib/wiki/href"
 
 // Mirrors index-builder.ts's TYPE_HEADINGS (kept in sync manually, same as
 // schema-routing.ts mirrors scaffold.ts's TYPE_DIRS elsewhere in this repo).
@@ -41,7 +42,7 @@ export function Tree({ bundle }: TreeProps) {
                 {rows.map((row) => (
                   <li key={row.id}>
                     <Link
-                      href={`/wiki/${row.id}`}
+                      href={wikiHref(row.id)}
                       className="text-[13px] text-orange hover:underline truncate block"
                     >
                       {displayTitle(String(row.title ?? ""))}

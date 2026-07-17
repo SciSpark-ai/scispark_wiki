@@ -3,18 +3,13 @@
 import Link from "next/link"
 import type { Seed } from "@/lib/spark/quick"
 import { formatGroundingCount } from "@/lib/spark/ui-format"
+import { wikiHref } from "@/lib/wiki/href"
 
 export type SeedSaveState =
   | { status: "idle" }
   | { status: "saving" }
   | { status: "saved"; pageId: string } // bare wiki id, e.g. "wiki/ideas/idea-foo" (no ".md")
   | { status: "error"; message: string }
-
-/** wiki page id -> the /wiki/<...> route (same idiom every gallery page in
- * this repo defines locally — see src/app/papers/page.tsx, src/app/wiki/inbox/page.tsx). */
-function pageHref(id: string): string {
-  return `/wiki/${id}`
-}
 
 interface SeedCardProps {
   seed: Seed
@@ -52,7 +47,7 @@ export function SeedCard({ seed, saveState, onSave, onDevelop, developBusy, deve
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {saveState.status === "saved" ? (
           <Link
-            href={pageHref(saveState.pageId)}
+            href={wikiHref(saveState.pageId)}
             className="text-[13px] text-orange hover:text-orange-light font-medium"
           >
             View idea page →

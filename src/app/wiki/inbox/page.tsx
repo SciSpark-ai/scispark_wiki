@@ -20,6 +20,7 @@ import {
   lintKindLabel,
 } from "@/lib/lint/ui-format"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
+import { wikiHref } from "@/lib/wiki/href"
 
 const KIND_LABEL: Record<ReviewItem["kind"], string> = {
   contradiction: "Contradiction",
@@ -27,11 +28,6 @@ const KIND_LABEL: Record<ReviewItem["kind"], string> = {
   "missing-page": "Missing page",
   suggestion: "Suggestion",
   "lint-finding": "Lint",
-}
-
-/** wiki page id (e.g. "wiki/papers/foo") -> the /wiki/<...> route for it. */
-function pageHref(id: string): string {
-  return `/wiki/${id}` // full id in URL: the /wiki/[...id] route joins segments back to the bundle id (e.g. /wiki/wiki/concepts/foo)
 }
 
 type LintState =
@@ -251,7 +247,7 @@ export default function WikiInboxPage() {
                   {item.pages.map((slug) => {
                     const page = bundle ? resolveLink(bundle, slug) : null
                     return page ? (
-                      <Link key={slug} href={pageHref(page.id)} className="text-[12px] text-orange hover:text-orange-light">
+                      <Link key={slug} href={wikiHref(page.id)} className="text-[12px] text-orange hover:text-orange-light">
                         {displayTitle(String(page.frontmatter.title ?? ""))}
                       </Link>
                     ) : (

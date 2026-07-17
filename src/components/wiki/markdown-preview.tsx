@@ -7,6 +7,7 @@
 import Link from "next/link"
 import type { ReactNode } from "react"
 import { resolveLink, type Bundle } from "@/lib/vault/bundle"
+import { wikiHref } from "@/lib/wiki/href"
 
 // Mirrors the shape of vault/wikilinks.ts's WIKILINK_RE (slug + optional
 // |label), but as a *replace* pattern rather than an *extract* pattern —
@@ -38,7 +39,7 @@ export function preprocessWikilinks(body: string, bundle: Bundle): string {
     const target = resolveLink(bundle, slug)
     if (!target) return match
     const label = (rawLabel ?? slug).trim() || slug
-    return `[${label}](/wiki/${target.id})`
+    return `[${label}](${wikiHref(target.id)})`
   })
 }
 
