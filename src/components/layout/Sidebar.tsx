@@ -18,6 +18,9 @@ import {
 } from "lucide-react";
 import { useUserStore } from "@/stores/user-store";
 import { useUIStore } from "@/stores/ui-store";
+import { getOpenVault } from "@/lib/vault/get-vault";
+import { reviewCount } from "@/lib/wiki/review-queue";
+import { Chip } from "@/components/ui/Chip";
 
 function UserAvatar() {
   const user = useUserStore((s) => s.user);
@@ -97,6 +100,28 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
     return () => document.removeEventListener("mousedown", onDown);
   }, [menuOpen]);
 
+  // Review-inbox count for the Wiki nav badge. Reloaded whenever pathname
+  // changes so acting on the inbox (e.g. dismissing/undoing) refreshes the
+  // count on return. Failures resolve to 0 silently — the nav must never
+  // break on a vault hiccup.
+  const [inboxCount, setInboxCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const vault = await getOpenVault();
+        const count = await reviewCount(vault);
+        if (!cancelled) setInboxCount(count);
+      } catch {
+        if (!cancelled) setInboxCount(0);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
   const fadeLabel = `whitespace-nowrap transition-opacity duration-150 ${
     collapsed ? "opacity-0" : "opacity-100"
   }`;
@@ -107,6 +132,9 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
   function renderItem(item: NavItem) {
     const isActive = isItemActive(pathname, item.href);
     const Icon = item.icon;
+    // Review-inbox badge is Wiki-only; attached here rather than in
+    // NAV_GROUPS to keep the item data generic.
+    const badge = item.key === "wiki" && !collapsed && inboxCount > 0 ? inboxCount : null;
 
     return (
       <Link
@@ -120,6 +148,11 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
       >
         <Icon size={18} strokeWidth={1.8} className="flex-shrink-0" />
         <span className={fadeLabel}>{item.label}</span>
+        {badge !== null && (
+          <Chip tone="accent" className="ml-auto flex-shrink-0">
+            {badge}
+          </Chip>
+        )}
       </Link>
     );
   }
