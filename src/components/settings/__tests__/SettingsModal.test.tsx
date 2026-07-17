@@ -36,9 +36,9 @@ describe("SettingsModal", () => {
   })
   it("closes via Escape", () => {
     act(() => useUIStore.getState().openSettingsModal("ai"))
-    const { host } = mount()
+    mount()
     act(() => {
-      host.querySelector('[role="dialog"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
     })
     expect(useUIStore.getState().settingsModalSection).toBeNull()
   })

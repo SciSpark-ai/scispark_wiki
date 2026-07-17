@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { useUIStore } from "@/stores/ui-store"
 import { ConnectAiCard } from "./ConnectAiCard"
 import { CompanionCard } from "./CompanionCard"
@@ -23,6 +23,23 @@ export default function SettingsModal() {
   const open = useUIStore((s) => s.openSettingsModal)
 
   const active = useMemo(() => SECTIONS.find((s) => s.id === section) ?? SECTIONS[0], [section])
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const isOpen = section !== null
+
+  useEffect(() => {
+    if (!isOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close()
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [isOpen, close])
+
+  useEffect(() => {
+    if (!isOpen) return
+    dialogRef.current?.focus()
+  }, [isOpen])
+
   if (section === null) return null
 
   return (
@@ -33,12 +50,11 @@ export default function SettingsModal() {
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-label="Settings"
+        tabIndex={-1}
         className="flex h-[min(640px,90vh)] w-[min(880px,95vw)] overflow-hidden rounded-card border border-border-warm bg-page-bg shadow-xl"
-        onKeyDown={(e) => {
-          if (e.key === "Escape") close()
-        }}
       >
         <nav className="w-52 shrink-0 border-r border-border-warm bg-light-surface p-3">
           <div className="px-2 pb-2 text-[11px] uppercase tracking-wide text-muted-text">Settings</div>
