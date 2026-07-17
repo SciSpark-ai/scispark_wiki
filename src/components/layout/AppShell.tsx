@@ -8,6 +8,7 @@ import { RightPanel } from "./RightPanel";
 import { useUIStore } from "@/stores/ui-store";
 import { SelectionToNoteBubble } from "@/components/notes/SelectionToNoteBubble";
 import { CompanionMascot } from "@/components/companion/CompanionMascot";
+import SettingsModal from "@/components/settings/SettingsModal";
 import ThemeApplier from "./ThemeApplier";
 
 interface AppShellProps {
@@ -59,6 +60,7 @@ export function AppShell({ children }: AppShellProps) {
       </div>
       <SelectionToNoteBubble />
       <CompanionMascot />
+      <SettingsModal />
       <ThemeApplier />
     </div>
   );
