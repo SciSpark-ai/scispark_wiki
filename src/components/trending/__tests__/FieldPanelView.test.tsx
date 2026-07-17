@@ -44,4 +44,35 @@ describe("FieldPanelView", () => {
     expect(html).toContain("Couldn")
     expect(html).not.toContain("Reason:")
   })
+
+  it("strips markup tags from mover and notable paper titles", () => {
+    const metricsWithMovers: FieldMetrics = {
+      ...METRICS,
+      topMovers: [
+        {
+          paper: {
+            ids: {},
+            title: "On <i>really</i> deep networks",
+            authors: [],
+            year: 2025,
+            fields: [],
+            source: "arxiv",
+          },
+          citationCount: 42,
+        },
+      ],
+    }
+    const surveyWithMarkup = {
+      notablePapers: [{ title: "Transform<i>er</i>s Redux", why: "sharp result" }],
+      emergingTopics: [{ topic: "long-context", why: "momentum" }],
+      momentum: "The field is accelerating.",
+    }
+    const html = renderToStaticMarkup(<FieldPanelView panel={panel({ metrics: metricsWithMovers, survey: surveyWithMarkup })} />)
+    // The stripped (non-italic) version should appear in the output.
+    expect(html).toContain("On really deep networks")
+    expect(html).toContain("Transformers Redux")
+    // The raw markup should NOT appear (verifies stripping happened).
+    expect(html).not.toContain("<i>really</i>")
+    expect(html).not.toContain("<i>er</i>")
+  })
 })

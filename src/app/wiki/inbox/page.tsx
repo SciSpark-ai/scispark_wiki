@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { displayTitle } from "@/lib/papers/title"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { listReviews, dismissReview, type ReviewItem } from "@/lib/wiki/review-queue"
 import { loadBundle, resolveLink, type Bundle } from "@/lib/vault/bundle"
@@ -233,7 +234,7 @@ export default function WikiInboxPage() {
                     const page = bundle ? resolveLink(bundle, slug) : null
                     return page ? (
                       <Link key={slug} href={pageHref(page.id)} className="text-[12px] text-orange hover:text-orange-light">
-                        {page.frontmatter.title}
+                        {displayTitle(String(page.frontmatter.title ?? ""))}
                       </Link>
                     ) : (
                       <Link

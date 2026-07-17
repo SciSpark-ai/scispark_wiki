@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { displayTitle } from "@/lib/papers/title"
 import type { Bundle } from "@/lib/vault/bundle"
 import { PAGE_TYPES } from "@/lib/vault/types"
 
@@ -43,7 +44,7 @@ export function Tree({ bundle }: TreeProps) {
                       href={`/wiki/${row.id}`}
                       className="text-[13px] text-orange hover:underline truncate block"
                     >
-                      {row.title}
+                      {displayTitle(String(row.title ?? ""))}
                     </Link>
                   </li>
                 ))}

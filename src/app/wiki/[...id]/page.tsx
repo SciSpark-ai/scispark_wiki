@@ -7,6 +7,7 @@ import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadBundle, type Bundle } from "@/lib/vault/bundle"
 import { serializeDocument } from "@/lib/vault/frontmatter"
 import { appendLog } from "@/lib/vault/index-builder"
+import { displayTitle } from "@/lib/papers/title"
 import type { VaultStorage } from "@/lib/vault/storage"
 import type { WikiPage } from "@/lib/vault/types"
 import { PageEditor } from "@/components/wiki/PageEditor"
@@ -74,7 +75,7 @@ export default function WikiPageDetail() {
 
   const handleDelete = async () => {
     if (!storage || !page) return
-    if (!window.confirm(`Delete "${page.frontmatter.title}"? This cannot be undone.`)) return
+    if (!window.confirm(`Delete "${displayTitle(String(page.frontmatter.title ?? ""))}"? This cannot be undone.`)) return
     try {
       await storage.delete(page.path)
       await appendLog(storage, { date: today(), op: "delete", summary: page.id })
@@ -127,7 +128,7 @@ export default function WikiPageDetail() {
           </div>
         </div>
 
-        <h1 className="font-heading text-[24px] text-espresso tracking-heading">{fm.title}</h1>
+        <h1 className="font-heading text-[24px] text-espresso tracking-heading">{displayTitle(String(fm.title ?? ""))}</h1>
 
         <div className="flex flex-wrap items-center gap-2 mt-3 mb-5">
           <span className="text-[12px] uppercase tracking-wide px-2 py-0.5 rounded-pill bg-card-surface text-espresso">

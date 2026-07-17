@@ -12,4 +12,10 @@ describe("displayTitle (C7)", () => {
   it("leaves plain titles alone", () => {
     expect(displayTitle("Auditory Attention Decoding")).toBe("Auditory Attention Decoding")
   })
+  it("is idempotent on plain text", () => {
+    expect(displayTitle("Plain title")).toBe("Plain title")
+    expect(displayTitle(displayTitle("What are we <i>really</i> doing?"))).toBe(
+      displayTitle("What are we <i>really</i> doing?"),
+    )
+  })
 })

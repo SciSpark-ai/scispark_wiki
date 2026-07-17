@@ -1,3 +1,4 @@
+import { displayTitle } from "@/lib/papers/title"
 import type { FieldPanel } from "@/lib/trending/dashboard"
 import { PublicationVolumeChart } from "./PublicationVolumeChart"
 import { MomentumStat } from "./MomentumStat"
@@ -21,7 +22,7 @@ export function FieldPanelView({ panel }: { panel: FieldPanel }) {
           <ul className="mt-1 space-y-1">
             {metrics.topMovers.map((m, i) => (
               <li key={i} className="text-[13px] text-espresso tracking-body">
-                {m.paper.title} <span className="text-muted-text">· {m.citationCount} citations</span>
+                {displayTitle(String(m.paper.title ?? ""))} <span className="text-muted-text">· {m.citationCount} citations</span>
               </li>
             ))}
           </ul>
@@ -35,7 +36,7 @@ export function FieldPanelView({ panel }: { panel: FieldPanel }) {
             <ul className="mt-1 space-y-1">
               {survey.notablePapers.map((p, i) => (
                 <li key={i} className="text-[13px] text-espresso tracking-body">
-                  <span className="font-medium">{p.title}</span> — <span className="text-muted-text">{p.why}</span>
+                  <span className="font-medium">{displayTitle(String(p.title ?? ""))}</span> — <span className="text-muted-text">{p.why}</span>
                 </li>
               ))}
             </ul>
