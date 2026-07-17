@@ -21,6 +21,9 @@ import {
 } from "@/lib/lint/ui-format"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { wikiHref } from "@/lib/wiki/href"
+import { PageHeader } from "@/components/ui/PageHeader"
+import { Button } from "@/components/ui/Button"
+import { LoadingState } from "@/components/ui/LoadingState"
 
 const KIND_LABEL: Record<ReviewItem["kind"], string> = {
   contradiction: "Contradiction",
@@ -172,34 +175,26 @@ export default function WikiInboxPage() {
 
   return (
     <div className="p-7">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="font-heading text-[28px] text-espresso tracking-heading">Review inbox</h1>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={handleLintVault}
-            disabled={lintBusy}
-            className="text-[13px] text-white bg-orange hover:bg-orange/90 disabled:opacity-50 rounded-pill px-4 py-1.5 font-medium transition-colors"
-          >
-            {lintState.status === "running-deterministic" ? "Linting…" : "Lint vault"}
-          </button>
-          <button
-            type="button"
-            onClick={handleDeepLint}
-            disabled={lintBusy}
-            className="text-[13px] text-espresso rounded-pill border border-border-warm px-4 py-1.5 disabled:opacity-50"
-          >
-            {lintState.status === "running-deep"
-              ? lintState.progress
-                ? formatLintPairProgress(lintState.progress)
-                : "Estimating…"
-              : formatDeepLintLabel(deepEstimate)}
-          </button>
-          <Link href="/wiki" className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1">
-            Back to wiki
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="Review inbox"
+        actions={
+          <>
+            <Button onClick={handleLintVault} disabled={lintBusy}>
+              {lintState.status === "running-deterministic" ? "Linting…" : "Lint vault"}
+            </Button>
+            <Button variant="secondary" onClick={handleDeepLint} disabled={lintBusy}>
+              {lintState.status === "running-deep"
+                ? lintState.progress
+                  ? formatLintPairProgress(lintState.progress)
+                  : "Estimating…"
+                : formatDeepLintLabel(deepEstimate)}
+            </Button>
+            <Link href="/wiki" className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1">
+              Back to wiki
+            </Link>
+          </>
+        }
+      />
 
       {lintState.status === "done" && (
         <p className="mt-3 text-[13px] text-muted-text tracking-body">
@@ -215,7 +210,7 @@ export default function WikiInboxPage() {
       )}
 
       {loading ? (
-        <div className="mt-6 text-[13px] text-muted-text tracking-body">Loading…</div>
+        <LoadingState />
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <p className="text-[14px] text-muted-text tracking-body">Nothing needs review right now.</p>
@@ -243,23 +238,22 @@ export default function WikiInboxPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {(item.fix || item.fixes) && (
-                    <button
-                      type="button"
+                    <Button
+                      size="sm"
                       onClick={() => handleFix(item.id)}
                       disabled={fixing === item.id || dismissing === item.id}
-                      className="text-[13px] text-white bg-orange hover:bg-orange/90 disabled:opacity-50 rounded-pill px-3 py-1 font-medium transition-colors"
                     >
                       {fixing === item.id ? "Fixing…" : "Fix"}
-                    </button>
+                    </Button>
                   )}
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => handleDismiss(item.id)}
                     disabled={dismissing === item.id || fixing === item.id}
-                    className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1 disabled:opacity-50"
                   >
                     {dismissing === item.id ? "Dismissing…" : "Dismiss"}
-                  </button>
+                  </Button>
                 </div>
               </div>
 

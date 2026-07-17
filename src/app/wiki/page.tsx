@@ -10,6 +10,9 @@ import { composePage } from "@/lib/wiki/authoring"
 import { wikiHref } from "@/lib/wiki/href"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { Tree } from "@/components/wiki/Tree"
+import { PageHeader } from "@/components/ui/PageHeader"
+import { Button } from "@/components/ui/Button"
+import { LoadingState } from "@/components/ui/LoadingState"
 
 function today(): string {
   return new Date().toISOString().slice(0, 10)
@@ -74,31 +77,29 @@ export default function WikiIndexPage() {
 
   return (
     <div className="p-7">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="font-heading text-[28px] text-espresso tracking-heading">Wiki</h1>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/wiki/inbox"
-            className="text-[13px] text-muted-text hover:text-espresso tracking-body px-3 py-1.5 rounded-pill border border-border-warm"
-          >
-            Review inbox ({inboxCount})
-          </Link>
-          <button
-            onClick={handleNewNote}
-            disabled={busy || !storage}
-            className="text-[13px] text-white bg-orange hover:bg-orange/90 disabled:opacity-50 rounded-pill px-4 py-1.5 font-medium transition-colors"
-          >
-            New note
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Wiki"
+        actions={
+          <>
+            <Link
+              href="/wiki/inbox"
+              className="text-[13px] text-muted-text hover:text-espresso tracking-body px-3 py-1.5 rounded-pill border border-border-warm"
+            >
+              Review inbox ({inboxCount})
+            </Link>
+            <Button onClick={handleNewNote} disabled={busy || !storage}>
+              New note
+            </Button>
+          </>
+        }
+      />
 
       {error && (
         <p className="mt-3 text-[13px] text-red-600">Error: {error}</p>
       )}
 
       {!bundle ? (
-        <p className="mt-6 text-[14px] text-muted-text">Loading vault…</p>
+        <LoadingState label="Loading vault…" />
       ) : (
         <>
           <div className="mt-6">

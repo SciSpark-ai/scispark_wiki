@@ -6,6 +6,8 @@ import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadBundle, type Bundle } from "@/lib/vault/bundle"
 import { SparkPanel } from "@/components/spark/SparkPanel"
 import { IdeaGallery } from "@/components/spark/IdeaGallery"
+import { PageHeader } from "@/components/ui/PageHeader"
+import { LoadingState } from "@/components/ui/LoadingState"
 
 function SparkPageContent() {
   const searchParams = useSearchParams()
@@ -39,11 +41,10 @@ function SparkPageContent() {
 
   return (
     <div className="p-7">
-      <h1 className="font-heading text-[28px] text-espresso tracking-heading">Spark</h1>
-      <p className="mt-1 text-[13px] text-muted-text tracking-body">
-        Vault-grounded research idea generation — Quick Spark for a few cheap seeds, Deep Spark for a fully
-        audited idea page.
-      </p>
+      <PageHeader
+        title="Spark"
+        description="Vault-grounded research idea generation — Quick Spark for a few cheap seeds, Deep Spark for a fully audited idea page."
+      />
 
       <div className="mt-5">
         <SparkPanel clusterPageIds={clusterPageIds} onIdeaSaved={refreshBundle} />
@@ -64,7 +65,13 @@ function SparkPageContent() {
 
 export default function SparkPage() {
   return (
-    <Suspense fallback={<div className="p-7 text-[14px] text-muted-text">Loading…</div>}>
+    <Suspense
+      fallback={
+        <div className="p-7">
+          <LoadingState />
+        </div>
+      }
+    >
       <SparkPageContent />
     </Suspense>
   )

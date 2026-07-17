@@ -18,6 +18,9 @@ import { PaperResultItem } from "@/components/papers/PaperResultItem"
 import { DigestPanel } from "@/components/papers/DigestPanel"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { useCompanion } from "@/components/companion/useCompanion"
+import { PageHeader } from "@/components/ui/PageHeader"
+import { Button } from "@/components/ui/Button"
+import { LoadingState } from "@/components/ui/LoadingState"
 
 const SOURCES: SourceId[] = ["arxiv", "openalex", "s2", "pubmed"]
 
@@ -202,12 +205,10 @@ function PapersPageContent() {
 
   return (
     <div className="p-7">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="font-heading text-[28px] text-espresso tracking-heading">Papers</h1>
-        <Link href="/wiki/inbox" className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1">
-          Review inbox
-        </Link>
-      </div>
+      <PageHeader
+        title="Papers"
+        actions={<Link href="/wiki/inbox" className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1">Review inbox</Link>}
+      />
 
       <form onSubmit={handleSearch} className="mt-4 flex flex-wrap items-center gap-2">
         <select
@@ -227,13 +228,9 @@ function PapersPageContent() {
           placeholder="Search papers…"
           className="flex-1 min-w-[220px] text-[13px] text-espresso border border-border-warm rounded-pill px-3 py-1.5 bg-light-surface"
         />
-        <button
-          type="submit"
-          disabled={searching || !query.trim()}
-          className="text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium disabled:opacity-50"
-        >
+        <Button type="submit" disabled={searching || !query.trim()}>
           {searching ? "Searching…" : "Search"}
-        </button>
+        </Button>
       </form>
 
       {searchError && (
@@ -324,28 +321,15 @@ function PapersPageContent() {
               </div>
 
               <div className="mt-4 flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleGenerateDigest}
-                  disabled={digestState.status === "loading"}
-                  className="text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium disabled:opacity-50"
-                >
+                <Button onClick={handleGenerateDigest} disabled={digestState.status === "loading"}>
                   {digestState.status === "loading" ? "Generating…" : "Generate digest"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleIngest}
-                  disabled={ingestBusy}
-                  className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1 disabled:opacity-50"
-                >
+                </Button>
+                <Button variant="secondary" size="sm" onClick={handleIngest} disabled={ingestBusy}>
                   Add to knowledge base
-                </button>
-                <button
-                  onClick={handleReadFullPaper}
-                  className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1"
-                >
+                </Button>
+                <Button variant="secondary" size="sm" onClick={handleReadFullPaper}>
                   Read full paper
-                </button>
+                </Button>
               </div>
 
               {digestState.status === "error" && <LlmErrorMessage message={digestState.message} />}
@@ -403,14 +387,14 @@ function PapersPageContent() {
                   </div>
 
                   <div className="mt-2 flex items-center gap-2">
-                    <button
-                      type="button"
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       onClick={handleUndo}
                       disabled={ingestState.undoing || ingestState.undone}
-                      className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1 disabled:opacity-50"
                     >
                       {ingestState.undone ? "Undone" : ingestState.undoing ? "Undoing…" : "Undo"}
-                    </button>
+                    </Button>
                     {ingestState.undoError && <span className="text-[12px] text-red-700">{ingestState.undoError}</span>}
                   </div>
                 </div>
@@ -438,7 +422,13 @@ function PapersPageContent() {
 
 export default function PapersPage() {
   return (
-    <Suspense fallback={<div className="p-7 text-[14px] text-muted-text">Loading…</div>}>
+    <Suspense
+      fallback={
+        <div className="p-7">
+          <LoadingState />
+        </div>
+      }
+    >
       <PapersPageContent />
     </Suspense>
   )

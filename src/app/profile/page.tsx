@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useUserStore } from "@/stores/user-store";
 import { getOpenVault } from "@/lib/vault/get-vault";
 import { readUserModel } from "@/lib/usermodel/pages";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 /**
  * Parses a user-model markdown page (e.g. profile.md) into its `## ` sections
@@ -62,9 +63,7 @@ export default function ProfilePage() {
 
   return (
     <div className="p-7">
-      <h1 className="font-heading text-[28px] text-espresso tracking-heading">
-        Profile
-      </h1>
+      <PageHeader title="Profile" />
 
       {/* Section 1: User Info */}
       <div className="bg-white rounded-[14px] border border-border-warm/30 p-6 mt-6">
