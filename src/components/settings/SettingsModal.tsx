@@ -73,8 +73,7 @@ export default function SettingsModal() {
           ))}
         </nav>
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="flex items-start justify-between">
-            <h2 className="font-heading text-[20px] text-espresso tracking-heading-card">{active.label}</h2>
+          <div className="flex items-start justify-end">
             <button type="button" onClick={close} aria-label="Close settings" className="text-muted-text hover:text-espresso">
               ✕
             </button>

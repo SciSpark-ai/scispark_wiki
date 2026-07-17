@@ -144,7 +144,7 @@ export function SelectionToNoteBubble() {
           transform: "translate(-50%, 0)",
           zIndex: 70,
         }}
-        className="bg-white border border-border-warm/40 rounded-pill shadow-md whitespace-nowrap"
+        className="bg-light-surface border border-border-warm/40 rounded-pill shadow-md whitespace-nowrap"
         onMouseDown={(e) => e.stopPropagation()}
       >
         {showConfirm ? (

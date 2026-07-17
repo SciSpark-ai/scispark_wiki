@@ -163,7 +163,7 @@ export default function ChatThreadPage() {
               handleSubmit();
             }}
           >
-            <div className="bg-white border border-border-warm/25 rounded-[18px] px-5 pt-4 pb-3">
+            <div className="bg-light-surface border border-border-warm/25 rounded-[18px] px-5 pt-4 pb-3">
               <input
                 type="text"
                 value={input}

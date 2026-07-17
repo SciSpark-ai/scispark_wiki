@@ -1,6 +1,6 @@
 import type { DigestResult } from "@/lib/skills/digest"
 
-/** Renders a generated digest's sections plus its cache/cost provenance line. */
+/** Renders a generated digest's sections plus its cache/generation provenance line. */
 export function DigestPanel({
   digest,
   fromCache,

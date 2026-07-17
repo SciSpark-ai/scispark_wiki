@@ -17,7 +17,19 @@ export default function ThemeApplier() {
     })
     const media = window.matchMedia("(prefers-color-scheme: dark)")
     const onChange = () => {
-      if (mode === "system") applyTheme("system")
+      // Re-read the mode from the localStorage mirror rather than the
+      // closed-over `mode` above — AppearanceCard can call applyTheme()
+      // directly after mount, and this handler's stale closure would keep
+      // treating the mode as whatever it was when the effect first ran,
+      // clobbering a later explicit light/dark choice on the next OS flip.
+      let current: ThemeMode = "system"
+      try {
+        const stored = localStorage.getItem("scispark-theme")
+        if (stored === "light" || stored === "dark" || stored === "system") current = stored
+      } catch {
+        // storage unavailable — treat as "system"
+      }
+      if (current === "system") applyTheme("system")
     }
     media.addEventListener("change", onChange)
     return () => {

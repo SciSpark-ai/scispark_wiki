@@ -51,7 +51,7 @@ export function NoteCard({ note, autoOpen = false }: NoteCardProps) {
     <>
       <div
         onClick={() => setOpen(true)}
-        className="bg-white border border-border-warm/30 rounded-[12px] p-4 flex flex-col cursor-pointer hover:shadow-sm transition-shadow group min-h-[240px]"
+        className="bg-light-surface border border-border-warm/30 rounded-[12px] p-4 flex flex-col cursor-pointer hover:shadow-sm transition-shadow group min-h-[240px]"
       >
         <div className="flex items-start justify-between gap-2">
           <p
@@ -75,7 +75,7 @@ export function NoteCard({ note, autoOpen = false }: NoteCardProps) {
             </button>
             {menuOpen && (
               <div
-                className="absolute right-0 top-7 z-10 bg-white border border-border-warm/40 rounded-[10px] shadow-md py-1 min-w-[140px]"
+                className="absolute right-0 top-7 z-10 bg-light-surface border border-border-warm/40 rounded-[10px] shadow-md py-1 min-w-[140px]"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button

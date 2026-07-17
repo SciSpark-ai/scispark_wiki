@@ -26,3 +26,19 @@ describe("no raw hex colors in components", () => {
     expect(offenders, `raw hex found in: ${offenders.join(", ")}`).toEqual([])
   })
 })
+
+describe("no bg-white in components", () => {
+  it("every component uses the theme-aware bg-light-surface instead of bg-white", () => {
+    // bg-white stays solid #fff in dark mode while text tokens flip to cream —
+    // unreadable. bg-white/NN (opacity-suffixed, e.g. a translucent hover tint)
+    // is a distinct utility and not this bug, so it's excluded.
+    const offenders: string[] = []
+    for (const file of tsxFiles(ROOT)) {
+      const rel = relative(ROOT, file).replaceAll("\\", "/")
+      if (ALLOWED.some((rx) => rx.test(rel))) continue
+      const src = readFileSync(file, "utf8")
+      if (/\bbg-white\b(?!\/)/.test(src)) offenders.push(rel)
+    }
+    expect(offenders, `bg-white found in: ${offenders.join(", ")}`).toEqual([])
+  })
+})

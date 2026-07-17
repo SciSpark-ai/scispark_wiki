@@ -91,7 +91,7 @@ export default function ReasoningAnimation({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -4 }}
           transition={{ duration: 0.3, ease: "easeOut" }}
-          className="bg-white border border-border-warm/30 rounded-[14px] shadow-sm px-5 py-4 max-w-md"
+          className="bg-light-surface border border-border-warm/30 rounded-[14px] shadow-sm px-5 py-4 max-w-md"
         >
           <div className="flex items-center gap-2 mb-3">
             <span className="text-[12px] uppercase tracking-[0.12em] text-muted-text/70">
@@ -154,7 +154,7 @@ export function CompletedReasoning() {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="bg-white border border-border-warm/30 rounded-[14px] shadow-sm max-w-md mb-3">
+    <div className="bg-light-surface border border-border-warm/30 rounded-[14px] shadow-sm max-w-md mb-3">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}

@@ -26,7 +26,7 @@ export function CompanionBubble({ utterance, onDismiss, onAction }: CompanionBub
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 6, scale: 0.96 }}
         transition={{ duration: 0.16, ease: "easeOut" }}
-        className="absolute bottom-full right-0 mb-3 w-64 rounded-card border border-border-warm/60 bg-white p-4 shadow-lg"
+        className="absolute bottom-full right-0 mb-3 w-64 rounded-card border border-border-warm/60 bg-light-surface p-4 shadow-lg"
         role="status"
       >
         <button

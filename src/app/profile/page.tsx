@@ -66,7 +66,7 @@ export default function ProfilePage() {
       <PageHeader title="Profile" />
 
       {/* Section 1: User Info */}
-      <div className="bg-white rounded-[14px] border border-border-warm/30 p-6 mt-6">
+      <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6 mt-6">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-orange text-white text-[20px] font-medium rounded-full flex items-center justify-center shrink-0">
             {avatarInitial}
@@ -81,7 +81,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Section 2: Research profile (real user-model page, read-only) */}
-      <div className="bg-white rounded-[14px] border border-border-warm/30 p-6 mt-4">
+      <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6 mt-4">
         <h2 className="font-heading text-[18px] text-espresso mb-1">
           Research profile
         </h2>
@@ -122,7 +122,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Section 3: Settings */}
-      <div className="bg-white rounded-[14px] border border-border-warm/30 p-6 mt-4">
+      <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6 mt-4">
         <h2 className="font-heading text-[18px] text-espresso mb-4">
           Settings
         </h2>

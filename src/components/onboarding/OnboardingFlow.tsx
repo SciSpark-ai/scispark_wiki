@@ -103,7 +103,7 @@ export function OnboardingFlow({ onSubmit, submitting = false }: OnboardingFlowP
           placeholder={question.placeholder}
           rows={4}
           disabled={submitting}
-          className="w-full text-[15px] text-espresso tracking-body placeholder:text-muted-text bg-white border border-border-warm rounded-btn px-4 py-3 focus:outline-none focus:border-orange resize-none disabled:opacity-60"
+          className="w-full text-[15px] text-espresso tracking-body placeholder:text-muted-text bg-light-surface border border-border-warm rounded-btn px-4 py-3 focus:outline-none focus:border-orange resize-none disabled:opacity-60"
         />
 
         <div className="mt-8 flex items-center justify-between">

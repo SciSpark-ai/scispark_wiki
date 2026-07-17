@@ -35,7 +35,7 @@ export function ConfirmDialog({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-card p-6 shadow-2xl max-w-sm w-full"
+            className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-light-surface rounded-card p-6 shadow-2xl max-w-sm w-full"
           >
             <h3 className="font-heading text-[18px] text-espresso tracking-heading-card">
               {title}

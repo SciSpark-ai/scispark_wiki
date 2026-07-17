@@ -30,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="h-full w-full" data-scroll-behavior="smooth">
+    <html lang="en" className="h-full w-full" data-scroll-behavior="smooth" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${halant.variable} antialiased h-full w-full m-0 p-0`}
       >

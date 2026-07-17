@@ -178,7 +178,7 @@ export default function PaperPage() {
           </div>
 
           {/* AI Summary card */}
-          <div className="bg-white rounded-[14px] border border-border-warm/30 p-6 mt-8">
+          <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6 mt-8">
             <div className="flex items-center gap-2 mb-4">
               <Sparkles size={18} className="text-orange" />
               <h2 className="font-heading text-[18px] text-espresso">
@@ -226,7 +226,7 @@ export default function PaperPage() {
 
           {/* Figure Digest card */}
           {paper.figureDigest && (
-            <div className="bg-white rounded-[14px] border border-border-warm/30 p-6 mt-6">
+            <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6 mt-6">
               <h2 className="font-heading text-[18px] text-espresso mb-4">
                 Figure Digest
               </h2>
@@ -255,7 +255,7 @@ export default function PaperPage() {
 
           {/* Key Breakpoints & Methods card */}
           {paper.breakpoints && paper.breakpoints.length > 0 && (
-            <div className="bg-white rounded-[14px] border border-border-warm/30 p-6 mt-6">
+            <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6 mt-6">
               <h2 className="font-heading text-[18px] text-espresso mb-5">
                 Key Breakpoints & Methods
               </h2>
@@ -313,7 +313,7 @@ export default function PaperPage() {
                 {paper.relatedPapers.map((rel, i) => (
                   <div
                     key={i}
-                    className="bg-white rounded-[14px] border border-border-warm/30 overflow-hidden"
+                    className="bg-light-surface rounded-[14px] border border-border-warm/30 overflow-hidden"
                   >
                     <div className="h-[140px] bg-light-surface relative">
                       <span className="absolute top-3 left-3 bg-[#0ea5e9] text-white text-[11px] font-medium px-2 py-0.5 rounded-[6px]">
@@ -335,7 +335,7 @@ export default function PaperPage() {
           )}
 
           {/* Quick Citation card */}
-          <div className="bg-white rounded-[14px] border border-border-warm/30 p-6 mt-6">
+          <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6 mt-6">
             <h2 className="font-heading text-[18px] text-espresso mb-4">
               Quick Citation
             </h2>
@@ -356,7 +356,7 @@ export default function PaperPage() {
           </div>
 
           {/* Relevance feedback card */}
-          <div className="bg-white rounded-[14px] border border-border-warm/30 p-6 mt-6 mb-8 text-center">
+          <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6 mt-6 mb-8 text-center">
             <h3 className="font-heading text-[16px] text-espresso font-medium">
               Is this paper relevant to you?
             </h3>
@@ -380,7 +380,7 @@ export default function PaperPage() {
       {/* Pinned AI chat input */}
       <div className="border-t border-border-warm/30 bg-page-bg">
         <div className="max-w-4xl mx-auto px-8 py-4">
-          <div className="bg-white border border-border-warm/25 rounded-[18px] px-5 pt-4 pb-3">
+          <div className="bg-light-surface border border-border-warm/25 rounded-[18px] px-5 pt-4 pb-3">
             <input
               type="text"
               placeholder="Ask a question about this paper"
