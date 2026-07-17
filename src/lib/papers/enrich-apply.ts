@@ -26,8 +26,11 @@ function unionStrings(existing: unknown, additions: string[]): string[] {
  * freshest one-liner); `tags`/`related` are deduped unions against whatever
  * is already there so a re-enrich never drops a prior tag or link; `status`
  * flips to `"enriched"` (idempotent — re-enriching an already-enriched page
- * just refreshes tldr/tags/related). The body and every other frontmatter
- * key are left exactly as parsed. `before` is `currentContent` verbatim, so
+ * just refreshes tldr/tags/related) UNLESS the page is already `"ingested"`,
+ * in which case status stays `"ingested"` (never downgraded) while
+ * tldr/tags/related still refresh — an ingested page auto-enriched by a
+ * later caller must not regress to a lower tier. The body and every other
+ * frontmatter key are left exactly as parsed. `before` is `currentContent` verbatim, so
  * `applyChangeset`'s conflict check (which compares `before` against the
  * live file) only succeeds when nothing else wrote the page in between.
  */
@@ -40,7 +43,8 @@ export function buildEnrichMergeChangeset(
   frontmatter.tldr = enrich.tldr
   frontmatter.tags = unionStrings(frontmatter.tags, enrich.tags)
   frontmatter.related = unionStrings(frontmatter.related, enrich.relatedPageIds)
-  frontmatter.status = "enriched"
+  // Status monotonicity: never downgrade an ingested page to enriched.
+  if (frontmatter.status !== "ingested") frontmatter.status = "enriched"
   const after = serializeDocument(frontmatter, body)
 
   return {

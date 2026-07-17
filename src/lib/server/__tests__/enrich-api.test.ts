@@ -56,17 +56,14 @@ describe("POST /api/skills/enrich", () => {
       "---\ntype: concept\ntitle: Attention\ncreated: '2026-07-17'\nupdated: '2026-07-17'\ntags: []\nrelated: []\nsources: []\n---\n\n# Attention\n",
     )
 
-    setSkillTestOverrides({
-      providerOverride: {
-        fast: new MockProvider([
-          structured({
-            tldr: "A study of ear-EEG.",
-            tags: ["ear-eeg", "methods"],
-            relatedPageIds: ["wiki/concepts/attention", "wiki/concepts/does-not-exist"],
-          }),
-        ]),
-      },
-    })
+    const provider = new MockProvider([
+      structured({
+        tldr: "A study of ear-EEG.",
+        tags: ["ear-eeg", "methods"],
+        relatedPageIds: ["wiki/concepts/attention", "wiki/concepts/does-not-exist"],
+      }),
+    ])
+    setSkillTestOverrides({ providerOverride: { fast: provider } })
 
     const slug = paperSlug(PAPER)
     const res = await enrichRoute.POST(req({ slug }))
@@ -76,6 +73,13 @@ describe("POST /api/skills/enrich", () => {
     expect(result.tldr).toBe("A study of ear-EEG.")
     expect(result.tags).toEqual(["ear-eeg", "methods"])
     expect(typeof result.costUsd).toBe("number")
+
+    // The abstract lives ONLY in the page body — assert it was backfilled onto
+    // the record and reached the skill prompt (the assertion that catches the
+    // "Abstract: (none)" regression MockProvider would otherwise hide).
+    const userMsg = provider.calls[0].req.messages.find((m) => m.role === "user")?.content ?? ""
+    expect(userMsg).toContain("We study ear-EEG.")
+    expect(userMsg).not.toContain("Abstract: (none)")
 
     const bundle = await loadBundle(storage)
     const page = bundle.pages.get(`wiki/papers/${slug}`)

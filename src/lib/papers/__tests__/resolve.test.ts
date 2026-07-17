@@ -3,7 +3,7 @@ import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { paperSlug, buildPaperPage } from "../../wiki/authoring"
 import { applyChangeset } from "../../vault/changesets"
 import { serializeDocument } from "../../vault/frontmatter"
-import { resolvePaperBySlug } from "../resolve"
+import { resolvePaperBySlug, extractAbstractFromBody } from "../resolve"
 import type { PaperRecord } from "../types"
 
 const PAPER: PaperRecord = {
@@ -37,5 +37,33 @@ describe("resolvePaperBySlug", () => {
   it("returns null for an unknown slug", async () => {
     const s = new MemoryVaultStorage()
     expect(await resolvePaperBySlug(s, "arxiv-9999-99999")).toBeNull()
+  })
+})
+
+describe("extractAbstractFromBody", () => {
+  it("pulls the text under a ## Abstract heading", () => {
+    const body = "# Title\n\n## Abstract\n\nWe study ear-EEG.\n"
+    expect(extractAbstractFromBody(body)).toBe("We study ear-EEG.")
+  })
+
+  it("stops at the next ## heading and does not swallow later sections", () => {
+    const body =
+      "# Title\n\n## Abstract\n\nLine one.\nLine two.\n\n## Links\n\n- DOI: something\n"
+    expect(extractAbstractFromBody(body)).toBe("Line one.\nLine two.")
+  })
+
+  it("returns undefined when there is no Abstract section", () => {
+    const body = "# Title\n\n## Digest\n\nSome digest.\n"
+    expect(extractAbstractFromBody(body)).toBeUndefined()
+  })
+
+  it("returns undefined for an empty Abstract section", () => {
+    const body = "# Title\n\n## Abstract\n\n## Links\n\n- x\n"
+    expect(extractAbstractFromBody(body)).toBeUndefined()
+  })
+
+  it("round-trips a real buildPaperPage body", () => {
+    const draft = buildPaperPage(PAPER, { fullText: true, today: "2026-07-17" })
+    expect(extractAbstractFromBody(draft.body)).toBe("We study ear-EEG.")
   })
 })

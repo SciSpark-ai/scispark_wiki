@@ -36,6 +36,20 @@ describe("buildEnrichMergeChangeset", () => {
     expect(doc.frontmatter.related).toEqual(["wiki/concepts/attention", "wiki/methods/mtrf-toolbox"])
   })
 
+  it("never downgrades an ingested page to enriched, but still merges tldr/tags", () => {
+    const ingestedPage = serializeDocument(
+      { type: "paper", title: "Ear-EEG", created: "2026-07-17", updated: "2026-07-17", tags: ["prior"], related: [], sources: [], status: "ingested" },
+      "# Ear-EEG\n\n## Abstract\n\nWe study ear-EEG.\n",
+    )
+    const cs = buildEnrichMergeChangeset("wiki/papers/ear-eeg", ingestedPage, {
+      tldr: "A study of ear-EEG.", tags: ["ear-eeg"], relatedPageIds: [],
+    })
+    const doc = parseDocument(cs.changes[0].after!)
+    expect(doc.frontmatter.status).toBe("ingested")
+    expect(doc.frontmatter.tldr).toBe("A study of ear-EEG.")
+    expect(doc.frontmatter.tags).toEqual(["prior", "ear-eeg"])
+  })
+
   it("leaves the body untouched and stamps skill/path metadata on the changeset", () => {
     const cs = buildEnrichMergeChangeset("wiki/papers/ear-eeg", PAGE, {
       tldr: "A study of ear-EEG.", tags: [], relatedPageIds: [],

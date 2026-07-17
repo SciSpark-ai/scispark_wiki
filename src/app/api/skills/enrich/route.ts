@@ -6,7 +6,7 @@ import { loadBundle, type Bundle } from "@/lib/vault/bundle"
 import type { WikiPage } from "@/lib/vault/types"
 import { applyChangeset } from "@/lib/vault/changesets"
 import { writeIndex } from "@/lib/vault/index-builder"
-import { paperRecordFromFrontmatter } from "@/lib/papers/resolve"
+import { paperRecordFromFrontmatter, extractAbstractFromBody } from "@/lib/papers/resolve"
 import { buildEnrichMergeChangeset } from "@/lib/papers/enrich-apply"
 
 export interface EnrichRouteResult {
@@ -62,6 +62,13 @@ export const POST = jsonSkillRoute<{ slug: string }, EnrichRouteResult>(async ({
 
   const settings = await loadSettings(vault)
   const paper = paperRecordFromFrontmatter(paperPage.frontmatter)
+  // A paper page's abstract lives ONLY in the body's `## Abstract` section
+  // (buildPaperPage), never in frontmatter — so backfill it before the skill
+  // runs, or enrichSkill sees "Abstract: (none)" and generates tldr/tags from
+  // title+authors+venue alone.
+  if (paper.abstract === undefined || paper.abstract.trim() === "") {
+    paper.abstract = extractAbstractFromBody(paperPage.body)
+  }
 
   const run = await runSkill({
     skill: enrichSkill,
@@ -75,7 +82,10 @@ export const POST = jsonSkillRoute<{ slug: string }, EnrichRouteResult>(async ({
     return { applied: false, costUsd: run.costUsd }
   }
 
-  const validIds = new Set(bundle.pages.keys())
+  // Validate against real page ids, EXCLUDING the paper's own id — so a
+  // hallucinated self-reference can never become a self-link (the paper is
+  // also excluded from the index the LLM sees, but guard the output too).
+  const validIds = new Set([...bundle.pages.keys()].filter((id) => id !== paperPage.id))
   const relatedPageIds = run.output.relatedPageIds.filter((id) => validIds.has(id))
 
   // Re-read from disk (not the bundle snapshot) so `before` matches exactly

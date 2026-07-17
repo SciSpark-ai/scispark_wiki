@@ -7,6 +7,36 @@ import { paperSlug } from "../wiki/authoring"
 import { paperKey, type PaperRecord } from "./types"
 
 /**
+ * Pulls the text under a `## Abstract` heading (up to the next `## `-level
+ * heading, or EOF) out of a paper page body — trimmed, `undefined` when the
+ * section is absent or empty. A paper page's abstract lives ONLY in the body
+ * (see `buildPaperPage` in `src/lib/wiki/authoring.ts`), never in
+ * frontmatter, so callers that reconstruct a `PaperRecord` from a page (e.g.
+ * `/api/skills/enrich`) must backfill `abstract` from here or the enrich
+ * skill sees "Abstract: (none)" every time. Matches the exact heading level
+ * `buildPaperPage` writes (`## Abstract`) so a `### Abstract` sub-heading or
+ * an inline "abstract" mention can't be mistaken for the section.
+ */
+export function extractAbstractFromBody(body: string): string | undefined {
+  const lines = body.split("\n")
+  let start = -1
+  for (let i = 0; i < lines.length; i++) {
+    if (/^##\s+Abstract\s*$/i.test(lines[i])) {
+      start = i + 1
+      break
+    }
+  }
+  if (start === -1) return undefined
+  const collected: string[] = []
+  for (let i = start; i < lines.length; i++) {
+    if (/^##\s+/.test(lines[i])) break
+    collected.push(lines[i])
+  }
+  const text = collected.join("\n").trim()
+  return text === "" ? undefined : text
+}
+
+/**
  * Reconstructs a minimal `PaperRecord` from an ingested paper page's
  * frontmatter (ids + title + authors + year/venue) — enough for
  * `paperKey`/`loadReaderContent`'s snapshot-hit path (an ingested paper
