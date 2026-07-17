@@ -17,6 +17,7 @@ const BASE: SettingsResponse = {
   },
   companion: { chattiness: "medium", companionName: "Ember" },
   trending: { fields: [{ slug: "nlp", label: "NLP" }], cadence: "daily" },
+  ui: { theme: "system" },
 }
 
 describe("trending settings client", () => {

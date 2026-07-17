@@ -62,6 +62,7 @@ const CLIENT_LIB_FILES = [
   join("src", "lib", "companion", "client.ts"),
   join("src", "lib", "companion", "settings-client.ts"),
   join("src", "lib", "trending", "settings-client.ts"),
+  join("src", "lib", "ui", "settings-client.ts"),
   join("src", "lib", "reader", "client.ts"),
   join("src", "lib", "llm", "settings-client.ts"),
   join("src", "lib", "llm", "usage-client.ts"),
