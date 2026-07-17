@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState, type FormEvent } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { paperKey, type PaperRecord, type SourceId } from "@/lib/papers/types"
+import { displayTitle } from "@/lib/papers/title"
 import type { DigestResult } from "@/lib/skills/digest"
 import type { IngestOutput } from "@/lib/skills/ingest"
 import { generateDigestRemote, ingestRemote, undoIngestRemote, type IngestPhase } from "@/lib/skills/ingest-client"
@@ -269,7 +270,7 @@ function PapersPageContent() {
             <div className="text-[13px] text-muted-text tracking-body">Select a result to see details.</div>
           ) : (
             <div className="border border-border-warm rounded-card px-4 py-3 bg-light-surface">
-              <h2 className="font-heading text-[20px] text-espresso tracking-heading-card">{selected.title}</h2>
+              <h2 className="font-heading text-[20px] text-espresso tracking-heading-card">{displayTitle(selected.title)}</h2>
               <div className="mt-1 text-[12px] text-muted-text tracking-body">
                 {selected.authors.map((a) => a.name).join(", ") || "Unknown authors"}
               </div>

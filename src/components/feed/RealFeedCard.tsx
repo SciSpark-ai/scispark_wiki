@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation"
 import type { FeedItem } from "@/lib/skills/feed"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { paperKey } from "@/lib/papers/types"
+import { displayTitle } from "@/lib/papers/title"
 import { logEvent } from "@/lib/events/log"
 import { IdBadges } from "@/components/papers/IdBadges"
 
@@ -55,7 +56,7 @@ export function RealFeedCard({
   return (
     <div className="border border-border-warm rounded-card px-4 py-3 bg-light-surface flex flex-col gap-2">
       <div className="flex items-start justify-between gap-2">
-        <h3 className="font-heading text-[16px] text-espresso tracking-heading-card leading-snug">{paper.title}</h3>
+        <h3 className="font-heading text-[16px] text-espresso tracking-heading-card leading-snug">{displayTitle(paper.title)}</h3>
         <span className="flex-shrink-0 text-[12px] text-white bg-orange rounded-pill px-2 py-0.5 font-medium">
           {Math.round(item.score)}
         </span>
