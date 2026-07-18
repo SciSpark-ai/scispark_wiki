@@ -126,6 +126,12 @@ function PaperPageContent() {
   const contentRef = useRef<HTMLDivElement | null>(null)
   const [surfaceText, setSurfaceText] = useState("")
   const [askOpen, setAskOpen] = useState(false)
+  // The drawer opens from a text selection elsewhere on the page, so focus
+  // is never inside it by default — without moving focus in, a bubbled
+  // keydown Escape handler on the drawer would never fire. Focused once on
+  // open (not a loop/trap: Tab from here moves on normally), so Escape
+  // reliably closes the drawer as soon as it appears.
+  const askDrawerRef = useRef<HTMLDivElement | null>(null)
   // AskableSurface only hands back its (stable) onHtmlSelectionChange inside
   // a render-prop callback invoked during render, not as a normal prop — so
   // it's captured into a ref (assigned each render, read only from the
@@ -174,6 +180,13 @@ function PaperPageContent() {
     document.addEventListener("selectionchange", handleSelection)
     return () => document.removeEventListener("selectionchange", handleSelection)
   }, [handleSelection])
+
+  // See askDrawerRef's doc comment: move focus into the drawer once, right
+  // when it opens, so the wrapper's onKeyDown Escape handler below has
+  // something to bubble from.
+  useEffect(() => {
+    if (askOpen) askDrawerRef.current?.focus()
+  }, [askOpen])
 
   useEffect(() => {
     let cancelled = false
@@ -410,10 +423,25 @@ function PaperPageContent() {
 
             {askOpen && (
               // A floating drawer rather than ReaderView's fixed sidebar —
-              // this page has no two-column layout to host one. Positioned
-              // clear of the companion mascot (fixed bottom-5 right-5).
-              <div className="fixed top-24 right-6 z-40 h-[65vh] w-[360px] overflow-hidden rounded-card border border-border-warm shadow-lg">
-                <div className="relative h-full">
+              // this page has no two-column layout to host one. Top/bottom
+              // (rather than a fixed height) anchor it so its bottom edge
+              // stays clear of the companion mascot + speech bubble (both
+              // fixed bottom-5 right-5, z-40) — a bubble can pop right after
+              // ingest (reevaluateCompanion() above) while this drawer is
+              // open, so the two must never be able to visually collide.
+              // Keyboard-dismissable (Escape) per the brief, but deliberately
+              // NOT a focus trap — Tab still moves focus normally.
+              <div
+                ref={askDrawerRef}
+                role="dialog"
+                aria-label="Ask panel"
+                tabIndex={-1}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setAskOpen(false)
+                }}
+                className="fixed top-24 right-6 bottom-28 z-40 w-[360px] overflow-y-auto rounded-card border border-border-warm shadow-lg outline-none"
+              >
+                <div className="relative min-h-full">
                   <Button
                     variant="quiet"
                     size="sm"
