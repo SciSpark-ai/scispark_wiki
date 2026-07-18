@@ -42,8 +42,9 @@ type LoadState =
       /** `frontmatter.related` resolved to real titles via the bundle. */
       relatedPages: RelatedPageLink[]
       /** The matched personalized-feed item (by `paperKey`), if this paper is
-       * still in the cached feed — carries the full why-this/you/now, which
-       * only renders here (the feed card itself no longer shows them). */
+       * still in the cached feed — carries the full why-this/you/now. The
+       * feed card will stop showing these once the SP2 feed-card redesign
+       * (Task 12) lands; until then they render in both places. */
       feedItem?: FeedItem
     }
 
@@ -200,12 +201,21 @@ function PaperPageContent() {
     if (load.status !== "ready") return
     const { storage } = load
     setEnrichState({ status: "loading" })
-    const result = await enrichRemote(slug)
-    // Re-fetch the bundle so the freshly-merged tldr/tags/related render
-    // before dropping the "Enriching…" state, regardless of whether this run
-    // applied anything.
-    setLoad(await loadReadyState(storage, slug))
-    setEnrichState({ status: "done", applied: result.applied })
+    // enrichRemote itself never throws (see enrich-client.ts), but the reload
+    // below can (RemoteVaultStorage.list()/read() throw on a transient
+    // non-ok /api/vault response) — wrapped exactly like handleSave's reload
+    // so a failed reload un-sticks the button and surfaces a message instead
+    // of leaving enrichState stuck on "loading" forever.
+    try {
+      const result = await enrichRemote(slug)
+      // Re-fetch the bundle so the freshly-merged tldr/tags/related render
+      // before dropping the "Enriching…" state, regardless of whether this run
+      // applied anything.
+      setLoad(await loadReadyState(storage, slug))
+      setEnrichState({ status: "done", applied: result.applied })
+    } catch (err) {
+      setEnrichState({ status: "error", message: err instanceof Error ? err.message : String(err) })
+    }
   }
 
   function handleReadFullText() {

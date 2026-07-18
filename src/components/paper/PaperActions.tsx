@@ -37,6 +37,7 @@ export type EnrichState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "done"; applied: boolean }
+  | { status: "error"; message: string }
 
 const INGEST_PHASE_LABEL: Record<IngestPhase, string> = {
   acquiring: "Acquiring full text…",
@@ -134,6 +135,7 @@ export function PaperActions({
       {enrichState.status === "done" && !enrichState.applied && (
         <div className="mt-3 text-[13px] text-muted-text tracking-body">Enrich made no changes — try again shortly.</div>
       )}
+      {enrichState.status === "error" && <LlmErrorMessage message={enrichState.message} />}
       {digestState.status === "error" && <LlmErrorMessage message={digestState.message} />}
 
       {ingestBusy && (
