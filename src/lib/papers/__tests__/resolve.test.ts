@@ -3,6 +3,7 @@ import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { paperSlug, buildPaperPage } from "../../wiki/authoring"
 import { applyChangeset } from "../../vault/changesets"
 import { serializeDocument } from "../../vault/frontmatter"
+import { writeReaderHandoff } from "../../reader/handoff"
 import { resolvePaperBySlug, extractAbstractFromBody } from "../resolve"
 import type { PaperRecord } from "../types"
 
@@ -37,6 +38,19 @@ describe("resolvePaperBySlug", () => {
   it("returns null for an unknown slug", async () => {
     const s = new MemoryVaultStorage()
     expect(await resolvePaperBySlug(s, "arxiv-9999-99999")).toBeNull()
+  })
+
+  // CRUX gap (SP2 Task 13): a paper reached straight from a /papers search
+  // result is in neither the feed cache nor the wiki yet — the search page
+  // stashes a reader handoff before navigating to /paper/<slug>, and
+  // resolvePaperBySlug must be able to read it back by slug, with no feed
+  // cache and no wiki page in play at all.
+  it("resolves a freshly-searched paper via its reader handoff, with no feed cache and no wiki page", async () => {
+    const s = new MemoryVaultStorage()
+    await writeReaderHandoff(s, PAPER)
+    const resolved = await resolvePaperBySlug(s, paperSlug(PAPER))
+    expect(resolved?.ids.arxiv).toBe("2409.08710")
+    expect(resolved?.title).toBe("A Study of Ear-EEG")
   })
 })
 

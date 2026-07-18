@@ -2,7 +2,7 @@ import type { VaultStorage } from "../vault/storage"
 import type { Frontmatter } from "../vault/types"
 import { loadFeed } from "../skills/feed"
 import { loadBundle } from "../vault/bundle"
-import { readReaderHandoff } from "../reader/handoff"
+import { readReaderHandoff, readReaderHandoffBySlug } from "../reader/handoff"
 import { paperSlug } from "../wiki/authoring"
 import { paperKey, type PaperRecord } from "./types"
 
@@ -122,12 +122,21 @@ export async function resolvePaperByKey(storage: VaultStorage, key: string): Pro
 /**
  * Resolves a `PaperRecord` from its sanitized slug (`paperSlug` — the same
  * stem an ingested paper's wiki page filename is built from): the shared
- * candidate scan matched by `paperSlug` instead of `paperKey`. No reader-
- * handoff fallback here — that stash is keyed by `paperKey` (a different,
- * unrelated address space from a slug), so there's no handoff file a slug
- * could look up directly; every existing handoff caller already resolves by
- * key via `resolvePaperByKey`. `null` when nothing resolves.
+ * candidate scan matched by `paperSlug` instead of `paperKey`, falling back
+ * to a reader handoff — a paper reached via the /papers search box stashes
+ * its full record there (addressable by both `paperKey` and `paperSlug`, see
+ * `writeReaderHandoff`) before navigating to `/paper/<slug>`, since a fresh
+ * search result exists in neither the feed cache nor the wiki yet. `null`
+ * when nothing resolves.
  */
 export async function resolvePaperBySlug(storage: VaultStorage, slug: string): Promise<PaperRecord | null> {
-  return findPaperCandidate(storage, (c) => paperSlug(c) === slug)
+  const candidate = await findPaperCandidate(storage, (c) => paperSlug(c) === slug)
+  if (candidate) return candidate
+  try {
+    const handoff = await readReaderHandoffBySlug(storage, slug)
+    if (handoff) return handoff
+  } catch {
+    // Best-effort, same as the candidate scan above.
+  }
+  return null
 }
