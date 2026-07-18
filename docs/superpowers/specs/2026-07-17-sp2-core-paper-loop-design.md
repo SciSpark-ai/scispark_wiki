@@ -1,7 +1,7 @@
 # SP2 — Core Paper Loop (UI/UX redesign, part 2 of 6)
 
 **Date:** 2026-07-17
-**Status:** Draft for Tong's review
+**Status:** Built (SP2) — 2026-07-17, branch `uiux/sp2-core-paper-loop`, 14 tasks via subagent-driven development, 1550 tests green, whole-branch review READY (live-enrich gate + hands-on Save→enrich→ingest walk pending Tong)
 **Origin:** The six-SP redesign brainstormed 2026-07-16 (see `2026-07-16-sp1-shell-and-system-design.md`). SP1 (shell/nav/tokens/settings) shipped 2026-07-17. This spec is SP2, the highest-value chunk: the discover→read→digest→save journey Tong called "the flow that doesn't make sense," rebuilt around one coherent paper page.
 
 ## Context
