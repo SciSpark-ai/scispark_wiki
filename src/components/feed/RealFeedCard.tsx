@@ -1,15 +1,29 @@
 "use client"
 
+import type { KeyboardEvent, MouseEvent } from "react"
 import { useRouter } from "next/navigation"
 import type { FeedItem } from "@/lib/skills/feed"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { paperKey } from "@/lib/papers/types"
+import { paperSlug } from "@/lib/wiki/authoring"
 import { displayTitle } from "@/lib/papers/title"
+import { savePaper } from "@/lib/papers/save-client"
 import { logEvent } from "@/lib/events/log"
 import { IdBadges } from "@/components/papers/IdBadges"
+import { Card } from "@/components/ui/Card"
+import { Button } from "@/components/ui/Button"
+import { Chip } from "@/components/ui/Chip"
 
-/** One card in the real personalized feed: title/authors/venue, id badges, the
- * three why-lines from the re-rank stage, a score chip, and Save/Dismiss/Read actions. */
+/**
+ * One scannable card in the real personalized feed (SP2 Task 12 redesign):
+ * headline + venue·year + an AI TL;DR + a small tag-chip row — Apple-News
+ * style, not a wall of prose. The WHOLE card links through to
+ * `/paper/<slug>`, where the full why-this/you/now explanations now live
+ * (see `PaperActions`/`PaperMeta` on that page) along with Read/digest
+ * actions, so this card no longer duplicates them. Only Save and Dismiss
+ * remain as a footer that stops click-propagation so clicking them doesn't
+ * also trigger the card's navigation.
+ */
 export function RealFeedCard({
   item,
   storage,
@@ -26,95 +40,74 @@ export function RealFeedCard({
   const router = useRouter()
   const { paper } = item
   const key = paperKey(paper)
+  const href = `/paper/${paperSlug(paper)}`
 
-  const authorNames = paper.authors.map((a) => a.name)
-  const authorsLabel =
-    authorNames.length === 0
-      ? "Unknown authors"
-      : authorNames.length <= 3
-        ? authorNames.join(", ")
-        : `${authorNames.slice(0, 3).join(", ")}, et al.`
+  const tldr = item.tldr ?? paper.abstract?.split(". ")[0]
+  const tags =
+    item.tags && item.tags.length > 0
+      ? item.tags
+      : [paper.source, paper.year != null ? String(paper.year) : undefined].filter((v): v is string => Boolean(v))
 
-  function handleSave() {
-    void logEvent(storage, { type: "feed_save", paperKey: key, title: paper.title })
+  function goToPaper() {
+    router.push(href)
+  }
+
+  function handleCardKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault()
+      goToPaper()
+    }
+  }
+
+  async function handleSave(e: MouseEvent) {
+    e.stopPropagation()
+    if (saved) return
+    // savePaper itself logs the feed_save event (see save-client.ts), so no
+    // separate logEvent call here — logging it twice would double-count.
+    await savePaper(storage, paper)
     onSave(key)
   }
 
-  function handleDismiss() {
+  function handleDismiss(e: MouseEvent) {
+    e.stopPropagation()
     void logEvent(storage, { type: "feed_dismiss", paperKey: key, title: paper.title })
     onDismiss(key)
   }
 
-  function handleReadDigest() {
-    router.push(`/papers?paperKey=${encodeURIComponent(key)}`)
-  }
-
-  function handleRead() {
-    router.push(`/reader?paperKey=${encodeURIComponent(key)}`)
-  }
-
   return (
-    <div className="border border-border-warm rounded-card px-4 py-3 bg-light-surface flex flex-col gap-2">
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="font-heading text-[16px] text-espresso tracking-heading-card leading-snug">{displayTitle(paper.title)}</h3>
-        <span className="flex-shrink-0 text-[12px] text-white bg-orange rounded-pill px-2 py-0.5 font-medium">
-          {Math.round(item.score)}
-        </span>
-      </div>
+    <Card
+      onClick={goToPaper}
+      onKeyDown={handleCardKeyDown}
+      role="link"
+      tabIndex={0}
+      className="px-4 py-3 flex flex-col gap-2 cursor-pointer hover:shadow-sm transition-shadow"
+    >
+      <h3 className="font-heading text-[16px] text-espresso tracking-heading-card leading-snug">{displayTitle(paper.title)}</h3>
 
-      <div className="text-[12px] text-muted-text tracking-body">{authorsLabel}</div>
       <div className="text-[12px] text-muted-text tracking-body">
         {paper.venue ?? "no venue"} · {paper.year ?? "—"}
       </div>
 
+      {tldr && <p className="text-[13px] leading-[1.5] text-espresso tracking-body">{tldr}</p>}
+
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {tags.map((tag) => (
+            <Chip key={tag}>{tag}</Chip>
+          ))}
+        </div>
+      )}
+
       <IdBadges ids={paper.ids} />
 
-      <div className="mt-1 space-y-1 text-[13px]/[16px] text-espresso">
-        <p>
-          <span className="font-medium">Why this: </span>
-          {item.whyThis}
-        </p>
-        <p>
-          <span className="font-medium">Why you: </span>
-          {item.whyYou}
-        </p>
-        <p>
-          <span className="font-medium">Why now: </span>
-          {item.whyNow}
-        </p>
-      </div>
-
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saved}
-          className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1 disabled:opacity-50"
-        >
+      <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <Button variant="secondary" size="sm" onClick={handleSave} disabled={saved}>
           {saved ? "Saved" : "Save"}
-        </button>
-        <button
-          type="button"
-          onClick={handleDismiss}
-          className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1"
-        >
+        </Button>
+        <Button variant="secondary" size="sm" onClick={handleDismiss}>
           Dismiss
-        </button>
-        <button
-          type="button"
-          onClick={handleRead}
-          className="ml-auto text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1"
-        >
-          Read
-        </button>
-        <button
-          type="button"
-          onClick={handleReadDigest}
-          className="text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-3 py-1 font-medium"
-        >
-          Read & digest
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   )
 }
