@@ -44,6 +44,16 @@ describe("resolveRelatedPages (pure)", () => {
     expect(resolved).toEqual([{ id: "wiki/methods/ear-eeg", title: "Ear-EEG" }])
   })
 
+  it("resolves both stale full-id entries and new bare-slug entries", async () => {
+    const bundle = await loadBundle(await vaultWithPages())
+    // Mix of legacy full-id (stale from before the Enrich fix) and new bare-slug format
+    const resolved = resolveRelatedPages(bundle, ["wiki/methods/ear-eeg", "auditory-attention"])
+    expect(resolved).toEqual([
+      { id: "wiki/methods/ear-eeg", title: "Ear-EEG" },
+      { id: "wiki/concepts/auditory-attention", title: "Auditory Attention" },
+    ])
+  })
+
   it("returns [] for undefined/empty input", async () => {
     const bundle = await loadBundle(await vaultWithPages())
     expect(resolveRelatedPages(bundle, undefined)).toEqual([])
