@@ -421,6 +421,52 @@ describe("ingestSkill re-ingest paper page frontmatter merge (I2)", () => {
     expect(run.output.pages.updated).toContain(PAPER_PAGE_PATH)
     expect(run.output.pages.created).not.toContain(PAPER_PAGE_PATH)
   })
+
+  // I3 (whole-branch review): buildPaperPage's draft always sets
+  // `related: []` explicitly, so before this fix the `{...existing,
+  // ...draft}` spread in mergePaperPageFrontmatter let that empty array
+  // clobber an already-enriched paper page's `related` links (unlike
+  // sources/tags/projects, which were already unioned). A tier-3 ingest of
+  // an enriched paper must preserve the enrich-added related links (and its
+  // tldr, which survives for a different reason — mergePaperPageFrontmatter
+  // never sets it at all, so the spread never touches it) while still
+  // upgrading status to "ingested" and unioning tags.
+  it("preserves an enriched page's tldr and unions related[] on tier-3 ingest, upgrading status to ingested", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedVault(storage)
+    await storage.write(
+      PAPER_PAGE_PATH,
+      composePage({
+        path: PAPER_PAGE_PATH,
+        frontmatter: {
+          type: "paper",
+          title: PAPER.title,
+          created: "2026-06-01",
+          updated: "2026-06-01",
+          tags: ["auditory"],
+          related: ["transformer-architecture"],
+          sources: ["earlier-snapshot"],
+          authors: PAPER.authors.map((a) => a.name),
+          projects: [],
+          status: "enriched",
+          tldr: "A prior enrich-generated one-liner.",
+        },
+        body: "# Some older deterministic body\n",
+      }),
+    )
+    const provider = new MockProvider([llmResult(SAMPLE_ANALYSIS), llmResult(sampleGeneration())])
+
+    const run = await runIngest(storage, provider)
+
+    expectOk(run.output)
+    const paperPage = parseDocument((await storage.read(PAPER_PAGE_PATH)) as string)
+    expect(paperPage.frontmatter.status).toBe("ingested")
+    expect(paperPage.frontmatter.tldr).toBe("A prior enrich-generated one-liner.")
+    // related is unioned (existing enrich link first, draft's own — always
+    // [] — contributes nothing new here), never clobbered to [].
+    expect(paperPage.frontmatter.related).toEqual(["transformer-architecture"])
+    expect(paperPage.frontmatter.tags).toEqual(["auditory"])
+  })
 })
 
 describe("ingestSkill validation retry", () => {

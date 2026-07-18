@@ -11,7 +11,10 @@ import { loadRouting } from "../wiki/schema-routing"
  * metadata+abstract as a `status: "saved"` wiki page. Returns null when the
  * page already exists (a re-save is a no-op, never a duplicate). Full-text
  * availability isn't known at save time from metadata alone, so `full_text`
- * is set false here; a later ingest updates it. */
+ * is left OFF the stub's frontmatter entirely (C1 — writing it `false` would
+ * read as a KNOWN paywall and wrongly disable "Read full text" on every
+ * saved-but-not-yet-ingested paper); a later ingest sets it definitively
+ * true/false once it actually tries to acquire the text. */
 export async function buildSaveStubChangeset(
   storage: VaultStorage,
   paper: PaperRecord,
@@ -23,7 +26,7 @@ export async function buildSaveStubChangeset(
   const bundle = await loadBundle(storage)
   if (bundle.pages.has(`${dir}/${slug}`)) return null
 
-  const draft = buildPaperPage(paper, { fullText: false, today, status: "saved", dir })
+  const draft = buildPaperPage(paper, { today, status: "saved", dir })
   const content = serializeDocument(draft.frontmatter, draft.body)
   return {
     id: makeChangesetId(),

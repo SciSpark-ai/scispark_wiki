@@ -19,6 +19,21 @@ describe("buildPaperPage status", () => {
   })
 })
 
+// C1 (whole-branch review): a tier-1 save stub's full-text availability
+// isn't known at save time — writing `full_text: false` reads as a KNOWN
+// paywall and wrongly disables "Read full text" for every saved paper.
+describe("buildPaperPage full_text (C1)", () => {
+  it("omits the full_text key entirely when fullText is not passed", () => {
+    const draft = buildPaperPage(PAPER, { today: "2026-07-17", status: "saved" })
+    expect(draft.frontmatter).not.toHaveProperty("full_text")
+  })
+
+  it("still writes full_text when explicitly passed true/false (ingest's own usage)", () => {
+    expect(buildPaperPage(PAPER, { today: "2026-07-17", fullText: true }).frontmatter.full_text).toBe(true)
+    expect(buildPaperPage(PAPER, { today: "2026-07-17", fullText: false }).frontmatter.full_text).toBe(false)
+  })
+})
+
 describe("buildSaveStubChangeset", () => {
   it("creates a saved paper page and is a no-op when it already exists", async () => {
     const s = new MemoryVaultStorage()
@@ -28,7 +43,9 @@ describe("buildSaveStubChangeset", () => {
     const bundle = await loadBundle(s)
     const page = [...bundle.pages.values()].find((p) => p.frontmatter.type === "paper")
     expect(page?.frontmatter.status).toBe("saved")
-    expect(page?.frontmatter.full_text).toBe(false)
+    // C1: full_text is absent (unknown), not `false` (known-paywalled) — a
+    // saved stub has never tried to acquire full text.
+    expect(page?.frontmatter).not.toHaveProperty("full_text")
     // second call: page exists → null
     expect(await buildSaveStubChangeset(s, PAPER, "2026-07-17")).toBeNull()
   })

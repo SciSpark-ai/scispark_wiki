@@ -23,19 +23,24 @@ async function vaultWithPages(): Promise<MemoryVaultStorage> {
   return storage
 }
 
+// I1 (whole-branch review): related[] now stores BARE slugs (see
+// buildEnrichMergeChangeset's bareSlug helper), matching the convention
+// every other related[] writer in this app uses — resolveRelatedPages must
+// resolve those the same way the wiki/graph does (resolveLink's suffix
+// match), not via a direct full-id bundle.pages.get lookup.
 describe("resolveRelatedPages (pure)", () => {
-  it("resolves ids to titles, preserving order", async () => {
+  it("resolves bare slugs to titles (and real full ids for href), preserving order", async () => {
     const bundle = await loadBundle(await vaultWithPages())
-    const resolved = resolveRelatedPages(bundle, ["wiki/methods/ear-eeg", "wiki/concepts/auditory-attention"])
+    const resolved = resolveRelatedPages(bundle, ["ear-eeg", "auditory-attention"])
     expect(resolved).toEqual([
       { id: "wiki/methods/ear-eeg", title: "Ear-EEG" },
       { id: "wiki/concepts/auditory-attention", title: "Auditory Attention" },
     ])
   })
 
-  it("drops ids that no longer resolve in the bundle, never surfacing the raw id", async () => {
+  it("drops slugs that no longer resolve in the bundle, never surfacing the raw slug", async () => {
     const bundle = await loadBundle(await vaultWithPages())
-    const resolved = resolveRelatedPages(bundle, ["wiki/methods/ear-eeg", "wiki/methods/deleted-page"])
+    const resolved = resolveRelatedPages(bundle, ["ear-eeg", "deleted-page"])
     expect(resolved).toEqual([{ id: "wiki/methods/ear-eeg", title: "Ear-EEG" }])
   })
 

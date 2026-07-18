@@ -86,8 +86,11 @@ describe("POST /api/skills/enrich", () => {
     expect(page?.frontmatter.status).toBe("enriched")
     expect(page?.frontmatter.tldr).toBe("A study of ear-EEG.")
     expect(page?.frontmatter.tags).toEqual(["ear-eeg", "methods"])
-    // The nonexistent id was dropped — only the real page survives.
-    expect(page?.frontmatter.related).toEqual(["wiki/concepts/attention"])
+    // The nonexistent id was dropped — only the real page survives, stored
+    // as a bare slug (I1, whole-branch review — matches every other
+    // related[] writer's convention, and is what the knowledge graph's own
+    // related[] resolution actually matches against).
+    expect(page?.frontmatter.related).toEqual(["attention"])
   })
 
   it("returns {applied:false} when no page matches the slug", async () => {

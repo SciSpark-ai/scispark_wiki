@@ -42,7 +42,10 @@ it("renders TL;DR, tag chips, and related-page links for a status:enriched paper
   const draft = buildPaperPage(PAPER, { fullText: false, today: "2026-07-17", status: "enriched" })
   draft.frontmatter.tldr = "A wearable ear-EEG method for tracking auditory attention in real environments."
   draft.frontmatter.tags = ["ear-eeg", "auditory attention"]
-  draft.frontmatter.related = ["wiki/methods/ear-eeg-recording"]
+  // Bare slug (I1, whole-branch review) — related[] stores the final path
+  // segment, not a full "wiki/..." id; resolveRelatedPages resolves it via
+  // resolveLink the same way the knowledge graph does.
+  draft.frontmatter.related = ["ear-eeg-recording"]
 
   await storage.write("wiki/methods/ear-eeg-recording.md", serializeDocument(methodFrontmatter, "# Ear-EEG Recording\n"))
   await storage.write(draft.path, serializeDocument(draft.frontmatter, draft.body))

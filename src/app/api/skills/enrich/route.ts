@@ -2,37 +2,21 @@ import { jsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
 import { runSkill } from "@/lib/skills/runner"
 import { enrichSkill } from "@/lib/skills/enrich"
-import { loadBundle, type Bundle } from "@/lib/vault/bundle"
-import type { WikiPage } from "@/lib/vault/types"
+import { loadBundle } from "@/lib/vault/bundle"
 import { applyChangeset } from "@/lib/vault/changesets"
 import { writeIndex } from "@/lib/vault/index-builder"
 import { paperRecordFromFrontmatter, extractAbstractFromBody } from "@/lib/papers/resolve"
 import { buildEnrichMergeChangeset } from "@/lib/papers/enrich-apply"
+// findPaperPage (routing-tolerant paper-page lookup by slug) is shared with
+// `/paper/[key]`'s own page-state resolution (I2, whole-branch review) —
+// one implementation instead of two that could drift.
+import { findPaperPage } from "@/lib/papers/page-state"
 
 export interface EnrichRouteResult {
   applied: boolean
   costUsd: number
   tldr?: string
   tags?: string[]
-}
-
-/**
- * Finds a saved/enriched/ingested paper page by its sanitized slug
- * (`paperSlug` — the same stem `buildPaperPage`/`buildSaveStubChangeset`
- * write under `<routing dir>/<slug>.md`). Matches on the id's final path
- * segment rather than requiring `loadRouting`, so a custom `schema.md`
- * routing for the `paper` type is honored automatically. Restricted to
- * `frontmatter.type === "paper"` so it can never match a same-named
- * author/concept/etc. page; ties (should never happen in practice) break on
- * the alphabetically smallest id, mirroring `loadBundle`'s wikilink
- * suffix-index tie-break.
- */
-function findPaperPage(bundle: Bundle, slug: string): WikiPage | null {
-  const suffix = `/${slug}`
-  const matches = [...bundle.pages.values()]
-    .filter((p) => p.frontmatter.type === "paper" && (p.id === slug || p.id.endsWith(suffix)))
-    .sort((a, b) => a.id.localeCompare(b.id))
-  return matches[0] ?? null
 }
 
 /**

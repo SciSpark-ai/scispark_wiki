@@ -132,6 +132,9 @@ export function PaperActions({
       </div>
 
       {saveState.status === "error" && <LlmErrorMessage message={saveState.message} />}
+      {fullTextKnownFalse && (
+        <div className="mt-3 text-[13px] text-muted-text tracking-body">No open-access full text.</div>
+      )}
       {enrichState.status === "done" && !enrichState.applied && (
         <div className="mt-3 text-[13px] text-muted-text tracking-body">Enrich made no changes — try again shortly.</div>
       )}

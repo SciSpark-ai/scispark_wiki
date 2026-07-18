@@ -6,7 +6,7 @@ import Link from "next/link"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadBundle, type Bundle } from "@/lib/vault/bundle"
 import { resolvePaperBySlug, extractAbstractFromBody } from "@/lib/papers/resolve"
-import { resolvePaperPageState, type PaperPageState } from "@/lib/papers/page-state"
+import { findPaperPage, pageStateFromPage, isFullTextKnownUnavailable, type PaperPageState } from "@/lib/papers/page-state"
 import { paperKey, type PaperRecord } from "@/lib/papers/types"
 import { savePaper } from "@/lib/papers/save-client"
 import { generateDigestRemote, ingestRemote, undoIngestRemote } from "@/lib/skills/ingest-client"
@@ -41,8 +41,11 @@ type LoadState =
        * so the ingested-state synthesis/backlinks render against the exact
        * same snapshot `pageState`/`tldr`/`relatedPages` were derived from. */
       bundle: Bundle
-      /** True only once the paper page's own frontmatter has confirmed no
-       * full text was acquired — false/unknown leaves "Read full text" enabled. */
+      /** True only when the paper page is INGESTED and its own frontmatter
+       * has confirmed no full text was acquired (C1) — a saved-but-not-yet-
+       * ingested stub never carries `full_text` at all, so its absence
+       * leaves "Read full text" enabled rather than reading as a known
+       * paywall. See `isFullTextKnownUnavailable`. */
       fullTextKnownFalse: boolean
       /** Tier-2 Enrich Skill output off the paper page's own frontmatter
        * (`tldr`/`tags`) — absent until the paper's been enriched. */
@@ -68,9 +71,12 @@ async function loadReadyState(storage: VaultStorage, slug: string): Promise<Load
   const [paper, bundle, feed] = await Promise.all([resolvePaperBySlug(storage, slug), loadBundle(storage), loadFeed(storage)])
   if (!paper) return { status: "not-found" }
 
-  const pageState = resolvePaperPageState(bundle, slug)
-  const page = bundle.pages.get(`wiki/papers/${slug}`)
-  const fullTextKnownFalse = page?.frontmatter.full_text === false
+  // I2: routing-tolerant lookup (findPaperPage scans for type:"paper" by id
+  // suffix) rather than a hardcoded "wiki/papers/<slug>" path, so a
+  // schema.md-routed vault's paper page still resolves past "discovery".
+  const page = findPaperPage(bundle, slug)
+  const pageState = pageStateFromPage(page)
+  const fullTextKnownFalse = isFullTextKnownUnavailable(page)
   // A paper resolved from a wiki page's frontmatter (rather than the feed
   // cache) never carries an abstract — paperRecordFromFrontmatter only
   // reads frontmatter, and the abstract lives in the page BODY under "##
@@ -341,12 +347,11 @@ function PaperPageContent() {
   // The paper's own wiki page id (undefined during discovery, before any
   // page exists) — threaded into AskableSurface as `sourcePageId` for
   // capture-idea's `related[]` link, and used to look up the ingested body
-  // below. `wiki/papers/<slug>` is the same direct, canonical lookup
-  // `resolvePaperPageState` already uses (see that module's doc comment) —
-  // simpler than ReaderView's `findSourcePageId` bundle scan, which exists
-  // there only because the reader is keyed by `paperKey`, not by slug; this
-  // route already IS keyed by slug, so this page has the exact id for free.
-  const page = load.bundle.pages.get(`wiki/papers/${slug}`)
+  // below. Uses the same routing-tolerant `findPaperPage` lookup (I2)
+  // `resolvePaperPageState`/`loadReadyState` use above, rather than a
+  // hardcoded "wiki/papers/<slug>" path — so a schema.md-routed vault's
+  // paper page still resolves here too.
+  const page = findPaperPage(load.bundle, slug)
   const sourcePageId = page?.id
 
   return (
