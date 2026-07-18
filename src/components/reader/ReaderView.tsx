@@ -2,12 +2,10 @@
 
 import dynamic from "next/dynamic"
 import Link from "next/link"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { SurfaceSelection } from "./HtmlSurface"
-import SelectionBubble from "./SelectionBubble"
 import HighlightLayer from "./HighlightLayer"
-import AskPanel, { type AskState } from "./AskPanel"
-import CaptureIdeaCard from "./CaptureIdeaCard"
+import AskableSurface from "./AskableSurface"
 import type { ReaderContent } from "@/lib/reader/load"
 import { paperKey, type PaperRecord } from "@/lib/papers/types"
 import { displayTitle } from "@/lib/papers/title"
@@ -15,39 +13,14 @@ import type { VaultStorage } from "@/lib/vault/storage"
 import type { Highlight } from "@/lib/highlights/types"
 import { listHighlights, listHighlightsWithRetry, addHighlight, removeHighlight, makeHighlightId } from "@/lib/highlights/store"
 import { createAnchor } from "@/lib/highlights/anchor"
-import { captureIdeaAsNote } from "@/lib/reader/capture-idea"
-import { buildAskContext } from "@/lib/reader/ask-context"
-import { askRemote } from "@/lib/reader/client"
-import { applyChangesetRemote } from "@/lib/vault/changeset-client"
-import { loadCompanionSettingsRemote } from "@/lib/companion/settings-client"
 import { loadBundle } from "@/lib/vault/bundle"
 import { logEvent } from "@/lib/events/log"
-import { wikiHref } from "@/lib/wiki/href"
 
 // pdf.js and DOMPurify both touch DOMMatrix/canvas/window and must never run
 // during SSR — both surfaces are client-only, per the M6 plan's SSR
 // constraint for this task (Task 8's "CRITICAL integration guidance").
 const HtmlSurface = dynamic(() => import("./HtmlSurface"), { ssr: false })
 const PdfSurface = dynamic(() => import("./PdfSurface"), { ssr: false })
-
-/** How much plain text on each side of a selection is sent as "surrounding"
- * context to the Reading-Companion skill (already truncated here, per
- * ReadingCompanionInput's own doc comment). */
-const SURROUND_RADIUS = 800
-
-interface PendingSelection {
-  start: number
-  end: number
-  text: string
-  rectTop: number
-  rectLeft: number
-}
-
-function computeSurroundingText(text: string, start: number, end: number): string {
-  const from = Math.max(0, start - SURROUND_RADIUS)
-  const to = Math.min(text.length, end + SURROUND_RADIUS)
-  return text.slice(from, to)
-}
 
 /**
  * The URL the paper's HTML originally came from, for figure-src resolution
@@ -107,9 +80,9 @@ export interface ReaderViewProps {
 
 /**
  * Owns the reader's client-side state: the mounted surface's plain text +
- * DOM root, persisted highlights, the current pending selection, and the
- * Ask panel's conversation state. Mounts `HtmlSurface` or `PdfSurface`
- * depending on `content.kind`; `kind: "none"` renders an
+ * DOM root and persisted highlights. Mounts `HtmlSurface` or `PdfSurface`
+ * depending on `content.kind`, wrapped in `AskableSurface` (Task 7 extract)
+ * for the select→ask and select→capture-idea flows; `kind: "none"` renders an
  * abstract-plus-back-link card instead (M6 plan Task 8).
  */
 export default function ReaderView({ paper, content, storage }: ReaderViewProps) {
@@ -118,23 +91,11 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
   const [surfaceText, setSurfaceText] = useState("")
   const [surfaceRoot, setSurfaceRoot] = useState<HTMLElement | null>(null)
   const [highlights, setHighlights] = useState<Highlight[]>([])
-  const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null)
-  const [askTarget, setAskTarget] = useState<PendingSelection | null>(null)
   const [sourcePageId, setSourcePageId] = useState<string | undefined>(undefined)
   const addingHighlightRef = useRef(false)
-  const [askState, setAskState] = useState<AskState>({ status: "idle" })
-  const [captureNotice, setCaptureNotice] = useState<{ path: string } | null>(null)
-  // The passage "Capture idea" was invoked on, snapshotted independently of
-  // the live selection (same pattern as askTarget): typing in the card's
-  // textarea collapses the native selection, which must not dismiss the card.
-  const [captureState, setCaptureState] = useState<{
-    target: PendingSelection
-    saving: boolean
-    error: string | null
-  } | null>(null)
 
   // Read from a ref inside async handlers so a stale closure over an earlier
-  // render's `surfaceText` can never anchor/ask against outdated text.
+  // render's `surfaceText` can never anchor against outdated text.
   const surfaceTextRef = useRef(surfaceText)
   useEffect(() => {
     surfaceTextRef.current = surfaceText
@@ -142,7 +103,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
 
   // Once on mount: load this paper's persisted highlights, log reader_open,
   // and best-effort resolve its own wiki page id (for capture-idea's
-  // related[] link).
+  // related[] link, threaded down into AskableSurface).
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -163,45 +124,23 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const clearSelection = useCallback(() => {
-    window.getSelection()?.removeAllRanges()
-    setPendingSelection(null)
-  }, [])
-
-  const handleHtmlSelectionChange = useCallback((selection: SurfaceSelection | null) => {
-    setPendingSelection(selection)
-  }, [])
-
-  const handlePdfSelect = useCallback((start: number, end: number, selectedText: string) => {
-    // pdf.js's own native selection is still live at this point (this fires
-    // synchronously from PdfSurface's mouseup handler), so the same rect the
-    // browser is showing can still be read here for the bubble's position.
-    const rect = window.getSelection()?.getRangeAt(0)?.getBoundingClientRect()
-    setPendingSelection({
-      start,
-      end,
-      text: selectedText,
-      rectTop: rect?.top ?? 0,
-      rectLeft: rect?.left ?? 0,
-    })
-  }, [])
-
-  async function handleHighlight() {
+  // Select→ask and select→capture-idea live in AskableSurface now (Task 7);
+  // this component keeps only the persistent-highlight concerns: the
+  // HighlightLayer + its add/remove handlers. `sel` is the selection
+  // AskableSurface's bubble snapshotted at the moment Highlight was clicked
+  // (its own live selection is already cleared by the time this fires).
+  async function handleHighlight(sel: SurfaceSelection) {
     // Synchronous re-entrancy guard: a double-click fires two onClicks in the
-    // same render, both closing over the same pendingSelection — without this
-    // the same passage would be added twice.
+    // same render, both closing over the same (stale, pre-flush) selection —
+    // without this the same passage would be added twice.
     if (addingHighlightRef.current) return
-    const sel = pendingSelection
-    if (!sel) return
     let anchor
     try {
       anchor = createAnchor(surfaceTextRef.current, sel.start, sel.end)
     } catch {
-      clearSelection()
       return
     }
     addingHighlightRef.current = true
-    clearSelection()
     const highlight: Highlight = {
       id: makeHighlightId(),
       anchor,
@@ -221,75 +160,6 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
   async function handleRemoveHighlight(id: string) {
     await removeHighlight(storage, key, id)
     setHighlights(await listHighlights(storage, key))
-  }
-
-  // Snapshot the passage the user invoked "Ask" on into a target that persists
-  // independently of the live selection. Clicking into the Ask panel's question
-  // box dismisses the native selection (clearing pendingSelection), so the
-  // typed-question flow must not depend on pendingSelection still being set.
-  function beginAsk() {
-    if (!pendingSelection) return
-    setAskTarget(pendingSelection)
-    void runAsk(pendingSelection, "")
-  }
-
-  function submitAskQuestion(question: string) {
-    if (!askTarget) return
-    void runAsk(askTarget, question)
-  }
-
-  async function runAsk(target: PendingSelection, question: string) {
-    setAskState({ status: "loading" })
-    try {
-      const context = await buildAskContext(storage, {
-        paper,
-        selection: target.text,
-        surroundingText: computeSurroundingText(surfaceTextRef.current, target.start, target.end),
-        userQuestion: question,
-      })
-      const companionSettings = await loadCompanionSettingsRemote()
-      const answer = await askRemote({ ...context, companionName: companionSettings.companionName })
-      setAskState({ status: "done", answer: answer.answer, citedPageIds: answer.citedPageIds })
-      void logEvent(storage, { type: "reading_ask", paperKey: key })
-    } catch (err) {
-      setAskState({ status: "error", message: err instanceof Error ? err.message : String(err) })
-    }
-  }
-
-  // Open the inline capture card (replaces the old blocking window.prompt,
-  // which embedded webviews don't implement at all — it threw in the in-app
-  // preview browser).
-  function handleCapture() {
-    if (!pendingSelection) return
-    setCaptureState({ target: pendingSelection, saving: false, error: null })
-    clearSelection()
-  }
-
-  async function submitCapture(thought: string) {
-    if (!captureState) return
-    setCaptureState({ ...captureState, saving: true, error: null })
-    try {
-      const { path } = await captureIdeaAsNote({
-        storage,
-        paperKey: key,
-        paperTitle: paper.title,
-        sourcePageId,
-        selection: captureState.target.text,
-        thought,
-        today: new Date().toISOString().slice(0, 10),
-        apply: (_storage, changeset) => applyChangesetRemote(changeset),
-      })
-      setCaptureState(null)
-      setCaptureNotice({ path })
-    } catch (err) {
-      // applyChangeset is all-or-nothing, so nothing was partially written —
-      // surface the reason on the card instead of failing silently.
-      setCaptureState({
-        target: captureState.target,
-        saving: false,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
   }
 
   if (content.kind === "none") {
@@ -313,81 +183,62 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
   }
 
   return (
-    <div className="flex h-full min-h-0">
-      <div className="flex-1 min-w-0 overflow-y-auto p-7">
-        <h1 className="font-heading text-[22px] text-espresso tracking-heading mb-4 max-w-[68ch]">{displayTitle(paper.title)}</h1>
+    <AskableSurface
+      storage={storage}
+      paper={paper}
+      sourcePageId={sourcePageId}
+      surfaceText={surfaceText}
+      enableHighlight
+      onHighlight={(sel) => void handleHighlight(sel)}
+    >
+      {({ onHtmlSelectionChange, onPdfSelect, askPanel }) => (
+        <div className="flex h-full min-h-0">
+          <div className="flex-1 min-w-0 overflow-y-auto p-7">
+            <h1 className="font-heading text-[22px] text-espresso tracking-heading mb-4 max-w-[68ch]">{displayTitle(paper.title)}</h1>
 
-        {content.kind === "html" && (
-          <div className="relative">
-            <HtmlSurface
-              html={content.html}
-              sourceUrl={figureSourceUrl(content, paper)}
-              onPlainText={setSurfaceText}
-              onSelectionChange={handleHtmlSelectionChange}
-              onContainerReady={setSurfaceRoot}
-            />
-            <HighlightLayer
-              surfaceRoot={surfaceRoot}
-              surfaceText={surfaceText}
-              highlights={highlights}
-              onClickHighlight={(id) => void handleRemoveHighlight(id)}
-            />
+            {content.kind === "html" && (
+              <div className="relative">
+                <HtmlSurface
+                  html={content.html}
+                  sourceUrl={figureSourceUrl(content, paper)}
+                  onPlainText={setSurfaceText}
+                  onSelectionChange={onHtmlSelectionChange}
+                  onContainerReady={setSurfaceRoot}
+                />
+                <HighlightLayer
+                  surfaceRoot={surfaceRoot}
+                  surfaceText={surfaceText}
+                  highlights={highlights}
+                  onClickHighlight={(id) => void handleRemoveHighlight(id)}
+                />
+              </div>
+            )}
+
+            {content.kind === "pdf" && (
+              // Persistent highlight PAINTING on the multi-page PDF text layer is
+              // explicitly out of scope for M6 (the anchor/offset model doesn't
+              // map cleanly onto pdf.js's per-page text layers) — selection ->
+              // Highlight/Ask/Capture actions still work below; this surface just
+              // shows a count instead of painted rects. See the M6 plan's
+              // Self-Review Notes ("Deferred") and Task 8's integration guidance.
+              <PdfSurface
+                bytes={content.bytes}
+                onPlainText={setSurfaceText}
+                onSelect={onPdfSelect}
+                renderHighlights={() =>
+                  highlights.length > 0 ? (
+                    <div className="absolute top-2 right-2 rounded-pill border border-border-warm bg-light-surface px-2.5 py-1 text-[11px] text-muted-text shadow-sm">
+                      {highlights.length} highlight{highlights.length === 1 ? "" : "s"} saved (not shown on PDF yet)
+                    </div>
+                  ) : null
+                }
+              />
+            )}
           </div>
-        )}
 
-        {content.kind === "pdf" && (
-          // Persistent highlight PAINTING on the multi-page PDF text layer is
-          // explicitly out of scope for M6 (the anchor/offset model doesn't
-          // map cleanly onto pdf.js's per-page text layers) — selection ->
-          // Highlight/Ask/Capture actions still work below; this surface just
-          // shows a count instead of painted rects. See the M6 plan's
-          // Self-Review Notes ("Deferred") and Task 8's integration guidance.
-          <PdfSurface
-            bytes={content.bytes}
-            onPlainText={setSurfaceText}
-            onSelect={handlePdfSelect}
-            renderHighlights={() =>
-              highlights.length > 0 ? (
-                <div className="absolute top-2 right-2 rounded-pill border border-border-warm bg-light-surface px-2.5 py-1 text-[11px] text-muted-text shadow-sm">
-                  {highlights.length} highlight{highlights.length === 1 ? "" : "s"} saved (not shown on PDF yet)
-                </div>
-              ) : null
-            }
-          />
-        )}
-
-        <SelectionBubble
-          selection={pendingSelection}
-          onAsk={beginAsk}
-          onHighlight={() => void handleHighlight()}
-          onCapture={handleCapture}
-        />
-
-        {captureState && (
-          <CaptureIdeaCard
-            selectionText={captureState.target.text}
-            saving={captureState.saving}
-            error={captureState.error}
-            anchorTop={captureState.target.rectTop}
-            anchorLeft={captureState.target.rectLeft}
-            onSave={(thought) => void submitCapture(thought)}
-            onCancel={() => setCaptureState(null)}
-          />
-        )}
-
-        {captureNotice && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 border border-border-warm rounded-pill bg-espresso text-white px-4 py-2 text-[13px] shadow-lg flex items-center gap-2 z-50">
-            Idea captured.
-            <Link href={wikiHref(captureNotice.path)} className="text-orange-light font-medium">
-              View note
-            </Link>
-          </div>
-        )}
-      </div>
-
-      <div className="w-[340px] flex-shrink-0">
-        <AskPanel selectionText={askTarget?.text ?? null} state={askState} onAsk={submitAskQuestion} />
-      </div>
-    </div>
+          <div className="w-[340px] flex-shrink-0">{askPanel}</div>
+        </div>
+      )}
+    </AskableSurface>
   )
 }

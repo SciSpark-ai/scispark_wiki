@@ -63,14 +63,25 @@ export interface DigestLike {
   limitations?: string
 }
 
+/** Three-tier save model: "saved" (tier-1, deterministic bookmark stub) →
+ * "enriched" (tier-2, Enrich Skill: tldr/tags/related-links) → "ingested"
+ * (full agent ingest). */
+export type PaperStatus = "saved" | "enriched" | "ingested"
+
 export interface BuildPaperPageOpts {
   digest?: DigestLike
-  fullText: boolean
+  /** Whether full text was acquired. OMIT (rather than passing `false`) when
+   * availability genuinely isn't known yet — a tier-1 save stub, for
+   * instance — so the frontmatter never asserts a paywall it hasn't
+   * checked for; `undefined` here means the `full_text` key is left off
+   * the page entirely (see below), not written as `false`. */
+  fullText?: boolean
   projects?: string[]
   today: string
   sources?: string[]
   /** Directory the paper page is written under. Defaults to "wiki/papers" — callers with schema-routed vaults should pass `loadRouting(storage)["paper"]`. */
   dir?: string
+  status?: PaperStatus
 }
 
 function buildDigestSection(digest: DigestLike): string {
@@ -127,14 +138,18 @@ export function buildPaperPage(paper: PaperRecord, opts: BuildPaperPageOpts): Pa
     sources: opts.sources ?? [],
     authors: paper.authors.map((a) => a.name),
     projects: opts.projects ?? [],
-    full_text: opts.fullText,
   }
+  // Omitted (not written as `false`) when availability isn't known — see
+  // BuildPaperPageOpts.fullText's doc comment. C1: a saved-but-not-ingested
+  // stub must never read as a KNOWN paywall.
+  if (opts.fullText !== undefined) frontmatter.full_text = opts.fullText
   if (paper.ids.doi !== undefined) frontmatter.doi = paper.ids.doi
   if (paper.ids.arxiv !== undefined) frontmatter.arxiv = paper.ids.arxiv
   if (paper.ids.openalex !== undefined) frontmatter.openalex = paper.ids.openalex
   if (paper.ids.pmid !== undefined) frontmatter.pmid = paper.ids.pmid
   if (paper.year !== undefined) frontmatter.year = paper.year
   if (paper.venue !== undefined) frontmatter.venue = paper.venue
+  if (opts.status !== undefined) frontmatter.status = opts.status
 
   const sections: string[] = [`# ${paper.title}`]
   if (opts.digest) sections.push(buildDigestSection(opts.digest))

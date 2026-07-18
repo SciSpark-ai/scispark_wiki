@@ -147,9 +147,12 @@ function asStringArray(value: unknown): string[] | undefined {
  *     hand-added custom key) survives untouched — the deterministic draft's own fields
  *     still win where both define a key.
  *   - `created` is preserved from the existing page.
- *   - `sources`/`tags`/`projects` are UNIONED (existing first, then new, order-stable
- *     dedupe) instead of replaced, so a second ingest of the same paper never drops a
- *     prior source/tag/project.
+ *   - `sources`/`tags`/`projects`/`related` are UNIONED (existing first, then new,
+ *     order-stable dedupe) instead of replaced, so a second ingest of the same paper
+ *     never drops a prior source/tag/project or an Enrich-added related link (I3,
+ *     whole-branch review — buildPaperPage's draft always sets `related: []`, which
+ *     would otherwise clobber an already-enriched page's related[] via the `...draft`
+ *     spread below, the same way sources/tags/projects would without their own union).
  *
  * The BODY is untouched by this function — the paper page's body is always the full
  * deterministic rebuild (see buildPaperPage's caller): the paper page is system-owned,
@@ -164,6 +167,7 @@ function mergePaperPageFrontmatter(draft: Frontmatter, existing: Frontmatter): F
     sources: unionStable(asStringArray(existing.sources), draft.sources),
     tags: unionStable(asStringArray(existing.tags), draft.tags),
     projects: unionStable(asStringArray(existing.projects), asStringArray(draft.projects) ?? []),
+    related: unionStable(asStringArray(existing.related), draft.related),
   }
 }
 
@@ -491,6 +495,7 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
       today,
       sources,
       dir: paperDir,
+      status: "ingested",
     })
     // Re-ingest of a known paper: merge frontmatter with the existing page (created
     // preserved, custom keys carried over, sources/tags/projects unioned) — see

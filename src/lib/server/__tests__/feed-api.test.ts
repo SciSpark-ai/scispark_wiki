@@ -52,7 +52,16 @@ describe("feed + consolidation skill routes", () => {
       const strongProvider = new MockProvider([
         structured(ONE_QUERY_STRATEGY),
         structured({
-          items: [{ index: 0, whyThis: "strong results", whyYou: "matches your interests", whyNow: "just released" }],
+          items: [
+            {
+              index: 0,
+              whyThis: "strong results",
+              whyYou: "matches your interests",
+              whyNow: "just released",
+              tldr: "A sparse-attention method with strong empirical results.",
+              tags: ["sparse attention"],
+            },
+          ],
         }),
       ])
       const fastProvider = new MockProvider([

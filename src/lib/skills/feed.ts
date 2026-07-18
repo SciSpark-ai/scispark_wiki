@@ -239,6 +239,8 @@ export const RerankSchema = z.object({
         whyThis: z.string(),
         whyYou: z.string(),
         whyNow: z.string(),
+        tldr: z.string(),
+        tags: z.array(z.string()),
       }),
     )
     .max(12),
@@ -254,6 +256,8 @@ function buildRerankSystemPrompt(): string {
     "- whyThis: why this paper matters on its own merits.",
     "- whyYou: why it matches THIS researcher's profile, interests, or recent activity specifically.",
     "- whyNow: a timeliness hook — why it belongs in the feed today.",
+    "- tldr: one plain-language sentence saying what the paper IS (not why it matters to the reader).",
+    "- tags: 2 to 5 very short topical chips (1-3 words each), e.g. 'ear-EEG', 'deep learning', 'methods'.",
   ].join("\n")
 }
 
@@ -289,6 +293,12 @@ export interface FeedItem {
   whyThis: string
   whyYou: string
   whyNow: string
+  /** One-line plain-language summary of what the paper IS. Optional so a `FeedResult`
+   * loaded from a cache written before this field existed still type-checks (M11 cache
+   * back-compat pattern — see `FeedItemCacheSchema`). */
+  tldr?: string
+  /** 2-5 short topical chips. Optional for the same cache back-compat reason as `tldr`. */
+  tags?: string[]
 }
 
 export interface FeedResult {
@@ -457,6 +467,8 @@ async function rerankCandidates(
       whyThis: entry.whyThis,
       whyYou: entry.whyYou,
       whyNow: entry.whyNow,
+      tldr: entry.tldr,
+      tags: entry.tags,
     })
   }
 
@@ -580,6 +592,9 @@ const FeedItemCacheSchema = z.object({
   whyThis: z.string(),
   whyYou: z.string(),
   whyNow: z.string(),
+  // Optional: a cache written before tldr/tags existed still validates (back-compat).
+  tldr: z.string().optional(),
+  tags: z.array(z.string()).optional(),
 })
 
 const FeedResultCacheSchema = z.object({
