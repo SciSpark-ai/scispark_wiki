@@ -122,8 +122,15 @@ export function renderMarkdown(markdown: string): ReactNode {
         i++
       }
       i++ // consume closing fence (or end of input if unterminated)
+      // Block keys are computed BEFORE building any JSX. Never fold `key++`
+      // into a JSX expression here: under the automatic JSX runtime the
+      // element's `key` attribute is jsx()'s third ARGUMENT, evaluated
+      // after props/children — an increment inside children runs first and
+      // the element's key collides with the next block's (the "two
+      // children with the same key, b-4" bug, 2026-07-18).
+      const k = key++
       blocks.push(
-        <pre key={`b-${key++}`} className="bg-card-surface rounded-[6px] p-3 overflow-x-auto text-[13px] font-mono my-2">
+        <pre key={`b-${k}`} className="bg-card-surface rounded-[6px] p-3 overflow-x-auto text-[13px] font-mono my-2">
           <code>{codeLines.join("\n")}</code>
         </pre>,
       )
@@ -133,9 +140,10 @@ export function renderMarkdown(markdown: string): ReactNode {
     const heading = HEADING_LINE_RE.exec(line)
     if (heading) {
       const level = heading[1].length
+      const k = key++
       blocks.push(
-        <Heading key={`b-${key}`} level={level}>
-          {renderInline(heading[2], `h-${key++}`)}
+        <Heading key={`b-${k}`} level={level}>
+          {renderInline(heading[2], `h-${k}`)}
         </Heading>,
       )
       i++
@@ -153,18 +161,18 @@ export function renderMarkdown(markdown: string): ReactNode {
         i++
       }
       const listClass = `${ordered ? "list-decimal" : "list-disc"} pl-5 my-2 text-[14px] text-espresso tracking-body space-y-1`
+      const k = key++
       blocks.push(
         ordered ? (
-          <ol key={`b-${key}`} className={listClass}>
-            {items.map((it, idx) => <li key={idx}>{renderInline(it, `li-${key}-${idx}`)}</li>)}
+          <ol key={`b-${k}`} className={listClass}>
+            {items.map((it, idx) => <li key={idx}>{renderInline(it, `li-${k}-${idx}`)}</li>)}
           </ol>
         ) : (
-          <ul key={`b-${key}`} className={listClass}>
-            {items.map((it, idx) => <li key={idx}>{renderInline(it, `li-${key}-${idx}`)}</li>)}
+          <ul key={`b-${k}`} className={listClass}>
+            {items.map((it, idx) => <li key={idx}>{renderInline(it, `li-${k}-${idx}`)}</li>)}
           </ul>
         ),
       )
-      key++
       continue
     }
 
@@ -179,9 +187,10 @@ export function renderMarkdown(markdown: string): ReactNode {
       paraLines.push(lines[i])
       i++
     }
+    const k = key++
     blocks.push(
-      <p key={`b-${key}`} className="text-[14px] text-espresso tracking-body leading-[1.6] my-2">
-        {renderInline(paraLines.join(" "), `p-${key++}`)}
+      <p key={`b-${k}`} className="text-[14px] text-espresso tracking-body leading-[1.6] my-2">
+        {renderInline(paraLines.join(" "), `p-${k}`)}
       </p>,
     )
   }
