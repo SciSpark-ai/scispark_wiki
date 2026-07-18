@@ -1,10 +1,10 @@
 "use client"
 
-import { Suspense, useEffect, useState } from "react"
+import { Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { getOpenVault } from "@/lib/vault/get-vault"
-import { loadBundle } from "@/lib/vault/bundle"
+import { loadBundle, type Bundle } from "@/lib/vault/bundle"
 import { resolvePaperBySlug, extractAbstractFromBody } from "@/lib/papers/resolve"
 import { resolvePaperPageState, type PaperPageState } from "@/lib/papers/page-state"
 import { paperKey, type PaperRecord } from "@/lib/papers/types"
@@ -14,12 +14,17 @@ import { enrichRemote } from "@/lib/skills/enrich-client"
 import { loadFeed, type FeedItem } from "@/lib/skills/feed"
 import { logEvent } from "@/lib/events/log"
 import type { VaultStorage } from "@/lib/vault/storage"
+import { rangeToOffsets, plainTextOf } from "@/lib/reader/dom-offsets"
+import type { SurfaceSelection } from "@/components/reader/HtmlSurface"
+import AskableSurface from "@/components/reader/AskableSurface"
 import { PaperHeader } from "@/components/paper/PaperHeader"
 import { PaperActions, type DigestState, type EnrichState, type IngestState, type SaveState } from "@/components/paper/PaperActions"
 import { PaperDigestView } from "@/components/paper/PaperDigestView"
 import { PaperMeta } from "@/components/paper/PaperMeta"
+import { PaperSynthesis } from "@/components/paper/PaperSynthesis"
 import { RelatedInWiki, resolveRelatedPages, type RelatedPageLink } from "@/components/paper/RelatedInWiki"
 import { useCompanion } from "@/components/companion/useCompanion"
+import { Button } from "@/components/ui/Button"
 import { Card } from "@/components/ui/Card"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { LoadingState } from "@/components/ui/LoadingState"
@@ -32,6 +37,10 @@ type LoadState =
       storage: VaultStorage
       paper: PaperRecord
       pageState: PaperPageState
+      /** The loaded wiki bundle — kept on load state (rather than reloaded)
+       * so the ingested-state synthesis/backlinks render against the exact
+       * same snapshot `pageState`/`tldr`/`relatedPages` were derived from. */
+      bundle: Bundle
       /** True only once the paper page's own frontmatter has confirmed no
        * full text was acquired — false/unknown leaves "Read full text" enabled. */
       fullTextKnownFalse: boolean
@@ -80,6 +89,7 @@ async function loadReadyState(storage: VaultStorage, slug: string): Promise<Load
     storage,
     paper: paperWithAbstract,
     pageState,
+    bundle,
     fullTextKnownFalse,
     tldr,
     tags,
@@ -104,6 +114,67 @@ function PaperPageContent() {
   const [saveState, setSaveState] = useState<SaveState>({ status: "idle" })
   const [enrichState, setEnrichState] = useState<EnrichState>({ status: "idle" })
 
+  // Ask-anywhere (Task 11): unlike the reader, this page has no dedicated
+  // HtmlSurface/PdfSurface — its content is plain rendered React, not a
+  // dangerouslySetInnerHTML region. So selection tracking is reimplemented
+  // here at the same level HtmlSurface does it (rangeToOffsets/plainTextOf
+  // over a ref'd container), instead of via that component. `contentRef`
+  // wraps the ENTIRE content region (header/actions/meta/synthesis/digest —
+  // "select anywhere on the page" per the brief), and doubles as the text
+  // AskableSurface's `surfaceText` is measured against, so selection offsets
+  // and ask "surrounding text" offsets always agree.
+  const contentRef = useRef<HTMLDivElement | null>(null)
+  const [surfaceText, setSurfaceText] = useState("")
+  const [askOpen, setAskOpen] = useState(false)
+  // AskableSurface only hands back its (stable) onHtmlSelectionChange inside
+  // a render-prop callback invoked during render, not as a normal prop — so
+  // it's captured into a ref (assigned each render, read only from the
+  // selection handler below) rather than a state/effect-synced value.
+  const onSelectionChangeRef = useRef<(selection: SurfaceSelection | null) => void>(() => {})
+
+  const handleSelection = useCallback(() => {
+    const container = contentRef.current
+    if (!container) return
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      onSelectionChangeRef.current(null)
+      return
+    }
+    const range = selection.getRangeAt(0)
+    if (!container.contains(range.commonAncestorContainer)) return
+    const offsets = rangeToOffsets(container, range)
+    if (!offsets) {
+      onSelectionChangeRef.current(null)
+      return
+    }
+    const rect = range.getBoundingClientRect()
+    const text = plainTextOf(container)
+    // Refreshed on every completed selection (rather than via a separate
+    // content-watching effect — this page's content is driven by several
+    // independent state slices with no single dependency to key an effect
+    // off, unlike HtmlSurface's own `[sanitizedHtml]`-keyed one) — sufficient
+    // because AskableSurface only ever reads `surfaceText` to compute
+    // "surrounding text" around a selection's own offsets, and a selection
+    // must exist (this same branch) before any ask can fire.
+    setSurfaceText(text)
+    onSelectionChangeRef.current({
+      start: offsets.start,
+      end: offsets.end,
+      text: text.slice(offsets.start, offsets.end),
+      rectTop: rect.top,
+      rectLeft: rect.left,
+    })
+    setAskOpen(true)
+  }, [])
+
+  // Mirrors HtmlSurface's own listener: a selection collapsed from outside
+  // this page's mouseup/keyup handlers (e.g. SelectionBubble's outside-click
+  // dismissal) still needs to clear pendingSelection.
+  useEffect(() => {
+    document.addEventListener("selectionchange", handleSelection)
+    return () => document.removeEventListener("selectionchange", handleSelection)
+  }, [handleSelection])
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -116,6 +187,13 @@ function PaperPageContent() {
       setIngestState({ phase: "idle" })
       setSaveState({ status: "idle" })
       setEnrichState({ status: "idle" })
+      // A navigation between two /paper/[key] routes reuses this same
+      // component instance (no remount) — without this, an open Ask drawer
+      // (and the selection/answer it's showing) would keep displaying the
+      // PREVIOUS paper's content after switching papers.
+      setAskOpen(false)
+      setSurfaceText("")
+      window.getSelection()?.removeAllRanges()
       const storage = await getOpenVault()
       const next = await loadReadyState(storage, slug)
       if (cancelled) return
@@ -247,57 +325,112 @@ function PaperPageContent() {
     )
   }
 
+  // The paper's own wiki page id (undefined during discovery, before any
+  // page exists) — threaded into AskableSurface as `sourcePageId` for
+  // capture-idea's `related[]` link, and used to look up the ingested body
+  // below. `wiki/papers/<slug>` is the same direct, canonical lookup
+  // `resolvePaperPageState` already uses (see that module's doc comment) —
+  // simpler than ReaderView's `findSourcePageId` bundle scan, which exists
+  // there only because the reader is keyed by `paperKey`, not by slug; this
+  // route already IS keyed by slug, so this page has the exact id for free.
+  const page = load.bundle.pages.get(`wiki/papers/${slug}`)
+  const sourcePageId = page?.id
+
   return (
-    <div className="mx-auto max-w-3xl p-7">
-      <Link href="/papers" className="mb-4 inline-block text-[13px] text-muted-text hover:text-espresso transition-colors">
-        ← Back to papers
-      </Link>
+    // key={slug}: forces a fresh AskableSurface (and its internal
+    // askState/askTarget/captureState) on every paper-to-paper navigation —
+    // this page reuses one component instance across route param changes
+    // (see the mount effect's manual resets above for this page's OWN
+    // state), so without a key change a stale answer/capture card from the
+    // previous paper could otherwise still be showing.
+    <AskableSurface key={slug} storage={load.storage} paper={load.paper} sourcePageId={sourcePageId} surfaceText={surfaceText}>
+      {({ onHtmlSelectionChange, askPanel }) => {
+        // See the contentRef/handleSelection setup above: this render-prop
+        // is the only place AskableSurface's (stable) selection callback is
+        // available, so the latest reference is captured into a ref here
+        // rather than threaded through as a prop.
+        onSelectionChangeRef.current = onHtmlSelectionChange
+        return (
+          <>
+            <div ref={contentRef} onMouseUp={handleSelection} onKeyUp={handleSelection} className="mx-auto max-w-3xl p-7">
+              <Link
+                href="/papers"
+                className="mb-4 inline-block text-[13px] text-muted-text hover:text-espresso transition-colors"
+              >
+                ← Back to papers
+              </Link>
 
-      <PaperHeader paper={load.paper} />
+              <PaperHeader paper={load.paper} />
 
-      <PaperActions
-        pageState={load.pageState}
-        fullTextKnownFalse={load.fullTextKnownFalse}
-        saveState={saveState}
-        onSave={handleSave}
-        enrichState={enrichState}
-        onEnrich={handleEnrich}
-        digestState={digestState}
-        onGenerateDigest={handleGenerateDigest}
-        ingestState={ingestState}
-        onIngest={handleIngest}
-        onUndo={handleUndo}
-        onReadFullText={handleReadFullText}
-      />
+              <PaperActions
+                pageState={load.pageState}
+                fullTextKnownFalse={load.fullTextKnownFalse}
+                saveState={saveState}
+                onSave={handleSave}
+                enrichState={enrichState}
+                onEnrich={handleEnrich}
+                digestState={digestState}
+                onGenerateDigest={handleGenerateDigest}
+                ingestState={ingestState}
+                onIngest={handleIngest}
+                onUndo={handleUndo}
+                onReadFullText={handleReadFullText}
+              />
 
-      {load.pageState.state === "saved" && (
-        <>
-          <PaperMeta tldr={load.tldr} tags={load.tags} />
-          <RelatedInWiki related={load.relatedPages} />
-          {load.feedItem && (
-            <Card className="mt-4 p-5">
-              <div className="mb-2 text-[11px] uppercase tracking-wide text-muted-text">Why this is in your feed</div>
-              <div className="space-y-2 text-[14px] leading-[1.6] text-espresso tracking-body">
-                <p>
-                  <span className="font-medium">Why this: </span>
-                  {load.feedItem.whyThis}
-                </p>
-                <p>
-                  <span className="font-medium">Why you: </span>
-                  {load.feedItem.whyYou}
-                </p>
-                <p>
-                  <span className="font-medium">Why now: </span>
-                  {load.feedItem.whyNow}
-                </p>
+              {load.pageState.state === "saved" && (
+                <>
+                  <PaperMeta tldr={load.tldr} tags={load.tags} />
+                  <RelatedInWiki related={load.relatedPages} />
+                  {load.feedItem && (
+                    <Card className="mt-4 p-5">
+                      <div className="mb-2 text-[11px] uppercase tracking-wide text-muted-text">Why this is in your feed</div>
+                      <div className="space-y-2 text-[14px] leading-[1.6] text-espresso tracking-body">
+                        <p>
+                          <span className="font-medium">Why this: </span>
+                          {load.feedItem.whyThis}
+                        </p>
+                        <p>
+                          <span className="font-medium">Why you: </span>
+                          {load.feedItem.whyYou}
+                        </p>
+                        <p>
+                          <span className="font-medium">Why now: </span>
+                          {load.feedItem.whyNow}
+                        </p>
+                      </div>
+                    </Card>
+                  )}
+                </>
+              )}
+
+              {load.pageState.state === "ingested" && page && <PaperSynthesis bundle={load.bundle} page={page} />}
+
+              {digestState.status === "done" && <PaperDigestView digest={digestState.digest} fromCache={digestState.fromCache} />}
+            </div>
+
+            {askOpen && (
+              // A floating drawer rather than ReaderView's fixed sidebar —
+              // this page has no two-column layout to host one. Positioned
+              // clear of the companion mascot (fixed bottom-5 right-5).
+              <div className="fixed top-24 right-6 z-40 h-[65vh] w-[360px] overflow-hidden rounded-card border border-border-warm shadow-lg">
+                <div className="relative h-full">
+                  <Button
+                    variant="quiet"
+                    size="sm"
+                    onClick={() => setAskOpen(false)}
+                    aria-label="Close ask panel"
+                    className="absolute top-2 right-2 z-10"
+                  >
+                    Close
+                  </Button>
+                  {askPanel}
+                </div>
               </div>
-            </Card>
-          )}
-        </>
-      )}
-
-      {digestState.status === "done" && <PaperDigestView digest={digestState.digest} fromCache={digestState.fromCache} />}
-    </div>
+            )}
+          </>
+        )
+      }}
+    </AskableSurface>
   )
 }
 
