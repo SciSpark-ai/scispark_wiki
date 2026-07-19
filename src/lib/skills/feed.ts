@@ -84,7 +84,15 @@ export const feedStrategySkill: SkillDefinition<{ userContextText: string }, Fee
 // already in the vault or that the user has already dismissed/saved.
 // ---------------------------------------------------------------------------
 
-export type SearchFn = (source: string, query: string, limit: number) => Promise<PaperRecord[]>
+export interface SearchOpts {
+  /** Inclusive lower publication/submission date bound (YYYY-MM-DD). SP2.1
+   * feed freshness: the feed constrains retrieval to a recent window instead
+   * of whatever the sources return. Optional and additive — implementations
+   * that ignore it (or callers that omit it) keep their prior behavior. */
+  fromDate?: string
+}
+
+export type SearchFn = (source: string, query: string, limit: number, opts?: SearchOpts) => Promise<PaperRecord[]>
 
 /**
  * Reconstructs a `paperKey`-compatible dedupe key from a vault paper page's frontmatter,
@@ -128,7 +136,7 @@ export async function retrieveCandidates(
   storage: VaultStorage,
   strategy: FeedStrategy,
   searchFn: SearchFn,
-  opts: { perQueryLimit?: number; cap?: number } = {},
+  opts: { perQueryLimit?: number; cap?: number; fromDate?: string } = {},
 ): Promise<PaperRecord[]> {
   const perQueryLimit = opts.perQueryLimit ?? 25
   const cap = opts.cap ?? 100
@@ -136,7 +144,7 @@ export async function retrieveCandidates(
   const perQueryResults = await Promise.all(
     strategy.queries.map(async (q) => {
       try {
-        return await searchFn(q.source, q.query, perQueryLimit)
+        return await searchFn(q.source, q.query, perQueryLimit, { fromDate: opts.fromDate })
       } catch {
         return []
       }
@@ -231,6 +239,33 @@ export const feedRankSkill: SkillDefinition<{ compactContext: string; candidates
 // explanations.
 // ---------------------------------------------------------------------------
 
+/**
+ * Fixed why-badge vocabulary (SP2.1, Tong 2026-07-19): the single strongest
+ * reason a paper is in the feed, rendered as the card's colored header band
+ * (see `RealFeedCard`). Kept as a const tuple so the prompt, the normalizer,
+ * and the card's label/color maps all derive from one list.
+ */
+export const FEED_BADGE_VALUES = [
+  "high-impact",
+  "breakthrough",
+  "new-method",
+  "trending",
+  "new-evidence",
+  "review",
+  "application",
+  "dataset",
+] as const
+
+export type FeedBadge = (typeof FEED_BADGE_VALUES)[number]
+
+/** Maps a model- or cache-supplied badge string onto the fixed vocabulary,
+ * `undefined` for anything off-vocabulary — schema-loose + validate-in-code,
+ * same pattern as the index validation elsewhere in this pipeline (a stray
+ * badge must degrade one card's band, never fail the whole re-rank). */
+export function normalizeFeedBadge(badge: string | undefined): FeedBadge | undefined {
+  return (FEED_BADGE_VALUES as readonly string[]).includes(badge ?? "") ? (badge as FeedBadge) : undefined
+}
+
 export const RerankSchema = z.object({
   items: z
     .array(
@@ -241,6 +276,9 @@ export const RerankSchema = z.object({
         whyNow: z.string(),
         tldr: z.string(),
         tags: z.array(z.string()),
+        // Loose string (not z.enum) so an off-vocabulary badge degrades via
+        // normalizeFeedBadge instead of failing the whole structured call.
+        badge: z.string().optional(),
       }),
     )
     .max(12),
@@ -258,6 +296,7 @@ function buildRerankSystemPrompt(): string {
     "- whyNow: a timeliness hook — why it belongs in the feed today.",
     "- tldr: one plain-language sentence saying what the paper IS (not why it matters to the reader).",
     "- tags: 2 to 5 very short topical chips (1-3 words each), e.g. 'ear-EEG', 'deep learning', 'methods'.",
+    `- badge: exactly one of ${FEED_BADGE_VALUES.map((b) => `'${b}'`).join(" | ")} — the single strongest reason this paper deserves attention right now.`,
   ].join("\n")
 }
 
@@ -299,6 +338,9 @@ export interface FeedItem {
   tldr?: string
   /** 2-5 short topical chips. Optional for the same cache back-compat reason as `tldr`. */
   tags?: string[]
+  /** SP2.1 why-badge (fixed vocabulary — the card's colored header band).
+   * Optional for the same cache back-compat reason as `tldr`. */
+  badge?: FeedBadge
 }
 
 export interface FeedResult {
@@ -314,6 +356,15 @@ export interface FeedResult {
 export type FeedStage = "strategy" | "retrieval" | "rank" | "rerank"
 
 export const FEED_CACHE_PATH = ".scispark/feed/latest.json"
+
+/** SP2.1 feed freshness (Tong, 2026-07-19: "the feed should be what happened
+ * in the last two weeks"): retrieval is date-windowed to this many days. */
+export const FEED_FRESHNESS_DAYS = 14
+/** If the windowed pass retrieves fewer than this many candidates (niche
+ * fields can be quiet for two weeks), an unwindowed pass tops the pool up —
+ * fresh papers always rank first in retrieval order, and a thin week never
+ * turns into a failed refresh. */
+const FEED_FRESHNESS_MIN_CANDIDATES = 10
 
 const RANK_BATCH_SIZE = 25
 const RERANK_POOL_SIZE = 20
@@ -469,6 +520,7 @@ async function rerankCandidates(
       whyNow: entry.whyNow,
       tldr: entry.tldr,
       tags: entry.tags,
+      badge: normalizeFeedBadge(entry.badge),
     })
   }
 
@@ -521,7 +573,23 @@ export async function runFeed(
   let costUsd = strategyRun.costUsd
 
   opts.onStage?.("retrieval")
-  const candidates = await retrieveCandidates(storage, strategy, opts.searchFn)
+  // Freshness-first retrieval: a date-windowed pass (last FEED_FRESHNESS_DAYS
+  // days), topped up by an unwindowed pass only when the window came back
+  // thin. Windowed results keep first-seen order priority, so the freshest
+  // candidates always lead the pool the rank stage sees.
+  const fromDate = new Date(now().getTime() - FEED_FRESHNESS_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const candidates = await retrieveCandidates(storage, strategy, opts.searchFn, { fromDate })
+  if (candidates.length < FEED_FRESHNESS_MIN_CANDIDATES) {
+    const unwindowed = await retrieveCandidates(storage, strategy, opts.searchFn)
+    const seen = new Set(candidates.map((c) => paperKey(c)))
+    for (const record of unwindowed) {
+      if (candidates.length >= 100) break
+      const key = paperKey(record)
+      if (seen.has(key)) continue
+      seen.add(key)
+      candidates.push(record)
+    }
+  }
   if (candidates.length === 0) {
     throw new Error("no candidates retrieved — try adjusting profile.md or interests.md")
   }
@@ -592,9 +660,10 @@ const FeedItemCacheSchema = z.object({
   whyThis: z.string(),
   whyYou: z.string(),
   whyNow: z.string(),
-  // Optional: a cache written before tldr/tags existed still validates (back-compat).
+  // Optional: a cache written before tldr/tags/badge existed still validates (back-compat).
   tldr: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  badge: z.string().optional(),
 })
 
 const FeedResultCacheSchema = z.object({
@@ -622,5 +691,12 @@ export async function loadFeed(storage: VaultStorage): Promise<FeedResult | null
   }
 
   const result = FeedResultCacheSchema.safeParse(parsedJson)
-  return result.success ? result.data : null
+  if (!result.success) return null
+  // The cache schema accepts any badge string (see FeedItemCacheSchema);
+  // re-normalize onto the fixed vocabulary here so consumers only ever see
+  // a real FeedBadge (or none).
+  return {
+    ...result.data,
+    items: result.data.items.map((item) => ({ ...item, badge: normalizeFeedBadge(item.badge) })),
+  }
 }

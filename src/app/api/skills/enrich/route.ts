@@ -1,4 +1,5 @@
 import { jsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
+import type { VaultStorage } from "@/lib/vault/storage"
 import { loadSettings } from "@/lib/llm/settings"
 import { runSkill } from "@/lib/skills/runner"
 import { enrichSkill } from "@/lib/skills/enrich"
@@ -33,8 +34,26 @@ export interface EnrichRouteResult {
  * `{applied: false, costUsd}` rather than throwing — enrich is a background
  * nicety that must never break the save flow it rides along with.
  * `setSkillTestOverrides` injects a MockProvider in tests.
+ *
+ * **In-flight dedup**: concurrent enrich requests for the same slug share
+ * one skill run (module-level map, mirroring `generateDigest`'s in-flight
+ * pattern). Enrich fires from several places — savePaper's background call
+ * on a feed-card save, and the paper page's automatic run when it shows a
+ * saved paper without a TL;DR — and a user can hit both within seconds
+ * (save on the feed, immediately open the paper), which would otherwise
+ * charge the skill twice and race two changesets onto the same page.
  */
-export const POST = jsonSkillRoute<{ slug: string }, EnrichRouteResult>(async ({ slug }, vault) => {
+const inFlightBySlug = new Map<string, Promise<EnrichRouteResult>>()
+
+export const POST = jsonSkillRoute<{ slug: string }, EnrichRouteResult>(({ slug }, vault) => {
+  const existing = inFlightBySlug.get(slug)
+  if (existing) return existing
+  const run = runEnrichForSlug(slug, vault).finally(() => inFlightBySlug.delete(slug))
+  inFlightBySlug.set(slug, run)
+  return run
+})
+
+async function runEnrichForSlug(slug: string, vault: VaultStorage): Promise<EnrichRouteResult> {
   const overrides = getSkillTestOverrides()
   const bundle = await loadBundle(vault)
   const paperPage = findPaperPage(bundle, slug)
@@ -85,4 +104,4 @@ export const POST = jsonSkillRoute<{ slug: string }, EnrichRouteResult>(async ({
   await writeIndex(vault, await loadBundle(vault))
 
   return { applied: true, costUsd: run.costUsd, tldr: run.output.tldr, tags: run.output.tags }
-})
+}

@@ -15,7 +15,6 @@ const BASE_PROPS: PaperActionsProps = {
   saveState: { status: "idle" },
   onSave: () => {},
   enrichState: { status: "idle" },
-  onEnrich: () => {},
   digestState: { status: "idle" },
   onGenerateDigest: () => {},
   ingestState: { phase: "idle" },

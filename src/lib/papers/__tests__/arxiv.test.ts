@@ -202,6 +202,38 @@ describe("searchArxiv", () => {
     expect(url.searchParams.get("max_results")).toBe("50")
   })
 
+  it("ANDs a submittedDate range onto a plain query when fromDate is set (SP2.1 feed freshness)", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    await searchArxiv({ query: "quantum computing", fromDate: "2026-07-05" }, { fetchFn })
+
+    const url = new URL(((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string).toString())
+    expect(url.searchParams.get("search_query")).toBe(
+      "all:quantum AND all:computing AND submittedDate:[202607050000 TO 209912312359]",
+    )
+  })
+
+  it("parenthesizes a structured query before ANDing the submittedDate range (OR grouping survives)", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    await searchArxiv({ query: "speech separation OR source separation", fromDate: "2026-07-05" }, { fetchFn })
+
+    const url = new URL(((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string).toString())
+    expect(url.searchParams.get("search_query")).toBe(
+      "(speech separation OR source separation) AND submittedDate:[202607050000 TO 209912312359]",
+    )
+  })
+
+  it("windows browse mode (empty query) to the submittedDate range alone when fromDate is set", async () => {
+    const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+
+    await searchArxiv({ query: "  ", fromDate: "2026-07-05" }, { fetchFn })
+
+    const url = new URL(((fetchFn as ReturnType<typeof vi.fn>).mock.calls[0][0] as string).toString())
+    expect(url.searchParams.get("search_query")).toBe("submittedDate:[202607050000 TO 209912312359]")
+    expect(url.searchParams.get("sortBy")).toBe("submittedDate")
+  })
+
   it("AND-joins every term of a multi-word topical query (regression: relevance flood)", async () => {
     const fetchFn = fakeFetch(`<?xml version='1.0'?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
 
