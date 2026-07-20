@@ -60,12 +60,42 @@ export interface HeartbeatDeps {
 }
 
 const LINT_GATE_MS = 24 * 60 * 60 * 1000
-// readLedger defaults to the 50 most recent records; a busy ledger (trending +
-// consolidation + ingest + enrich + spark all sharing the same file) could
-// push the last lint-deterministic record out of a 50-record window well
-// before 24h of activity has passed. 200 gives real headroom without reading
-// the whole file.
+// readLedger defaults to the 50 most recent records. This scans a larger
+// window (200) instead, but that number does NOT reliably cover 24h on an
+// active vault: the heartbeat alone appends up to 3 records every 15
+// minutes (~192/day at the default interval), before counting ingest/enrich/
+// spark/manual-lint records sharing the same file. On a genuinely busy
+// ledger, 200 can still fall short of 24h of activity, so this gate can fire
+// EARLY (running lint sooner than the "real" 24h target) rather than the
+// converse (it can never run it LATE due to the scan window, only miss
+// seeing an even-older last run and treat it as "absent"). That's an
+// acceptable failure mode: lint is free (no LLM call) and idempotent, so an
+// occasional early run just means slightly more frequent free lint passes,
+// never a correctness or cost problem. If this ever needs to be exact,
+// the fix is a dedicated small marker file (mirroring
+// src/lib/skills/consolidation.ts's CONSOLIDATION_MARKER) instead of scanning
+// the shared ledger.
 const LINT_LEDGER_SCAN_LIMIT = 200
+
+// In-flight guard (reviewer finding, post-initial-implementation): a tick can
+// run long — the LLM call timeout is 120s, arXiv/OpenAlex retries with
+// backoff, and a multi-field trending survey chains several of those. A slow
+// tick can still be running when the NEXT 15-min interval firing would
+// otherwise start a second, overlapping tick; both would read "due" state
+// (cadence/backoff/event-count gates) before either had written results,
+// causing a real double-spend of LLM cost. This mirrors the double-spend risk
+// Deep Spark already guards against (src/lib/spark/deep.ts's serialized,
+// no-double-spend run). The guard SKIPS an overlapping call outright rather
+// than queuing it — a fast-following tick has nothing new to do anyway, since
+// it would just re-evaluate the same gates the in-progress tick is already
+// evaluating. A plain module-scope variable (not globalThis) is sufficient:
+// unlike the stop-function singleton below — which must survive module
+// re-evaluation under dev HMR so two `startHeartbeat()` calls from different
+// module instances still share one interval — this guard only ever needs to
+// coordinate calls within the SAME module instance that owns the actual
+// running interval (the globalThis singleton already ensures there is only
+// ever one such instance's interval actually firing at a time).
+let tickInFlight: Promise<void> | null = null
 
 /**
  * One heartbeat tick: runs the trending auto-refresh, memory-consolidation,
@@ -76,8 +106,23 @@ const LINT_LEDGER_SCAN_LIMIT = 200
  * `withLedger` itself rethrows after recording a "failed" status on a job
  * throw, so the per-job catch here exists specifically to swallow that
  * rethrow — without it, job 2 throwing would stop job 3 from ever running.
+ *
+ * Guarded against overlap: if a previous call's work is still in flight, this
+ * returns immediately WITHOUT running any job (see `tickInFlight` above) —
+ * skip, not queue.
  */
 export async function runHeartbeatTick(deps: HeartbeatDeps): Promise<void> {
+  if (tickInFlight) return
+  const run = runHeartbeatTickInner(deps)
+  tickInFlight = run
+  try {
+    await run
+  } finally {
+    tickInFlight = null
+  }
+}
+
+async function runHeartbeatTickInner(deps: HeartbeatDeps): Promise<void> {
   const now = deps.now ?? (() => new Date())
   const jobs: Required<HeartbeatJobOverrides> = {
     maybeAutoRefreshTrending: deps.jobs?.maybeAutoRefreshTrending ?? maybeAutoRefreshTrending,

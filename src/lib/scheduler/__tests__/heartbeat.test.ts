@@ -6,7 +6,7 @@ import { REFRESH_FAILURE_PATH, type maybeAutoRefreshTrending } from "../../trend
 import type { runConsolidation } from "../../skills/consolidation"
 import type { runLintDeterministic } from "../../lint/run"
 import type { LintFinding } from "../../lint/types"
-import { runHeartbeatTick, startHeartbeat } from "../heartbeat"
+import { runHeartbeatTick, startHeartbeat, type HeartbeatDeps } from "../heartbeat"
 
 const fakeSearchFn: SearchFn = async () => []
 
@@ -182,6 +182,72 @@ describe("runHeartbeatTick", () => {
     const trendingRecord = records.find((r) => r.orchestrator === "trending-refresh")
     expect(trendingRecord?.status).toBe("failed")
     expect(trendingRecord?.reason).toBe("arxiv 503")
+  })
+
+  // Reviewer finding: a long-running tick (real-world causes: the 120s LLM
+  // timeout, arXiv/OpenAlex retry backoff, a multi-field trending survey)
+  // could still be in flight when the next 15-min interval fires, starting a
+  // second, overlapping tick that re-evaluates the same due-ness gates before
+  // the first tick has written any results — a real double-spend risk. This
+  // proves the in-flight guard: a trending job that blocks on a controllable
+  // promise, fired twice without awaiting the first, must have its SECOND
+  // call return immediately without invoking any of the three jobs at all —
+  // not just "not invoke trending again", but a full no-op tick.
+  it("in-flight guard: an overlapping call is skipped entirely (no job invoked), not queued, while one tick is already running", async () => {
+    const storage = new MemoryVaultStorage()
+    let releaseTrending: (() => void) | undefined
+    const blocking = new Promise<void>((resolve) => {
+      releaseTrending = resolve
+    })
+
+    const trendingFake = vi.fn(async () => {
+      await blocking
+      return "fresh" as const
+    })
+    const consolidationFake = vi.fn(async () => ({ status: "skipped" as const }))
+    const lintFake = vi.fn(async () => ({ findings: [] as LintFinding[], reviewIds: [] as string[] }))
+
+    const deps: HeartbeatDeps = {
+      storage,
+      searchFn: fakeSearchFn,
+      now: () => FIXED_NOW,
+      jobs: {
+        maybeAutoRefreshTrending: trendingFake as unknown as typeof maybeAutoRefreshTrending,
+        runConsolidation: consolidationFake as unknown as typeof runConsolidation,
+        runLintDeterministic: lintFake as unknown as typeof runLintDeterministic,
+      },
+    }
+
+    const firstTick = runHeartbeatTick(deps)
+    const secondTick = runHeartbeatTick(deps)
+
+    // The second call resolves via the guard's early return — before the
+    // first tick's own call chain (withLedger -> loadSettings -> ... ->
+    // trendingFake) has necessarily reached trendingFake yet, since each of
+    // those is its own await hop. So this doesn't yet prove anything about
+    // trendingFake's call count — only that the second call didn't hang
+    // waiting on the first tick's blocked job.
+    await secondTick
+
+    // Now wait for the first tick's chain to actually reach trendingFake (it
+    // will, and then block on `blocking`) and confirm it was invoked exactly
+    // ONCE — if the second call's guard had failed and let a second tick
+    // through, this would be 2.
+    await vi.waitFor(() => expect(trendingFake).toHaveBeenCalledTimes(1))
+    expect(consolidationFake).not.toHaveBeenCalled()
+    expect(lintFake).not.toHaveBeenCalled()
+
+    // Release the first tick's blocked job and let it run to completion.
+    releaseTrending?.()
+    await firstTick
+
+    expect(trendingFake).toHaveBeenCalledTimes(1)
+    expect(consolidationFake).toHaveBeenCalledTimes(1)
+    expect(lintFake).toHaveBeenCalledTimes(1)
+
+    // Exactly one set of ledger records — the overlapping call left no trace.
+    const records = await readLedger(storage)
+    expect(records).toHaveLength(3)
   })
 })
 
