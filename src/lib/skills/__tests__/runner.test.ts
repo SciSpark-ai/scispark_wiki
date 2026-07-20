@@ -145,6 +145,128 @@ describe("runSkill", () => {
     expect(JSON.parse(persisted as string).status).toBe("budget_exceeded")
   })
 
+  it("projective budget check: ctx.llm blocks a call whose PROJECTED cost alone crosses budget, though spent-so-far is $0 (previously this would have been allowed reactively)", async () => {
+    const storage = new MemoryVaultStorage()
+    // strong tier resolves to claude-opus-4-8 ($25/M out); default maxTokens 1024
+    // projects to 1024/1e6 * 25 = $0.0256 for this call alone.
+    const settings = settingsWithKeys({ dailyBudgetUsd: 0.02 })
+    const provider = new MockProvider([result({})])
+
+    const skill = defineSkill<void, string>({
+      name: "projective-block-skill",
+      version: "1.0.0",
+      async run(ctx) {
+        const r = await ctx.llm("strong", { messages: [{ role: "user", content: "hi" }] })
+        return r.text
+      },
+    })
+
+    const run = await runSkill({
+      skill,
+      input: undefined,
+      storage,
+      settings,
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+
+    expect(run.status).toBe("budget_exceeded")
+    // blocked BEFORE the provider was ever called — no spend actually happened
+    expect(provider.calls).toHaveLength(0)
+    const meter = new Meter(storage, NOW)
+    expect(await meter.spentTodayUsd()).toBe(0)
+  })
+
+  it("projective budget check: ctx.llm allows a call whose projected cost fits within budget", async () => {
+    const storage = new MemoryVaultStorage()
+    // Same shape as the blocking test above, but with enough headroom that the
+    // $0.0256 projection still fits.
+    const settings = settingsWithKeys({ dailyBudgetUsd: 0.05 })
+    const provider = new MockProvider([result({ model: "claude-opus-4-8" })])
+
+    const skill = defineSkill<void, string>({
+      name: "projective-allow-skill",
+      version: "1.0.0",
+      async run(ctx) {
+        const r = await ctx.llm("strong", { messages: [{ role: "user", content: "hi" }] })
+        return r.text
+      },
+    })
+
+    const run = await runSkill({
+      skill,
+      input: undefined,
+      storage,
+      settings,
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+
+    expect(run.status).toBe("ok")
+    expect(provider.calls).toHaveLength(1)
+  })
+
+  it("projective budget check: ctx.llmStructured blocks a call whose projected cost alone crosses budget", async () => {
+    const storage = new MemoryVaultStorage()
+    const settings = settingsWithKeys({ dailyBudgetUsd: 0.02 })
+    const provider = new MockProvider([result({ text: JSON.stringify({ x: 1 }) })])
+    const schema = z.object({ x: z.number() })
+
+    const skill = defineSkill<void, { x: number }>({
+      name: "projective-structured-block-skill",
+      version: "1.0.0",
+      async run(ctx) {
+        return ctx.llmStructured("strong", { messages: [{ role: "user", content: "hi" }] }, schema)
+      },
+    })
+
+    const run = await runSkill({
+      skill,
+      input: undefined,
+      storage,
+      settings,
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+
+    expect(run.status).toBe("budget_exceeded")
+    expect(provider.calls).toHaveLength(0)
+  })
+
+  it("projective budget check: an unpriced/unknown model's null estimate is treated as 0, preserving today's reactive-only behavior (call is allowed pre-call)", async () => {
+    const storage = new MemoryVaultStorage()
+    const settings = settingsWithKeys({
+      dailyBudgetUsd: 0.001,
+      tierModels: { fast: { provider: "anthropic", model: "mystery-model" }, strong: DEFAULT_SETTINGS.tierModels.strong },
+    })
+    const provider = new MockProvider([result({ model: "mystery-model" })])
+
+    const skill = defineSkill<void, string>({
+      name: "unpriced-model-skill",
+      version: "1.0.0",
+      async run(ctx) {
+        const r = await ctx.llm("fast", { messages: [{ role: "user", content: "hi" }] })
+        return r.text
+      },
+    })
+
+    const run = await runSkill({
+      skill,
+      input: undefined,
+      storage,
+      settings,
+      providerOverride: { fast: provider },
+      now: NOW,
+    })
+
+    // A priced model at this tiny $0.001 budget would have been blocked by the
+    // projection (default 1024 output tokens prices well over that on any known
+    // model) — but an unpriced model's null projection passes 0 into checkBudget,
+    // so the call still goes through, same as before this task.
+    expect(run.status).toBe("ok")
+    expect(provider.calls).toHaveLength(1)
+  })
+
   it("provider throws a non-retryable LLMAuthError: status error, error message captured, usage from prior successful call preserved", async () => {
     const storage = new MemoryVaultStorage()
     const provider = new MockProvider([
