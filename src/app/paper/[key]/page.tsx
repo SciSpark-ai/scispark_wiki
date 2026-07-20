@@ -24,6 +24,7 @@ import { PaperMeta } from "@/components/paper/PaperMeta"
 import { PaperSynthesis } from "@/components/paper/PaperSynthesis"
 import { RelatedInWiki, resolveRelatedPages, type RelatedPageLink } from "@/components/paper/RelatedInWiki"
 import { useCompanion } from "@/components/companion/useCompanion"
+import { BackLink } from "@/components/ui/BackLink"
 import { Button } from "@/components/ui/Button"
 import { Card } from "@/components/ui/Card"
 import { EmptyState } from "@/components/ui/EmptyState"
@@ -355,8 +356,10 @@ function PaperPageContent() {
           title="Paper not found"
           hint="It isn't in your feed cache or knowledge base yet — search for it on the Papers page."
           action={
+            // A forward action, not a back one — the hint tells the user to
+            // go search for this paper, so it must not wear a "← Back" label.
             <Link href="/papers" className="text-[13px] text-orange hover:text-orange-light">
-              ← Back to papers
+              Search papers →
             </Link>
           }
         />
@@ -391,12 +394,7 @@ function PaperPageContent() {
         return (
           <>
             <div ref={contentRef} onMouseUp={handleSelection} onKeyUp={handleSelection} className="mx-auto max-w-3xl p-7">
-              <Link
-                href="/papers"
-                className="mb-4 inline-block text-[13px] text-muted-text hover:text-espresso transition-colors"
-              >
-                ← Back to papers
-              </Link>
+              <BackLink className="mb-4" />
 
               <PaperHeader paper={load.paper} />
 

@@ -8,6 +8,7 @@ import HighlightLayer from "./HighlightLayer"
 import AskableSurface from "./AskableSurface"
 import type { ReaderContent } from "@/lib/reader/load"
 import { paperKey, type PaperRecord } from "@/lib/papers/types"
+import { paperSlug } from "@/lib/wiki/authoring"
 import { displayTitle } from "@/lib/papers/title"
 import type { VaultStorage } from "@/lib/vault/storage"
 import type { Highlight } from "@/lib/highlights/types"
@@ -171,11 +172,14 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
           {paper.abstract && (
             <div className="mt-3 text-[13px]/[19px] text-espresso whitespace-pre-wrap">{paper.abstract}</div>
           )}
+          {/* SP2 moved the digest onto the paper page and slimmed /papers to
+              search-only, so the old `/papers?paperKey=` target no longer
+              renders a digest at all — link to the paper page itself. */}
           <Link
-            href={`/papers?paperKey=${encodeURIComponent(key)}`}
+            href={`/paper/${paperSlug(paper)}`}
             className="mt-3 inline-block text-[13px] text-orange hover:text-orange-light"
           >
-            Back to digest
+            Back to paper
           </Link>
         </div>
       </div>
