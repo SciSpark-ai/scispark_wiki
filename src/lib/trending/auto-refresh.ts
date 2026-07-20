@@ -128,7 +128,16 @@ export async function maybeAutoRefreshTrending(
       consecutiveFailures: (marker?.consecutiveFailures ?? 0) + 1,
       lastError: err instanceof Error ? err.message : String(err),
     }
-    await storage.write(REFRESH_FAILURE_PATH, JSON.stringify(failureMarker, null, 2))
+    try {
+      await storage.write(REFRESH_FAILURE_PATH, JSON.stringify(failureMarker, null, 2))
+    } catch (writeErr) {
+      // Tolerate: a storage backend failing the dashboard write is plausible
+      // to also fail this write (e.g. a full disk) — the marker is
+      // best-effort bookkeeping, never allowed to turn a handled failure
+      // into an unhandled rejection. The status "failed" is returned either
+      // way; the next stale-triggered call simply won't see a backoff marker.
+      console.warn("maybeAutoRefreshTrending: failed to write failure marker", writeErr)
+    }
     return "failed"
   }
 }

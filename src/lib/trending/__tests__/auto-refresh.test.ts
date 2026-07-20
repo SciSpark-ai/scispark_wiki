@@ -19,6 +19,20 @@ class ThrowingDashboardWriteStorage extends MemoryVaultStorage {
   }
 }
 
+/** Throws writing EITHER the dashboard cache path or the failure-marker path
+ * — simulates a storage backend so broken (e.g. genuinely out of disk) that
+ * even the best-effort marker bookkeeping fails after the orchestrator's own
+ * write already failed. Settings writes (test setup via saveTrendingSettings)
+ * still succeed, so only the two paths under test are affected. Used to
+ * prove maybeAutoRefreshTrending's failure branch never lets that second
+ * throw escape as an unhandled rejection. */
+class ThrowingDashboardAndMarkerWriteStorage extends MemoryVaultStorage {
+  async write(path: string, content: string): Promise<void> {
+    if (path === DASHBOARD_CACHE_PATH || path === REFRESH_FAILURE_PATH) throw new Error("disk full")
+    return super.write(path, content)
+  }
+}
+
 const NOW = () => new Date("2026-07-14T00:00:00.000Z")
 function structured(o: unknown): LLMResult {
   return { text: JSON.stringify(o), json: o, usage: { inputTokens: 10, outputTokens: 5 }, model: "m", provider: "anthropic", stopReason: "end_turn" }
@@ -92,6 +106,15 @@ describe("maybeAutoRefreshTrending", () => {
     expect(marker.consecutiveFailures).toBe(1)
     expect(marker.lastFailureAt).toBe(NOW().toISOString())
     expect(marker.lastError).toBeTruthy()
+  })
+
+  it("(a2) a compound failure (dashboard write AND marker write both throw) still resolves to 'failed', never rejects", async () => {
+    const storage = new ThrowingDashboardAndMarkerWriteStorage()
+    await saveTrendingSettings(storage, { fields: [{ slug: "nlp", label: "NLP" }], cadence: "weekly" })
+    await expect(maybeAutoRefreshTrending(storage, { searchFn, settings: SETTINGS, now: NOW })).resolves.toBe("failed")
+    // The marker write itself failed, so no marker persisted — confirms the
+    // write really was attempted-and-swallowed rather than silently skipped.
+    expect(await storage.read(REFRESH_FAILURE_PATH)).toBeNull()
   })
 
   it("(b) a second call inside the backoff window returns 'backoff' without invoking the orchestrator", async () => {
