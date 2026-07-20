@@ -23,13 +23,15 @@ import type { CountFn, GroupFn } from "../trending/weekly-volume"
 export function nodeSearchFn(): SearchFn {
   const mailto = process.env.OPENALEX_MAILTO
   const apiKey = process.env.OPENALEX_API_KEY
-  return async (source, query, limit) => {
+  return async (source, query, limit, opts) => {
     const effectiveSource = source === "s2" || source === "pubmed" ? "openalex" : source
     try {
       if (effectiveSource === "arxiv") {
-        return await searchArxiv({ query, limit })
+        // SP2.1 freshness: opts.fromDate threads to each adapter's own date
+        // mechanism (arXiv submittedDate range / OpenAlex from_publication_date).
+        return await searchArxiv({ query, limit, fromDate: opts?.fromDate })
       }
-      return await searchOpenAlex({ query, limit }, { mailto, apiKey })
+      return await searchOpenAlex({ query, limit, fromDate: opts?.fromDate }, { mailto, apiKey })
     } catch (err) {
       console.warn(`[node-search] search failed for source=${source} query="${query}":`, err)
       return []

@@ -10,9 +10,14 @@ export interface PaperMetaProps {
 }
 
 /**
- * Saved-state TL;DR + tag chips, in their own card. Renders nothing when
+ * Saved-state one-liner + tag chips, in their own card. Renders nothing when
  * neither is present (a `status: "saved"` page that hasn't been enriched
  * yet) so the caller can render it unconditionally.
+ *
+ * Headed "At a glance", NOT "TL;DR" or "Digest": this is the light automatic
+ * enrich output, and an ambiguous label made Tong read it as the (separate,
+ * deliberate) digest — so Add-to-KB's honest "Generating digest…" phase
+ * looked like a paid re-run of work already done (2026-07-19 walk).
  */
 export function PaperMeta({ tldr, tags }: PaperMetaProps) {
   const hasTags = Boolean(tags && tags.length > 0)
@@ -20,7 +25,7 @@ export function PaperMeta({ tldr, tags }: PaperMetaProps) {
 
   return (
     <Card className="mt-4 p-5">
-      <div className="mb-2 text-[11px] uppercase tracking-wide text-muted-text">TL;DR</div>
+      <div className="mb-2 text-[11px] uppercase tracking-wide text-muted-text">At a glance</div>
       {tldr && <p className="text-[14px] leading-[1.7] text-espresso tracking-body">{tldr}</p>}
       {hasTags && (
         <div className={tldr ? "mt-3 flex flex-wrap gap-1.5" : "flex flex-wrap gap-1.5"}>

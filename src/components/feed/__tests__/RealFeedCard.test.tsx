@@ -107,6 +107,47 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
     host.remove()
   })
 
+  it("renders the why-badge as the colored header band (SP2.1)", async () => {
+    const storage = new MemoryVaultStorage()
+    const item = itemFor({ tldr: "A tldr.", tags: ["ear-eeg"], badge: "high-impact" })
+    const { host, root } = mount()
+
+    await act(async () => {
+      root.render(
+        <RealFeedCard item={item} storage={storage} saved={false} onSave={() => {}} onDismiss={() => {}} />,
+      )
+    })
+
+    // The band is the card's first child, carries the badge's label and its
+    // token-backed color class (Tong 2026-07-19: the why-reason IS the band,
+    // not a category strip).
+    const band = (host.firstElementChild as HTMLElement).firstElementChild as HTMLElement
+    expect(band.textContent).toBe("High impact")
+    expect(band.className).toContain("bg-band-impact")
+
+    act(() => root.unmount())
+    host.remove()
+  })
+
+  it("band degrades to a neutral first-tag strip when the item has no badge (old cache)", async () => {
+    const storage = new MemoryVaultStorage()
+    const item = itemFor({ tldr: "A tldr.", tags: ["ear-eeg", "attention"] })
+    const { host, root } = mount()
+
+    await act(async () => {
+      root.render(
+        <RealFeedCard item={item} storage={storage} saved={false} onSave={() => {}} onDismiss={() => {}} />,
+      )
+    })
+
+    const band = (host.firstElementChild as HTMLElement).firstElementChild as HTMLElement
+    expect(band.textContent).toBe("ear-eeg")
+    expect(band.className).toContain("bg-warm-tan")
+
+    act(() => root.unmount())
+    host.remove()
+  })
+
   it("falls back to abstract-first-sentence tldr and source/year tags when item.tldr/tags are absent", async () => {
     const storage = new MemoryVaultStorage()
     const item = itemFor() // no tldr, no tags

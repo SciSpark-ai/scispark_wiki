@@ -282,38 +282,58 @@ function PaperPageContent() {
     const { paper, storage } = load
     setSaveState({ status: "saving" })
     try {
-      const { saved } = await savePaper(storage, paper)
+      // The page's own auto-enrich effect below owns the tier-2 pass here
+      // (deterministic, with a visible "Summarizing…" state and a reload
+      // when it lands) — so suppress savePaper's fire-and-forget enrich via
+      // its injection seam, or the post-save reload would trigger the effect
+      // ON TOP of that background run and double-charge the skill.
+      const { saved } = await savePaper(storage, paper, { enrichFn: async () => ({ applied: false }) })
       setSaveState({ status: "done", alreadySaved: !saved })
-      // Reload so pageState flips discovery -> saved immediately (the tier-1
-      // stub write already landed by the time savePaper resolves — the
-      // tier-2 enrich it also kicks off in the background hasn't, so tldr/
-      // tags/related may still be empty until a later reload or Enrich click).
+      // Reload so pageState flips discovery -> saved immediately; the
+      // auto-enrich effect fires off this reloaded state.
       setLoad(await loadReadyState(storage, slug))
     } catch (err) {
       setSaveState({ status: "error", message: err instanceof Error ? err.message : String(err) })
     }
   }
 
-  async function handleEnrich() {
-    if (load.status !== "ready") return
-    const { storage } = load
+  async function runEnrich(storage: VaultStorage) {
     setEnrichState({ status: "loading" })
     // enrichRemote itself never throws (see enrich-client.ts), but the reload
     // below can (RemoteVaultStorage.list()/read() throw on a transient
-    // non-ok /api/vault response) — wrapped exactly like handleSave's reload
-    // so a failed reload un-sticks the button and surfaces a message instead
-    // of leaving enrichState stuck on "loading" forever.
+    // non-ok /api/vault response) — wrapped so a failed reload surfaces a
+    // message instead of leaving the "Summarizing…" line stuck forever.
     try {
       const result = await enrichRemote(slug)
       // Re-fetch the bundle so the freshly-merged tldr/tags/related render
-      // before dropping the "Enriching…" state, regardless of whether this run
-      // applied anything.
+      // before dropping the "Summarizing…" state, regardless of whether this
+      // run applied anything.
       setLoad(await loadReadyState(storage, slug))
       setEnrichState({ status: "done", applied: result.applied })
     } catch (err) {
       setEnrichState({ status: "error", message: err instanceof Error ? err.message : String(err) })
     }
   }
+
+  // Automatic-only enrich (Tong, 2026-07-19 — the Enrich button is gone):
+  // whenever the page shows a saved paper with no TL;DR yet, run the tier-2
+  // skill once. Covers every path uniformly — a fresh Save on this page
+  // (handleSave's reload lands here), a feed-card save visited later, and a
+  // previously-failed enrich (one retry per visit). The ref guards one
+  // attempt per slug per mount; the server route's in-flight dedup guards
+  // the cross-surface race (e.g. a feed-card save's background enrich still
+  // running when this page mounts).
+  const autoEnrichedSlugRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (load.status !== "ready") return
+    if (load.pageState.state !== "saved" || load.tldr !== undefined) return
+    if (autoEnrichedSlugRef.current === slug) return
+    autoEnrichedSlugRef.current = slug
+    void runEnrich(load.storage)
+    // runEnrich is re-created each render but only reads setState fns + slug;
+    // keying this effect on `load`/`slug` alone is deliberate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [load, slug])
 
   function handleReadFullText() {
     if (load.status !== "ready") return
@@ -386,7 +406,6 @@ function PaperPageContent() {
                 saveState={saveState}
                 onSave={handleSave}
                 enrichState={enrichState}
-                onEnrich={handleEnrich}
                 digestState={digestState}
                 onGenerateDigest={handleGenerateDigest}
                 ingestState={ingestState}

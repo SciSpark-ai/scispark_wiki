@@ -16,6 +16,18 @@
   --tan: #dab697;
   --border: #e8d3c0;
   --gold: #fde68a;
+
+  /* Feed-card badge bands (SP2.1) — saturated landing-page-style header
+     strips, one per why-badge (see FEED_BADGE_VALUES in src/lib/skills/feed.ts).
+     All carry white text in both themes. */
+  --band-impact: #f97316;
+  --band-breakthrough: #8b5cf6;
+  --band-method: #0d9488;
+  --band-trending: #4f46e5;
+  --band-evidence: #16a34a;
+  --band-review: #a1836f;
+  --band-application: #db2777;
+  --band-dataset: #0891b2;
 }
 
 [data-theme="dark"] {
@@ -31,6 +43,16 @@
   --tan: #8a6b4f;
   --border: #3c2c1b;
   --gold: #8a7326;
+
+  /* Bands dim slightly against the dark page so they read as chrome, not neon. */
+  --band-impact: #c2590f;
+  --band-breakthrough: #6d40c9;
+  --band-method: #0b7268;
+  --band-trending: #4038b8;
+  --band-evidence: #12813a;
+  --band-review: #826752;
+  --band-application: #ad1f5e;
+  --band-dataset: #077490;
 }
 
 @theme inline {
@@ -51,6 +73,15 @@
   --color-warm-tan: var(--tan);
   --color-border-warm: var(--border);
   --color-gold: var(--gold);
+
+  --color-band-impact: var(--band-impact);
+  --color-band-breakthrough: var(--band-breakthrough);
+  --color-band-method: var(--band-method);
+  --color-band-trending: var(--band-trending);
+  --color-band-evidence: var(--band-evidence);
+  --color-band-review: var(--band-review);
+  --color-band-application: var(--band-application);
+  --color-band-dataset: var(--band-dataset);
 
   --tracking-heading-tight: -0.07em;
   --tracking-heading: -0.06em;

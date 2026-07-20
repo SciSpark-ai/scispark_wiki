@@ -33,6 +33,13 @@ export type SaveState =
   | { status: "done"; alreadySaved: boolean }
   | { status: "error"; message: string }
 
+/**
+ * Enrich is AUTOMATIC-ONLY (Tong, 2026-07-19): there is no Enrich button —
+ * the paper page fires the tier-2 skill itself whenever it shows a saved
+ * paper that has no TL;DR yet (see the auto-enrich effect in
+ * `/paper/[key]/page.tsx`). This state drives only a quiet "Summarizing…"
+ * status line and an error line.
+ */
 export type EnrichState =
   | { status: "idle" }
   | { status: "loading" }
@@ -55,7 +62,6 @@ export interface PaperActionsProps {
   saveState: SaveState
   onSave: () => void
   enrichState: EnrichState
-  onEnrich: () => void
   digestState: DigestState
   onGenerateDigest: () => void
   ingestState: IngestState
@@ -67,8 +73,9 @@ export interface PaperActionsProps {
 /**
  * State-aware action row for `/paper/[key]`. Discovery state (no wiki page
  * yet) shows the full row: Save · Generate digest · Add to knowledge base ·
- * Read full text. Saved state collapses Save into a "Saved" chip and adds
- * Enrich (re-runs the tier-2 TL;DR/tags/related-links skill). Ingested
+ * Read full text. Saved state collapses Save into a "Saved" chip; the
+ * tier-2 enrich runs automatically (no button — see `EnrichState`'s doc
+ * comment), surfacing here only as a quiet status/error line. Ingested
  * collapses both Save and Add-to-KB into a single status chip.
  */
 export function PaperActions({
@@ -77,7 +84,6 @@ export function PaperActions({
   saveState,
   onSave,
   enrichState,
-  onEnrich,
   digestState,
   onGenerateDigest,
   ingestState,
@@ -92,7 +98,6 @@ export function PaperActions({
     ingestState.phase === "ingesting"
 
   const showSaveAction = pageState.state === "discovery"
-  const showEnrichAction = pageState.state === "saved"
   const showIngestAction = pageState.state !== "ingested"
 
   return (
@@ -108,12 +113,6 @@ export function PaperActions({
           </Button>
         ) : (
           <Chip tone="accent">{pageState.state === "ingested" ? "In your knowledge base" : "Saved"}</Chip>
-        )}
-
-        {showEnrichAction && (
-          <Button variant="secondary" onClick={onEnrich} disabled={enrichState.status === "loading"}>
-            {enrichState.status === "loading" ? "Enriching…" : "Enrich"}
-          </Button>
         )}
 
         <Button onClick={onGenerateDigest} disabled={digestState.status === "loading"}>
@@ -135,8 +134,8 @@ export function PaperActions({
       {fullTextKnownFalse && (
         <div className="mt-3 text-[13px] text-muted-text tracking-body">No open-access full text.</div>
       )}
-      {enrichState.status === "done" && !enrichState.applied && (
-        <div className="mt-3 text-[13px] text-muted-text tracking-body">Enrich made no changes — try again shortly.</div>
+      {enrichState.status === "loading" && (
+        <div className="mt-3 text-[13px] text-muted-text tracking-body">Summarizing…</div>
       )}
       {enrichState.status === "error" && <LlmErrorMessage message={enrichState.message} />}
       {digestState.status === "error" && <LlmErrorMessage message={digestState.message} />}

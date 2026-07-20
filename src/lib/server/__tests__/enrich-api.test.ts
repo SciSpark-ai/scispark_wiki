@@ -93,6 +93,30 @@ describe("POST /api/skills/enrich", () => {
     expect(page?.frontmatter.related).toEqual(["attention"])
   })
 
+  it("dedupes concurrent requests for the same slug into one skill run (in-flight map)", async () => {
+    const cs = await buildSaveStubChangeset(storage, PAPER, "2026-07-17")
+    await applyChangeset(storage, cs!)
+
+    // ONE queued response: if dedup were broken, the second concurrent call
+    // would exhaust the mock (its run fails -> applied:false) and calls.length
+    // would be 2. Enrich fires from savePaper's background call AND the paper
+    // page's automatic run, which a user can trigger within seconds of each
+    // other — this is the double-charge guard for that race.
+    const provider = new MockProvider([
+      structured({ tldr: "A study of ear-EEG.", tags: ["ear-eeg"], relatedPageIds: [] }),
+    ])
+    setSkillTestOverrides({ providerOverride: { fast: provider } })
+
+    const slug = paperSlug(PAPER)
+    const [res1, res2] = await Promise.all([enrichRoute.POST(req({ slug })), enrichRoute.POST(req({ slug }))])
+    const [r1, r2] = await Promise.all([jsonResult<EnrichRouteResult>(res1), jsonResult<EnrichRouteResult>(res2)])
+
+    expect(provider.calls).toHaveLength(1)
+    expect(r1.applied).toBe(true)
+    expect(r2.applied).toBe(true)
+    expect(r1.tldr).toBe(r2.tldr)
+  })
+
   it("returns {applied:false} when no page matches the slug", async () => {
     const res = await enrichRoute.POST(req({ slug: "no-such-paper" }))
     expect(res.status).toBe(200)

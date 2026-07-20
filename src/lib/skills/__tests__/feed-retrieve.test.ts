@@ -156,6 +156,28 @@ describe("vaultPaperKeys", () => {
 // ---------------------------------------------------------------------------
 
 describe("retrieveCandidates", () => {
+  it("threads opts.fromDate through to every searchFn call (SP2.1 freshness)", async () => {
+    const storage = new MemoryVaultStorage()
+    const strategy: FeedStrategy = {
+      queries: [
+        { source: "arxiv", query: "a", rationale: "r" },
+        { source: "openalex", query: "b", rationale: "r" },
+      ],
+    }
+    const seenOpts: Array<{ fromDate?: string } | undefined> = []
+    const searchFn: SearchFn = async (_source, _query, _limit, opts) => {
+      seenOpts.push(opts)
+      return []
+    }
+
+    await retrieveCandidates(storage, strategy, searchFn, { fromDate: "2026-07-05" })
+
+    expect(seenOpts).toHaveLength(2)
+    for (const opts of seenOpts) {
+      expect(opts?.fromDate).toBe("2026-07-05")
+    }
+  })
+
   const STRATEGY: FeedStrategy = {
     queries: [
       { source: "arxiv", query: "sparse attention", rationale: "core" },

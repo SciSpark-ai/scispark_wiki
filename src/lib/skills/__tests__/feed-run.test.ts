@@ -128,6 +128,125 @@ describe("runFeed", () => {
     expect(refreshEvents[0]).toMatchObject({ type: "feed_refresh", itemCount: 2 })
   })
 
+  it("windows retrieval to the last 14 days, topping up from an unwindowed pass when the window is thin", async () => {
+    const storage = new MemoryVaultStorage()
+    const fresh = [
+      paper({ title: "Fresh A", ids: { arxiv: "a" } }),
+      paper({ title: "Fresh B", ids: { arxiv: "b" } }),
+    ]
+    const older = [
+      // Includes a duplicate of Fresh A — must not appear twice.
+      paper({ title: "Fresh A", ids: { arxiv: "a" } }),
+      ...Array.from({ length: 11 }, (_, i) => paper({ title: `Old ${i}`, ids: { arxiv: `old-${i}` } })),
+    ]
+    const seenFromDates: Array<string | undefined> = []
+    const searchFn = async (_s: string, _q: string, _l: number, opts?: { fromDate?: string }) => {
+      seenFromDates.push(opts?.fromDate)
+      return opts?.fromDate ? fresh : older
+    }
+
+    const strategyProvider = new MockProvider([
+      llmResult(ONE_QUERY_STRATEGY, "claude-opus-4-8"),
+      llmResult(
+        {
+          items: [
+            { index: 0, whyThis: "t", whyYou: "y", whyNow: "n", tldr: "s", tags: ["x"] },
+          ],
+        },
+        "claude-opus-4-8",
+      ),
+    ])
+    const rankProvider = new MockProvider([
+      llmResult({ scores: [{ index: 0, score: 90 }] }, "claude-haiku-4-5"),
+    ])
+
+    const result = await runFeed(storage, {
+      searchFn,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: strategyProvider, fast: rankProvider },
+      now: NOW,
+    })
+
+    // First pass windowed to NOW - 14 days, second pass unwindowed.
+    expect(seenFromDates).toEqual(["2026-06-28", undefined])
+    // 2 fresh + 12 older, minus the duplicate = 13; fresh candidates lead.
+    expect(result.stats.retrieved).toBe(13)
+    expect(result.items[0].paper.title).toBe("Fresh A")
+  })
+
+  it("skips the unwindowed top-up when the windowed pass alone is deep enough", async () => {
+    const storage = new MemoryVaultStorage()
+    const fresh = Array.from({ length: 12 }, (_, i) => paper({ title: `Fresh ${i}`, ids: { arxiv: `f-${i}` } }))
+    const seenFromDates: Array<string | undefined> = []
+    const searchFn = async (_s: string, _q: string, _l: number, opts?: { fromDate?: string }) => {
+      seenFromDates.push(opts?.fromDate)
+      return fresh
+    }
+
+    const strategyProvider = new MockProvider([
+      llmResult(ONE_QUERY_STRATEGY, "claude-opus-4-8"),
+      llmResult(
+        { items: [{ index: 0, whyThis: "t", whyYou: "y", whyNow: "n", tldr: "s", tags: ["x"] }] },
+        "claude-opus-4-8",
+      ),
+    ])
+    const rankProvider = new MockProvider([
+      llmResult({ scores: [{ index: 0, score: 90 }] }, "claude-haiku-4-5"),
+    ])
+
+    const result = await runFeed(storage, {
+      searchFn,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: strategyProvider, fast: rankProvider },
+      now: NOW,
+    })
+
+    expect(seenFromDates).toEqual(["2026-06-28"])
+    expect(result.stats.retrieved).toBe(12)
+  })
+
+  it("normalizes the re-rank badge onto the fixed vocabulary — off-vocabulary strings degrade to undefined", async () => {
+    const storage = new MemoryVaultStorage()
+    const candidates = Array.from({ length: 10 }, (_, i) => paper({ title: `P${i}`, ids: { arxiv: `p-${i}` } }))
+    const searchFn = async () => candidates
+
+    const strategyProvider = new MockProvider([
+      llmResult(ONE_QUERY_STRATEGY, "claude-opus-4-8"),
+      llmResult(
+        {
+          items: [
+            { index: 0, whyThis: "t", whyYou: "y", whyNow: "n", tldr: "s", tags: ["x"], badge: "high-impact" },
+            { index: 1, whyThis: "t", whyYou: "y", whyNow: "n", tldr: "s", tags: ["x"], badge: "utterly-amazing" },
+            { index: 2, whyThis: "t", whyYou: "y", whyNow: "n", tldr: "s", tags: ["x"] },
+          ],
+        },
+        "claude-opus-4-8",
+      ),
+    ])
+    const rankProvider = new MockProvider([
+      llmResult(
+        { scores: candidates.map((_, i) => ({ index: i, score: 100 - i })) },
+        "claude-haiku-4-5",
+      ),
+    ])
+
+    const result = await runFeed(storage, {
+      searchFn,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: strategyProvider, fast: rankProvider },
+      now: NOW,
+    })
+
+    expect(result.items[0].badge).toBe("high-impact")
+    expect(result.items[1].badge).toBeUndefined()
+    expect(result.items[2].badge).toBeUndefined()
+
+    // And the badge survives a cache round-trip (loadFeed re-normalizes).
+    const reloaded = await loadFeed(storage)
+    expect(reloaded?.items[0].badge).toBe("high-impact")
+    expect(reloaded?.items[1].badge).toBeUndefined()
+  })
+
   it("30 candidates split into two rank batches with correct global indexing", async () => {
     const storage = new MemoryVaultStorage()
     const candidates: PaperRecord[] = []

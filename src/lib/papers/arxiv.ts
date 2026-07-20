@@ -66,6 +66,14 @@ export interface ArxivQuery {
    * whitespace query always browses newest-first regardless of this field.
    */
   sort?: "relevance" | "date"
+  /**
+   * Inclusive lower submission-date bound (YYYY-MM-DD) — SP2.1 feed
+   * freshness. Composed as an AND-ed `submittedDate:[<from>0000 TO
+   * 209912312359]` range clause onto BOTH plain and structured queries (a
+   * structured query is parenthesized first so its own OR/ANDNOT grouping
+   * survives). Omitted → no date constraint (all prior callers unchanged).
+   */
+  fromDate?: string
 }
 
 export interface ArxivDeps {
@@ -213,6 +221,13 @@ function applySort(url: URL, sort: ArxivQuery["sort"]): void {
   url.searchParams.set("sortOrder", "descending")
 }
 
+/** `submittedDate` range clause for a YYYY-MM-DD lower bound. The upper bound
+ * is a fixed far-future literal (arXiv's range syntax requires both ends;
+ * nothing is ever submitted in the future) so this stays clock-free. */
+function submittedDateClause(fromDate: string): string {
+  return `submittedDate:[${fromDate.replaceAll("-", "")}0000 TO 209912312359]`
+}
+
 function buildUrl(q: ArxivQuery): string {
   const url = new URL(ARXIV_QUERY_URL)
   url.searchParams.set("max_results", String(clampLimit(q.limit)))
@@ -221,17 +236,20 @@ function buildUrl(q: ArxivQuery): string {
   const terms = trimmed.split(/\s+/).filter((t) => t !== "")
 
   if (terms.length === 0) {
-    // Browse mode (no keywords): surface the newest submissions.
-    url.searchParams.set("search_query", "all:")
+    // Browse mode (no keywords): surface the newest submissions (windowed
+    // when a fromDate is given — the range clause alone is a valid query).
+    url.searchParams.set("search_query", q.fromDate ? submittedDateClause(q.fromDate) : "all:")
     url.searchParams.set("sortBy", "submittedDate")
     url.searchParams.set("sortOrder", "descending")
     return url.toString()
   }
 
+  let searchQuery: string
   if (isStructuredArxivQuery(trimmed)) {
     // Already arXiv syntax (field prefixes / boolean operators) — pass through
-    // untouched so arXiv parses it as intended.
-    url.searchParams.set("search_query", trimmed)
+    // untouched so arXiv parses it as intended. A date window ANDs onto the
+    // WHOLE query, parenthesized so its own OR/ANDNOT grouping survives.
+    searchQuery = q.fromDate ? `(${trimmed}) AND ${submittedDateClause(q.fromDate)}` : trimmed
   } else {
     // Plain free-text keyword search. arXiv's `all:` match across space-separated
     // terms is loose (OR-ish), so the top page becomes papers that merely share a
@@ -239,8 +257,10 @@ function buildUrl(q: ArxivQuery): string {
     // Require EVERY term via explicit AND clauses for precision. (Verified
     // 2026-07-15: an EEG auditory-attention search returned watermark/vision/
     // quantum ML papers under the old loose match.)
-    url.searchParams.set("search_query", terms.map((t) => `all:${t}`).join(" AND "))
+    const anded = terms.map((t) => `all:${t}`).join(" AND ")
+    searchQuery = q.fromDate ? `${anded} AND ${submittedDateClause(q.fromDate)}` : anded
   }
+  url.searchParams.set("search_query", searchQuery)
 
   applySort(url, q.sort)
   return url.toString()
