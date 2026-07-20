@@ -12,6 +12,7 @@ import type { VaultStorage } from "@/lib/vault/storage"
 import { Tree } from "@/components/wiki/Tree"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Button } from "@/components/ui/Button"
+import { COMPANION_CLEARANCE } from "@/components/layout/companion-clearance"
 import { LoadingState } from "@/components/ui/LoadingState"
 
 function today(): string {
@@ -76,7 +77,7 @@ export default function WikiIndexPage() {
   }
 
   return (
-    <div className="p-7">
+    <div className={`p-7 ${COMPANION_CLEARANCE}`}>
       <PageHeader
         title="Wiki"
         actions={

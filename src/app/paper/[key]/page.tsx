@@ -24,6 +24,7 @@ import { PaperMeta } from "@/components/paper/PaperMeta"
 import { PaperSynthesis } from "@/components/paper/PaperSynthesis"
 import { RelatedInWiki, resolveRelatedPages, type RelatedPageLink } from "@/components/paper/RelatedInWiki"
 import { useCompanion } from "@/components/companion/useCompanion"
+import { COMPANION_CLEARANCE } from "@/components/layout/companion-clearance"
 import { BackLink } from "@/components/ui/BackLink"
 import { Button } from "@/components/ui/Button"
 import { Card } from "@/components/ui/Card"
@@ -393,7 +394,12 @@ function PaperPageContent() {
         onSelectionChangeRef.current = onHtmlSelectionChange
         return (
           <>
-            <div ref={contentRef} onMouseUp={handleSelection} onKeyUp={handleSelection} className="mx-auto max-w-3xl p-7">
+            <div
+              ref={contentRef}
+              onMouseUp={handleSelection}
+              onKeyUp={handleSelection}
+              className={`mx-auto max-w-3xl p-7 ${COMPANION_CLEARANCE}`}
+            >
               <BackLink className="mb-4" />
 
               <PaperHeader paper={load.paper} />

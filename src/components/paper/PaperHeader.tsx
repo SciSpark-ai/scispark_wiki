@@ -1,5 +1,6 @@
 import type { PaperRecord } from "@/lib/papers/types"
 import { displayTitle } from "@/lib/papers/title"
+import { venueYearLine } from "@/lib/papers/venue"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Card } from "@/components/ui/Card"
 import { IdBadges } from "@/components/papers/IdBadges"
@@ -8,16 +9,14 @@ import { IdBadges } from "@/components/papers/IdBadges"
  * venue·year·citations, id badges, and the abstract in its own card. */
 export function PaperHeader({ paper }: { paper: PaperRecord }) {
   const authorLine = paper.authors.map((a) => a.name).join(", ") || "Unknown authors"
-  const metaParts = [paper.venue, paper.year != null ? String(paper.year) : undefined].filter(
-    (v): v is string => Boolean(v),
-  )
+  const metaLine = venueYearLine(paper.venue, paper.year)
 
   return (
     <div>
       <PageHeader title={displayTitle(paper.title)} description={authorLine} />
 
       <div className="mb-4 flex flex-wrap items-center gap-3 text-[13px] text-muted-text tracking-body">
-        {metaParts.length > 0 && <span>{metaParts.join(" · ")}</span>}
+        {metaLine && <span>{metaLine}</span>}
         {typeof paper.citationCount === "number" && <span>{paper.citationCount.toLocaleString()} citations</span>}
         <IdBadges ids={paper.ids} />
       </div>

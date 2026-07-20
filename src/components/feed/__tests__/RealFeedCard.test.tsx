@@ -174,6 +174,56 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
     host.remove()
   })
 
+  it("shows a cleaned venue·year line and never a 'no venue' placeholder", async () => {
+    const storage = new MemoryVaultStorage()
+    const preprint: PaperRecord = { ...PAPER, venue: "bioRxiv (Cold Spring Harbor Laboratory)", year: 2026 }
+    const { host, root } = mount()
+
+    await act(async () => {
+      root.render(
+        <RealFeedCard
+          item={itemFor({ paper: preprint, tldr: "A tldr.", tags: ["x"] })}
+          storage={storage}
+          saved={false}
+          onSave={() => {}}
+          onDismiss={() => {}}
+        />,
+      )
+    })
+
+    // Publisher parenthetical dropped so the real venue survives truncation.
+    expect(host.textContent).toContain("bioRxiv · 2026")
+    expect(host.textContent).not.toContain("Cold Spring Harbor")
+
+    act(() => root.unmount())
+    host.remove()
+  })
+
+  it("omits the venue entirely (not 'no venue') when the paper has none", async () => {
+    const storage = new MemoryVaultStorage()
+    const noVenue: PaperRecord = { ...PAPER, venue: undefined, year: 2026 }
+    const { host, root } = mount()
+
+    await act(async () => {
+      root.render(
+        <RealFeedCard
+          item={itemFor({ paper: noVenue, tldr: "A tldr.", tags: ["x"] })}
+          storage={storage}
+          saved={false}
+          onSave={() => {}}
+          onDismiss={() => {}}
+        />,
+      )
+    })
+
+    expect(host.textContent).not.toContain("no venue")
+    expect(host.textContent).not.toContain("—")
+    expect(host.textContent).toContain("2026")
+
+    act(() => root.unmount())
+    host.remove()
+  })
+
   it("routes the whole card to /paper/<slug> on click", async () => {
     const storage = new MemoryVaultStorage()
     const item = itemFor({ tldr: "A tldr.", tags: ["tag-a"] })
