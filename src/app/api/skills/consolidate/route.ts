@@ -1,6 +1,7 @@
 import { jsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
 import { runConsolidation } from "@/lib/skills/consolidation"
+import { withLedger } from "@/lib/runs/ledger"
 
 /**
  * POST /api/skills/consolidate — body `{}`, JSON result
@@ -16,6 +17,14 @@ export const POST = jsonSkillRoute<Record<string, never>, Awaited<ReturnType<typ
   async (_input, vault) => {
     const settings = await loadSettings(vault)
     const overrides = getSkillTestOverrides()
-    return runConsolidation(vault, { settings, providerOverride: overrides.providerOverride })
+
+    return withLedger(vault, { orchestrator: "consolidation", trigger: "user" }, async () => {
+      const result = await runConsolidation(vault, { settings, providerOverride: overrides.providerOverride })
+      if (result.status === "skipped") {
+        return { result, status: "skipped", costUsd: result.costUsd }
+      }
+      // "unchanged" | "applied"
+      return { result, status: "ok", reason: result.status, costUsd: result.costUsd }
+    })
   },
 )

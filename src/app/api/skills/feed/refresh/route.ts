@@ -2,6 +2,7 @@ import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-rout
 import { loadSettings } from "@/lib/llm/settings"
 import { nodeSearchFn } from "@/lib/papers/node-search"
 import { runFeed } from "@/lib/skills/feed"
+import { withLedger } from "@/lib/runs/ledger"
 
 /**
  * POST /api/skills/feed/refresh — body `{}`, streams NDJSON progress
@@ -16,10 +17,14 @@ import { runFeed } from "@/lib/skills/feed"
 export const POST = ndjsonSkillRoute<Record<string, never>>(async (_input, vault, emit) => {
   const settings = await loadSettings(vault)
   const overrides = getSkillTestOverrides()
-  return runFeed(vault, {
-    searchFn: overrides.searchFn ?? nodeSearchFn(),
-    settings,
-    providerOverride: overrides.providerOverride,
-    onStage: (stage) => emit({ type: "progress", stage }),
+
+  return withLedger(vault, { orchestrator: "feed-refresh", trigger: "user" }, async () => {
+    const result = await runFeed(vault, {
+      searchFn: overrides.searchFn ?? nodeSearchFn(),
+      settings,
+      providerOverride: overrides.providerOverride,
+      onStage: (stage) => emit({ type: "progress", stage }),
+    })
+    return { result, status: "ok", costUsd: result.costUsd, meta: { itemCount: result.items.length } }
   })
 })

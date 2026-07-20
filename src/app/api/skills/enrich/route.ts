@@ -12,6 +12,7 @@ import { buildEnrichMergeChangeset } from "@/lib/papers/enrich-apply"
 // `/paper/[key]`'s own page-state resolution (I2, whole-branch review) —
 // one implementation instead of two that could drift.
 import { findPaperPage } from "@/lib/papers/page-state"
+import { withLedger } from "@/lib/runs/ledger"
 
 export interface EnrichRouteResult {
   applied: boolean
@@ -48,7 +49,15 @@ const inFlightBySlug = new Map<string, Promise<EnrichRouteResult>>()
 export const POST = jsonSkillRoute<{ slug: string }, EnrichRouteResult>(({ slug }, vault) => {
   const existing = inFlightBySlug.get(slug)
   if (existing) return existing
-  const run = runEnrichForSlug(slug, vault).finally(() => inFlightBySlug.delete(slug))
+  const run = withLedger(vault, { orchestrator: "enrich", trigger: "user" }, async () => {
+    const result = await runEnrichForSlug(slug, vault)
+    return {
+      result,
+      status: result.applied ? "ok" : "degraded",
+      reason: result.applied ? undefined : "not applied",
+      costUsd: result.costUsd,
+    }
+  }).finally(() => inFlightBySlug.delete(slug))
   inFlightBySlug.set(slug, run)
   return run
 })

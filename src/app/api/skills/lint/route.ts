@@ -2,6 +2,7 @@ import { jsonSkillRoute, ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/s
 import { loadSettings } from "@/lib/llm/settings"
 import { runLintDeterministic, runLintLlm } from "@/lib/lint/run"
 import type { LintFinding } from "@/lib/lint/types"
+import { withLedger } from "@/lib/runs/ledger"
 
 interface LintRouteInput {
   mode: "deterministic" | "llm"
@@ -22,7 +23,10 @@ export interface LintLlmRouteResult extends LintDeterministicRouteResult {
  * (src/lib/lint/checks.ts) are pure vault-bundle analysis, no LLM call.
  */
 const deterministicHandler = jsonSkillRoute<LintRouteInput, LintDeterministicRouteResult>(async (_input, vault) => {
-  return runLintDeterministic(vault)
+  return withLedger(vault, { orchestrator: "lint-deterministic", trigger: "user" }, async () => {
+    const result = await runLintDeterministic(vault)
+    return { result, status: "ok", meta: { findingCount: result.findings.length } }
+  })
 })
 
 /**
@@ -36,10 +40,14 @@ const deterministicHandler = jsonSkillRoute<LintRouteInput, LintDeterministicRou
 const llmHandler = ndjsonSkillRoute<LintRouteInput>(async (_input, vault, emit) => {
   const settings = await loadSettings(vault)
   const overrides = getSkillTestOverrides()
-  return runLintLlm(vault, {
-    settings,
-    providerOverride: overrides.providerOverride,
-    onProgress: (info) => emit({ type: "progress", index: info.index, total: info.total, pair: info.pair }),
+
+  return withLedger(vault, { orchestrator: "lint-llm", trigger: "user" }, async () => {
+    const result = await runLintLlm(vault, {
+      settings,
+      providerOverride: overrides.providerOverride,
+      onProgress: (info) => emit({ type: "progress", index: info.index, total: info.total, pair: info.pair }),
+    })
+    return { result, status: "ok", costUsd: result.costUsd, meta: { findingCount: result.findings.length } }
   })
 })
 
