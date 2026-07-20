@@ -1,6 +1,7 @@
 import type { Changeset } from "@/lib/vault/types"
-import { applyChangeset, revertChangeset, ChangesetConflictError, ChangesetInvalidError } from "@/lib/vault/changesets"
+import { applyChangeset, revertChangeset, loadChangeset, ChangesetConflictError, ChangesetInvalidError } from "@/lib/vault/changesets"
 import { getServerVault } from "@/lib/server/vault"
+import { logEvent } from "@/lib/events/log"
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -38,8 +39,16 @@ export async function POST(req: Request): Promise<Response> {
   const storage = await getServerVault()
 
   try {
-    if (action === "apply") await applyChangeset(storage, changeset)
-    else await revertChangeset(storage, changeset)
+    if (action === "apply") {
+      await applyChangeset(storage, changeset)
+    } else {
+      await revertChangeset(storage, changeset)
+      const skill =
+        (changeset as Changeset & { skill?: string }).skill ??
+        (await loadChangeset(storage, changeset.id))?.skill ??
+        "unknown"
+      await logEvent(storage, { type: "changeset_revert", changesetId: changeset.id, skill })
+    }
   } catch (err) {
     if (err instanceof ChangesetInvalidError) {
       return jsonResponse(400, { error: err.message })

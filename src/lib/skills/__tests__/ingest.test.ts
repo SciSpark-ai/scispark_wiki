@@ -7,6 +7,7 @@ import type { LLMResult } from "../../llm/types"
 import type { PaperRecord } from "../../papers/types"
 import { parseDocument } from "../../vault/frontmatter"
 import { composePage, type PageDraft } from "../../wiki/authoring"
+import { readRecentEvents } from "../../events/log"
 import type { AnalysisResult } from "../ingest-analysis"
 import { runSkill } from "../runner"
 import {
@@ -726,6 +727,13 @@ describe("undoIngest", () => {
     const archived = await storage.read(`.scispark/review/archived/${changesetId}-0.json`)
     expect(archived).not.toBeNull()
     expect(JSON.parse(archived as string).changesetId).toBe(changesetId)
+
+    // Durable revert telemetry alongside the log.md undo entry (Task 4).
+    const events = await readRecentEvents(storage)
+    const revertEvent = events.find((e) => e.type === "changeset_revert")
+    expect(revertEvent).toEqual(
+      expect.objectContaining({ type: "changeset_revert", changesetId, skill: "ingest" }),
+    )
   })
 
   it("throws when the changeset does not exist", async () => {

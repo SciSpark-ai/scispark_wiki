@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
-import { listReviews, dismissReview, reviewCount, listIngests, type ReviewItem, type IngestRecord } from "../review-queue"
+import {
+  listReviews,
+  dismissReview,
+  reviewCount,
+  listIngests,
+  parseUndoneChangesetIds,
+  type ReviewItem,
+  type IngestRecord,
+} from "../review-queue"
 import type { Changeset } from "../../vault/types"
 
 describe("review-queue", () => {
@@ -431,6 +439,40 @@ describe("review-queue", () => {
       expect(ingests[0].changesetId).toBe("cs-2")
       expect(ingests[1].changesetId).toBe("cs-1")
       expect(ingests[1].reverted).toBe(true)
+    })
+  })
+
+  describe("parseUndoneChangesetIds", () => {
+    it("extracts changeset ids from 'undo | {id}' log.md entries", () => {
+      const logMd = "# Log\n\n## [2026-01-01] undo | cs-1\n\n## [2026-01-03] undo | cs-3\n"
+      expect(parseUndoneChangesetIds(logMd)).toEqual(new Set(["cs-1", "cs-3"]))
+    })
+
+    it("ignores non-undo entries", () => {
+      const logMd = "# Log\n\n## [2026-01-01] ingest | Some Paper\n"
+      expect(parseUndoneChangesetIds(logMd)).toEqual(new Set())
+    })
+
+    it("returns an empty set for empty input", () => {
+      expect(parseUndoneChangesetIds("")).toEqual(new Set())
+    })
+
+    it("round-trips: listIngests keeps using the same extraction", async () => {
+      const storage = new MemoryVaultStorage()
+      const cs: Changeset = {
+        id: "cs-1",
+        skill: "ingest",
+        model: "tier:strong",
+        timestamp: "2026-01-01T10:00:00Z",
+        changes: [{ path: "wiki/papers/paper1.md", before: null, after: "content" }],
+      }
+      await storage.write(".scispark/changesets/cs-1.json", JSON.stringify(cs))
+      const logMd = "# Log\n\n## [2026-01-01] undo | cs-1\n"
+      await storage.write("log.md", logMd)
+
+      expect(parseUndoneChangesetIds(logMd).has("cs-1")).toBe(true)
+      const ingests = await listIngests(storage)
+      expect(ingests[0].reverted).toBe(true)
     })
   })
 

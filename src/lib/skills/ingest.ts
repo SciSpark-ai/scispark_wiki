@@ -16,6 +16,7 @@ import { parseDocument } from "../vault/frontmatter"
 import { RESERVED_FILES, type Changeset, type FileChange, type Frontmatter } from "../vault/types"
 import { applyChangeset, loadChangeset, makeChangesetId, revertChangeset } from "../vault/changesets"
 import { appendLog, writeIndex } from "../vault/index-builder"
+import { logEvent } from "../events/log"
 import {
   buildAnalysisContext,
   indexSection,
@@ -597,6 +598,7 @@ export async function undoIngest(
 
   const now = opts.now ?? (() => new Date())
   await appendLog(storage, { date: now().toISOString().slice(0, 10), op: "undo", summary: changesetId })
+  await logEvent(storage, { type: "changeset_revert", changesetId, skill: "ingest" }, opts.now)
 
   const reviewPrefix = ".scispark/review/"
   const archivedPrefix = `${reviewPrefix}archived/`

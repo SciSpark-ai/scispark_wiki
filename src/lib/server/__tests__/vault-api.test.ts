@@ -3,6 +3,7 @@ import type { VaultStorage } from "../../vault/storage"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { RemoteVaultStorage } from "../../vault/remote-storage"
 import { setServerVaultForTests } from "../vault"
+import { readRecentEvents } from "../../events/log"
 import * as fileRoute from "../../../app/api/vault/file/route"
 import * as listRoute from "../../../app/api/vault/list/route"
 import * as changesetRoute from "../../../app/api/vault/changeset/route"
@@ -284,6 +285,65 @@ describe("vault API", () => {
     }))
     expect(revert.status).toBe(200)
     expect(await storage.read("wiki/rev.md")).toBeNull()
+  })
+
+  it("POST /api/vault/changeset revert emits a changeset_revert event with skill resolved from the request body", async () => {
+    const cs = {
+      id: "cs-revert-skill-in-body",
+      skill: "test-skill",
+      model: "test-model",
+      timestamp: "2026-07-14T00:00:00Z",
+      changes: [{ path: "wiki/rev-2.md", before: null, after: "content" }],
+    }
+    await changesetRoute.POST(new Request("http://x/api/vault/changeset", {
+      method: "POST", body: JSON.stringify({ action: "apply", changeset: cs }),
+    }))
+    await changesetRoute.POST(new Request("http://x/api/vault/changeset", {
+      method: "POST", body: JSON.stringify({ action: "revert", changeset: cs }),
+    }))
+
+    const events = await readRecentEvents(storage)
+    const revertEvent = events.find((e) => e.type === "changeset_revert")
+    expect(revertEvent).toEqual(
+      expect.objectContaining({
+        type: "changeset_revert",
+        changesetId: "cs-revert-skill-in-body",
+        skill: "test-skill",
+      }),
+    )
+  })
+
+  it("POST /api/vault/changeset revert emits a changeset_revert event with skill resolved from the audit record when the posted body omits it", async () => {
+    const cs = {
+      id: "cs-revert-skill-from-record",
+      skill: "spark-deep",
+      model: "test-model",
+      timestamp: "2026-07-14T00:00:00Z",
+      changes: [{ path: "wiki/rev-3.md", before: null, after: "content" }],
+    }
+    await changesetRoute.POST(new Request("http://x/api/vault/changeset", {
+      method: "POST", body: JSON.stringify({ action: "apply", changeset: cs }),
+    }))
+
+    // A posted revert body that carries only id + changes (no `skill`) — the
+    // route must fall back to loadChangeset's persisted audit record.
+    const { skill: _skill, ...changesetWithoutSkill } = cs
+    void _skill
+    await changesetRoute.POST(new Request("http://x/api/vault/changeset", {
+      method: "POST", body: JSON.stringify({ action: "revert", changeset: changesetWithoutSkill }),
+    }))
+
+    const events = await readRecentEvents(storage)
+    const revertEvent = events.find(
+      (e) => e.type === "changeset_revert" && e.changesetId === "cs-revert-skill-from-record",
+    )
+    expect(revertEvent).toEqual(
+      expect.objectContaining({
+        type: "changeset_revert",
+        changesetId: "cs-revert-skill-from-record",
+        skill: "spark-deep",
+      }),
+    )
   })
 
   it("POST /api/vault/changeset malformed body → 400", async () => {

@@ -1,16 +1,21 @@
 import type { UsageSummary } from "./usage-summary"
+import type { SkillAcceptance } from "../runs/acceptance"
+import type { OrchestratorRunRecord } from "../runs/ledger"
 
 /**
- * Browser-side caller for GET /api/usage (M12 Task 12). The spend summary is
- * computed entirely server-side (the browser never reads the usage ledger or
- * LLM settings itself — local-runtime pivot); this wrapper just fetches the
- * already-aggregated `{summary, budgetUsd}`. Type-only import of `UsageSummary`
- * keeps this module free of any server/provider code (browser-purity gate).
+ * Browser-side caller for GET /api/usage (M12 Task 12; Task 4 adds `acceptance`
+ * + `recentRuns`). The spend summary is computed entirely server-side (the
+ * browser never reads the usage ledger or LLM settings itself — local-runtime
+ * pivot); this wrapper just fetches the already-aggregated response.
+ * Type-only imports keep this module free of any server/provider code
+ * (browser-purity gate).
  */
 
 export interface UsageResponse {
   summary: UsageSummary
   budgetUsd: number
+  acceptance: SkillAcceptance[]
+  recentRuns: OrchestratorRunRecord[]
 }
 
 export async function loadUsage(fetchFn: typeof fetch = fetch): Promise<UsageResponse> {
