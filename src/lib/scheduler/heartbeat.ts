@@ -245,6 +245,13 @@ export function startHeartbeat(opts?: { intervalMs?: number }): () => void {
 
   const intervalMs = opts?.intervalMs ?? DEFAULT_INTERVAL_MS
 
+  // One boot line so a running heartbeat is observable in the server logs —
+  // the smoke check for "is the scheduler alive" reads this, and a silent
+  // scheduler is indistinguishable from a never-registered one.
+  console.log(
+    `[scheduler] heartbeat started (first tick in ${INITIAL_DELAY_MS / 1000}s, then every ${intervalMs / 60000}min; SCISPARK_SCHEDULER=off disables)`,
+  )
+
   const initialTimer = setTimeout(() => {
     void tick()
   }, INITIAL_DELAY_MS)
