@@ -10,6 +10,7 @@ import { SelectionToNoteBubble } from "@/components/notes/SelectionToNoteBubble"
 import { CompanionMascot } from "@/components/companion/CompanionMascot";
 import SettingsModal from "@/components/settings/SettingsModal";
 import ThemeApplier from "./ThemeApplier";
+import NavHistoryTracker from "./NavHistoryTracker";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -62,6 +63,7 @@ export function AppShell({ children }: AppShellProps) {
       <CompanionMascot />
       <SettingsModal />
       <ThemeApplier />
+      <NavHistoryTracker />
     </div>
   );
 }

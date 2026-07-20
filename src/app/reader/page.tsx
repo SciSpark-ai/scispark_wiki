@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import Link from "next/link"
+import { BackLink } from "@/components/ui/BackLink"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadReaderContent, type ReaderContent } from "@/lib/reader/load"
 import { resolvePaperByKey } from "@/lib/papers/resolve"
@@ -53,9 +53,7 @@ function ReaderPageContent() {
       <div className="p-7">
         <div className="border border-border-warm rounded-card px-4 py-3 bg-light-surface max-w-2xl">
           <div className="text-[14px] text-espresso">Paper not found.</div>
-          <Link href="/papers" className="mt-2 inline-block text-[13px] text-orange hover:text-orange-light">
-            Back to papers
-          </Link>
+          <BackLink className="mt-2" />
         </div>
       </div>
     )
