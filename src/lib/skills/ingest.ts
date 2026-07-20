@@ -17,6 +17,7 @@ import { RESERVED_FILES, type Changeset, type FileChange, type Frontmatter } fro
 import { applyChangeset, loadChangeset, makeChangesetId, revertChangeset } from "../vault/changesets"
 import { appendLog, writeIndex } from "../vault/index-builder"
 import { logEvent } from "../events/log"
+import { runPostIngestLint } from "../lint/run"
 import {
   buildAnalysisContext,
   indexSection,
@@ -552,6 +553,31 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
 
     await writeIndex(storage, await loadBundle(storage))
     await appendLog(storage, { date: today, op: "ingest", summary: paper.title })
+
+    // ── Post-apply verify step: scoped deterministic lint ────────────────────
+    // Ingest is the highest-stakes wiki writer (an LLM generation applied
+    // atomically across several pages), so run a scoped lint pass over just
+    // the pages THIS changeset touched right after applying it — a broken
+    // wikilink the generation introduced lands in the review inbox
+    // immediately rather than waiting for the next scheduled/manual lint run.
+    // `touched` = every changed path under wiki/ (page ids, i.e. the path
+    // without its ".md" extension — see vault/bundle.ts#loadBundle) — filters
+    // out anything not ending ".md" and, defensively, any path starting with
+    // "." (protected paths like .scispark/... are never in a changeset's
+    // changes anyway, but this guards against ever mapping one into a bogus
+    // page id). This is a best-effort VERIFY step, not part of the ingest's
+    // own success contract: a lint failure (thrown storage error, etc.) is
+    // logged and swallowed here, never allowed to turn an otherwise-successful
+    // ingest into a failure.
+    const touched = changes
+      .map((c) => c.path)
+      .filter((p) => p.endsWith(".md") && !p.startsWith("."))
+      .map((p) => p.slice(0, -3))
+    try {
+      await runPostIngestLint(storage, touched, { now: () => new Date(nowIso) })
+    } catch (err) {
+      ctx.log(`post-ingest lint failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`)
+    }
 
     for (let i = 0; i < generation.reviews.length; i++) {
       const review = generation.reviews[i]
