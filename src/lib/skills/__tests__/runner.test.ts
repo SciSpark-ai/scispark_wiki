@@ -145,6 +145,45 @@ describe("runSkill", () => {
     expect(JSON.parse(persisted as string).status).toBe("budget_exceeded")
   })
 
+  it("budget-vs-missing-key precedence: an over-budget run whose tier has no provider key still fails with BudgetExceededError, not a MissingKeyError (budget is checked before provider construction)", async () => {
+    const storage = new MemoryVaultStorage()
+    const meter = new Meter(storage, NOW)
+    // Pre-record spend that already blows past a tiny daily budget, same as the
+    // "budget exceeded" test above.
+    await meter.record({
+      skill: "other-skill",
+      runId: "run-prior",
+      provider: "anthropic",
+      model: "claude-haiku-4-5",
+      usage: { inputTokens: 1_000, outputTokens: 1_000 },
+    })
+
+    const skill = defineSkill<void, string>({
+      name: "budget-vs-key-skill",
+      version: "1.0.0",
+      async run(ctx) {
+        const r = await ctx.llm("fast", { messages: [{ role: "user", content: "hi" }] })
+        return r.text
+      },
+    })
+
+    const run = await runSkill({
+      skill,
+      input: undefined,
+      storage,
+      // DEFAULT_SETTINGS.keys is {} — no key for any provider — and no
+      // providerOverride is passed for "fast", so resolveProvider would call
+      // buildProvider(settings, "fast") and throw MissingKeyError IF the run
+      // ever got that far. It must not: the budget check happens first.
+      settings: { ...DEFAULT_SETTINGS, dailyBudgetUsd: 0.000001 },
+      now: NOW,
+    })
+
+    expect(run.status).toBe("budget_exceeded")
+    expect(run.error).toMatch(/budget/i)
+    expect(run.usage).toEqual({ inputTokens: 0, outputTokens: 0 })
+  })
+
   it("projective budget check: ctx.llm blocks a call whose PROJECTED cost alone crosses budget, though spent-so-far is $0 (previously this would have been allowed reactively)", async () => {
     const storage = new MemoryVaultStorage()
     // strong tier resolves to claude-opus-4-8 ($25/M out); default maxTokens 1024

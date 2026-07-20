@@ -346,6 +346,37 @@ describe("vault API", () => {
     )
   })
 
+  it("POST /api/vault/changeset revert emits a changeset_revert event with skill \"unknown\" when the body omits it AND no audit record was ever persisted", async () => {
+    // Simulate a file already sitting in the "after" state WITHOUT ever going
+    // through the apply route — so no `.scispark/changesets/<id>.json` audit
+    // record exists. The route's fallback chain is
+    // `body.skill ?? loadChangeset(...)?.skill ?? "unknown"`; with both sources
+    // absent it must land on the "unknown" literal.
+    await storage.write("wiki/rev-unknown.md", "content")
+
+    const csWithoutSkillOrRecord = {
+      id: "cs-revert-no-audit-no-skill",
+      changes: [{ path: "wiki/rev-unknown.md", before: null, after: "content" }],
+    }
+    const revert = await changesetRoute.POST(new Request("http://x/api/vault/changeset", {
+      method: "POST", body: JSON.stringify({ action: "revert", changeset: csWithoutSkillOrRecord }),
+    }))
+    expect(revert.status).toBe(200)
+    expect(await storage.read("wiki/rev-unknown.md")).toBeNull()
+
+    const events = await readRecentEvents(storage)
+    const revertEvent = events.find(
+      (e) => e.type === "changeset_revert" && e.changesetId === "cs-revert-no-audit-no-skill",
+    )
+    expect(revertEvent).toEqual(
+      expect.objectContaining({
+        type: "changeset_revert",
+        changesetId: "cs-revert-no-audit-no-skill",
+        skill: "unknown",
+      }),
+    )
+  })
+
   it("POST /api/vault/changeset malformed body → 400", async () => {
     const badJson = await changesetRoute.POST(new Request("http://x/api/vault/changeset", {
       method: "POST", body: "not json",

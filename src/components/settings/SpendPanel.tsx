@@ -69,6 +69,17 @@ function costCell(row: SkillAcceptance): string {
   return "—"
 }
 
+/** Tooltip for the totalCostUsd-fallback case only (costPerAcceptedUsd null,
+ * totalCostUsd present) — clarifies that the shown number is total spend, not
+ * a genuine per-accepted-change figure. Undefined for every other case (a real
+ * $/accepted value, or the unpriced "—" case) so no misleading title appears. */
+function costCellTitle(row: SkillAcceptance): string | undefined {
+  if (row.costPerAcceptedUsd == null && row.totalCostUsd != null) {
+    return "total spend (no accepted changesets)"
+  }
+  return undefined
+}
+
 export function AcceptanceTable({ acceptance }: { acceptance: SkillAcceptance[] }) {
   if (acceptance.length === 0) {
     return <p className="text-[13px] text-muted-text">No changesets yet.</p>
@@ -103,7 +114,9 @@ export function AcceptanceTable({ acceptance }: { acceptance: SkillAcceptance[] 
             <td className="py-1.5 text-right text-espresso tabular-nums">
               {row.acceptRate == null ? "—" : `${Math.round(row.acceptRate * 100)}%`}
             </td>
-            <td className="py-1.5 text-right text-espresso tabular-nums">{costCell(row)}</td>
+            <td className="py-1.5 text-right text-espresso tabular-nums" title={costCellTitle(row)}>
+              {costCell(row)}
+            </td>
           </tr>
         ))}
       </tbody>

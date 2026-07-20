@@ -84,6 +84,11 @@ export async function GET(): Promise<Response> {
 
     // Reverted ids = changeset_revert events ∪ ingest's log.md undo entries —
     // undoIngest writes both, so union (not concatenate) avoids double-counting.
+    // NOTE: the 5000 cap spans ALL event types (views, dwell, highlights, chats,
+    // etc.), not just reverts — on a very active long-lived vault an old
+    // `changeset_revert` can age out of this window. Ingest reverts stay covered
+    // regardless via the log.md union above; a type-filtered event read (only
+    // `changeset_revert`) is the upgrade path if this cap ever proves too small.
     const events = await readRecentEvents(vault, { limit: 5000 })
     const revertedIds = new Set<string>()
     for (const e of events) {

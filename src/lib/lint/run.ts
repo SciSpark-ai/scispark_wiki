@@ -121,6 +121,11 @@ async function writeFindingsAsReviews(
  * future caller needing the same key) don't have to reimplement the format.
  */
 export function findingIdentity(f: Pick<LintFinding, "lintKind" | "fixTarget" | "pages">): string {
+  // Unescaped `|`/`,` delimiters are safe here because `fixTarget`/`pages` are
+  // page ids constrained by `isValidSlug` (src/lib/wiki/schema-routing.ts —
+  // kebab-case only, no spaces/underscores/uppercase), which can never contain
+  // either character, and `lintKind` is a closed `LintKind` enum. Revisit this
+  // format if `findingIdentity` is ever reused against a less-constrained id source.
   return `${f.lintKind}|${f.fixTarget ?? ""}|${[...f.pages].sort().join(",")}`
 }
 

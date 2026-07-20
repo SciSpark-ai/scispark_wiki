@@ -18,6 +18,8 @@ describe("AcceptanceTable", () => {
     expect(html).toContain("ingest")
     expect(html).toContain("75%")
     expect(html).toContain("$0.4000")
+    // A genuine per-accepted figure must not carry the total-spend-fallback tooltip.
+    expect(html).not.toContain("total spend (no accepted changesets)")
   })
 
   it("still surfaces total spend for an applied:0 row instead of hiding it behind a dash", () => {
@@ -28,6 +30,8 @@ describe("AcceptanceTable", () => {
     expect(html).toContain("spark-deep")
     expect(html).toContain("—") // accept rate has no meaning with 0 applied
     expect(html).toContain("$0.5000") // but the real spend must still be visible
+    // The $/accepted cell is showing total spend, not a real per-accepted figure — flagged via title.
+    expect(html).toContain('title="total spend (no accepted changesets)"')
   })
 
   it("renders a dash for both rate and cost when the skill is entirely unpriced", () => {
