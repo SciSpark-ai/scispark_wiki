@@ -10,6 +10,7 @@ import { resolvePaperByKey } from "@/lib/papers/resolve"
 import { logEvent } from "@/lib/events/log"
 import { writeReaderHandoff } from "@/lib/reader/handoff"
 import { paperSlug } from "@/lib/wiki/authoring"
+import { COMPANION_CLEARANCE } from "@/components/layout/companion-clearance"
 import { PaperResultItem } from "@/components/papers/PaperResultItem"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Button } from "@/components/ui/Button"
@@ -102,7 +103,7 @@ function PapersPageContent() {
   }
 
   return (
-    <div className="p-7">
+    <div className={`p-7 ${COMPANION_CLEARANCE}`}>
       <PageHeader
         title="Papers"
         actions={<Link href="/wiki/inbox" className="text-[13px] text-espresso rounded-pill border border-border-warm px-3 py-1">Review inbox</Link>}

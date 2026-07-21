@@ -7,6 +7,7 @@ import type { VaultStorage } from "@/lib/vault/storage"
 import { paperKey } from "@/lib/papers/types"
 import { paperSlug } from "@/lib/wiki/authoring"
 import { displayTitle } from "@/lib/papers/title"
+import { venueYearLine } from "@/lib/papers/venue"
 import { savePaper } from "@/lib/papers/save-client"
 import { logEvent } from "@/lib/events/log"
 import { Card } from "@/components/ui/Card"
@@ -66,6 +67,9 @@ export function RealFeedCard({
   const href = `/paper/${paperSlug(paper)}`
 
   const band = bandFor(item)
+  // `title` attr carries the full line so a still-too-long venue is
+  // recoverable on hover rather than silently lost to the truncation.
+  const metaLine = venueYearLine(paper.venue, paper.year)
   const tldr = item.tldr ?? paper.abstract?.split(". ")[0]
   const tags =
     item.tags && item.tags.length > 0
@@ -126,8 +130,8 @@ export function RealFeedCard({
         )}
 
         <div className="mt-auto pt-2 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
-          <div className="min-w-0 truncate text-[11px] text-muted-text tracking-body">
-            {paper.venue ?? "no venue"} · {paper.year ?? "—"}
+          <div className="min-w-0 truncate text-[11px] text-muted-text tracking-body" title={metaLine}>
+            {metaLine}
           </div>
           <div className="flex flex-shrink-0 items-center gap-1.5">
             <Button variant="secondary" size="sm" onClick={handleSave} disabled={saved}>

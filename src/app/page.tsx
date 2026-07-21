@@ -11,6 +11,7 @@ import type { VaultStorage } from "@/lib/vault/storage"
 import { RealFeedCard } from "@/components/feed/RealFeedCard"
 import { FeedRefreshBar } from "@/components/feed/FeedRefreshBar"
 import { useCompanion } from "@/components/companion/useCompanion"
+import { COMPANION_CLEARANCE } from "@/components/layout/companion-clearance"
 
 type PageState =
   | { status: "checking" }
@@ -111,7 +112,7 @@ export default function HomePage() {
   )
 
   return (
-    <div className="p-7">
+    <div className={`p-7 ${COMPANION_CLEARANCE}`}>
       <h1 className="font-heading text-[28px] text-espresso tracking-heading">{getGreeting()}</h1>
 
       {state.status === "checking" && <p className="mt-6 text-[14px] text-muted-text">Loading…</p>}
