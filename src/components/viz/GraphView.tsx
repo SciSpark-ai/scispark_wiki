@@ -1,13 +1,11 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
 import Graph from "graphology"
 import Sigma from "sigma"
 import forceAtlas2 from "graphology-layout-forceatlas2"
 import type { KnowledgeGraph } from "@/lib/viz/graph"
 import { PAGE_TYPES, type PageType } from "@/lib/vault/types"
-import { wikiHref } from "@/lib/wiki/href"
 import { displayTitle } from "@/lib/papers/title"
 import { truncateGraphLabel } from "./labels"
 
@@ -106,10 +104,10 @@ interface GraphViewProps {
    * selection-driven styling upgrade is Task 9. */
   selectedId?: string | null
   /** Fires on Sigma `clickNode`/`clickStage` with the clicked node's id (or
-   * `null` for a stage click, i.e. "deselect"). Optional so GraphView still
-   * degrades gracefully (falls back to its old wiki-page deep-link) if ever
-   * mounted without a selection handler wired up. */
-  onSelectNode?: (id: string | null) => void
+   * `null` for a stage click, i.e. "deselect"). Required — VizWorkspace is
+   * GraphView's only mount point and always wires this up to drive the
+   * Inspector panel's selection. */
+  onSelectNode: (id: string | null) => void
 }
 
 /**
@@ -118,11 +116,10 @@ interface GraphViewProps {
  * by node id), runs ForceAtlas2 synchronously for a fixed iteration count,
  * then renders with Sigma. Hover highlights the node + its neighborhood
  * (dimming the rest via reducers); a type-filter row hides node/edge types
- * via the same reducers. Click now drives the workspace's Inspector
- * selection (`onSelectNode`) rather than navigating away.
+ * via the same reducers. Click drives the workspace's Inspector selection
+ * (`onSelectNode`) instead of navigating away.
  */
 export default function GraphView({ graph, selectedId = null, onSelectNode }: GraphViewProps) {
-  const router = useRouter()
   const containerRef = useRef<HTMLDivElement>(null)
   const sigmaRef = useRef<Sigma | null>(null)
   const hoveredNodeRef = useRef<string | null>(null)
@@ -269,25 +266,36 @@ export default function GraphView({ graph, selectedId = null, onSelectNode }: Gr
       sigmaInstance.refresh()
     })
     sigmaInstance.on("clickNode", ({ node }) => {
-      if (onSelectNodeRef.current) {
-        onSelectNodeRef.current(node)
-      } else {
-        router.push(wikiHref(node))
-      }
+      onSelectNodeRef.current(node)
     })
     sigmaInstance.on("clickStage", () => {
-      onSelectNodeRef.current?.(null)
+      onSelectNodeRef.current(null)
     })
 
     sigmaRef.current = sigmaInstance
 
+    // Sigma only measures its container's offsetWidth/offsetHeight at
+    // construction and on the global `window` resize event (verified in
+    // Sigma's own source: no ResizeObserver of its own) — its internal hit
+    // testing divides mouse coordinates by that CACHED size. The Inspector
+    // panel mounting/unmounting resizes this flex sibling WITHOUT any
+    // window resize firing, so every click/hover would hit-test against a
+    // stale width until the user happened to resize their window. A
+    // ResizeObserver on the same container keeps Sigma's cached dimensions
+    // (and camera/quadtree via resize()) in sync with actual layout.
+    const resizeObserver = new ResizeObserver(() => {
+      sigmaInstance.resize()
+      sigmaInstance.refresh()
+    })
+    resizeObserver.observe(container)
+
     return () => {
+      resizeObserver.disconnect()
       sigmaInstance.kill()
       sigmaRef.current = null
     }
-    // `graph` fully determines the instance; `router` is stable for the
-    // component's lifetime (Next.js router identity).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // `graph` fully determines the instance; everything else this effect
+    // reads is a ref (stable identity, kept in sync by the effects above).
   }, [graph])
 
   const stats = useMemo(
@@ -303,11 +311,12 @@ export default function GraphView({ graph, selectedId = null, onSelectNode }: Gr
       </div>
       <div
         ref={containerRef}
+        data-viz-canvas
         className="border border-border-warm rounded-card bg-light-surface"
         style={{ height: 560, width: "100%" }}
       />
       <p className="mt-2 text-[12px] text-muted-text tracking-body">
-        Hover a node to see its neighborhood; click to open its wiki page.
+        Hover a node to see its neighborhood; click to select it.
       </p>
     </div>
   )

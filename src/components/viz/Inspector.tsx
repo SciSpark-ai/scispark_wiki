@@ -30,12 +30,23 @@ interface InspectorProps {
  * pattern in src/components/papers/SaveToProjectMenu.tsx (paired
  * add/remove on every mount — this panel has no separate `open` prop of
  * its own since VizWorkspace only ever mounts it while selected).
+ *
+ * Click-away deliberately ignores mousedowns that land inside the graph
+ * canvas (marked `[data-viz-canvas]` by GraphView): the canvas is a flex
+ * SIBLING of this panel, not an ancestor, so a naive "outside the panel"
+ * check would treat every graph click as a click-away too — firing
+ * `onClose` on mousedown (unmounting this panel, widening the canvas,
+ * desyncing Sigma's cached size) followed by Sigma's own `clickNode` on
+ * mouseup (re-selecting and remounting). Leaving canvas clicks entirely to
+ * GraphView's `clickNode`/`clickStage` handlers avoids that churn.
  */
 export default function Inspector({ bundle, id, neighbors, onSelect, onClose }: InspectorProps) {
   const ref = useRef<HTMLElement>(null)
 
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as Element | null
+      if (target?.closest("[data-viz-canvas]")) return
       if (!ref.current?.contains(e.target as Node)) onClose()
     }
     const onKeyDown = (e: KeyboardEvent) => {

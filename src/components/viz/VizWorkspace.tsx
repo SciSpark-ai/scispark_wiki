@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { deriveKnowledgeGraph, type KnowledgeGraph } from "@/lib/viz/graph"
@@ -72,6 +72,11 @@ export default function VizWorkspace({
   // below only renders once `selectedId` resolves to a page in the
   // filtered bundle.
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? null)
+  // Stable identity across renders — Inspector's click-away effect
+  // re-subscribes its document listeners whenever `onClose` changes
+  // reference, so an inline `() => setSelectedId(null)` here would have
+  // torn down and re-added those listeners on every VizWorkspace render.
+  const closeInspector = useCallback(() => setSelectedId(null), [])
 
   const options = useMemo(() => (bundle ? filterOptions(bundle) : { types: [], tags: [], yearBounds: null }), [bundle])
 
@@ -204,7 +209,7 @@ export default function VizWorkspace({
             id={selectedId}
             neighbors={neighbors}
             onSelect={setSelectedId}
-            onClose={() => setSelectedId(null)}
+            onClose={closeInspector}
           />
         )}
       </div>
