@@ -28,6 +28,21 @@
   --band-review: #a1836f;
   --band-application: #db2777;
   --band-dataset: #0891b2;
+
+  /* Knowledge-graph community palette (viz workspace, GraphView.tsx) — 8
+     tasteful categorical hues read via getComputedStyle (Sigma/WebGL can't
+     consume var() color strings directly, so JS resolves these once at
+     mount and on theme change; see communityColorVarName/communityColor in
+     graph-style.ts). Kept distinguishable-but-muted so no community reads
+     as "the loud one" against the cream/espresso/orange palette. */
+  --viz-cat-1: #f97316; /* orange (brand) */
+  --viz-cat-2: #0d9488; /* teal */
+  --viz-cat-3: #8b5cf6; /* violet */
+  --viz-cat-4: #16a34a; /* green */
+  --viz-cat-5: #4f46e5; /* indigo */
+  --viz-cat-6: #a16207; /* olive gold */
+  --viz-cat-7: #0891b2; /* cyan */
+  --viz-cat-8: #db2777; /* pink */
 }
 
 [data-theme="dark"] {
@@ -53,6 +68,17 @@
   --band-review: #826752;
   --band-application: #ad1f5e;
   --band-dataset: #077490;
+
+  /* Same dim-for-dark-mode formula as the bands above, applied to the
+     graph community palette. */
+  --viz-cat-1: #c2590f;
+  --viz-cat-2: #0b7268;
+  --viz-cat-3: #6d40c9;
+  --viz-cat-4: #12813a;
+  --viz-cat-5: #4038b8;
+  --viz-cat-6: #8a6a1f;
+  --viz-cat-7: #077490;
+  --viz-cat-8: #ad1f5e;
 }
 
 @theme inline {

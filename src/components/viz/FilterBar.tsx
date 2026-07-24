@@ -4,8 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import type { VizFilterOptions, VizFilters } from "@/lib/viz/filter"
 import type { PageType } from "@/lib/vault/types"
 
-// Mirrors GraphView.tsx's TYPE_LABELS (kept in sync manually, same as the
-// other TYPE_HEADINGS/TYPE_DIRS mirrors noted throughout the repo).
+// Mirrors the TYPE_HEADINGS/TYPE_DIRS-style label mirrors noted throughout
+// the repo (kept in sync manually). GraphView.tsx used to carry its own
+// copy for an internal type-filter row; that row was removed (Task 9) once
+// this FilterBar became the single type-filtering surface for the whole
+// viz workspace, so this is now the only such mirror in this directory.
 const TYPE_LABELS: Record<PageType, string> = {
   paper: "Paper",
   concept: "Concept",
