@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { VizFilterOptions, VizFilters } from "@/lib/viz/filter"
 import type { PageType } from "@/lib/vault/types"
 
@@ -33,6 +33,24 @@ interface FilterBarProps {
 export function FilterBar({ options, filters, onChange }: FilterBarProps) {
   const [tagsOpen, setTagsOpen] = useState(false)
   const [tagQuery, setTagQuery] = useState("")
+  const tagsRef = useRef<HTMLDivElement>(null)
+
+  // Click outside / ESC to close — mirrors src/components/papers/SaveToProjectMenu.tsx.
+  useEffect(() => {
+    if (!tagsOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (!tagsRef.current?.contains(e.target as Node)) setTagsOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTagsOpen(false)
+    }
+    document.addEventListener("mousedown", onDown)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onDown)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [tagsOpen])
 
   const toggleType = (type: string) => {
     const next = filters.types.includes(type)
@@ -48,16 +66,20 @@ export function FilterBar({ options, filters, onChange }: FilterBarProps) {
     onChange({ ...filters, tags: next })
   }
 
-  const setYearMin = (value: number) => onChange({ ...filters, yearRange: { ...filters.yearRange, min: value } })
-  const setYearMax = (value: number) => onChange({ ...filters, yearRange: { ...filters.yearRange, max: value } })
+  const yearMin = filters.yearRange.min ?? options.yearBounds?.min ?? 0
+  const yearMax = filters.yearRange.max ?? options.yearBounds?.max ?? 0
+
+  // Clamp so the range can never invert into a silently-unsatisfiable filter
+  // (min dragged past the current max, or vice versa).
+  const setYearMin = (value: number) =>
+    onChange({ ...filters, yearRange: { ...filters.yearRange, min: Math.min(value, yearMax) } })
+  const setYearMax = (value: number) =>
+    onChange({ ...filters, yearRange: { ...filters.yearRange, max: Math.max(value, yearMin) } })
 
   const filteredTags = useMemo(
     () => options.tags.filter((t) => t.toLowerCase().includes(tagQuery.toLowerCase())),
     [options.tags, tagQuery],
   )
-
-  const yearMin = filters.yearRange.min ?? options.yearBounds?.min ?? 0
-  const yearMax = filters.yearRange.max ?? options.yearBounds?.max ?? 0
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -83,7 +105,7 @@ export function FilterBar({ options, filters, onChange }: FilterBarProps) {
       </div>
 
       {options.tags.length > 0 && (
-        <div className="relative">
+        <div className="relative" ref={tagsRef}>
           <button
             type="button"
             aria-expanded={tagsOpen}

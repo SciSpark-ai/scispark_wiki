@@ -75,10 +75,12 @@ export default function VizWorkspace({
   // (not a re-filter) whenever `filters` is EMPTY_FILTERS.
   const filtered = useMemo(() => (bundle ? filterBundle(bundle, filters) : null), [bundle, filters])
 
-  // Unfiltered graph node count distinguishes "vault is genuinely empty"
-  // (existing behavior) from "filters excluded everything" (new behavior) —
-  // both checks need the SAME derive function, over different bundles.
-  const unfilteredGraph = useMemo<KnowledgeGraph | null>(() => (bundle ? deriveKnowledgeGraph(bundle) : null), [bundle])
+  // "vault is genuinely empty" vs. "filters excluded everything" are both
+  // just page-count checks — deriveKnowledgeGraph always emits exactly one
+  // node per bundle page (graph.ts), so bundle.pages.size /
+  // filtered.pages.size already ARE the node counts. No need to run the
+  // (Louvain-including) graph derivation a second time just to detect that;
+  // it runs once, below, over `filtered`.
   const graph = useMemo<KnowledgeGraph | null>(() => (filtered ? deriveKnowledgeGraph(filtered) : null), [filtered])
   const timeline = useMemo<Timeline | null>(() => (filtered ? deriveTimeline(filtered) : null), [filtered])
   const citationFlow = useMemo<CitationFlow | null>(
@@ -100,9 +102,8 @@ export default function VizWorkspace({
       }))
   }, [filtered])
 
-  const isEmptyVault = bundle !== null && unfilteredGraph !== null && unfilteredGraph.nodes.length === 0
-  const isFilteredEmpty =
-    !isEmptyVault && bundle !== null && graph !== null && unfilteredGraph !== null && graph.nodes.length === 0
+  const isEmptyVault = bundle !== null && bundle.pages.size === 0
+  const isFilteredEmpty = !isEmptyVault && filtered !== null && filtered.pages.size === 0
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -122,7 +123,7 @@ export default function VizWorkspace({
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-6">
-        {!bundle || !unfilteredGraph ? (
+        {!bundle ? (
           <LoadingState label="Loading vault…" />
         ) : isEmptyVault ? (
           <div className="border border-border-warm rounded-card px-5 py-6 bg-light-surface max-w-xl">
