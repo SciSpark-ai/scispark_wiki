@@ -8,6 +8,7 @@ import { loadBundle, type Bundle } from "@/lib/vault/bundle"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { deriveKnowledgeGraph, type KnowledgeGraph } from "@/lib/viz/graph"
 import { deriveTimeline, type Timeline } from "@/lib/viz/timeline"
+import { pageYear } from "@/lib/viz/filter"
 import { deriveCitationFlow, loadCitationRefs, type CitationFlow } from "@/lib/viz/citations"
 import { deriveAuthorNetwork, type AuthorNetwork } from "@/lib/viz/authors"
 import type { CitationRef } from "@/lib/papers/citations-core"
@@ -28,14 +29,6 @@ function ComingSoon({ label }: { label: string }) {
       <p className="text-[14px] text-muted-text tracking-body">{label} view is coming in the next tasks.</p>
     </div>
   )
-}
-
-/** Same year-fallback convention `deriveTimeline` uses for papers: prefer
- * frontmatter.year, else the leading 4 digits of `created` (0 = unusable). */
-function paperYear(frontmatterYear: unknown, created: string): number {
-  if (typeof frontmatterYear === "number") return frontmatterYear
-  const year = parseInt((created ?? "").slice(0, 4), 10)
-  return Number.isNaN(year) ? 0 : year
 }
 
 export default function VizPage() {
@@ -110,7 +103,7 @@ export default function VizPage() {
       .map((p) => ({
         id: p.id,
         title: p.frontmatter.title,
-        year: paperYear(p.frontmatter.year, p.frontmatter.created),
+        year: pageYear(p) ?? 0,
       }))
   }, [bundle])
 
