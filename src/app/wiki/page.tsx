@@ -127,10 +127,15 @@ function WikiIndexPageContent() {
   // toggle, TypeSections' "All ->" link, browser Back/Forward) should drop a
   // stale shelf drill-down rather than leaving it stranded — derive the reset
   // from the URL instead of scattering onClick handlers across every link
-  // that can change `view`.
-  useEffect(() => {
+  // that can change `view`. React's sanctioned "adjust state during render"
+  // idiom (track the previous value in state, compare during render) avoids
+  // both the react-hooks/set-state-in-effect lint rule and the one-frame
+  // stale-drilldown flash a useEffect reset would otherwise show.
+  const [prevView, setPrevView] = useState(view)
+  if (view !== prevView) {
+    setPrevView(view)
     setViewAllShelf(null)
-  }, [view])
+  }
 
   const dashboard = useMemo(() => (bundle ? deriveWikiDashboard(bundle) : null), [bundle])
 
