@@ -302,7 +302,7 @@ export default function CitationFlowView({
       )}
 
       <p className="mt-2 text-[12px] text-muted-text tracking-body">
-        Hover an edge or paper to trace citations; click a node to open its wiki page.
+        Hover an edge or paper to trace citations; click a paper to inspect it.
       </p>
     </div>
   )

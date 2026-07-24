@@ -333,15 +333,15 @@ export default function GraphView({ graph, selectedId = null, onSelectNode }: Gr
   )
 
   return (
-    <div>
+    <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-end mb-3">
         <p className="text-[12px] text-muted-text tracking-body flex-shrink-0">{stats}</p>
       </div>
       <div
         ref={containerRef}
         data-viz-canvas
-        className="border border-border-warm rounded-card bg-light-surface"
-        style={{ height: 560, width: "100%" }}
+        className="flex-1 border border-border-warm rounded-card bg-light-surface"
+        style={{ minHeight: 320, width: "100%" }}
       />
       <p className="mt-2 text-[12px] text-muted-text tracking-body">
         Hover a node to see its neighborhood; click to select it.

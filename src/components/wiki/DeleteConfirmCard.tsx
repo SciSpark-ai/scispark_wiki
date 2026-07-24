@@ -37,8 +37,8 @@ export default function DeleteConfirmCard({
   return (
     <Card role="dialog" aria-label="Delete page" className="mt-3 px-4 py-3">
       <p className="text-[13px] text-espresso">
-        Delete &ldquo;{title}&rdquo;? This cannot be undone from here, but the change stays
-        reversible from the review inbox.
+        Delete &ldquo;{title}&rdquo;? The removal is recorded in your vault&rsquo;s change history and
+        stays recoverable, but there is no one-click undo yet.
       </p>
       {backlinks > 0 && (
         <p className="mt-1 text-[12px] text-muted-text">

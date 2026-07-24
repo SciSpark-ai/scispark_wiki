@@ -135,6 +135,30 @@ describe("deriveWikiDashboard — shelf entry fields", () => {
     expect(dashboard.shelves.saved[0].tldr).toBe("A concise summary.")
   })
 
+  it("tldr from frontmatter is trimmed", () => {
+    const bundle = bundleFromPages([
+      {
+        id: "wiki/papers/a",
+        frontmatter: fm("paper", "A", { status: "saved", tldr: "  padded summary  " }),
+        body: "",
+      },
+    ])
+    const dashboard = deriveWikiDashboard(bundle)
+    expect(dashboard.shelves.saved[0].tldr).toBe("padded summary")
+  })
+
+  it("tldr body fallback strips wikilink markup down to visible text", () => {
+    const bundle = bundleFromPages([
+      {
+        id: "wiki/papers/a",
+        frontmatter: fm("paper", "A", { status: "saved" }),
+        body: "This paper introduces the [[mtrf-toolbox]] via [[trf-estimation|TRF estimation]].",
+      },
+    ])
+    const dashboard = deriveWikiDashboard(bundle)
+    expect(dashboard.shelves.saved[0].tldr).toBe("This paper introduces the mtrf-toolbox via TRF estimation.")
+  })
+
   it("tldr falls back to the first non-empty, non-heading body line", () => {
     const bundle = bundleFromPages([
       {

@@ -76,14 +76,20 @@ function paperStatusOf(page: WikiPage): PaperShelfStatus {
   return "saved"
 }
 
+/** `[[slug]]` / `[[slug|label]]` wikilink markup is meaningless on a dashboard
+ * card — render the link's visible text only. */
+function stripWikilinks(text: string): string {
+  return text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, slug: string, label?: string) => label ?? slug)
+}
+
 function tldrOf(page: WikiPage): string | null {
   const fmTldr = page.frontmatter.tldr
-  if (typeof fmTldr === "string" && fmTldr.trim()) return fmTldr
+  if (typeof fmTldr === "string" && fmTldr.trim()) return fmTldr.trim()
   for (const rawLine of page.body.split("\n")) {
     const line = rawLine.trim()
     if (!line) continue
     if (line.startsWith("#")) continue
-    return line
+    return stripWikilinks(line)
   }
   return null
 }

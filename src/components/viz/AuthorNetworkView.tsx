@@ -270,8 +270,8 @@ export default function AuthorNetworkView({ network, selectedId = null, onSelect
         </svg>
       </div>
       <p className="mt-2 text-[12px] text-muted-text tracking-body">
-        Hover an author to trace collaborators; click to open their wiki page (authors without one are shown but not
-        linked — top {MAX_LABELS} by paper count are labeled).
+        Hover an author to trace collaborators; click to inspect them (authors without a wiki page are shown but not
+        selectable — top {MAX_LABELS} by paper count are labeled).
       </p>
     </div>
   )

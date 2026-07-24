@@ -280,7 +280,7 @@ export default function TimelineView({ timeline, selectedId = null, onSelect }: 
           className="inline-block w-2 h-2 rounded-full mr-1 ml-3 align-middle"
           style={{ background: FINDING_COLOR }}
         />
-        Finding — hover a dot for details, click to open its wiki page.
+        Finding — hover a dot for details, click to inspect it.
       </p>
     </div>
   )
