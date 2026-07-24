@@ -5,18 +5,13 @@
 // entries — is a bundle paper page (deriveCitationFlow only ever produces
 // edges between two vault papers; external/unresolved references never
 // reach this component at all), so both are selectable.
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { act } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import CitationFlowView, { type CitationPaper } from "../CitationFlowView"
 import type { CitationFlow } from "@/lib/viz/citations"
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-
-const pushMock = vi.fn()
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
-}))
 
 function mount(el: React.ReactElement): { host: HTMLDivElement; root: Root } {
   const host = document.createElement("div")
@@ -50,10 +45,6 @@ function renderFlow(props: Partial<React.ComponentProps<typeof CitationFlowView>
 }
 
 describe("CitationFlowView selection", () => {
-  beforeEach(() => {
-    pushMock.mockClear()
-  })
-
   it("renders a selected-state marker on the canvas node matching selectedId", () => {
     const { host, root } = renderFlow({ selectedId: "wiki/papers/p1", onSelect: () => {} })
     expect(host.querySelector('[data-selected="true"]')).toBeTruthy()
@@ -69,7 +60,6 @@ describe("CitationFlowView selection", () => {
       circle!.dispatchEvent(new MouseEvent("click", { bubbles: true }))
     })
     expect(onSelect).toHaveBeenCalledWith("wiki/papers/p1")
-    expect(pushMock).not.toHaveBeenCalled()
     unmount(root, host)
   })
 
@@ -103,16 +93,6 @@ describe("CitationFlowView selection", () => {
   it("marks its root container with data-viz-canvas", () => {
     const { host, root } = renderFlow({ onSelect: () => {} })
     expect(host.querySelector("[data-viz-canvas]")).toBeTruthy()
-    unmount(root, host)
-  })
-
-  it("falls back to navigating when onSelect is not provided (back-compat)", () => {
-    const { host, root } = renderFlow()
-    const circle = host.querySelector("circle")!
-    act(() => {
-      circle.dispatchEvent(new MouseEvent("click", { bubbles: true }))
-    })
-    expect(pushMock).toHaveBeenCalledWith("/wiki/papers/p1")
     unmount(root, host)
   })
 })

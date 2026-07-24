@@ -1,12 +1,10 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { forceSimulation, forceManyBody, forceLink, forceCollide, forceCenter } from "d3-force"
 import type { SimulationNodeDatum, SimulationLinkDatum } from "d3-force"
 import type { AuthorNetwork } from "@/lib/viz/authors"
 import { topAuthorsByPaperCount, edgesAmongNodes } from "@/lib/viz/layout"
-import { wikiHref } from "@/lib/wiki/href"
 
 const MAX_NODES = 200
 const MAX_LABELS = 20
@@ -128,9 +126,8 @@ interface AuthorNetworkViewProps {
   selectedId?: string | null
   /** Fires with the clicked author's wiki page id — only for nodes that
    * have one (`pageId !== null`); a pageless author's click stays a no-op,
-   * unchanged by this. Without `onSelect`, a paged node's click falls back
-   * to this view's pre-selection-wiring behavior (navigate straight to the
-   * author's wiki page) so the view stays usable stand-alone. */
+   * unchanged by this. VizWorkspace, this view's sole production caller,
+   * always wires it; without it, a paged node's click is simply a no-op. */
   onSelect?: (id: string | null) => void
 }
 
@@ -140,12 +137,10 @@ interface AuthorNetworkViewProps {
  * (charge + link + collide + centering, fixed tick count, no animation
  * loop). Rendering is capped to the ~200 highest-paperCount authors; only
  * the top ~20 of those get an on-canvas label to avoid label soup. Clicking
- * a node with a wiki author page selects it (or navigates there directly
- * when `onSelect` isn't wired); authors without one are a no-op click with
- * a native tooltip.
+ * a node with a wiki author page selects it; authors without one are a
+ * no-op click with a native tooltip.
  */
 export default function AuthorNetworkView({ network, selectedId = null, onSelect }: AuthorNetworkViewProps) {
-  const router = useRouter()
   const [hovered, setHovered] = useState<string | null>(null)
 
   const { nodes, links, overflowTotal } = useMemo(() => layoutNetwork(network), [network])
@@ -174,17 +169,13 @@ export default function AuthorNetworkView({ network, selectedId = null, onSelect
     return map
   }, [links])
 
-  const goTo = (node: SimNode) => {
-    if (node.pageId) router.push(wikiHref(node.pageId))
-  }
-  // Selecting drives the workspace's Inspector panel when wired up
-  // (VizWorkspace always wires it); without it, a click keeps this view's
-  // pre-Task-10 direct-navigate behavior instead of becoming a silent no-op.
-  // A pageless author has nothing to select or navigate to either way.
+  // Selecting drives the workspace's Inspector panel; with no onSelect
+  // wired (VizWorkspace is this view's sole production caller and always
+  // wires it), a click is simply a no-op. A pageless author has nothing to
+  // select either way.
   const selectNode = (node: SimNode) => {
     if (!node.pageId) return
-    if (onSelect) onSelect(node.pageId)
-    else goTo(node)
+    onSelect?.(node.pageId)
   }
 
   const nodeOpacity = (id: string): number => {

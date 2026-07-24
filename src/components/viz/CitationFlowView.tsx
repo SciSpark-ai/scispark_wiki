@@ -1,12 +1,10 @@
 "use client"
 
 import { useId, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { linkHorizontal } from "d3-shape"
 import { displayTitle } from "@/lib/papers/title"
 import type { CitationEdge, CitationFlow } from "@/lib/viz/citations"
 import { yearColumns } from "@/lib/viz/layout"
-import { wikiHref } from "@/lib/wiki/href"
 
 const NODE_RADIUS = 6
 const COL_WIDTH = 130
@@ -44,13 +42,12 @@ interface CitationFlowViewProps {
    * identically to `null`). Optional for back-compat with any caller/test
    * that doesn't wire selection. */
   selectedId?: string | null
-  /** Fires with the clicked paper's page id when provided (every paper this
-   * view renders — canvas nodes and the "no citation links" side list alike —
-   * is a bundle page; `deriveCitationFlow` only ever produces edges between
-   * two vault papers, so unresolved/external references never reach this
-   * component). Without it, clicking falls back to this view's
-   * pre-selection-wiring behavior (navigate straight to the paper's wiki
-   * page) so the view stays usable stand-alone. */
+  /** Fires with the clicked paper's page id when provided (VizWorkspace,
+   * this view's sole production caller, always wires it — every paper this
+   * view renders, canvas nodes and the "no citation links" side list alike,
+   * is a bundle page since `deriveCitationFlow` only ever produces edges
+   * between two vault papers, so unresolved/external references never
+   * reach this component). Without it, a click is a no-op. */
   onSelect?: (id: string | null) => void
 }
 
@@ -76,7 +73,6 @@ export default function CitationFlowView({
   selectedId = null,
   onSelect,
 }: CitationFlowViewProps) {
-  const router = useRouter()
   // Instance-scoped marker id: a fixed string would collide if two views
   // ever mount at once (side-by-side compare, storybook).
   const arrowMarkerId = useId() + "-citation-arrow"
@@ -125,11 +121,10 @@ export default function CitationFlowView({
 
   const papersById = useMemo(() => new Map(papers.map((p) => [p.id, p] as const)), [papers])
 
-  const goTo = (id: string) => router.push(wikiHref(id))
-  // Selecting drives the workspace's Inspector panel when wired up
-  // (VizWorkspace always wires it); without it, a click keeps this view's
-  // pre-Task-10 direct-navigate behavior instead of becoming a silent no-op.
-  const selectPaper = (id: string) => (onSelect ? onSelect(id) : goTo(id))
+  // Selecting drives the workspace's Inspector panel; with no onSelect
+  // wired (VizWorkspace is this view's sole production caller and always
+  // wires it), a click is simply a no-op.
+  const selectPaper = (id: string) => onSelect?.(id)
 
   const nodeOpacity = (id: string): number => {
     if (!hovered) return 1

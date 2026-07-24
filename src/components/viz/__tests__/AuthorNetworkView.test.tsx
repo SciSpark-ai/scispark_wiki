@@ -4,18 +4,13 @@
 // nodes with a resolved wiki author page (`pageId !== null`) are
 // selectable/navigable — pageless authors keep their existing no-op click
 // (a native tooltip is their only affordance), unchanged by this task.
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { act } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import AuthorNetworkView from "../AuthorNetworkView"
 import type { AuthorNetwork } from "@/lib/viz/authors"
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-
-const pushMock = vi.fn()
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
-}))
 
 function mount(el: React.ReactElement): { host: HTMLDivElement; root: Root } {
   const host = document.createElement("div")
@@ -39,10 +34,6 @@ const NETWORK: AuthorNetwork = {
 }
 
 describe("AuthorNetworkView selection", () => {
-  beforeEach(() => {
-    pushMock.mockClear()
-  })
-
   it("renders a selected-state marker on the node matching selectedId", () => {
     const { host, root } = mount(
       <AuthorNetworkView network={NETWORK} selectedId="wiki/authors/author-one" onSelect={() => {}} />,
@@ -61,7 +52,6 @@ describe("AuthorNetworkView selection", () => {
       circle.dispatchEvent(new MouseEvent("click", { bubbles: true }))
     })
     expect(onSelect).toHaveBeenCalledWith("wiki/authors/author-one")
-    expect(pushMock).not.toHaveBeenCalled()
     unmount(root, host)
   })
 
@@ -89,16 +79,6 @@ describe("AuthorNetworkView selection", () => {
   it("marks its root container with data-viz-canvas", () => {
     const { host, root } = mount(<AuthorNetworkView network={NETWORK} onSelect={() => {}} />)
     expect(host.querySelector("[data-viz-canvas]")).toBeTruthy()
-    unmount(root, host)
-  })
-
-  it("falls back to navigating when onSelect is not provided (back-compat)", () => {
-    const { host, root } = mount(<AuthorNetworkView network={NETWORK} />)
-    const circle = host.querySelectorAll("circle")[0]
-    act(() => {
-      circle.dispatchEvent(new MouseEvent("click", { bubbles: true }))
-    })
-    expect(pushMock).toHaveBeenCalledWith("/wiki/authors/author-one")
     unmount(root, host)
   })
 })

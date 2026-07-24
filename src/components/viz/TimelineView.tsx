@@ -1,12 +1,10 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { scaleLinear } from "d3-scale"
 import { displayTitle } from "@/lib/papers/title"
 import type { Timeline, TimelineItem } from "@/lib/viz/timeline"
 import { topLanes, OTHER_LANE_ID } from "@/lib/viz/layout"
-import { wikiHref } from "@/lib/wiki/href"
 
 const MAX_LANES = 12
 const ROW_HEIGHT = 36
@@ -58,10 +56,10 @@ interface TimelineViewProps {
    * identically to `null`). Optional for back-compat with any caller/test
    * that doesn't wire selection. */
   selectedId?: string | null
-  /** Fires with the clicked item's page id when provided. Without it,
-   * clicking falls back to this view's pre-selection-wiring behavior
-   * (navigate straight to the item's wiki page) so the view stays usable
-   * stand-alone. */
+  /** Fires with the clicked item's page id when provided (VizWorkspace,
+   * this view's sole production caller, always wires it). Without it, a
+   * click is a no-op — there is no other production caller to fall back
+   * for. */
   onSelect?: (id: string | null) => void
 }
 
@@ -74,7 +72,6 @@ interface TimelineViewProps {
  * the right end of their row instead of on the axis.
  */
 export default function TimelineView({ timeline, selectedId = null, onSelect }: TimelineViewProps) {
-  const router = useRouter()
   const [hoveredLane, setHoveredLane] = useState<string | null>(null)
 
   const selectedLanes = useMemo(() => topLanes(timeline.lanes, MAX_LANES), [timeline.lanes])
@@ -143,11 +140,10 @@ export default function TimelineView({ timeline, selectedId = null, onSelect }: 
   const totalWidth = LABEL_WIDTH + chartWidth + GUTTER_WIDTH + RIGHT_PADDING
   const totalHeight = AXIS_TOP + selectedLanes.length * ROW_HEIGHT + 12
 
-  const goTo = (id: string) => router.push(wikiHref(id))
-  // Selecting drives the workspace's Inspector panel when wired up
-  // (VizWorkspace always wires it); without it, a click keeps this view's
-  // pre-Task-10 direct-navigate behavior instead of becoming a silent no-op.
-  const selectItem = (id: string) => (onSelect ? onSelect(id) : goTo(id))
+  // Selecting drives the workspace's Inspector panel; with no onSelect
+  // wired (VizWorkspace is this view's sole production caller and always
+  // wires it), a click is simply a no-op.
+  const selectItem = (id: string) => onSelect?.(id)
 
   return (
     <div data-viz-canvas>
