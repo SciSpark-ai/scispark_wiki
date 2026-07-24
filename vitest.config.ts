@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     include: [
       "src/app/**/__tests__/**/*.test.ts",
+      "src/app/**/__tests__/**/*.test.tsx",
       "src/lib/**/__tests__/**/*.test.ts",
       "src/stores/**/__tests__/**/*.test.ts",
       "src/components/**/__tests__/**/*.test.ts",

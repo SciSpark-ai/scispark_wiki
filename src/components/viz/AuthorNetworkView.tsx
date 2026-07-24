@@ -1,12 +1,10 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { forceSimulation, forceManyBody, forceLink, forceCollide, forceCenter } from "d3-force"
 import type { SimulationNodeDatum, SimulationLinkDatum } from "d3-force"
 import type { AuthorNetwork } from "@/lib/viz/authors"
 import { topAuthorsByPaperCount, edgesAmongNodes } from "@/lib/viz/layout"
-import { wikiHref } from "@/lib/wiki/href"
 
 const MAX_NODES = 200
 const MAX_LABELS = 20
@@ -25,6 +23,8 @@ const NODE_DIM_COLOR = "#e8d3c0" // border-warm — muted, not hidden
 const EDGE_COLOR = "rgba(43, 24, 10, 0.25)" // espresso @ 25%
 const EDGE_HIGHLIGHT_COLOR = "#2b180a" // espresso, solid
 const EDGE_DIM_OPACITY = 0.08
+const SELECTED_RING_COLOR = "var(--color-orange)"
+const SELECTED_RADIUS_BOOST = 1.3
 
 interface SimNode extends SimulationNodeDatum {
   id: string // author key
@@ -119,6 +119,16 @@ function layoutNetwork(network: AuthorNetwork): LaidOutNetwork {
 
 interface AuthorNetworkViewProps {
   network: AuthorNetwork
+  /** The workspace's current selection (a bundle page id), if any — an id
+   * that doesn't match any rendered author's `pageId` is silently ignored
+   * (renders identically to `null`). Optional for back-compat with any
+   * caller/test that doesn't wire selection. */
+  selectedId?: string | null
+  /** Fires with the clicked author's wiki page id — only for nodes that
+   * have one (`pageId !== null`); a pageless author's click stays a no-op,
+   * unchanged by this. VizWorkspace, this view's sole production caller,
+   * always wires it; without it, a paged node's click is simply a no-op. */
+  onSelect?: (id: string | null) => void
 }
 
 /**
@@ -127,11 +137,10 @@ interface AuthorNetworkViewProps {
  * (charge + link + collide + centering, fixed tick count, no animation
  * loop). Rendering is capped to the ~200 highest-paperCount authors; only
  * the top ~20 of those get an on-canvas label to avoid label soup. Clicking
- * a node with a wiki author page navigates there; authors without one are
- * a no-op click with a native tooltip.
+ * a node with a wiki author page selects it; authors without one are a
+ * no-op click with a native tooltip.
  */
-export default function AuthorNetworkView({ network }: AuthorNetworkViewProps) {
-  const router = useRouter()
+export default function AuthorNetworkView({ network, selectedId = null, onSelect }: AuthorNetworkViewProps) {
   const [hovered, setHovered] = useState<string | null>(null)
 
   const { nodes, links, overflowTotal } = useMemo(() => layoutNetwork(network), [network])
@@ -160,8 +169,13 @@ export default function AuthorNetworkView({ network }: AuthorNetworkViewProps) {
     return map
   }, [links])
 
-  const goTo = (node: SimNode) => {
-    if (node.pageId) router.push(wikiHref(node.pageId))
+  // Selecting drives the workspace's Inspector panel; with no onSelect
+  // wired (VizWorkspace is this view's sole production caller and always
+  // wires it), a click is simply a no-op. A pageless author has nothing to
+  // select either way.
+  const selectNode = (node: SimNode) => {
+    if (!node.pageId) return
+    onSelect?.(node.pageId)
   }
 
   const nodeOpacity = (id: string): number => {
@@ -184,7 +198,7 @@ export default function AuthorNetworkView({ network }: AuthorNetworkViewProps) {
   }`
 
   return (
-    <div>
+    <div data-viz-canvas>
       <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
         <p className="text-[12px] text-muted-text tracking-body">{stats}</p>
         {overflowTotal > 0 && (
@@ -218,18 +232,22 @@ export default function AuthorNetworkView({ network }: AuthorNetworkViewProps) {
           })}
           {nodes.map((node) => {
             const hasPage = node.pageId !== null
+            const isSelected = hasPage && node.pageId === selectedId
             return (
               <g key={node.id}>
                 <circle
                   cx={node.x}
                   cy={node.y}
-                  r={node.radius}
+                  r={isSelected ? node.radius * SELECTED_RADIUS_BOOST : node.radius}
                   fill={hovered && nodeOpacity(node.id) < 1 ? NODE_DIM_COLOR : NODE_COLOR}
+                  stroke={isSelected ? SELECTED_RING_COLOR : "none"}
+                  strokeWidth={isSelected ? 2 : 0}
+                  data-selected={isSelected ? "true" : undefined}
                   opacity={nodeOpacity(node.id)}
                   className={hasPage ? "cursor-pointer" : "cursor-default"}
                   onMouseEnter={() => setHovered(node.id)}
                   onMouseLeave={() => setHovered(null)}
-                  onClick={() => goTo(node)}
+                  onClick={() => selectNode(node)}
                 >
                   <title>
                     {`${node.name} — ${node.paperCount} paper${node.paperCount === 1 ? "" : "s"}`}
@@ -252,8 +270,8 @@ export default function AuthorNetworkView({ network }: AuthorNetworkViewProps) {
         </svg>
       </div>
       <p className="mt-2 text-[12px] text-muted-text tracking-body">
-        Hover an author to trace collaborators; click to open their wiki page (authors without one are shown but not
-        linked — top {MAX_LABELS} by paper count are labeled).
+        Hover an author to trace collaborators; click to inspect them (authors without a wiki page are shown but not
+        selectable — top {MAX_LABELS} by paper count are labeled).
       </p>
     </div>
   )

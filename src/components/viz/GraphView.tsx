@@ -1,145 +1,175 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useMemo, useRef } from "react"
 import Graph from "graphology"
 import Sigma from "sigma"
+import type { NodeDisplayData, EdgeDisplayData } from "sigma/types"
 import forceAtlas2 from "graphology-layout-forceatlas2"
 import type { KnowledgeGraph } from "@/lib/viz/graph"
-import { PAGE_TYPES, type PageType } from "@/lib/vault/types"
-import { wikiHref } from "@/lib/wiki/href"
 import { displayTitle } from "@/lib/papers/title"
-import { truncateGraphLabel } from "./labels"
+import { truncateGraphLabel, labelThresholdForRatio } from "./labels"
+import {
+  nodeSize,
+  VIZ_CAT_COUNT,
+  FALLBACK_COMMUNITY_PALETTE,
+  communityColorVarName,
+  communityColor,
+} from "./graph-style"
 
 // sigma and graphology-layout-forceatlas2 both touch WebGL/canvas at import
 // time — this module must only ever be loaded client-side via
 // next/dynamic(..., { ssr: false }) from the page, same discipline as
-// PdfSurface (src/components/reader/ReaderView.tsx).
+// PdfSurface (src/components/reader/ReaderView.tsx). Pure helpers used here
+// (node sizing, community-color mapping, label threshold) live in
+// ./graph-style.ts and ./labels.ts specifically so they stay importable
+// from plain jsdom tests without dragging this WebGL boundary along.
 
-// Fixed, >=8-hue warm-leaning categorical palette for Louvain communities
-// (design tokens: espresso/orange/border-warm family). Indexed by
-// `community % COMMUNITY_COLORS.length` so any community count is covered.
-const COMMUNITY_COLORS = [
-  "#f97316", // orange (brand)
-  "#c2410c", // burnt orange
-  "#b45309", // amber-800
-  "#a16207", // olive gold
-  "#dc2626", // warm red
-  "#9a3412", // rust
-  "#78350f", // deep brown
-  "#ea580c", // orange-600
-  "#92400e", // amber-700
-  "#7c2d12", // deep rust-brown
-]
-
-const MIN_NODE_SIZE = 4
-const MAX_NODE_SIZE = 16
 const MIN_EDGE_SIZE = 0.5
 const MAX_EDGE_SIZE = 4
-const FA2_ITERATIONS = 200
+
+// Camera ratio at Sigma construction (before any user zoom interaction).
+const INITIAL_CAMERA_RATIO = 1
+
+// Selected node's size multiplier — a visible "ring/boost" cue distinct
+// from the plain community color, on top of Sigma's `highlighted: true`
+// node state (always-on label + hover-style rendering).
+const SELECTED_SIZE_BOOST = 1.6
+
 const CIRCLE_RADIUS = 100
 
-const DEFAULT_EDGE_COLOR = "rgba(43, 24, 10, 0.15)" // espresso @ 15%
-const HIGHLIGHT_EDGE_COLOR = "#2b180a" // espresso, solid
-const DIM_NODE_COLOR = "#e8d3c0" // border-warm — muted, not hidden
-const DIM_EDGE_COLOR = "rgba(43, 24, 10, 0.05)"
+// ForceAtlas2 tuning — named constants (replacing graphology's
+// order-generic `inferSettings()`) picked for typical vault sizes (tens to
+// low hundreds of nodes) to reduce overlap/jitter versus the defaults.
+const FA2_ITERATIONS = 300 // relaxation steps for the synchronous run — enough to settle without visible residual jitter
+const FA2_GRAVITY = 1 // pulls nodes toward the center so low-degree/disconnected nodes don't drift off-canvas
+const FA2_SCALING_RATIO = 14 // node-node repulsion strength; higher spreads clusters apart, reducing label overlap
+const FA2_SLOW_DOWN = 4 // damps per-iteration displacement so the fixed-iteration run converges instead of oscillating
+const FA2_EDGE_WEIGHT_INFLUENCE = 1 // heavier (higher shared-source/wikilink weight) edges pull their endpoints proportionally closer
+const BARNES_HUT_NODE_THRESHOLD = 2000 // above this order, approximate repulsion (Barnes-Hut) instead of exact O(n²) — matches graphology's own inferSettings() default
 
-function clampedScale(value: number, min: number, max: number, outMin: number, outMax: number): number {
-  if (max <= min) return (outMin + outMax) / 2
-  const t = (value - min) / (max - min)
-  return outMin + Math.max(0, Math.min(1, t)) * (outMax - outMin)
+interface VizTokens {
+  categoryPalette: string[]
+  dimNode: string
+  highlight: string
+  defaultEdge: string
+  dimEdge: string
 }
 
-// Mirrors Tree.tsx / index-builder.ts's TYPE_HEADINGS (kept in sync
-// manually, same as schema-routing.ts mirrors scaffold.ts's TYPE_DIRS
-// elsewhere in this repo).
-const TYPE_LABELS: Record<PageType, string> = {
-  paper: "Papers",
-  concept: "Concepts",
-  method: "Methods",
-  finding: "Findings",
-  comparison: "Comparisons",
-  author: "Authors",
-  topic: "Topics",
-  note: "Notes",
-  idea: "Ideas",
-  project: "Projects",
+// Fallbacks for non-browser/test contexts only — the live palette always
+// comes from globals.css's --viz-cat-1..8 / --color-border-warm /
+// --color-espresso, read fresh at mount and on theme change.
+const FALLBACK_TOKENS: VizTokens = {
+  categoryPalette: FALLBACK_COMMUNITY_PALETTE,
+  dimNode: "#e8d3c0", // border-warm, light theme
+  highlight: "#2b180a", // espresso, light theme
+  defaultEdge: "rgba(43, 24, 10, 0.15)", // espresso @ 15%
+  dimEdge: "#e8d3c0",
 }
 
-interface TypeFilterRowProps {
-  visibleTypes: Set<PageType>
-  onToggle: (type: PageType) => void
+function readCssVar(name: string, fallback: string): string {
+  if (typeof window === "undefined" || typeof getComputedStyle !== "function") return fallback
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return value || fallback
 }
 
-function TypeFilterRow({ visibleTypes, onToggle }: TypeFilterRowProps) {
-  return (
-    <div className="flex flex-wrap gap-2" role="group" aria-label="Filter graph by page type">
-      {PAGE_TYPES.map((type) => {
-        const active = visibleTypes.has(type)
-        return (
-          <label
-            key={type}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-pill text-[12px] border cursor-pointer transition-colors ${
-              active
-                ? "bg-card-surface text-espresso border-border-warm"
-                : "bg-light-surface text-muted-text/60 border-border-warm/60"
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={active}
-              onChange={() => onToggle(type)}
-              className="accent-orange"
-            />
-            {TYPE_LABELS[type]}
-          </label>
-        )
-      })}
-    </div>
+// Sigma/WebGL needs concrete rgba(), not a CSS var() reference — this
+// parses the resolved (already-cascade-correct) hex custom property into
+// one. Non-hex input (e.g. an already-rgb()/rgba() computed value) passes
+// through unchanged rather than erroring.
+function hexToRgba(hex: string, alpha: number): string {
+  const match = /^#([0-9a-fA-F]{6})$/.exec(hex.trim())
+  if (!match) return hex
+  const int = parseInt(match[1], 16)
+  const r = (int >> 16) & 255
+  const g = (int >> 8) & 255
+  const b = int & 255
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+// Reads the live theme palette from globals.css's CSS custom properties.
+// Called once at mount and again whenever `data-theme` flips (see the
+// MutationObserver effect below) — cheap (a handful of getComputedStyle
+// calls), so no need to memoize beyond "not on every frame".
+function resolveVizTokens(): VizTokens {
+  const categoryPalette = Array.from({ length: VIZ_CAT_COUNT }, (_, i) =>
+    readCssVar(communityColorVarName(i), FALLBACK_COMMUNITY_PALETTE[i]),
   )
+  const dimNode = readCssVar("--color-border-warm", FALLBACK_TOKENS.dimNode)
+  const highlight = readCssVar("--color-espresso", FALLBACK_TOKENS.highlight)
+  return {
+    categoryPalette,
+    dimNode,
+    highlight,
+    defaultEdge: hexToRgba(highlight, 0.15),
+    dimEdge: dimNode,
+  }
 }
 
 interface GraphViewProps {
   graph: KnowledgeGraph
+  /** The workspace's current selection (a bundle page id), if any. Drives a
+   * persistent neighborhood-focus + ring/size-boost treatment via the node
+   * and edge reducers, independent of (and overridden by, while active)
+   * hover focus. */
+  selectedId?: string | null
+  /** Fires on Sigma `clickNode`/`clickStage` with the clicked node's id (or
+   * `null` for a stage click, i.e. "deselect"). Required — VizWorkspace is
+   * GraphView's only mount point and always wires this up to drive the
+   * Inspector panel's selection. */
+  onSelectNode: (id: string | null) => void
 }
 
 /**
  * Sigma.js (WebGL) knowledge-graph view. Builds a graphology Graph from the
- * derived `KnowledgeGraph`, seeds deterministic circular positions (sorted
- * by node id), runs ForceAtlas2 synchronously for a fixed iteration count,
- * then renders with Sigma. Hover highlights the node + its neighborhood
- * (dimming the rest via reducers); click deep-links to the page's wiki
- * entry; a type-filter row hides node/edge types via the same reducers.
+ * derived `KnowledgeGraph` (already filtered by the workspace's FilterBar —
+ * this component does no type/tag/year filtering of its own), seeds
+ * deterministic circular positions (sorted by node id), runs ForceAtlas2
+ * synchronously for a fixed iteration count, then renders with Sigma.
+ *
+ * Focus model: hovering a node (or, when nothing is hovered, the current
+ * `selectedId`) drives a shared "focus" that keeps the focused node + its
+ * direct neighbors at full color/size and fades everything else to a
+ * token-derived muted color (never opacity — Sigma's WebGL circle program
+ * can show visible seams where faded circles overlap). The selected node
+ * itself is always exempt from fading, even while hovering elsewhere, and
+ * additionally gets Sigma's `highlighted` state, a forced label, and a size
+ * boost so the "current selection" stays visually anchored. Click drives
+ * the workspace's Inspector selection (`onSelectNode`) instead of
+ * navigating away.
  */
-export default function GraphView({ graph }: GraphViewProps) {
-  const router = useRouter()
+export default function GraphView({ graph, selectedId = null, onSelectNode }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const sigmaRef = useRef<Sigma | null>(null)
   const hoveredNodeRef = useRef<string | null>(null)
-  const visibleTypesRef = useRef<Set<PageType>>(new Set(PAGE_TYPES))
-  const [visibleTypes, setVisibleTypes] = useState<Set<PageType>>(new Set(PAGE_TYPES))
+  const selectedIdRef = useRef<string | null>(selectedId)
+  const onSelectNodeRef = useRef(onSelectNode)
+  const tokensRef = useRef<VizTokens>(FALLBACK_TOKENS)
 
-  const toggleType = (type: PageType) => {
-    setVisibleTypes((prev) => {
-      const next = new Set(prev)
-      if (next.has(type)) next.delete(type)
-      else next.add(type)
-      return next
-    })
-  }
-
-  // Keep the ref in sync so the reducers (captured once per Sigma instance)
-  // always read the latest filter state without rebuilding the graph.
+  // Kept in sync so the reducers (captured once per Sigma instance) and the
+  // click handler always read the latest values without rebuilding the graph.
   useEffect(() => {
-    visibleTypesRef.current = visibleTypes
-    // A node whose type was just toggled off never fires "leaveNode" (it's
-    // hidden, not un-hovered) — without this, the reducers would keep
-    // dimming its former neighborhood forever. Clearing on every filter
-    // change is simpler than tracking the hovered node's type and always
-    // safe.
-    hoveredNodeRef.current = null
+    selectedIdRef.current = selectedId
     sigmaRef.current?.refresh()
-  }, [visibleTypes])
+  }, [selectedId])
+
+  useEffect(() => {
+    onSelectNodeRef.current = onSelectNode
+  }, [onSelectNode])
+
+  // Theme can flip at runtime (ThemeApplier sets/clears `data-theme` on
+  // <html>, e.g. via the settings Appearance card or an OS-level "system"
+  // change) — re-reading the palette on that flip is cheap (a handful of
+  // getComputedStyle calls), so we do it rather than leaving the graph
+  // stuck on whichever theme was active at mount.
+  useEffect(() => {
+    const observer = new MutationObserver((mutations) => {
+      if (!mutations.some((m) => m.type === "attributes" && m.attributeName === "data-theme")) return
+      tokensRef.current = resolveVizTokens()
+      sigmaRef.current?.refresh()
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] })
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     const container = containerRef.current
@@ -147,6 +177,9 @@ export default function GraphView({ graph }: GraphViewProps) {
     // page (`src/app/viz/page.tsx`) gates the empty case with its own
     // "Nothing to visualize yet" card before mounting GraphView at all.
     if (!container) return
+
+    tokensRef.current = resolveVizTokens()
+    const tokens = tokensRef.current
 
     const g = new Graph({ type: "undirected" })
 
@@ -162,21 +195,21 @@ export default function GraphView({ graph }: GraphViewProps) {
       })
     })
 
-    const degrees = graph.nodes.map((n) => n.degree)
-    const minDegree = degrees.length ? Math.min(...degrees) : 0
-    const maxDegree = degrees.length ? Math.max(...degrees) : 0
+    const maxDegree = graph.nodes.length ? Math.max(...graph.nodes.map((n) => n.degree)) : 0
 
     for (const node of graph.nodes) {
       const pos = seedPositions.get(node.id) ?? { x: 0, y: 0 }
       g.addNode(node.id, {
         x: pos.x,
         y: pos.y,
-        size: clampedScale(node.degree, minDegree, maxDegree, MIN_NODE_SIZE, MAX_NODE_SIZE),
-        color: COMMUNITY_COLORS[node.community % COMMUNITY_COLORS.length],
+        size: nodeSize(node.degree, maxDegree),
+        // Base color computed once here (initial paint before the first
+        // reducer pass); the reducer below is authoritative thereafter and
+        // recomputes from `community` + the live `tokensRef`, so a theme
+        // change repaints correctly without rebuilding the graph.
+        color: communityColor(node.community, tokens.categoryPalette),
+        community: node.community,
         label: truncateGraphLabel(displayTitle(node.title)),
-        // NOT `type` — sigma's DisplayData.type selects the rendering
-        // program (circle/etc). Our page type lives in a separate attribute.
-        pageType: node.type,
       })
     }
 
@@ -187,46 +220,69 @@ export default function GraphView({ graph }: GraphViewProps) {
     for (const edge of graph.edges) {
       if (!g.hasNode(edge.source) || !g.hasNode(edge.target)) continue
       if (edge.source === edge.target || g.hasEdge(edge.source, edge.target)) continue
+      const t = maxWeight > minWeight ? (edge.weight - minWeight) / (maxWeight - minWeight) : 0.5
       g.addUndirectedEdge(edge.source, edge.target, {
-        size: clampedScale(edge.weight, minWeight, maxWeight, MIN_EDGE_SIZE, MAX_EDGE_SIZE),
+        size: MIN_EDGE_SIZE + (MAX_EDGE_SIZE - MIN_EDGE_SIZE) * Math.max(0, Math.min(1, t)),
         weight: edge.weight,
-        color: DEFAULT_EDGE_COLOR,
+        color: tokens.defaultEdge,
       })
     }
 
     if (g.order > 1 && g.size > 0) {
       forceAtlas2.assign(g, {
         iterations: FA2_ITERATIONS,
-        settings: { ...forceAtlas2.inferSettings(g), gravity: 1, strongGravityMode: true },
+        settings: {
+          gravity: FA2_GRAVITY,
+          strongGravityMode: true, // keeps disconnected components pulled toward center rather than flung outward
+          scalingRatio: FA2_SCALING_RATIO,
+          slowDown: FA2_SLOW_DOWN,
+          edgeWeightInfluence: FA2_EDGE_WEIGHT_INFLUENCE,
+          barnesHutOptimize: g.order > BARNES_HUT_NODE_THRESHOLD,
+        },
       })
     }
 
     const sigmaInstance = new Sigma(g, container, {
-      nodeReducer: (node, data) => {
-        if (!visibleTypesRef.current.has(data.pageType as PageType)) {
-          return { ...data, hidden: true }
-        }
+      labelRenderedSizeThreshold: labelThresholdForRatio(INITIAL_CAMERA_RATIO),
+      nodeReducer: (node, data): Partial<NodeDisplayData> => {
+        const tok = tokensRef.current
+        const baseColor = communityColor((data.community as number) ?? 0, tok.categoryPalette)
         const hovered = hoveredNodeRef.current
-        if (hovered && hovered !== node && !g.areNeighbors(hovered, node)) {
-          return { ...data, color: DIM_NODE_COLOR, label: null, zIndex: 0 }
+        const selected = selectedIdRef.current
+        const isSelected = selected === node
+        // Hover, when active, is the governing focus lens; selection takes
+        // over only once hover clears. The selected node itself is always
+        // exempt from fading regardless of which lens is active.
+        const focus = hovered ?? selected
+        const dimmed = !isSelected && focus !== null && focus !== node && !g.areNeighbors(focus, node)
+
+        const result: Partial<NodeDisplayData> = {
+          ...data,
+          color: dimmed ? tok.dimNode : baseColor,
+          label: dimmed ? null : data.label,
         }
-        return data
+        if (isSelected) {
+          result.highlighted = true
+          result.forceLabel = true
+          result.size = (data.size as number) * SELECTED_SIZE_BOOST
+          result.zIndex = 2
+        } else if (hovered === node) {
+          result.forceLabel = true
+          result.zIndex = 2
+        } else if (dimmed) {
+          result.zIndex = 0
+        }
+        return result
       },
-      edgeReducer: (edge, data) => {
+      edgeReducer: (edge, data): Partial<EdgeDisplayData> => {
+        const tok = tokensRef.current
         const [source, target] = g.extremities(edge)
-        const sourceType = g.getNodeAttribute(source, "pageType") as PageType
-        const targetType = g.getNodeAttribute(target, "pageType") as PageType
-        if (!visibleTypesRef.current.has(sourceType) || !visibleTypesRef.current.has(targetType)) {
-          return { ...data, hidden: true }
-        }
         const hovered = hoveredNodeRef.current
-        if (hovered) {
-          if (source === hovered || target === hovered) {
-            return { ...data, color: HIGHLIGHT_EDGE_COLOR, zIndex: 1 }
-          }
-          return { ...data, color: DIM_EDGE_COLOR }
-        }
-        return data
+        const selected = selectedIdRef.current
+        const focus = hovered ?? selected
+        if (!focus) return { ...data, color: tok.defaultEdge }
+        if (source === focus || target === focus) return { ...data, color: tok.highlight, zIndex: 1 }
+        return { ...data, color: tok.dimEdge }
       },
     })
 
@@ -239,18 +295,36 @@ export default function GraphView({ graph }: GraphViewProps) {
       sigmaInstance.refresh()
     })
     sigmaInstance.on("clickNode", ({ node }) => {
-      router.push(wikiHref(node))
+      onSelectNodeRef.current(node)
+    })
+    sigmaInstance.on("clickStage", () => {
+      onSelectNodeRef.current(null)
     })
 
     sigmaRef.current = sigmaInstance
 
+    // Sigma only measures its container's offsetWidth/offsetHeight at
+    // construction and on the global `window` resize event (verified in
+    // Sigma's own source: no ResizeObserver of its own) — its internal hit
+    // testing divides mouse coordinates by that CACHED size. The Inspector
+    // panel mounting/unmounting resizes this flex sibling WITHOUT any
+    // window resize firing, so every click/hover would hit-test against a
+    // stale width until the user happened to resize their window. A
+    // ResizeObserver on the same container keeps Sigma's cached dimensions
+    // (and camera/quadtree via resize()) in sync with actual layout.
+    const resizeObserver = new ResizeObserver(() => {
+      sigmaInstance.resize()
+      sigmaInstance.refresh()
+    })
+    resizeObserver.observe(container)
+
     return () => {
+      resizeObserver.disconnect()
       sigmaInstance.kill()
       sigmaRef.current = null
     }
-    // `graph` fully determines the instance; `router` is stable for the
-    // component's lifetime (Next.js router identity).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // `graph` fully determines the instance; everything else this effect
+    // reads is a ref (stable identity, kept in sync by the effects above).
   }, [graph])
 
   const stats = useMemo(
@@ -259,18 +333,18 @@ export default function GraphView({ graph }: GraphViewProps) {
   )
 
   return (
-    <div>
-      <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
-        <TypeFilterRow visibleTypes={visibleTypes} onToggle={toggleType} />
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center justify-end mb-3">
         <p className="text-[12px] text-muted-text tracking-body flex-shrink-0">{stats}</p>
       </div>
       <div
         ref={containerRef}
-        className="border border-border-warm rounded-card bg-light-surface"
-        style={{ height: 560, width: "100%" }}
+        data-viz-canvas
+        className="flex-1 border border-border-warm rounded-card bg-light-surface"
+        style={{ minHeight: 320, width: "100%" }}
       />
       <p className="mt-2 text-[12px] text-muted-text tracking-body">
-        Hover a node to see its neighborhood; click to open its wiki page.
+        Hover a node to see its neighborhood; click to select it.
       </p>
     </div>
   )

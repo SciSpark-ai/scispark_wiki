@@ -6,13 +6,14 @@ import Link from "next/link"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadBundle, type Bundle } from "@/lib/vault/bundle"
 import { serializeDocument } from "@/lib/vault/frontmatter"
-import { appendLog } from "@/lib/vault/index-builder"
 import { displayTitle } from "@/lib/papers/title"
 import { wikiHref, resolveWikiRouteId } from "@/lib/wiki/href"
+import { isDeletablePage, backlinkCount, deletePage } from "@/lib/wiki/delete"
 import type { VaultStorage } from "@/lib/vault/storage"
 import type { WikiPage } from "@/lib/vault/types"
 import { PageEditor } from "@/components/wiki/PageEditor"
 import { Backlinks } from "@/components/wiki/Backlinks"
+import DeleteConfirmCard from "@/components/wiki/DeleteConfirmCard"
 
 function today(): string {
   return new Date().toISOString().slice(0, 10)
@@ -37,6 +38,9 @@ export default function WikiPageDetail() {
   const [body, setBody] = useState("")
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const vault = await getOpenVault()
@@ -82,15 +86,22 @@ export default function WikiPageDetail() {
     }
   }
 
-  const handleDelete = async () => {
+  // Memoized so DeleteConfirmCard's Esc-keydown effect (which depends on
+  // onCancel) doesn't tear down and re-add its window listener on every
+  // keystroke of the body editor re-rendering this component.
+  const handleCancelDelete = useCallback(() => setConfirmingDelete(false), [])
+
+  const handleConfirmDelete = async () => {
     if (!storage || !page) return
-    if (!window.confirm(`Delete "${displayTitle(String(page.frontmatter.title ?? ""))}"? This cannot be undone.`)) return
+    setDeleteBusy(true)
+    setDeleteError(null)
     try {
-      await storage.delete(page.path)
-      await appendLog(storage, { date: today(), op: "delete", summary: page.id })
+      await deletePage(storage, page)
       router.push("/wiki")
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setDeleteError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setDeleteBusy(false)
     }
   }
 
@@ -111,6 +122,8 @@ export default function WikiPageDetail() {
   }
 
   const fm = page.frontmatter
+  const slug = page.id.split("/").pop() ?? page.id
+  const canDelete = isDeletablePage(page)
 
   return (
     <div className="p-7 flex flex-col lg:flex-row gap-6">
@@ -122,20 +135,41 @@ export default function WikiPageDetail() {
           <div className="flex items-center gap-3">
             {status && <span className="text-[13px] text-orange">{status}</span>}
             {error && <span className="text-[13px] text-red-600">{error}</span>}
+            {fm.type === "paper" && (
+              <Link href={`/paper/${slug}`} className="text-[13px] text-orange hover:underline">
+                Open paper page →
+              </Link>
+            )}
             <button
               onClick={handleSave}
               className="text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium transition-colors"
             >
               Save
             </button>
-            <button
-              onClick={handleDelete}
-              className="text-[13px] text-espresso hover:text-red-600 rounded-pill border border-border-warm px-4 py-1.5 transition-colors"
-            >
-              Delete
-            </button>
+            {canDelete && (
+              <button
+                onClick={() => {
+                  setDeleteError(null)
+                  setConfirmingDelete(true)
+                }}
+                className="text-[13px] text-espresso hover:text-red-600 rounded-pill border border-border-warm px-4 py-1.5 transition-colors"
+              >
+                Delete
+              </button>
+            )}
           </div>
         </div>
+
+        {confirmingDelete && (
+          <DeleteConfirmCard
+            title={displayTitle(String(fm.title ?? ""))}
+            backlinks={bundle ? backlinkCount(bundle, page.id) : 0}
+            busy={deleteBusy}
+            error={deleteError}
+            onConfirm={handleConfirmDelete}
+            onCancel={handleCancelDelete}
+          />
+        )}
 
         <h1 className="font-heading text-[24px] text-espresso tracking-heading">{displayTitle(String(fm.title ?? ""))}</h1>
 

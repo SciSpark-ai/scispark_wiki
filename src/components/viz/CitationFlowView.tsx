@@ -1,12 +1,10 @@
 "use client"
 
 import { useId, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { linkHorizontal } from "d3-shape"
 import { displayTitle } from "@/lib/papers/title"
 import type { CitationEdge, CitationFlow } from "@/lib/viz/citations"
 import { yearColumns } from "@/lib/viz/layout"
-import { wikiHref } from "@/lib/wiki/href"
 
 const NODE_RADIUS = 6
 const COL_WIDTH = 130
@@ -22,6 +20,9 @@ const EDGE_HIGHLIGHT_COLOR = "#2b180a" // espresso, solid
 const NODE_DIM_OPACITY = 0.25
 const EDGE_DIM_OPACITY = 0.08
 const EDGE_DEFAULT_OPACITY = 0.55
+const SELECTED_RING_COLOR = "var(--color-orange)"
+const SELECTED_RADIUS = NODE_RADIUS + 2
+const SELECTED_LIST_ITEM_CLASS = "bg-orange/10 border-l-2 border-l-orange"
 
 type Hovered = { kind: "node"; id: string } | { kind: "edge"; citing: string; cited: string } | null
 
@@ -36,6 +37,18 @@ interface CitationFlowViewProps {
   flow: CitationFlow
   fetchState: "idle" | "fetching" | "done"
   onFetch: () => void
+  /** The workspace's current selection (a bundle page id), if any — an id
+   * that doesn't match any rendered paper is silently ignored (renders
+   * identically to `null`). Optional for back-compat with any caller/test
+   * that doesn't wire selection. */
+  selectedId?: string | null
+  /** Fires with the clicked paper's page id when provided (VizWorkspace,
+   * this view's sole production caller, always wires it — every paper this
+   * view renders, canvas nodes and the "no citation links" side list alike,
+   * is a bundle page since `deriveCitationFlow` only ever produces edges
+   * between two vault papers, so unresolved/external references never
+   * reach this component). Without it, a click is a no-op. */
+  onSelect?: (id: string | null) => void
 }
 
 const linkGen = linkHorizontal()
@@ -52,8 +65,14 @@ const linkGen = linkHorizontal()
  * *how* fetching happens — that's entirely the page's job via
  * `fetchState`/`onFetch` props.
  */
-export default function CitationFlowView({ papers, flow, fetchState, onFetch }: CitationFlowViewProps) {
-  const router = useRouter()
+export default function CitationFlowView({
+  papers,
+  flow,
+  fetchState,
+  onFetch,
+  selectedId = null,
+  onSelect,
+}: CitationFlowViewProps) {
   // Instance-scoped marker id: a fixed string would collide if two views
   // ever mount at once (side-by-side compare, storybook).
   const arrowMarkerId = useId() + "-citation-arrow"
@@ -102,7 +121,10 @@ export default function CitationFlowView({ papers, flow, fetchState, onFetch }: 
 
   const papersById = useMemo(() => new Map(papers.map((p) => [p.id, p] as const)), [papers])
 
-  const goTo = (id: string) => router.push(wikiHref(id))
+  // Selecting drives the workspace's Inspector panel; with no onSelect
+  // wired (VizWorkspace is this view's sole production caller and always
+  // wires it), a click is simply a no-op.
+  const selectPaper = (id: string) => onSelect?.(id)
 
   const nodeOpacity = (id: string): number => {
     if (!hovered) return 1
@@ -136,7 +158,7 @@ export default function CitationFlowView({ papers, flow, fetchState, onFetch }: 
   const noDataYet = flow.papersWithData === 0
 
   return (
-    <div>
+    <div data-viz-canvas>
       <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
         <p className="text-[13px] text-espresso tracking-body">{coverageLabel}</p>
         <button
@@ -224,18 +246,22 @@ export default function CitationFlowView({ papers, flow, fetchState, onFetch }: 
                   {canvasPapers.map((paper) => {
                     const pos = positions.get(paper.id)
                     if (!pos) return null
+                    const isSelected = paper.id === selectedId
                     return (
                       <circle
                         key={paper.id}
                         cx={pos.x}
                         cy={pos.y}
-                        r={NODE_RADIUS}
+                        r={isSelected ? SELECTED_RADIUS : NODE_RADIUS}
                         fill={PAPER_COLOR}
+                        stroke={isSelected ? SELECTED_RING_COLOR : "none"}
+                        strokeWidth={isSelected ? 2 : 0}
+                        data-selected={isSelected ? "true" : undefined}
                         opacity={nodeOpacity(paper.id)}
                         className="cursor-pointer"
                         onMouseEnter={() => setHovered({ kind: "node", id: paper.id })}
                         onMouseLeave={() => setHovered(null)}
-                        onClick={() => goTo(paper.id)}
+                        onClick={() => selectPaper(paper.id)}
                       >
                         <title>{`${displayTitle(String(paper.title ?? ""))}${paper.year > 0 ? ` (${paper.year})` : ""}`}</title>
                       </circle>
@@ -252,17 +278,23 @@ export default function CitationFlowView({ papers, flow, fetchState, onFetch }: 
                 {isolatedPapers.length} paper{isolatedPapers.length === 1 ? "" : "s"} with no citation links
               </p>
               <ul className="space-y-1.5">
-                {isolatedPapers.map((p) => (
-                  <li key={p.id}>
-                    <button
-                      type="button"
-                      onClick={() => goTo(p.id)}
-                      className="text-[12px] text-espresso hover:text-orange text-left tracking-body"
-                    >
-                      {displayTitle(String(p.title ?? ""))}
-                    </button>
-                  </li>
-                ))}
+                {isolatedPapers.map((p) => {
+                  const isSelected = p.id === selectedId
+                  return (
+                    <li key={p.id}>
+                      <button
+                        type="button"
+                        onClick={() => selectPaper(p.id)}
+                        data-selected={isSelected ? "true" : undefined}
+                        className={`w-full rounded-[6px] px-1.5 py-0.5 text-[12px] text-espresso hover:text-orange text-left tracking-body transition-colors ${
+                          isSelected ? SELECTED_LIST_ITEM_CLASS : ""
+                        }`}
+                      >
+                        {displayTitle(String(p.title ?? ""))}
+                      </button>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           )}
@@ -270,7 +302,7 @@ export default function CitationFlowView({ papers, flow, fetchState, onFetch }: 
       )}
 
       <p className="mt-2 text-[12px] text-muted-text tracking-body">
-        Hover an edge or paper to trace citations; click a node to open its wiki page.
+        Hover an edge or paper to trace citations; click a paper to inspect it.
       </p>
     </div>
   )

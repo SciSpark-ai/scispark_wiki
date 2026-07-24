@@ -1,5 +1,7 @@
 import type { Bundle } from "../vault/bundle"
+import type { WikiPage } from "../vault/types"
 import { neighborSets } from "./graph"
+import { pageYear } from "./filter"
 
 export interface TimelineItem {
   id: string
@@ -27,21 +29,16 @@ export interface Timeline {
 export const UNFILED_LANE_ID = "__unfiled__"
 const UNFILED_LANE_TITLE = "Unfiled"
 
-function parseYear(dateStr: string | undefined): number {
-  const year = parseInt((dateStr ?? "").slice(0, 4), 10)
-  return Number.isNaN(year) ? 0 : year
-}
-
-function itemDate(page: { frontmatter: { type: string; year?: unknown; created: string } }): {
-  date: string
-  year: number
-} {
+// year 0 is timeline's "unusable" sentinel — pageYear's null maps to it here
+// so the axis-range exclusion logic below (a corrupt item's year 0 doesn't
+// drag minYear/maxYear) keeps working unchanged.
+function itemDate(page: WikiPage): { date: string; year: number } {
   if (page.frontmatter.type === "paper" && typeof page.frontmatter.year === "number") {
     const year = page.frontmatter.year
     return { date: `${year}-01-01`, year }
   }
   const date = page.frontmatter.created
-  return { date, year: parseYear(date) }
+  return { date, year: pageYear(page) ?? 0 }
 }
 
 /**

@@ -18,6 +18,21 @@ interface TreeProps {
   bundle: Bundle
 }
 
+/** Bundle ids are `wiki/papers/<slug>`; the last segment is the slug the
+ * unified /paper/<key> page addresses by (mirrors dashboard.ts's slugOf /
+ * RecentStrip's paperSlugFromId). */
+function paperSlug(id: string): string {
+  const segments = id.split("/")
+  return segments[segments.length - 1]
+}
+
+/** Papers route to the unified paper page instead of the wiki editor; every
+ * other type keeps its wikiHref. Scoped to Tree only — the inbox/backlinks
+ * surfaces that also call wikiHref directly stay untouched. */
+function hrefFor(type: string, id: string): string {
+  return type === "paper" ? `/paper/${paperSlug(id)}` : wikiHref(id)
+}
+
 export function Tree({ bundle }: TreeProps) {
   const byType = new Map<string, Array<{ id: string; title: string }>>()
   for (const page of bundle.pages.values()) {
@@ -42,7 +57,7 @@ export function Tree({ bundle }: TreeProps) {
                 {rows.map((row) => (
                   <li key={row.id}>
                     <Link
-                      href={wikiHref(row.id)}
+                      href={hrefFor(type, row.id)}
                       className="text-[13px] text-orange hover:underline truncate block"
                     >
                       {displayTitle(String(row.title ?? ""))}
