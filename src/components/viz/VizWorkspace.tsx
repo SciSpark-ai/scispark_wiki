@@ -15,6 +15,7 @@ import { FilterBar } from "./FilterBar"
 import TimelineView from "./TimelineView"
 import CitationFlowView, { type CitationPaper } from "./CitationFlowView"
 import AuthorNetworkView from "./AuthorNetworkView"
+import Inspector from "./Inspector"
 import { LoadingState } from "@/components/ui/LoadingState"
 
 // Sigma.js touches WebGL/canvas at import time — loaded client-only, same
@@ -41,6 +42,10 @@ interface VizWorkspaceProps {
   /** Test-only seed for the initial filters state (defaults to
    * `EMPTY_FILTERS`); production callers never pass this. */
   initialFilters?: VizFilters
+  /** Test-only seed for the initial selection (defaults to `null`);
+   * production callers never pass this — real selection only ever comes
+   * from clicking a graph node. */
+  initialSelectedId?: string | null
 }
 
 /**
@@ -58,14 +63,15 @@ export default function VizWorkspace({
   onRecompute,
   busy,
   initialFilters,
+  initialSelectedId,
 }: VizWorkspaceProps) {
   const [lens, setLens] = useState<VizTab>("graph")
   const [filters, setFilters] = useState<VizFilters>(initialFilters ?? EMPTY_FILTERS)
-  // Held for Tasks 8–10 (per-lens node/edge selection + inspector panel).
-  // No view wires an onSelect callback yet, so this never becomes non-null
-  // today — it's reserved state, not a live feature.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Wired for real in Task 8: the graph lens sets this via GraphView's
+  // onSelectNode; Tasks 9–10 wire the remaining lenses. The Inspector panel
+  // below only renders once `selectedId` resolves to a page in the
+  // filtered bundle.
+  const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? null)
 
   const options = useMemo(() => (bundle ? filterOptions(bundle) : { types: [], tags: [], yearBounds: null }), [bundle])
 
@@ -105,6 +111,21 @@ export default function VizWorkspace({
   const isEmptyVault = bundle !== null && bundle.pages.size === 0
   const isFilteredEmpty = !isEmptyVault && filtered !== null && filtered.pages.size === 0
 
+  // Inspector only ever renders once `selectedId` resolves to a page in the
+  // FILTERED bundle — a node hidden by the current filters (or a stale
+  // selection left over from before a filter change) simply hides the panel
+  // rather than showing stale/out-of-scope data.
+  const selectedPage = selectedId && filtered ? (filtered.pages.get(selectedId) ?? null) : null
+  const neighbors = useMemo(() => {
+    if (!graph || !selectedId) return []
+    const ids = new Set<string>()
+    for (const edge of graph.edges) {
+      if (edge.source === selectedId) ids.add(edge.target)
+      else if (edge.target === selectedId) ids.add(edge.source)
+    }
+    return [...ids]
+  }, [graph, selectedId])
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-warm px-6 py-3 shrink-0">
@@ -122,54 +143,69 @@ export default function VizWorkspace({
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-6">
-        {!bundle ? (
-          <LoadingState label="Loading vault…" />
-        ) : isEmptyVault ? (
-          <div className="border border-border-warm rounded-card px-5 py-6 bg-light-surface max-w-xl">
-            <h2 className="font-heading text-[18px] text-espresso tracking-heading-card">Nothing to visualize yet</h2>
-            <p className="mt-2 text-[13px] text-muted-text tracking-body">
-              Ingest a few papers to grow your graph — the dashboard fills in as your wiki does.
-            </p>
-            <Link
-              href="/papers"
-              className="mt-3 inline-block text-[13px] text-orange hover:text-orange-light font-medium"
-            >
-              Go to Papers
-            </Link>
-          </div>
-        ) : isFilteredEmpty ? (
-          <div className="border border-border-warm rounded-card px-5 py-6 bg-light-surface max-w-xl">
-            <h2 className="font-heading text-[18px] text-espresso tracking-heading-card">No pages match these filters</h2>
-            <p className="mt-2 text-[13px] text-muted-text tracking-body">
-              Try widening your type, tag, or year selection.
-            </p>
-            <button
-              type="button"
-              onClick={() => setFilters(EMPTY_FILTERS)}
-              className="mt-3 text-[13px] text-orange hover:text-orange-light font-medium"
-            >
-              Clear filters
-            </button>
-          </div>
-        ) : (
-          <>
-            {lens === "graph" && graph && <GraphView graph={graph} />}
-            {lens === "timeline" && (timeline ? <TimelineView timeline={timeline} /> : <ComingSoon label="Timeline" />)}
-            {lens === "citations" &&
-              (citationFlow ? (
-                <CitationFlowView
-                  papers={citationPapers}
-                  flow={citationFlow}
-                  fetchState={citationFetchState}
-                  onFetch={onFetchCitations}
-                />
-              ) : (
-                <ComingSoon label="Citations" />
-              ))}
-            {lens === "authors" &&
-              (authorNetwork ? <AuthorNetworkView network={authorNetwork} /> : <ComingSoon label="Authors" />)}
-          </>
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6">
+          {!bundle ? (
+            <LoadingState label="Loading vault…" />
+          ) : isEmptyVault ? (
+            <div className="border border-border-warm rounded-card px-5 py-6 bg-light-surface max-w-xl">
+              <h2 className="font-heading text-[18px] text-espresso tracking-heading-card">Nothing to visualize yet</h2>
+              <p className="mt-2 text-[13px] text-muted-text tracking-body">
+                Ingest a few papers to grow your graph — the dashboard fills in as your wiki does.
+              </p>
+              <Link
+                href="/papers"
+                className="mt-3 inline-block text-[13px] text-orange hover:text-orange-light font-medium"
+              >
+                Go to Papers
+              </Link>
+            </div>
+          ) : isFilteredEmpty ? (
+            <div className="border border-border-warm rounded-card px-5 py-6 bg-light-surface max-w-xl">
+              <h2 className="font-heading text-[18px] text-espresso tracking-heading-card">No pages match these filters</h2>
+              <p className="mt-2 text-[13px] text-muted-text tracking-body">
+                Try widening your type, tag, or year selection.
+              </p>
+              <button
+                type="button"
+                onClick={() => setFilters(EMPTY_FILTERS)}
+                className="mt-3 text-[13px] text-orange hover:text-orange-light font-medium"
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <>
+              {lens === "graph" && graph && (
+                <GraphView graph={graph} selectedId={selectedId} onSelectNode={setSelectedId} />
+              )}
+              {lens === "timeline" &&
+                (timeline ? <TimelineView timeline={timeline} /> : <ComingSoon label="Timeline" />)}
+              {lens === "citations" &&
+                (citationFlow ? (
+                  <CitationFlowView
+                    papers={citationPapers}
+                    flow={citationFlow}
+                    fetchState={citationFetchState}
+                    onFetch={onFetchCitations}
+                  />
+                ) : (
+                  <ComingSoon label="Citations" />
+                ))}
+              {lens === "authors" &&
+                (authorNetwork ? <AuthorNetworkView network={authorNetwork} /> : <ComingSoon label="Authors" />)}
+            </>
+          )}
+        </div>
+
+        {selectedPage && filtered && selectedId && (
+          <Inspector
+            bundle={filtered}
+            id={selectedId}
+            neighbors={neighbors}
+            onSelect={setSelectedId}
+            onClose={() => setSelectedId(null)}
+          />
         )}
       </div>
     </div>

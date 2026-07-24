@@ -101,6 +101,15 @@ function TypeFilterRow({ visibleTypes, onToggle }: TypeFilterRowProps) {
 
 interface GraphViewProps {
   graph: KnowledgeGraph
+  /** The workspace's current selection (a bundle page id), if any. Purely
+   * cosmetic here — a trivial highlight via the node reducer; the real
+   * selection-driven styling upgrade is Task 9. */
+  selectedId?: string | null
+  /** Fires on Sigma `clickNode`/`clickStage` with the clicked node's id (or
+   * `null` for a stage click, i.e. "deselect"). Optional so GraphView still
+   * degrades gracefully (falls back to its old wiki-page deep-link) if ever
+   * mounted without a selection handler wired up. */
+  onSelectNode?: (id: string | null) => void
 }
 
 /**
@@ -108,14 +117,17 @@ interface GraphViewProps {
  * derived `KnowledgeGraph`, seeds deterministic circular positions (sorted
  * by node id), runs ForceAtlas2 synchronously for a fixed iteration count,
  * then renders with Sigma. Hover highlights the node + its neighborhood
- * (dimming the rest via reducers); click deep-links to the page's wiki
- * entry; a type-filter row hides node/edge types via the same reducers.
+ * (dimming the rest via reducers); a type-filter row hides node/edge types
+ * via the same reducers. Click now drives the workspace's Inspector
+ * selection (`onSelectNode`) rather than navigating away.
  */
-export default function GraphView({ graph }: GraphViewProps) {
+export default function GraphView({ graph, selectedId = null, onSelectNode }: GraphViewProps) {
   const router = useRouter()
   const containerRef = useRef<HTMLDivElement>(null)
   const sigmaRef = useRef<Sigma | null>(null)
   const hoveredNodeRef = useRef<string | null>(null)
+  const selectedIdRef = useRef<string | null>(selectedId)
+  const onSelectNodeRef = useRef(onSelectNode)
   const visibleTypesRef = useRef<Set<PageType>>(new Set(PAGE_TYPES))
   const [visibleTypes, setVisibleTypes] = useState<Set<PageType>>(new Set(PAGE_TYPES))
 
@@ -140,6 +152,17 @@ export default function GraphView({ graph }: GraphViewProps) {
     hoveredNodeRef.current = null
     sigmaRef.current?.refresh()
   }, [visibleTypes])
+
+  // Kept in sync so the reducers (captured once per Sigma instance) and the
+  // click handler always read the latest values without rebuilding the graph.
+  useEffect(() => {
+    selectedIdRef.current = selectedId
+    sigmaRef.current?.refresh()
+  }, [selectedId])
+
+  useEffect(() => {
+    onSelectNodeRef.current = onSelectNode
+  }, [onSelectNode])
 
   useEffect(() => {
     const container = containerRef.current
@@ -210,6 +233,13 @@ export default function GraphView({ graph }: GraphViewProps) {
         if (hovered && hovered !== node && !g.areNeighbors(hovered, node)) {
           return { ...data, color: DIM_NODE_COLOR, label: null, zIndex: 0 }
         }
+        // Minimal selection cue (full visual treatment is Task 9) — a solid
+        // espresso ring reuses the same color already defined for the
+        // hover-highlight edges, so the selected node visibly pops without
+        // introducing a new palette value.
+        if (selectedIdRef.current === node) {
+          return { ...data, color: HIGHLIGHT_EDGE_COLOR, zIndex: 2 }
+        }
         return data
       },
       edgeReducer: (edge, data) => {
@@ -239,7 +269,14 @@ export default function GraphView({ graph }: GraphViewProps) {
       sigmaInstance.refresh()
     })
     sigmaInstance.on("clickNode", ({ node }) => {
-      router.push(wikiHref(node))
+      if (onSelectNodeRef.current) {
+        onSelectNodeRef.current(node)
+      } else {
+        router.push(wikiHref(node))
+      }
+    })
+    sigmaInstance.on("clickStage", () => {
+      onSelectNodeRef.current?.(null)
     })
 
     sigmaRef.current = sigmaInstance
