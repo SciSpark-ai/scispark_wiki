@@ -1,5 +1,7 @@
 # SP3 — Wiki Dashboard + Viz Workspace Implementation Plan
 
+**Status (2026-07-24):** Built — all 11 tasks complete, 1708 tests green, tsc clean, lint at the pre-existing 8/5 baseline, build compiles, whole-branch review READY TO MERGE, live hand-driven against a real vault. Correction to the Architecture note below: deletes do NOT appear in any in-app undo surface — the changeset is recoverable on disk (revert route / `listIngests`) but has no one-click UI undo; the review inbox shows only lint/generation items. Deferred to SP6 (History). Final-gate fixes beyond the 11 tasks: full-height graph canvas (was fixed 560px), honest delete copy, wikilink-stripped dashboard tldr, non-navigating lens captions, LoadingState (not dev-language "coming soon") for citations-null.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** `/wiki` becomes a stats + shelves + sections dashboard (tree behind "Browse all", consistent Edit/Delete page actions with undoable deletes), and `/viz` becomes a full-height Litmaps-style workspace: four lenses over one shared filtered subset, cross-lens selection, node inspector, Obsidian-grade graph.

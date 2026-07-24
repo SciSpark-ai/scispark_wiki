@@ -24,14 +24,6 @@ import { LoadingState } from "@/components/ui/LoadingState"
 // the rest of the derived-view rendering.
 const GraphView = dynamic(() => import("./GraphView"), { ssr: false })
 
-function ComingSoon({ label }: { label: string }) {
-  return (
-    <div className="border border-dashed border-border-warm rounded-card px-5 py-10 text-center bg-light-surface">
-      <p className="text-[14px] text-muted-text tracking-body">{label} view is coming in the next tasks.</p>
-    </div>
-  )
-}
-
 interface VizWorkspaceProps {
   bundle: Bundle | null
   refsByPageId: Map<string, CitationRef[]> | null
@@ -203,7 +195,7 @@ export default function VizWorkspace({
                 (timeline ? (
                   <TimelineView timeline={timeline} selectedId={selectedId} onSelect={setSelectedId} />
                 ) : (
-                  <ComingSoon label="Timeline" />
+                  <LoadingState label="Loading…" />
                 ))}
               {lens === "citations" &&
                 (citationFlow ? (
@@ -216,13 +208,16 @@ export default function VizWorkspace({
                     onSelect={setSelectedId}
                   />
                 ) : (
-                  <ComingSoon label="Citations" />
+                  // citationFlow is null only while the on-load citation-ref cache
+                  // read is still in flight (or failed) — a loading state, not an
+                  // unfinished lens.
+                  <LoadingState label="Loading citations…" />
                 ))}
               {lens === "authors" &&
                 (authorNetwork ? (
                   <AuthorNetworkView network={authorNetwork} selectedId={selectedId} onSelect={setSelectedId} />
                 ) : (
-                  <ComingSoon label="Authors" />
+                  <LoadingState label="Loading…" />
                 ))}
             </>
           )}

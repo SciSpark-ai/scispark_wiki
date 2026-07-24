@@ -48,10 +48,14 @@ export function backlinkCount(bundle: Bundle, id: string): number {
  * Deletes a wiki page as an undoable one-change changeset: builds
  * `{skill: "delete", model: "none", changes: [{path, before: raw, after: null}]}` and
  * applies it — `applyChangeset` persists the changeset's own audit record at
- * `.scispark/changesets/<id>.json` as part of applying, which is what makes the delete
- * show up in the existing undo surface (`listIngests`) and revertable via the generic
- * revert path / `undoIngest` for free, with zero new undo code. Then rebuilds `index.md`
- * over the post-delete bundle and appends a `delete` log entry. Returns the changeset id.
+ * `.scispark/changesets/<id>.json` as part of applying. That record makes the delete
+ * revertable for free via the generic revert path / `undoIngest` (and it is listed by
+ * `listIngests`), so recovery needs no new revert code. NOTE: as of SP3 there is no
+ * user-facing UI that surfaces a one-click undo for a delete — `listIngests` has no
+ * production renderer yet, and the review inbox shows only lint/generation items. A
+ * deleted page is recoverable (the changeset is on disk) but only by invoking the revert
+ * route directly; a general undo/History surface is SP6. Then rebuilds `index.md` over
+ * the post-delete bundle and appends a `delete` log entry. Returns the changeset id.
  */
 export async function deletePage(storage: VaultStorage, page: WikiPage): Promise<string> {
   if (!isDeletablePage(page)) {

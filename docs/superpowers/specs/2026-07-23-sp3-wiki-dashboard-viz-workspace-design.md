@@ -1,7 +1,7 @@
 # SP3 — Knowledge Home: Wiki Dashboard + Viz Workspace (UI/UX redesign, part 3 of 6)
 
 **Date:** 2026-07-23
-**Status:** Designed — approved by Tong 2026-07-23 (approach 1, sections 1–3 approved in conversation)
+**Status:** Built — 2026-07-24, branch `uiux/sp3-wiki-dashboard-viz-workspace`, 11 tasks via subagent-driven development, 1708 tests green, whole-branch review READY TO MERGE, live hand-driven against a real vault. **Deferred from spec §2:** the delete confirm's "lands in the review inbox with one-click undo" premise did not hold — the review inbox renders only lint/generation items, and a delete writes a changeset (recoverable on disk via the revert route, listed by `listIngests`) but no review item, so there is no one-click UI undo. Deletes ship confirm-gated + recoverable, with honest copy ("no one-click undo yet"); a general changeset-undo/History surface is SP6.
 **Origin:** The six-SP redesign brainstormed 2026-07-16 (see `2026-07-16-sp1-shell-and-system-design.md`). SP1 (shell) and SP2 (core paper loop, plus the SP2.1 follow-ups) have shipped. This spec is SP3: `/wiki` becomes the researcher's knowledge-base dashboard and `/viz` becomes a Litmaps-inspired visualization workspace.
 
 ## Context
