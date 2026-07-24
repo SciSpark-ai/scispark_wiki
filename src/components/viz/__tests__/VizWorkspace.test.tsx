@@ -1,0 +1,87 @@
+import { describe, it, expect } from "vitest"
+import { renderToStaticMarkup } from "react-dom/server"
+import VizWorkspace from "../VizWorkspace"
+import { FilterBar } from "../FilterBar"
+import { filterOptions, EMPTY_FILTERS, type VizFilters } from "@/lib/viz/filter"
+import type { Bundle } from "@/lib/vault/bundle"
+import type { Frontmatter, WikiPage } from "@/lib/vault/types"
+
+function fm(type: string, title: string, extra: Partial<Frontmatter> = {}): Frontmatter {
+  return { type, title, created: "2024-01-01", updated: "2024-01-01", tags: [], related: [], sources: [], ...extra }
+}
+
+function page(id: string, frontmatter: Frontmatter, body = ""): WikiPage {
+  return { id, path: `${id}.md`, frontmatter, body }
+}
+
+function bundleOf(pages: WikiPage[]): Bundle {
+  return { pages: new Map(pages.map((p) => [p.id, p])), links: [], errors: [] }
+}
+
+const NOOP = () => {}
+
+describe("VizWorkspace", () => {
+  it("renders the toolbar with all four lens labels", () => {
+    const bundle = bundleOf([page("wiki/papers/p1", fm("paper", "Paper One"))])
+    const html = renderToStaticMarkup(
+      <VizWorkspace
+        bundle={bundle}
+        refsByPageId={null}
+        citationFetchState="idle"
+        onFetchCitations={NOOP}
+        onRecompute={NOOP}
+        busy={false}
+      />,
+    )
+    expect(html).toContain("Graph")
+    expect(html).toContain("Timeline")
+    expect(html).toContain("Citations")
+    expect(html).toContain("Authors")
+  })
+
+  it("preserves the empty-vault 'Nothing to visualize yet' state", () => {
+    const bundle = bundleOf([])
+    const html = renderToStaticMarkup(
+      <VizWorkspace
+        bundle={bundle}
+        refsByPageId={null}
+        citationFetchState="idle"
+        onFetchCitations={NOOP}
+        onRecompute={NOOP}
+        busy={false}
+      />,
+    )
+    expect(html).toContain("Nothing to visualize yet")
+  })
+
+  it("shows the filtered-to-empty clear-filters affordance when filters exclude every page", () => {
+    const bundle = bundleOf([page("wiki/papers/p1", fm("paper", "Paper One"))])
+    const excludeEverything: VizFilters = { types: ["concept"], tags: [], yearRange: { min: null, max: null } }
+    const html = renderToStaticMarkup(
+      <VizWorkspace
+        bundle={bundle}
+        refsByPageId={null}
+        citationFetchState="idle"
+        onFetchCitations={NOOP}
+        onRecompute={NOOP}
+        busy={false}
+        initialFilters={excludeEverything}
+      />,
+    )
+    expect(html).toContain("No pages match these filters")
+    expect(html).toContain("Clear filters")
+  })
+})
+
+describe("FilterBar", () => {
+  it("renders type chips derived from filterOptions", () => {
+    const bundle = bundleOf([
+      page("wiki/papers/p1", fm("paper", "Paper One")),
+      page("wiki/concepts/c1", fm("concept", "Concept One")),
+    ])
+    const options = filterOptions(bundle)
+    const html = renderToStaticMarkup(<FilterBar options={options} filters={EMPTY_FILTERS} onChange={NOOP} />)
+    expect(html).toContain("Paper")
+    expect(html).toContain("Concept")
+  })
+})
