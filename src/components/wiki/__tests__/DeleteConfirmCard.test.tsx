@@ -57,7 +57,36 @@ describe("DeleteConfirmCard", () => {
         onCancel={() => {}}
       />,
     )
-    expect(html).toMatch(/<button[^>]*disabled[^>]*>/)
+    const container = document.createElement("div")
+    container.innerHTML = html
+    const confirmButton = Array.from(container.querySelectorAll("button")).find((b) =>
+      /delet/i.test(b.textContent ?? ""),
+    )
+    expect(confirmButton).toBeDefined()
+    // Real DOM attribute check (not a substring match against the
+    // `disabled:opacity-50` Tailwind class, which would pass vacuously
+    // regardless of the `busy` prop).
+    expect(confirmButton?.disabled).toBe(true)
+  })
+
+  it("does not disable the confirm button when not busy", () => {
+    const html = renderToStaticMarkup(
+      <DeleteConfirmCard
+        title="Attention Mechanism"
+        backlinks={0}
+        busy={false}
+        error={null}
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    )
+    const container = document.createElement("div")
+    container.innerHTML = html
+    const confirmButton = Array.from(container.querySelectorAll("button")).find((b) =>
+      /delet/i.test(b.textContent ?? ""),
+    )
+    expect(confirmButton).toBeDefined()
+    expect(confirmButton?.disabled).toBe(false)
   })
 
   it("renders the page title in the confirm copy", () => {

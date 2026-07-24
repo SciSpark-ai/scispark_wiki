@@ -86,6 +86,11 @@ export default function WikiPageDetail() {
     }
   }
 
+  // Memoized so DeleteConfirmCard's Esc-keydown effect (which depends on
+  // onCancel) doesn't tear down and re-add its window listener on every
+  // keystroke of the body editor re-rendering this component.
+  const handleCancelDelete = useCallback(() => setConfirmingDelete(false), [])
+
   const handleConfirmDelete = async () => {
     if (!storage || !page) return
     setDeleteBusy(true)
@@ -162,7 +167,7 @@ export default function WikiPageDetail() {
             busy={deleteBusy}
             error={deleteError}
             onConfirm={handleConfirmDelete}
-            onCancel={() => setConfirmingDelete(false)}
+            onCancel={handleCancelDelete}
           />
         )}
 
