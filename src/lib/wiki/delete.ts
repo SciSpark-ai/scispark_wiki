@@ -54,7 +54,14 @@ export function backlinkCount(bundle: Bundle, id: string): number {
  * over the post-delete bundle and appends a `delete` log entry. Returns the changeset id.
  */
 export async function deletePage(storage: VaultStorage, page: WikiPage): Promise<string> {
+  if (!isDeletablePage(page)) {
+    throw new Error(`page is not deletable: ${page.id}`)
+  }
+
   const raw = await storage.read(page.path)
+  if (raw === null) {
+    throw new Error(`page not found (nothing to delete): ${page.path}`)
+  }
   const change: FileChange = { path: page.path, before: raw, after: null }
   const changeset: Changeset = {
     id: makeChangesetId(),

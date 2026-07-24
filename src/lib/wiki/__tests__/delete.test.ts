@@ -77,6 +77,28 @@ describe("deletePage", () => {
     return storage
   }
 
+  it("rejects a protected page (e.g. wiki/profile) without writing anything", async () => {
+    const storage = await seedVault()
+    await storage.write("wiki/profile.md", serializeDocument(fm("note", "Profile"), "stuff"))
+    const target = page("wiki/profile", "wiki/profile.md", fm("note", "Profile"))
+
+    await expect(deletePage(storage, target)).rejects.toThrow(/not deletable/)
+
+    expect(await storage.read("wiki/profile.md")).not.toBeNull()
+    expect((await storage.list(".scispark/changesets/")).length).toBe(0)
+    expect(await storage.read("log.md")).toBe("# Log\n")
+  })
+
+  it("rejects a stale/already-deleted page (raw content is null) without writing anything", async () => {
+    const storage = await seedVault()
+    const target = page("wiki/concepts/ghost", "wiki/concepts/ghost.md", fm("concept", "Ghost"))
+
+    await expect(deletePage(storage, target)).rejects.toThrow(/not found/)
+
+    expect((await storage.list(".scispark/changesets/")).length).toBe(0)
+    expect(await storage.read("log.md")).toBe("# Log\n")
+  })
+
   it("removes the file, writes the changeset record, rebuilds index.md, and appends the log line", async () => {
     const storage = await seedVault()
     const before = await storage.read("wiki/concepts/tms.md")
