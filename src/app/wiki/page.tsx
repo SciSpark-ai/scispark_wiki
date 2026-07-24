@@ -123,6 +123,15 @@ function WikiIndexPageContent() {
     }
   }
 
+  // Any navigation that changes the `view` query param (Dashboard/All pages
+  // toggle, TypeSections' "All ->" link, browser Back/Forward) should drop a
+  // stale shelf drill-down rather than leaving it stranded — derive the reset
+  // from the URL instead of scattering onClick handlers across every link
+  // that can change `view`.
+  useEffect(() => {
+    setViewAllShelf(null)
+  }, [view])
+
   const dashboard = useMemo(() => (bundle ? deriveWikiDashboard(bundle) : null), [bundle])
 
   const shelfAllEntries = useMemo(() => {
@@ -142,7 +151,6 @@ function WikiIndexPageContent() {
               <div className="flex items-center gap-0.5 rounded-pill border border-border-warm p-0.5">
                 <Link
                   href="/wiki"
-                  onClick={() => setViewAllShelf(null)}
                   className={cn(
                     "rounded-pill px-3 py-1 text-[13px] tracking-body transition-colors",
                     view === "dashboard" ? "bg-orange text-white" : "text-muted-text hover:text-espresso",
@@ -152,7 +160,6 @@ function WikiIndexPageContent() {
                 </Link>
                 <Link
                   href="/wiki?view=all"
-                  onClick={() => setViewAllShelf(null)}
                   className={cn(
                     "rounded-pill px-3 py-1 text-[13px] tracking-body transition-colors",
                     view === "all" ? "bg-orange text-white" : "text-muted-text hover:text-espresso",
@@ -186,8 +193,8 @@ function WikiIndexPageContent() {
           title="Your wiki is empty"
           hint="Search for papers to start building your knowledge base."
           action={
-            <Link href="/papers">
-              <Button>Search for papers →</Button>
+            <Link href="/papers" className="text-[13px] text-orange hover:text-orange-light">
+              Search for papers →
             </Link>
           }
         />

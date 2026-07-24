@@ -169,3 +169,58 @@ describe("WikiIndexPage — shelf View all drill-down (SP3 task 3)", () => {
     cleanup()
   })
 })
+
+describe("WikiIndexPage — drilldown reset on view change (review finding)", () => {
+  it("clears the shelf drill-down whenever `view` changes, not just via the toggle's onClick", async () => {
+    // Regression for: drill into a shelf -> click TypeSections' "All ->" link
+    // (a plain href, no onClick reset) -> browser Back -> URL is /wiki but
+    // the stale viewAllShelf state kept showing the drilldown. The fix
+    // derives the reset from `view` itself (useEffect), so simulate the
+    // param changing out from under the component the way navigation would
+    // (re-rendering the same root, exactly like Next.js does not remount the
+    // page on a query-param-only navigation).
+    const manySaved = Array.from({ length: 13 }, (_, i) => ({
+      id: `wiki/papers/saved-${i}`,
+      frontmatter: fm("paper", `Saved Paper ${i}`, { status: "saved", updated: `2026-07-${String(i + 1).padStart(2, "0")}` }),
+    }))
+    loadBundleMock.mockResolvedValue(bundleFromPages(manySaved))
+
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(<WikiIndexPage />)
+    })
+    await act(async () => {})
+
+    // open the shelf drill-down (equivalent to Shelf's onViewAll)
+    clickByText(container, "View all (13)")
+    expect(container.textContent).toContain("Back to dashboard")
+
+    // navigate to ?view=all WITHOUT going through either toggle link's
+    // onClick — this is what TypeSections' "All ->" link (a plain href) or
+    // a browser Back/Forward does
+    searchParamsValue = new URLSearchParams("view=all")
+    await act(async () => {
+      root.render(<WikiIndexPage />)
+    })
+    await act(async () => {})
+
+    expect(container.textContent).not.toContain("Back to dashboard")
+    expect(container.textContent).toContain("Papers") // Tree section heading
+
+    // and browser Back to /wiki (view param cleared) must show the capped
+    // shelf strip again, not a resurrected drilldown
+    searchParamsValue = new URLSearchParams()
+    await act(async () => {
+      root.render(<WikiIndexPage />)
+    })
+    await act(async () => {})
+
+    expect(container.textContent).not.toContain("Back to dashboard")
+    expect(container.textContent).toContain("View all (13)")
+
+    act(() => root.unmount())
+    container.remove()
+  })
+})
