@@ -25,6 +25,8 @@ const NODE_DIM_COLOR = "#e8d3c0" // border-warm — muted, not hidden
 const EDGE_COLOR = "rgba(43, 24, 10, 0.25)" // espresso @ 25%
 const EDGE_HIGHLIGHT_COLOR = "#2b180a" // espresso, solid
 const EDGE_DIM_OPACITY = 0.08
+const SELECTED_RING_COLOR = "var(--color-orange)"
+const SELECTED_RADIUS_BOOST = 1.3
 
 interface SimNode extends SimulationNodeDatum {
   id: string // author key
@@ -119,6 +121,17 @@ function layoutNetwork(network: AuthorNetwork): LaidOutNetwork {
 
 interface AuthorNetworkViewProps {
   network: AuthorNetwork
+  /** The workspace's current selection (a bundle page id), if any — an id
+   * that doesn't match any rendered author's `pageId` is silently ignored
+   * (renders identically to `null`). Optional for back-compat with any
+   * caller/test that doesn't wire selection. */
+  selectedId?: string | null
+  /** Fires with the clicked author's wiki page id — only for nodes that
+   * have one (`pageId !== null`); a pageless author's click stays a no-op,
+   * unchanged by this. Without `onSelect`, a paged node's click falls back
+   * to this view's pre-selection-wiring behavior (navigate straight to the
+   * author's wiki page) so the view stays usable stand-alone. */
+  onSelect?: (id: string | null) => void
 }
 
 /**
@@ -127,10 +140,11 @@ interface AuthorNetworkViewProps {
  * (charge + link + collide + centering, fixed tick count, no animation
  * loop). Rendering is capped to the ~200 highest-paperCount authors; only
  * the top ~20 of those get an on-canvas label to avoid label soup. Clicking
- * a node with a wiki author page navigates there; authors without one are
- * a no-op click with a native tooltip.
+ * a node with a wiki author page selects it (or navigates there directly
+ * when `onSelect` isn't wired); authors without one are a no-op click with
+ * a native tooltip.
  */
-export default function AuthorNetworkView({ network }: AuthorNetworkViewProps) {
+export default function AuthorNetworkView({ network, selectedId = null, onSelect }: AuthorNetworkViewProps) {
   const router = useRouter()
   const [hovered, setHovered] = useState<string | null>(null)
 
@@ -163,6 +177,15 @@ export default function AuthorNetworkView({ network }: AuthorNetworkViewProps) {
   const goTo = (node: SimNode) => {
     if (node.pageId) router.push(wikiHref(node.pageId))
   }
+  // Selecting drives the workspace's Inspector panel when wired up
+  // (VizWorkspace always wires it); without it, a click keeps this view's
+  // pre-Task-10 direct-navigate behavior instead of becoming a silent no-op.
+  // A pageless author has nothing to select or navigate to either way.
+  const selectNode = (node: SimNode) => {
+    if (!node.pageId) return
+    if (onSelect) onSelect(node.pageId)
+    else goTo(node)
+  }
 
   const nodeOpacity = (id: string): number => {
     if (!hovered) return 1
@@ -184,7 +207,7 @@ export default function AuthorNetworkView({ network }: AuthorNetworkViewProps) {
   }`
 
   return (
-    <div>
+    <div data-viz-canvas>
       <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
         <p className="text-[12px] text-muted-text tracking-body">{stats}</p>
         {overflowTotal > 0 && (
@@ -218,18 +241,22 @@ export default function AuthorNetworkView({ network }: AuthorNetworkViewProps) {
           })}
           {nodes.map((node) => {
             const hasPage = node.pageId !== null
+            const isSelected = hasPage && node.pageId === selectedId
             return (
               <g key={node.id}>
                 <circle
                   cx={node.x}
                   cy={node.y}
-                  r={node.radius}
+                  r={isSelected ? node.radius * SELECTED_RADIUS_BOOST : node.radius}
                   fill={hovered && nodeOpacity(node.id) < 1 ? NODE_DIM_COLOR : NODE_COLOR}
+                  stroke={isSelected ? SELECTED_RING_COLOR : "none"}
+                  strokeWidth={isSelected ? 2 : 0}
+                  data-selected={isSelected ? "true" : undefined}
                   opacity={nodeOpacity(node.id)}
                   className={hasPage ? "cursor-pointer" : "cursor-default"}
                   onMouseEnter={() => setHovered(node.id)}
                   onMouseLeave={() => setHovered(null)}
-                  onClick={() => goTo(node)}
+                  onClick={() => selectNode(node)}
                 >
                   <title>
                     {`${node.name} — ${node.paperCount} paper${node.paperCount === 1 ? "" : "s"}`}

@@ -44,7 +44,7 @@ interface VizWorkspaceProps {
   initialFilters?: VizFilters
   /** Test-only seed for the initial selection (defaults to `null`);
    * production callers never pass this — real selection only ever comes
-   * from clicking a graph node. */
+   * from clicking an item in whichever lens is active. */
   initialSelectedId?: string | null
 }
 
@@ -67,10 +67,12 @@ export default function VizWorkspace({
 }: VizWorkspaceProps) {
   const [lens, setLens] = useState<VizTab>("graph")
   const [filters, setFilters] = useState<VizFilters>(initialFilters ?? EMPTY_FILTERS)
-  // Wired for real in Task 8: the graph lens sets this via GraphView's
-  // onSelectNode; Tasks 9–10 wire the remaining lenses. The Inspector panel
-  // below only renders once `selectedId` resolves to a page in the
-  // filtered bundle.
+  // One selection shared across all four lenses (Task 8 wired the graph
+  // lens via GraphView's onSelectNode; Task 10 wired Timeline/CitationFlow/
+  // AuthorNetwork the same way) so switching lenses never drops the current
+  // selection outright — it just hides the Inspector if the selected id
+  // isn't a node in the newly-active lens. The Inspector panel below only
+  // renders once `selectedId` resolves to a page in the filtered bundle.
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? null)
   // Stable identity across renders — Inspector's click-away effect
   // re-subscribes its document listeners whenever `onClose` changes
@@ -133,7 +135,20 @@ export default function VizWorkspace({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-warm px-6 py-3 shrink-0">
+      {/* `data-viz-canvas` here too (Inspector's click-away ignores anything
+          inside it, see Inspector.tsx) — without it, clicking a VizTabs lens
+          button is itself a "click outside the panel" mousedown that closes
+          Inspector before the tab's own onClick can switch `lens`, so a
+          selection could never actually survive a lens switch. Filter/
+          Recompute controls sit in the same row and get the same exemption
+          for the same reason: none of these are a "click away to deselect"
+          gesture — a selection hidden by a filter or a lens change without a
+          matching node already degrades gracefully via `selectedPage`
+          resolving to null, with no explicit `onClose` needed. */}
+      <div
+        data-viz-canvas
+        className="flex flex-wrap items-center justify-between gap-3 border-b border-border-warm px-6 py-3 shrink-0"
+      >
         <VizTabs active={lens} onChange={setLens} />
         <div className="flex flex-wrap items-center gap-3">
           <FilterBar options={options} filters={filters} onChange={setFilters} />
@@ -185,7 +200,11 @@ export default function VizWorkspace({
                 <GraphView graph={graph} selectedId={selectedId} onSelectNode={setSelectedId} />
               )}
               {lens === "timeline" &&
-                (timeline ? <TimelineView timeline={timeline} /> : <ComingSoon label="Timeline" />)}
+                (timeline ? (
+                  <TimelineView timeline={timeline} selectedId={selectedId} onSelect={setSelectedId} />
+                ) : (
+                  <ComingSoon label="Timeline" />
+                ))}
               {lens === "citations" &&
                 (citationFlow ? (
                   <CitationFlowView
@@ -193,12 +212,18 @@ export default function VizWorkspace({
                     flow={citationFlow}
                     fetchState={citationFetchState}
                     onFetch={onFetchCitations}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
                   />
                 ) : (
                   <ComingSoon label="Citations" />
                 ))}
               {lens === "authors" &&
-                (authorNetwork ? <AuthorNetworkView network={authorNetwork} /> : <ComingSoon label="Authors" />)}
+                (authorNetwork ? (
+                  <AuthorNetworkView network={authorNetwork} selectedId={selectedId} onSelect={setSelectedId} />
+                ) : (
+                  <ComingSoon label="Authors" />
+                ))}
             </>
           )}
         </div>

@@ -71,6 +71,35 @@ describe("VizWorkspace", () => {
     expect(html).toContain("No pages match these filters")
     expect(html).toContain("Clear filters")
   })
+
+  // Task 10 regression: the toolbar (VizTabs/FilterBar/Recompute) must carry
+  // the same `data-viz-canvas` marker as each lens's own canvas so Inspector's
+  // click-away (Inspector.tsx) doesn't treat "click a lens tab to switch
+  // lenses" as a click-away-to-deselect — otherwise a selection could never
+  // survive switching lenses at all, defeating the point of sharing one
+  // `selectedId` across the workspace. See Inspector.interaction.test.tsx for
+  // the click-away mechanic itself (unchanged here, just a new exempt zone).
+  it("marks the toolbar (VizTabs/FilterBar/Recompute row) with data-viz-canvas", () => {
+    const bundle = bundleOf([page("wiki/papers/p1", fm("paper", "Paper One"))])
+    const html = renderToStaticMarkup(
+      <VizWorkspace
+        bundle={bundle}
+        refsByPageId={null}
+        citationFetchState="idle"
+        onFetchCitations={NOOP}
+        onRecompute={NOOP}
+        busy={false}
+      />,
+    )
+    const toolbarStart = html.indexOf("data-viz-canvas")
+    expect(toolbarStart).toBeGreaterThan(-1)
+    // The marked toolbar div must be an ANCESTOR of the VizTabs "Timeline"
+    // button, not some unrelated later element — a naive `toContain` check
+    // for both substrings wouldn't catch the marker landing on the wrong
+    // container.
+    const timelineIdx = html.indexOf("Timeline")
+    expect(timelineIdx).toBeGreaterThan(toolbarStart)
+  })
 })
 
 describe("FilterBar", () => {

@@ -20,6 +20,8 @@ const DOT_RADIUS = 4.5
 
 const PAPER_COLOR = "#f97316" // orange
 const FINDING_COLOR = "#2b180a" // espresso
+const SELECTED_RING_COLOR = "var(--color-orange)"
+const SELECTED_RADIUS = DOT_RADIUS + 2
 
 /** Fractional year (e.g. 2024.5) from an ISO-ish date string, falling back
  * to the item's own year when the date fails to parse (should be rare —
@@ -51,6 +53,16 @@ function tickYears(minYear: number, maxYear: number, pxPerYear: number): number[
 
 interface TimelineViewProps {
   timeline: Timeline
+  /** The workspace's current selection (a bundle page id), if any — an id
+   * that doesn't match any rendered item is silently ignored (renders
+   * identically to `null`). Optional for back-compat with any caller/test
+   * that doesn't wire selection. */
+  selectedId?: string | null
+  /** Fires with the clicked item's page id when provided. Without it,
+   * clicking falls back to this view's pre-selection-wiring behavior
+   * (navigate straight to the item's wiki page) so the view stays usable
+   * stand-alone. */
+  onSelect?: (id: string | null) => void
 }
 
 /**
@@ -61,7 +73,7 @@ interface TimelineViewProps {
  * per `deriveTimeline`'s contract) render in a small "undated" gutter at
  * the right end of their row instead of on the axis.
  */
-export default function TimelineView({ timeline }: TimelineViewProps) {
+export default function TimelineView({ timeline, selectedId = null, onSelect }: TimelineViewProps) {
   const router = useRouter()
   const [hoveredLane, setHoveredLane] = useState<string | null>(null)
 
@@ -132,9 +144,13 @@ export default function TimelineView({ timeline }: TimelineViewProps) {
   const totalHeight = AXIS_TOP + selectedLanes.length * ROW_HEIGHT + 12
 
   const goTo = (id: string) => router.push(wikiHref(id))
+  // Selecting drives the workspace's Inspector panel when wired up
+  // (VizWorkspace always wires it); without it, a click keeps this view's
+  // pre-Task-10 direct-navigate behavior instead of becoming a silent no-op.
+  const selectItem = (id: string) => (onSelect ? onSelect(id) : goTo(id))
 
   return (
-    <div>
+    <div data-viz-canvas>
       <p className="mb-3 text-[12px] text-muted-text tracking-body">
         {timeline.items.length} item{timeline.items.length === 1 ? "" : "s"} across {timeline.minYear}
         {timeline.minYear !== timeline.maxYear ? `–${timeline.maxYear}` : ""} · {selectedLanes.length} lane
@@ -210,33 +226,43 @@ export default function TimelineView({ timeline }: TimelineViewProps) {
               <g key={lane.id}>
                 {datedItems.map((item) => {
                   const cx = LABEL_WIDTH + scale(decimalYear(item))
+                  const isSelected = item.id === selectedId
                   return (
                     <circle
                       key={item.id}
                       cx={cx}
                       cy={rowCy}
-                      r={DOT_RADIUS}
+                      r={isSelected ? SELECTED_RADIUS : DOT_RADIUS}
                       fill={item.type === "paper" ? PAPER_COLOR : FINDING_COLOR}
+                      stroke={isSelected ? SELECTED_RING_COLOR : "none"}
+                      strokeWidth={isSelected ? 2 : 0}
+                      data-selected={isSelected ? "true" : undefined}
                       className="cursor-pointer"
-                      onClick={() => goTo(item.id)}
+                      onClick={() => selectItem(item.id)}
                     >
                       <title>{`${displayTitle(String(item.title ?? ""))} (${item.year}) — ${item.type}`}</title>
                     </circle>
                   )
                 })}
-                {undatedItems.slice(0, 6).map((item, idx) => (
-                  <circle
-                    key={item.id}
-                    cx={LABEL_WIDTH + gutterX + 12 + idx * 11}
-                    cy={rowCy}
-                    r={DOT_RADIUS}
-                    fill={item.type === "paper" ? PAPER_COLOR : FINDING_COLOR}
-                    className="cursor-pointer"
-                    onClick={() => goTo(item.id)}
-                  >
-                    <title>{`${displayTitle(String(item.title ?? ""))} (undated) — ${item.type}`}</title>
-                  </circle>
-                ))}
+                {undatedItems.slice(0, 6).map((item, idx) => {
+                  const isSelected = item.id === selectedId
+                  return (
+                    <circle
+                      key={item.id}
+                      cx={LABEL_WIDTH + gutterX + 12 + idx * 11}
+                      cy={rowCy}
+                      r={isSelected ? SELECTED_RADIUS : DOT_RADIUS}
+                      fill={item.type === "paper" ? PAPER_COLOR : FINDING_COLOR}
+                      stroke={isSelected ? SELECTED_RING_COLOR : "none"}
+                      strokeWidth={isSelected ? 2 : 0}
+                      data-selected={isSelected ? "true" : undefined}
+                      className="cursor-pointer"
+                      onClick={() => selectItem(item.id)}
+                    >
+                      <title>{`${displayTitle(String(item.title ?? ""))} (undated) — ${item.type}`}</title>
+                    </circle>
+                  )
+                })}
                 {undatedItems.length > 6 && (
                   <text
                     x={LABEL_WIDTH + gutterX + 12 + 6 * 11}
