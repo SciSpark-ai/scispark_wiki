@@ -55,7 +55,8 @@ export interface BoardTopic {
   discipline: string
   /**
    * Change in the topic's SHARE of its discipline: (recentShare − priorShare) /
-   * priorShare. Null when priorCount is 0 — rendered as "new", never ∞.
+   * priorShare. Null when the prior count is too small to divide by (zero, or
+   * under `MIN_PRIOR_COUNT`) — rendered as "new", never ∞.
    * Share-based because OpenAlex's indexing lag shrinks the recent window's
    * corpus for every topic alike, which raw counts would read as a board-wide
    * decline (see `rankHeatingTopics` for the measured figures).
@@ -74,7 +75,8 @@ export interface BoardTopic {
    * before/after bars are drawn from THESE, so a row's chart can never
    * contradict its badge — a topic whose raw count fell while its share rose
    * must not show a shrinking bar beside a positive percentage. `priorShare: 0`
-   * is the "new" case and draws an empty prior bar.
+   * is the "new" case (a prior of zero, or one under `MIN_PRIOR_COUNT`) and
+   * draws an empty prior bar; `priorCount` still carries the honest raw figure.
    */
   recentShare: number
   priorShare: number

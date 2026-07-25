@@ -126,33 +126,51 @@ describe("rankHeatingTopics", () => {
     expect(out.map((t) => t.key)).toEqual(["big"])
   })
 
-  it("drops a topic whose NONZERO prior is under the prior floor (noise cannot top the board)", () => {
-    // The asymmetry this closes: 1 → 5 clears MIN_RECENT_COUNT and posts +400%
-    // share growth off a denominator of one paper, outranking a topic that
-    // really did double off a measurable base.
+  it("a NONZERO prior under the floor quotes no percentage (noise cannot top the board with a figure)", () => {
+    // The asymmetry this closes: 1 → 5 clears MIN_RECENT_COUNT and would post
+    // a precise-looking +400% share figure off a denominator of one paper.
     const out = rankHeatingTopics(
       [d("Neuro", [["noise", MIN_RECENT_COUNT], ["real", 40]])],
       priors([["noise", MIN_PRIOR_COUNT - 1], ["real", 20]]),
       totals("Neuro"),
     )
-    expect(out.map((t) => t.key)).toEqual(["real"])
+    const noise = out.find((t) => t.key === "noise")
+    expect(noise?.growth).toBeNull()
+    expect(noise?.priorShare).toBe(0)
+    // …and the honest absolute base is still carried, so the row can say 4 → 5.
+    expect(noise?.priorCount).toBe(MIN_PRIOR_COUNT - 1)
+    expect(out.find((t) => t.key === "real")?.growth).toBeCloseTo(1)
   })
 
-  it("keeps a topic sitting exactly ON the prior floor", () => {
+  it("keeps a topic sitting exactly ON the prior floor, with a real percentage", () => {
     const out = rankHeatingTopics(
       [d("Neuro", [["edge", 40]])],
       priors([["edge", MIN_PRIOR_COUNT]]),
       totals("Neuro"),
     )
     expect(out.map((t) => t.key)).toEqual(["edge"])
+    expect(out[0].growth).not.toBeNull()
   })
 
-  it("the prior floor does NOT swallow the genuine-zero \"new\" case", () => {
-    // priorCount 0 is a measured zero, not a tiny baseline: no division
-    // happens, so there is nothing noisy to divide by.
-    const out = rankHeatingTopics([d("Neuro", [["new", 40]])], priors([["new", 0]]), totals("Neuro"))
-    expect(out).toHaveLength(1)
-    expect(out[0]).toMatchObject({ key: "new", growth: null, priorCount: 0 })
+  it("LADDER: visibility is monotonic in prior volume — 0 and a small prior are both \"new\" and PRESENT, a sufficient prior gets a figure", () => {
+    // The incoherence this pins: with the floor as a DROP, the ladder read
+    // 0 → shown "new", 1–4 → silently gone, ≥5 → shown with a figure. Zero was
+    // more visible than one, and a 2 → 40 breakout — exactly what this page
+    // exists to surface — vanished behind a threshold nobody is told about
+    // (correctly with no dataError, since nothing failed). A row is now dropped
+    // only when something is genuinely UNKNOWN, never merely small.
+    const out = rankHeatingTopics(
+      [d("Neuro", [["zero", 40], ["small", 40], ["sufficient", 40]])],
+      priors([["zero", 0], ["small", 2], ["sufficient", 20]]),
+      totals("Neuro"),
+    )
+    expect(out.map((t) => t.key).sort()).toEqual(["small", "sufficient", "zero"])
+
+    const by = new Map(out.map((t) => [t.key, t]))
+    expect(by.get("zero")).toMatchObject({ growth: null, priorCount: 0, priorShare: 0 })
+    // The middle rung: present, labelled "new", and NOT quoting a percentage.
+    expect(by.get("small")).toMatchObject({ growth: null, priorCount: 2, priorShare: 0 })
+    expect(by.get("sufficient")?.growth).toBeCloseTo(1)
   })
 
   it("merges disciplines into one board and tags each row's discipline", () => {

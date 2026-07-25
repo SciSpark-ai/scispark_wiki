@@ -12,18 +12,22 @@ const WINDOW_WEEKS = 2
 export const MIN_RECENT_COUNT = 5
 
 /**
- * The same volume floor on the PRIOR window — the symmetric half of
+ * The smallest PRIOR count worth dividing by — the symmetric half of
  * MIN_RECENT_COUNT, defined once so the two bars can never drift apart.
  *
  * Without it the floor guarded only the numerator's window: a topic going
- * 1 → 5 works clears MIN_RECENT_COUNT and posts several hundred percent share
- * growth off a denominator that is pure noise, then tops a board whose whole
- * claim is "these are the topics heating up". A nonzero prior below this bar
- * is therefore dropped rather than ranked.
+ * 1 → 5 works clears MIN_RECENT_COUNT and posts a precise-looking +400% share
+ * figure computed off a denominator that is pure noise, then tops a board whose
+ * whole claim is "these are the topics heating up".
  *
- * A prior of EXACTLY 0 is deliberately not filtered here: that is the "new
- * topic" case (`growth: null`, rendered "new", no division), which the
- * prior-count lookup made trustworthy and which the board is meant to show.
+ * It is a RANKING rule, not a visibility rule: a row below this bar is shown as
+ * "new" (`growth: null`), exactly like a measured zero prior — never dropped.
+ * Dropping it made the ladder non-monotonic (prior 0 visible, prior 1–4 gone,
+ * prior ≥5 visible), so a genuine 2 → 40 breakout — precisely what this page
+ * exists to surface — vanished with no `dataError` to explain it, because
+ * nothing had actually failed. "Too small a base to quote a percentage from"
+ * and "no base at all" are the same statement to a reader, and both are honest;
+ * the absolute counts are still carried on the row either way.
  */
 export const MIN_PRIOR_COUNT = MIN_RECENT_COUNT
 
@@ -101,9 +105,9 @@ export interface RankedTopic extends TopicCandidate {
   priorCount: number
   /** `recentCount / corpus recent total` — the topic's slice of its discipline. */
   recentShare: number
-  /** `priorCount / corpus prior total`; exactly 0 when priorCount is 0. */
+  /** `priorCount / corpus prior total`; exactly 0 for a "new" row (priorCount below MIN_PRIOR_COUNT). */
   priorShare: number
-  /** (recentShare − priorShare) / priorShare; null when priorCount === 0 → genuinely "new". */
+  /** (recentShare − priorShare) / priorShare; null when priorCount < MIN_PRIOR_COUNT → "new". */
   growth: number | null
 }
 
@@ -167,7 +171,8 @@ export function selectTopicCandidates(perDiscipline: DisciplineBuckets[]): Topic
  *
  * A candidate with NO entry in `priorCounts` is dropped from the ranking
  * rather than defaulted to 0 — an unmeasured prior is unknown, not zero. So
- * `growth: null` now means a genuine zero prior, and "new" is trustworthy;
+ * `growth: null` now means a measured prior too small to divide by (zero, or
+ * below MIN_PRIOR_COUNT), and "new" is trustworthy;
  * null therefore still sorts first, which is now correct.
  *
  * GROWTH IS A RATIO OF SHARES, NOT OF RAW COUNTS. OpenAlex back-fills recent
@@ -193,16 +198,18 @@ export function selectTopicCandidates(perDiscipline: DisciplineBuckets[]): Topic
  * The volume floors (MIN_RECENT_COUNT, MIN_PRIOR_COUNT) still apply to the RAW
  * counts on BOTH sides — a share floor would mean nothing across disciplines of
  * different sizes — and both raw counts are carried through for honest absolute
- * volume. A nonzero prior below MIN_PRIOR_COUNT is dropped: its share is noise,
- * and dividing by it manufactures a chart-topping percentage.
+ * volume. A nonzero prior below MIN_PRIOR_COUNT is not dropped but ranked as
+ * "new": dividing by it would manufacture a chart-topping percentage out of
+ * noise, while dropping it would hide a real 2 → 40 breakout behind a threshold
+ * no one is told about.
  *
  * A discipline whose corpus size was NOT measured (`null`, i.e. its count
  * request failed) cannot produce a share, so its rows are DROPPED rather than
  * silently falling back to raw-count growth — mixing the two would make the
  * ranking incomparable and reintroduce exactly the artifact above. The prior
- * total is only needed by rows that actually divide by it: a genuine
- * `priorCount === 0` row is still "new" with `priorShare: 0`, no division and
- * no `NaN`/`Infinity` — and a genuinely empty prior corpus (`totalPrior: 0`)
+ * total is only needed by rows that actually divide by it: a row under
+ * MIN_PRIOR_COUNT (including a measured zero) is "new" with `priorShare: 0`, no
+ * division and no `NaN`/`Infinity` — and a genuinely empty prior corpus (`totalPrior: 0`)
  * can only produce such rows, so it needs no special case either.
  *
  * Sorted fastest-growing first, tie-broken by RAW recentCount desc then label
@@ -224,14 +231,16 @@ export function rankHeatingTopics(
     if (!isMeasuredSize(totalRecent)) continue
     const recentShare = candidate.recentCount / totalRecent
 
-    if (priorCount === 0) {
+    // "New": a measured zero prior, or a base too small to quote a percentage
+    // from (see MIN_PRIOR_COUNT). Both take the same exit — growth null, an
+    // empty prior bar, and the raw priorCount carried through as text — so the
+    // ladder is monotonic in prior volume: small base → "new", sufficient base
+    // → a real figure. Neither divides, so neither can produce NaN/Infinity or
+    // a noise-driven percentage, and neither needs the prior corpus total.
+    if (priorCount < MIN_PRIOR_COUNT) {
       ranked.push({ ...candidate, priorCount, recentShare, priorShare: 0, growth: null })
       continue
     }
-
-    // Symmetric volume floor: a nonzero-but-tiny prior is noise, not a baseline
-    // (see MIN_PRIOR_COUNT).
-    if (priorCount < MIN_PRIOR_COUNT) continue
 
     const totalPrior = totals?.prior
     if (!isMeasuredSize(totalPrior)) continue
