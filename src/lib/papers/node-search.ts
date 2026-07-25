@@ -1,5 +1,5 @@
 import { searchArxiv } from "./arxiv"
-import { searchOpenAlex, countOpenAlexWorks, groupWorksByPublicationDate } from "./openalex"
+import { searchOpenAlex, countOpenAlexWorks, groupWorksByPublicationDate, groupWorksByTopic, groupWorksByTopicField, type GroupEntry } from "./openalex"
 import type { SearchFn } from "../skills/feed"
 import type { CountFn, GroupFn } from "../trending/weekly-volume"
 
@@ -61,4 +61,34 @@ export function nodeGroupFn(): GroupFn {
   const mailto = process.env.OPENALEX_MAILTO
   const apiKey = process.env.OPENALEX_API_KEY
   return (q) => groupWorksByPublicationDate(q, { mailto, apiKey })
+}
+
+/**
+ * Query shape shared by every group_by-based node function (nodeGroupFn,
+ * nodeTopicGroupFn, nodeTopicFieldGroupFn): a query plus a date range.
+ */
+export type TopicGroupFn = (q: { query: string; fromDate: string; toDate: string }) => Promise<GroupEntry[]>
+
+/**
+ * Node TopicGroupFn for trending's "heating topics" leaderboard (SP4): calls
+ * groupWorksByTopic directly (one group_by=primary_topic.id request, 1
+ * OpenAlex credit), threading OPENALEX_MAILTO/OPENALEX_API_KEY exactly like
+ * nodeGroupFn.
+ */
+export function nodeTopicGroupFn(): TopicGroupFn {
+  const mailto = process.env.OPENALEX_MAILTO
+  const apiKey = process.env.OPENALEX_API_KEY
+  return (q) => groupWorksByTopic(q, { mailto, apiKey })
+}
+
+/**
+ * Node TopicGroupFn for trending's "heating topics" leaderboard (SP4): calls
+ * groupWorksByTopicField directly (one group_by=primary_topic.field.id
+ * request, 1 OpenAlex credit), threading OPENALEX_MAILTO/OPENALEX_API_KEY
+ * exactly like nodeGroupFn.
+ */
+export function nodeTopicFieldGroupFn(): TopicGroupFn {
+  const mailto = process.env.OPENALEX_MAILTO
+  const apiKey = process.env.OPENALEX_API_KEY
+  return (q) => groupWorksByTopicField(q, { mailto, apiKey })
 }

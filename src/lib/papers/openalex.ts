@@ -344,3 +344,66 @@ export async function groupWorksByPublicationDate(
   }
   return result
 }
+
+export interface GroupEntry {
+  key: string
+  label: string
+  count: number
+}
+
+/**
+ * Shared body-parsing/mapping for the labeled group_by variants used by
+ * trending's "heating topics" leaderboard (SP4): unlike
+ * groupWorksByPublicationDate's {key,count} buckets, these carry a
+ * key_display_name that becomes the human-readable label. Drops entries with
+ * no display name and OpenAlex's literal "unknown" bucket (its catch-all for
+ * unclassified works — never a real topic/field).
+ */
+function mapGroupByEntries(groups: OpenAlexGroupByEntry[]): GroupEntry[] {
+  const result: GroupEntry[] = []
+  for (const g of groups) {
+    if (g == null) continue
+    const key = typeof g.key === "string" ? g.key : undefined
+    const label = typeof g.key_display_name === "string" ? g.key_display_name : undefined
+    const count = typeof g.count === "number" ? g.count : undefined
+    if (key === undefined || label === undefined || count === undefined) continue
+    if (key === "unknown") continue
+    result.push({ key, label, count })
+  }
+  return result
+}
+
+/**
+ * Fetches per-topic work counts for a query within a date range via a SINGLE
+ * `group_by=primary_topic.id` request (1 OpenAlex credit). Used by trending's
+ * "heating topics" leaderboard (SP4) to find which fine-grained topics are
+ * trending within a field. Same retry/backoff/timeout contract as the other
+ * OpenAlex calls; tolerates missing/malformed entries by skipping them.
+ */
+export async function groupWorksByTopic(
+  q: { query: string; fromDate: string; toDate: string },
+  deps: OpenAlexDeps = {},
+): Promise<GroupEntry[]> {
+  const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate }, deps, {
+    groupBy: "primary_topic.id",
+  })
+  const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexGroupByResponse
+  return mapGroupByEntries(body.group_by ?? [])
+}
+
+/**
+ * Fetches per-field work counts for a query within a date range via a SINGLE
+ * `group_by=primary_topic.field.id` request (1 OpenAlex credit). Same shape
+ * as groupWorksByTopic, one level up OpenAlex's topic hierarchy (field is the
+ * coarser grouping topics roll up into).
+ */
+export async function groupWorksByTopicField(
+  q: { query: string; fromDate: string; toDate: string },
+  deps: OpenAlexDeps = {},
+): Promise<GroupEntry[]> {
+  const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate }, deps, {
+    groupBy: "primary_topic.field.id",
+  })
+  const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexGroupByResponse
+  return mapGroupByEntries(body.group_by ?? [])
+}
