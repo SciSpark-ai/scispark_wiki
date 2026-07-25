@@ -28,16 +28,23 @@ const fakeSearchFn: SearchFn = async (_source, query) => [
 const NEURO = { id: "https://openalex.org/fields/28", label: "Neuroscience" }
 const fieldGroupFn: TopicGroupFn = async () => [{ key: NEURO.id, label: NEURO.label, count: 500 }]
 
-/** Recent window doubles T1's prior count so it clears the volume floor and ranks. */
+/**
+ * Only the RECENT window is grouped now (prior counts are looked up through
+ * countFn), so anything else must come back empty.
+ */
 function topicGroupFnFor(now: Date): TopicGroupFn {
   const windows = completeWindows(now)
   return async ({ fromDate }) =>
-    fromDate === windows.recent.fromDate
-      ? [{ key: "T1", label: "Auditory Attention Decoding", count: 40 }]
-      : [{ key: "T1", label: "Auditory Attention Decoding", count: 10 }]
+    fromDate === windows.recent.fromDate ? [{ key: "T1", label: "Auditory Attention Decoding", count: 40 }] : []
 }
 // The routes don't take a `now` override, so the grouper follows the real clock.
 const topicGroupFn: TopicGroupFn = async (q) => topicGroupFnFor(new Date())(q)
+
+/** True for a whole-prior-window, topic-scoped request — the leaderboard's prior-count lookup. */
+function isPriorLookup(q: { fromDate: string; toDate: string; topicId?: string }): boolean {
+  const windows = completeWindows(new Date())
+  return q.topicId !== undefined && q.fromDate === windows.prior.fromDate && q.toDate === windows.prior.toDate
+}
 
 describe("trending skill routes", () => {
   let storage: MemoryVaultStorage
@@ -162,8 +169,12 @@ describe("trending skill routes", () => {
 
   it("POST /api/skills/trending/refresh: setSkillTestOverrides groupFn is wired through and preferred over countFn in the result", async () => {
     const provider = new MockProvider([structured(BRIEFS)])
-    const countFn: CountFn = async () => {
-      throw new Error("countFn must not be called when groupFn is injected and succeeds")
+    // Prior lookups still go through countFn (they are counts, not series);
+    // any per-WEEK series call would mean groupFn wasn't preferred.
+    const countFn: CountFn = async (q) => {
+      if (isPriorLookup(q)) return 10
+      if (q.topicId !== undefined) throw new Error("countFn must not serve the series when groupFn succeeds")
+      return 1
     }
     // groupFn echoes back a group keyed on the actual (real, un-mocked-clock)
     // fromDate it's called with, which is exactly weekStarts[0] for the

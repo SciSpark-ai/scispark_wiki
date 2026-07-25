@@ -85,7 +85,7 @@ One pure function over the wiki bundle and the interest labels decides both lens
 
 ## 5. Data flow, cost, and caching
 
-Per refresh: load settings + user model → anchor disciplines (cached) → 2 `group_by` requests per discipline → growth ranking → per-kept-topic series + representative papers → deterministic breakout papers (reusing the existing `retrieve` movers logic) → one **strong**-tier LLM call per discipline producing qualitative text only → pure relevance/KB pass → persist.
+Per refresh: load settings + user model → anchor disciplines (cached) → 1 recent-window `group_by` request per discipline → a prior-count lookup per candidate (bounded to the top 20 by recent volume) → growth ranking → per-kept-topic series + representative papers → deterministic breakout papers (reusing the existing `retrieve` movers logic) → one **strong**-tier LLM call per discipline producing qualitative text only → pure relevance/KB pass → persist.
 
 **Cost:** roughly **35–45 OpenAlex credits per refresh** (see the revised breakdown in §3). Comfortable on a free API key (1000/day); on the keyless tier (100/day) about two refreshes per day, which the settings copy must state honestly. LLM roughly $0.05–0.2 per refresh, under the existing daily budget enforcement.
 

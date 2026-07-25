@@ -161,6 +161,54 @@ describe("fetchWeeklyVolume with groupFn (group_by fast path)", () => {
     ])
   })
 
+  it("threads topicId into the grouped fast path", async () => {
+    const seen: Array<string | undefined> = []
+    const groupFn: GroupFn = async (q) => {
+      seen.push(q.topicId)
+      return [{ key: "2026-06-29", count: 5 }]
+    }
+    const countFn: CountFn = async () => {
+      throw new Error("must not fall back")
+    }
+    const vol = await fetchWeeklyVolume(countFn, "Computer Science", weekStarts, groupFn, "T10689")
+    expect(seen).toEqual(["T10689"])
+    expect(vol?.[0]).toEqual({ weekStart: "2026-06-29", count: 5 })
+  })
+
+  it("threads topicId into the per-week fallback too, so a degraded series stays topic-scoped", async () => {
+    // Without this, a failed grouped request would silently revert to a
+    // free-text search on the discipline and the sparkline would disagree with
+    // the growth badge beside it.
+    const seen: Array<string | undefined> = []
+    const groupFn: GroupFn = async () => {
+      throw new Error("group_by unavailable")
+    }
+    const countFn: CountFn = async (q) => {
+      seen.push(q.topicId)
+      return 3
+    }
+    const vol = await fetchWeeklyVolume(countFn, "Computer Science", weekStarts, groupFn, "T10689")
+    expect(seen).toEqual(["T10689", "T10689"])
+    expect(vol).toEqual([
+      { weekStart: "2026-06-29", count: 3 },
+      { weekStart: "2026-07-06", count: 3 },
+    ])
+  })
+
+  it("with no topicId, neither path sees one (v1.1 weekly volume unchanged)", async () => {
+    const seen: Array<string | undefined> = []
+    const groupFn: GroupFn = async (q) => {
+      seen.push(q.topicId)
+      return []
+    }
+    const countFn: CountFn = async (q) => {
+      seen.push(q.topicId)
+      return 1
+    }
+    await fetchWeeklyVolume(countFn, "nlp", weekStarts, groupFn)
+    expect(seen.every((t) => t === undefined)).toBe(true)
+  })
+
   it("with no groupFn argument, behaves exactly like the existing countFn-only path", async () => {
     let countCalls = 0
     const countFn: CountFn = async () => {

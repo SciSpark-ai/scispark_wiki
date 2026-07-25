@@ -5,7 +5,6 @@ import type { SearchFn } from "../skills/feed"
 import type { PaperRecord } from "../papers/types"
 import { paperKey } from "../papers/types"
 import type { TopicGroupFn } from "../papers/node-search"
-import type { GroupEntry } from "../papers/openalex"
 import { findPaperPage } from "../papers/page-state"
 import { paperSlug } from "../wiki/authoring"
 import { loadBundle, type Bundle } from "../vault/bundle"
@@ -16,7 +15,7 @@ import type { Cadence } from "./settings"
 import { loadTrendingSettings, saveDerivedAnchors } from "./settings"
 import type { AnchorDiscipline } from "./anchors"
 import { deriveAnchorDisciplines, MAX_ANCHORS } from "./anchors"
-import { completeWindows, rankHeatingTopics, type RankedTopic } from "./topics"
+import { completeWindows, rankHeatingTopics, selectTopicCandidates, type DisciplineBuckets, type RankedTopic } from "./topics"
 import { topicLens } from "./lens"
 import { retrieveFieldCandidates } from "./retrieve"
 import { DEFAULT_WEEKS, type VolumePoint } from "./metrics"
@@ -103,8 +102,14 @@ export interface RunTrendingBoardOpts {
   now?: () => Date
   /** Fires with each anchor discipline's label as its group-by requests start. */
   onProgress?: (discipline: string) => void
-  /** Real OpenAlex work counter (`countOpenAlexWorks`): drives the per-topic sparklines AND the overview's recent-work totals. */
-  countFn?: CountFn
+  /**
+   * Real OpenAlex work counter (`countOpenAlexWorks`). REQUIRED: besides the
+   * per-topic sparklines and the overview's recent-work totals, it now performs
+   * every candidate's prior-count lookup, which the growth column is computed
+   * from — without it there is no leaderboard at all, so this is a hard dep
+   * rather than an enhancement.
+   */
+  countFn: CountFn
   /** One-request `group_by=publication_date` counter; tried before countFn's per-week path. */
   groupFn?: GroupFn
 }
@@ -115,8 +120,9 @@ export interface RunTrendingBoardOpts {
  * (src/lib/skills/trending.ts) stays a pure LLM unit.
  *
  * Per refresh: resolve anchor disciplines (a non-empty stored list, else
- * derived and persisted, else the narrow interest labels) → `completeWindows(now)` → two
- * `topicGroupFn` calls per anchor → `rankHeatingTopics` → per kept topic one
+ * derived and persisted, else the narrow interest labels) → `completeWindows(now)` → ONE
+ * recent-window `topicGroupFn` call per anchor → a prior-count lookup per
+ * candidate (`lookupPriorCounts`) → `rankHeatingTopics` → per kept topic one
  * weekly series and one representative-paper search → deterministic breakouts
  * → one `runSkill(trendingSkill)` per anchor discipline → the deterministic
  * lens → assemble + persist.
@@ -168,22 +174,21 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
   const anchors = await resolveAnchors(storage, opts, windows.recent)
 
   // --- Deterministic ranking -------------------------------------------------
-  // Two group_by requests per anchor. A discipline whose requests fail drops
-  // out of the ranking entirely; the others are unaffected.
-  const perDiscipline: Array<{ discipline: string; recent: GroupEntry[]; prior: GroupEntry[] }> = []
+  // ONE group_by request per anchor, over the RECENT window only: it yields the
+  // candidate topics and their recent counts. A discipline whose request fails
+  // drops out of the ranking entirely; the others are unaffected.
+  const perDiscipline: DisciplineBuckets[] = []
   for (const anchor of anchors) {
     opts.onProgress?.(anchor.label)
     try {
-      const [recent, prior] = await Promise.all([
-        opts.topicGroupFn({ query: anchor.label, ...windows.recent }),
-        opts.topicGroupFn({ query: anchor.label, ...windows.prior }),
-      ])
-      perDiscipline.push({ discipline: anchor.label, recent, prior })
+      const recent = await opts.topicGroupFn({ query: anchor.label, ...windows.recent })
+      perDiscipline.push({ discipline: anchor.label, recent })
     } catch (err) {
       console.warn(`[trending] topic grouping failed for "${anchor.label}":`, err)
     }
   }
-  const ranked = rankHeatingTopics(perDiscipline)
+  const priorCounts = await lookupPriorCounts(opts, perDiscipline, windows.prior)
+  const ranked = rankHeatingTopics(perDiscipline, priorCounts)
   const totalRecent = await countRecentWorks(opts, perDiscipline, windows.recent)
 
   // --- Per-topic enrichment (sparkline + representative papers) ---------------
@@ -200,7 +205,7 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
   const weekStarts = buildWeekStarts(new Date(`${windows.recent.toDate}T00:00:00.000Z`), DEFAULT_WEEKS)
   const enriched: Array<{ topic: RankedTopic; weekly: VolumePoint[]; papers: PaperRecord[] }> = []
   for (const topic of ranked) {
-    const weekly = await fetchTopicWeekly(opts, topic.label, weekStarts)
+    const weekly = await fetchTopicWeekly(opts, topic, weekStarts)
     const papers = await searchTopicPapers(opts, topic.label, windows.recent.fromDate)
     enriched.push({ topic, weekly, papers })
   }
@@ -352,6 +357,43 @@ async function resolveAnchors(
 }
 
 /**
+ * The candidates' TRUE prior-window counts — one filtered count request each
+ * (`primary_topic.id:<key>` + the prior date range), which is the whole point
+ * of the fix in SP4 §3: OpenAlex caps a grouped response at 200 buckets and
+ * the prior window's visibility threshold sits HIGHER than the recent one's
+ * (older papers are indexed more completely), so reading a prior count off a
+ * second `group_by` list scored every mid-sized topic as `prior: 0` → "new".
+ * A count request has no such horizon.
+ *
+ * Each lookup carries the SAME `query` (the discipline label) as the grouped
+ * call its recent count came from — the count is `search`-scoped too, and an
+ * unscoped lookup would return the corpus-wide figure and invent a decline.
+ *
+ * Sequential and pool-bounded (CANDIDATE_POOL requests per refresh, not one
+ * per bucket): OpenAlex is credit-priced and rate-limited. A failed lookup
+ * simply omits its key, and `rankHeatingTopics` drops that topic rather than
+ * reading the gap as a zero.
+ */
+async function lookupPriorCounts(
+  opts: RunTrendingBoardOpts,
+  perDiscipline: DisciplineBuckets[],
+  priorWindow: { fromDate: string; toDate: string },
+): Promise<Map<string, number>> {
+  const priorCounts = new Map<string, number>()
+  for (const candidate of selectTopicCandidates(perDiscipline)) {
+    try {
+      priorCounts.set(
+        candidate.key,
+        await opts.countFn({ query: candidate.discipline, topicId: candidate.key, ...priorWindow }),
+      )
+    } catch (err) {
+      console.warn(`[trending] prior-count lookup failed for "${candidate.label}":`, err)
+    }
+  }
+  return priorCounts
+}
+
+/**
  * "New papers this window" across the anchor disciplines. Uses one real
  * `countFn` call per anchor over the complete recent window rather than summing
  * the `group_by` buckets we already have: group_by is capped at 200 groups, so
@@ -359,22 +401,18 @@ async function resolveAnchors(
  * SP4's premise is that every displayed figure is a real count.
  *
  * CAVEAT (carried into the UI label): a work matching two anchors' searches is
- * counted once per anchor, so overlapping disciplines can double-count. With no
- * counter injected, or if a count fails, that anchor falls back to the summed
- * buckets — a low-but-honest number beats a missing figure.
+ * counted once per anchor, so overlapping disciplines can double-count. If a
+ * count fails, that anchor falls back to the summed buckets — a low-but-honest
+ * number beats a missing figure.
  */
 async function countRecentWorks(
   opts: RunTrendingBoardOpts,
-  perDiscipline: Array<{ discipline: string; recent: GroupEntry[] }>,
+  perDiscipline: DisciplineBuckets[],
   recentWindow: { fromDate: string; toDate: string },
 ): Promise<number> {
   let total = 0
   for (const { discipline, recent } of perDiscipline) {
     const bucketSum = recent.reduce((s, entry) => s + entry.count, 0)
-    if (!opts.countFn) {
-      total += bucketSum
-      continue
-    }
     try {
       total += await opts.countFn({ query: discipline, ...recentWindow })
     } catch (err) {
@@ -385,19 +423,26 @@ async function countRecentWorks(
   return total
 }
 
-/** `[]` on any failure (or with no counter injected) — the row just loses its sparkline. */
+/**
+ * The topic's weekly series, scoped by `primary_topic.id` and by the same
+ * discipline `query` its growth figures were computed from — NOT by a free-text
+ * search on the topic's name, which is what made one live row show 27 papers in
+ * two weeks beside a series summing 6,245 (SP4 §3).
+ *
+ * `[]` on any failure — the row just loses its sparkline.
+ */
 async function fetchTopicWeekly(
   opts: RunTrendingBoardOpts,
-  label: string,
+  topic: RankedTopic,
   weekStarts: string[],
 ): Promise<VolumePoint[]> {
-  if (!opts.countFn && !opts.groupFn) return []
-  const countFn: CountFn =
-    opts.countFn ??
-    (async () => {
-      throw new Error("no countFn injected")
-    })
-  const series = await fetchWeeklyVolume(countFn, label, weekStarts, opts.groupFn).catch(() => null)
+  const series = await fetchWeeklyVolume(
+    opts.countFn,
+    topic.discipline,
+    weekStarts,
+    opts.groupFn,
+    topic.key,
+  ).catch(() => null)
   return series ?? []
 }
 

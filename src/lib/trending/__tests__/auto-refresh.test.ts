@@ -8,6 +8,7 @@ import { saveTrendingSettings } from "../settings"
 import { maybeAutoRefreshTrending } from "../auto-refresh"
 import { loadBoard, TRENDING_BOARD_VERSION, DASHBOARD_CACHE_PATH } from "../dashboard"
 import { completeWindows } from "../topics"
+import type { CountFn } from "../weekly-volume"
 
 const NOW = () => new Date("2026-07-14T00:00:00.000Z")
 const WINDOWS = completeWindows(NOW())
@@ -22,12 +23,13 @@ const NEURO = { id: "https://openalex.org/fields/28", label: "Neuroscience" }
 const OLD_ANCHOR = { id: "https://openalex.org/fields/17", label: "Computer Science" }
 
 const fieldGroupFn: TopicGroupFn = async () => [{ key: NEURO.id, label: NEURO.label, count: 500 }]
+// Only the RECENT window is grouped now; prior counts come from countFn.
 const topicGroupFn: TopicGroupFn = async ({ fromDate }) =>
-  fromDate === WINDOWS.recent.fromDate
-    ? [{ key: "T1", label: "Auditory Attention Decoding", count: 40 }]
-    : [{ key: "T1", label: "Auditory Attention Decoding", count: 10 }]
+  fromDate === WINDOWS.recent.fromDate ? [{ key: "T1", label: "Auditory Attention Decoding", count: 40 }] : []
+const countFn: CountFn = async ({ topicId, fromDate }) =>
+  topicId === "T1" && fromDate === WINDOWS.prior.fromDate ? 10 : 4
 
-const deps = { searchFn, topicGroupFn, fieldGroupFn, settings: SETTINGS, now: NOW }
+const deps = { searchFn, topicGroupFn, fieldGroupFn, countFn, settings: SETTINGS, now: NOW }
 
 /** A cached board of the CURRENT structure version, generated at `generatedAt`. */
 async function writeBoard(

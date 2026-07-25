@@ -35,15 +35,45 @@ const SETTINGS = { keys: { openai: "sk" }, tierModels: { fast: { provider: "open
 const NEURO = { id: "https://openalex.org/fields/28", label: "Neuroscience" }
 const CS = { id: "https://openalex.org/fields/17", label: "Computer Science" }
 
-/** Group entries keyed by discipline label, split by which window is asked for. */
-type GroupSpec = Record<string, { recent: GroupEntry[]; prior: GroupEntry[] }>
+/**
+ * Per-discipline RECENT buckets plus the TRUE prior counts a filtered count
+ * request would return for each topic key. The prior side is deliberately NOT
+ * a GroupEntry[] any more: prior counts are looked up, never grouped (SP4 §3).
+ */
+type GroupSpec = Record<string, { recent: GroupEntry[]; prior: Record<string, number> }>
 
 function topicGroupFnFor(spec: GroupSpec): TopicGroupFn {
   return async ({ query, fromDate }) => {
     const entry = spec[query]
     if (!entry) return []
-    return fromDate === WINDOWS.recent.fromDate ? entry.recent : entry.prior
+    // Only the recent window is ever grouped; anything else is a bug.
+    return fromDate === WINDOWS.recent.fromDate ? entry.recent : []
   }
+}
+
+/**
+ * A CountFn standing in for OpenAlex: a prior-window request carrying a
+ * `topicId` answers from the spec's prior map, everything else (sparkline
+ * weeks, anchor-wide recent totals) returns `perWeek` so those assertions stay
+ * exact.
+ */
+function countFnFor(spec: GroupSpec, other = 4): CountFn {
+  return async ({ query, fromDate, toDate, topicId }) => {
+    if (isPriorLookup({ fromDate, toDate, topicId })) {
+      const prior = spec[query]?.prior ?? {}
+      return prior[topicId!] ?? 0
+    }
+    return other
+  }
+}
+
+/**
+ * A prior-count lookup spans the WHOLE prior window and names a topic. Both
+ * halves matter: the 8-week sparkline series also carries a topicId, and one
+ * of its week starts coincides with `prior.fromDate`.
+ */
+function isPriorLookup(q: { fromDate: string; toDate: string; topicId?: string }): boolean {
+  return q.topicId !== undefined && q.fromDate === WINDOWS.prior.fromDate && q.toDate === WINDOWS.prior.toDate
 }
 
 /** Every label rolls up to Neuroscience — the derivation happy path. */
@@ -56,10 +86,7 @@ const ONE_DISCIPLINE: GroupSpec = {
       { key: "T2", label: "Speech Processing", count: 20 },
       { key: "T3", label: "Below The Floor", count: 2 },
     ],
-    prior: [
-      { key: "T1", label: "Auditory Attention Decoding", count: 10 },
-      { key: "T2", label: "Speech Processing", count: 20 },
-    ],
+    prior: { T1: 10, T2: 20 },
   },
 }
 
@@ -75,8 +102,8 @@ const searchFn: SearchFn = async (_source, query) => [
   paper({ title: `Rep paper for ${query}`, date: "2026-07-10", year: 2026, citationCount: 9, venue: "ACL" }),
 ]
 
-/** Deterministic per-week counts so the sparkline assertions are exact. */
-const countFn: CountFn = async () => 4
+/** Deterministic per-week counts (and prior lookups) so assertions stay exact. */
+const countFn: CountFn = countFnFor(ONE_DISCIPLINE)
 const groupFn: GroupFn = async () => []
 
 function baseOpts(over: Partial<Parameters<typeof runTrendingBoard>[1]> = {}) {
@@ -138,6 +165,77 @@ describe("runTrendingBoard", () => {
 
     const events = await readRecentEvents(storage)
     expect(events.some((e) => e.type === "trending_refresh")).toBe(true)
+  })
+
+  it("REGRESSION: a topic invisible in the prior window's grouped list gets a real growth figure, not \"new\"", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [CS])
+    // The live shape of the bug (Computer Science, 2026-07-25): OpenAlex caps
+    // group_by at 200 buckets and the prior window's threshold is HIGHER (22)
+    // than the recent one's (14), so this topic appears in the recent list and
+    // vanishes from the prior one. The old two-list join called that priorCount
+    // 0 → growth null → "new" → first place, for 60 of 200 topics.
+    const spec: GroupSpec = {
+      "Computer Science": {
+        recent: [
+          { key: "T10689", label: "Remote-Sensing Image Classification", count: 27 },
+          { key: "T0", label: "Genuinely New Topic", count: 12 },
+        ],
+        prior: { T10689: 16, T0: 0 }, // the true, looked-up counts
+      },
+    }
+    const provider = new MockProvider([structured({ topics: [], crossDisciplineNote: null })])
+    const board = await runTrendingBoard(
+      storage,
+      baseOpts({
+        topicGroupFn: topicGroupFnFor(spec),
+        countFn: countFnFor(spec),
+        providerOverride: { strong: provider },
+      }),
+    )
+
+    const remote = board.topics.find((t) => t.key === "T10689")!
+    expect(remote.growth).not.toBeNull()
+    expect(remote.growth).toBeCloseTo(0.6875) // 16 → 27, a real +69%
+    // A genuine zero prior is still "new" — and now that is the ONLY thing
+    // "new" means, so it legitimately outranks the +69% row.
+    expect(board.topics.find((t) => t.key === "T0")!.growth).toBeNull()
+    expect(board.topics.map((t) => t.key)).toEqual(["T0", "T10689"])
+  })
+
+  it("scopes a topic's sparkline by primary_topic.id, so the chart and the growth badge cannot disagree", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO])
+    const seen: Array<{ query: string; topicId?: string }> = []
+    const spyCount: CountFn = async (q) => {
+      if (!isPriorLookup(q)) seen.push({ query: q.query, topicId: q.topicId })
+      return countFn(q)
+    }
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    await runTrendingBoard(storage, baseOpts({ countFn: spyCount, providerOverride: { strong: provider } }))
+
+    // Every per-week request carries the topic filter and the DISCIPLINE query
+    // the growth numbers were measured under — never a free-text search on the
+    // topic's name, which is what made a row show 27 papers beside a series
+    // summing 6,245.
+    const series = seen.filter((s) => s.topicId !== undefined)
+    expect(series.length).toBeGreaterThan(0)
+    expect(series.every((s) => s.query === "Neuroscience")).toBe(true)
+    expect(new Set(series.map((s) => s.topicId))).toEqual(new Set(["T1", "T2"]))
+    expect(seen.some((s) => s.query === "Auditory Attention Decoding")).toBe(false)
+  })
+
+  it("groups only the RECENT window — the prior window is never grouped", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO])
+    const windowsAsked: string[] = []
+    const spyGroup: TopicGroupFn = async (q) => {
+      windowsAsked.push(q.fromDate)
+      return topicGroupFnFor(ONE_DISCIPLINE)(q)
+    }
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    await runTrendingBoard(storage, baseOpts({ topicGroupFn: spyGroup, providerOverride: { strong: provider } }))
+    expect(windowsAsked).toEqual([WINDOWS.recent.fromDate])
   })
 
   it("anchors the sparkline to the last COMPLETE week, never the in-progress one", async () => {
@@ -203,12 +301,14 @@ describe("runTrendingBoard", () => {
     const storage = new MemoryVaultStorage()
     await seedAnchors(storage, [NEURO])
     const provider = new MockProvider([structured(BRIEFS_ONE)])
-    const failingCount: CountFn = async () => {
+    // Prior lookups succeed; every per-week series request fails.
+    const failingSeriesCount: CountFn = async (q) => {
+      if (isPriorLookup(q)) return countFn(q)
       throw new Error("openalex down")
     }
     const board = await runTrendingBoard(
       storage,
-      baseOpts({ countFn: failingCount, providerOverride: { strong: provider } }),
+      baseOpts({ countFn: failingSeriesCount, providerOverride: { strong: provider } }),
     )
     expect(board.topics.map((t) => t.key)).toEqual(["T1", "T2"])
     expect(board.topics[0].weekly).toEqual([])
@@ -398,7 +498,7 @@ describe("runTrendingBoard", () => {
     // A real recent-window count that is deliberately LARGER than the group
     // buckets sum to (40+20+2=62): group_by caps at 200 groups, so the bucket
     // sum silently truncates the long tail — the overview must not use it.
-    const bigCount: CountFn = async () => 5000
+    const bigCount: CountFn = countFnFor(ONE_DISCIPLINE, 5000)
     const board = await runTrendingBoard(
       storage,
       baseOpts({ countFn: bigCount, providerOverride: { strong: provider } }),
@@ -413,7 +513,8 @@ describe("runTrendingBoard", () => {
     const storage = new MemoryVaultStorage()
     await seedAnchors(storage, [NEURO, CS])
     const spec: GroupSpec = { ...ONE_DISCIPLINE, "Computer Science": ONE_DISCIPLINE.Neuroscience }
-    const perAnchor: CountFn = async ({ query }) => (query === "Neuroscience" ? 1000 : 300)
+    // Prior lookups keep answering from the spec; only the anchor-wide totals differ.
+    const perAnchor: CountFn = async (q) => (isPriorLookup(q) ? countFn(q) : q.query === "Neuroscience" ? 1000 : 300)
     const provider = new MockProvider([structured(BRIEFS_ONE), structured(BRIEFS_ONE)])
     const board = await runTrendingBoard(
       storage,
@@ -425,15 +526,33 @@ describe("runTrendingBoard", () => {
   it("overview totalRecent falls back to the group buckets when the count call fails", async () => {
     const storage = new MemoryVaultStorage()
     await seedAnchors(storage, [NEURO])
-    const failingCount: CountFn = async () => {
+    // Only the anchor-wide total fails; prior lookups still resolve, so the
+    // leaderboard is intact and the fallback is isolated to the overview.
+    const failingTotal: CountFn = async (q) => {
+      if (isPriorLookup(q)) return countFn(q)
       throw new Error("openalex down")
     }
     const provider = new MockProvider([structured(BRIEFS_ONE)])
     const board = await runTrendingBoard(
       storage,
-      baseOpts({ countFn: failingCount, providerOverride: { strong: provider } }),
+      baseOpts({ countFn: failingTotal, providerOverride: { strong: provider } }),
     )
     expect(board.overview.totalRecent).toBe(62) // 40 + 20 + 2: low but honest, never blank
+    expect(board.topics.map((t) => t.key)).toEqual(["T1", "T2"])
+  })
+
+  it("a failed prior-count lookup drops only that topic (an unmeasured prior is never read as zero)", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO])
+    const failT1: CountFn = async (q) => {
+      if (isPriorLookup(q) && q.topicId === "T1") throw new Error("openalex 429")
+      return countFn(q)
+    }
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    const board = await runTrendingBoard(storage, baseOpts({ countFn: failT1, providerOverride: { strong: provider } }))
+    // T1 would otherwise headline the board at +300%; a missing prior must not
+    // become priorCount 0 and relabel it "new".
+    expect(board.topics.map((t) => t.key)).toEqual(["T2"])
   })
 
   it("breakouts are RECENT papers only — an all-old sample yields an empty strip", async () => {

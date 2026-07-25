@@ -31,7 +31,8 @@ export async function maybeAutoRefreshTrending(
     settings: LLMSettings
     now?: () => Date
     providerOverride?: Partial<Record<Tier, LLMProvider>>
-    countFn?: CountFn
+    /** Required: the board's prior-count lookups (and so its whole growth column) run through it — see RunTrendingBoardOpts.countFn. */
+    countFn: CountFn
     groupFn?: GroupFn
   },
 ): Promise<"refreshed" | "fresh" | "no-fields"> {

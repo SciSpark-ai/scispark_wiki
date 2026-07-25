@@ -40,10 +40,17 @@ export function nodeSearchFn(): SearchFn {
 }
 
 /**
- * Node CountFn for trending weekly-volume: calls countOpenAlexWorks directly,
- * threading OPENALEX_MAILTO so count requests land in OpenAlex's polite pool —
- * same politeness contract nodeSearchFn uses for the search path. A failing
- * count throws (fetchWeeklyVolume catches it and falls back to the sample series).
+ * Node CountFn for trending: calls countOpenAlexWorks directly, threading
+ * OPENALEX_MAILTO so count requests land in OpenAlex's polite pool — same
+ * politeness contract nodeSearchFn uses for the search path. A failing count
+ * throws (fetchWeeklyVolume catches it and falls back to the sample series).
+ *
+ * `q` is forwarded verbatim, so an optional `topicId` reaches the adapter's
+ * `primary_topic.id` filter unchanged. That makes this ONE factory serve all
+ * three trending count needs — the leaderboard's per-candidate PRIOR-count
+ * lookup (the 200-bucket-horizon bypass, SP4 §3), the per-topic sparkline
+ * fallback, and the anchor-wide recent totals — rather than three near-identical
+ * wrappers over the same request.
  */
 export function nodeCountFn(): CountFn {
   const mailto = process.env.OPENALEX_MAILTO
@@ -56,6 +63,9 @@ export function nodeCountFn(): CountFn {
  * directly (one group_by=publication_date request, 1 OpenAlex credit),
  * threading OPENALEX_MAILTO/OPENALEX_API_KEY exactly like nodeCountFn. Tried
  * first by fetchWeeklyVolume before falling back to nodeCountFn's per-week path.
+ * `q` is forwarded verbatim, so an optional `topicId` reaches the adapter's
+ * `primary_topic.id` filter and the leaderboard's sparkline stays scoped to the
+ * same topic its growth badge was computed from.
  */
 export function nodeGroupFn(): GroupFn {
   const mailto = process.env.OPENALEX_MAILTO

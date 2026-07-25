@@ -385,6 +385,67 @@ describe("searchOpenAlex", () => {
   })
 })
 
+describe("countOpenAlexWorks topic scoping (the leaderboard's prior-count lookup)", () => {
+  const capture = () => {
+    const seen = { url: "" }
+    const fetchFn = (async (url: string) => {
+      seen.url = String(url)
+      return new Response(JSON.stringify({ results: [], meta: { count: 16 } }), { status: 200 })
+    }) as unknown as typeof fetch
+    return { seen, fetchFn }
+  }
+
+  it("adds a primary_topic.id filter alongside the dates, keeping the search scope", async () => {
+    const { seen, fetchFn } = capture()
+    const n = await countOpenAlexWorks(
+      { query: "Computer Science", topicId: "T10689", fromDate: "2026-06-22", toDate: "2026-07-05" },
+      { fetchFn },
+    )
+    const url = new URL(seen.url)
+    expect(n).toBe(16)
+    // The search term MUST survive: the recent count this is compared against
+    // is search-scoped too, and an unscoped lookup returns the corpus-wide
+    // figure (live: 149 vs 16) and invents a decline.
+    expect(url.searchParams.get("search")).toBe("Computer Science")
+    expect(url.searchParams.get("per_page")).toBe("1")
+    expect(url.searchParams.get("filter")).toBe(
+      "primary_topic.id:T10689,from_publication_date:2026-06-22,to_publication_date:2026-07-05",
+    )
+  })
+
+  it("normalizes a full entity-URL topic key (what group_by returns) to its bare id", async () => {
+    const { seen, fetchFn } = capture()
+    await countOpenAlexWorks(
+      { query: "x", topicId: "https://openalex.org/T10689", fromDate: "a", toDate: "b" },
+      { fetchFn },
+    )
+    expect(new URL(seen.url).searchParams.get("filter")).toContain("primary_topic.id:T10689")
+  })
+
+  it("omits the topic filter entirely when no topicId is given (v1.1 behaviour unchanged)", async () => {
+    const { seen, fetchFn } = capture()
+    await countOpenAlexWorks({ query: "nlp", fromDate: "a", toDate: "b" }, { fetchFn })
+    expect(new URL(seen.url).searchParams.get("filter")).not.toContain("primary_topic")
+  })
+
+  it("groupWorksByPublicationDate takes the same topic filter (the sparkline shares the growth scope)", async () => {
+    let calledUrl = ""
+    const fetchFn = (async (url: string) => {
+      calledUrl = String(url)
+      return new Response(JSON.stringify({ group_by: [{ key: "2026-07-06", count: 3 }] }), { status: 200 })
+    }) as unknown as typeof fetch
+    await groupWorksByPublicationDate(
+      { query: "Computer Science", topicId: "T10689", fromDate: "2026-06-01", toDate: "2026-07-26" },
+      { fetchFn },
+    )
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get("group_by")).toBe("publication_date")
+    expect(url.searchParams.get("filter")).toBe(
+      "primary_topic.id:T10689,from_publication_date:2026-06-01,to_publication_date:2026-07-26",
+    )
+  })
+})
+
 describe("countOpenAlexWorks", () => {
   it("returns meta.count and requests per_page=1 with from+to date filter", async () => {
     let calledUrl = ""

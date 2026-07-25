@@ -4,15 +4,26 @@ import { isoWeekStart } from "./weeks"
 const DAY_MS = 24 * 60 * 60 * 1000
 const MAX_CONCURRENCY = 4
 
-export type CountFn = (q: { query: string; fromDate: string; toDate: string }) => Promise<number>
+/**
+ * `topicId` (optional) scopes the count to one OpenAlex `primary_topic.id` on
+ * top of the free-text `query` — used by the SP4 leaderboard so a topic's
+ * numbers all come from the same filter. Omitted, behaviour is v1.1's exactly.
+ */
+export type CountFn = (q: { query: string; fromDate: string; toDate: string; topicId?: string }) => Promise<number>
 
 /**
  * One group_by=publication_date OpenAlex request (1 credit) covering an
  * entire date range, returning daily {key: "YYYY-MM-DD", count} buckets.
  * fetchWeeklyVolume sums these into ISO-week buckets instead of issuing one
  * countFn call per week (8 requests x 10 credits for the default window).
+ * `topicId` scopes it exactly as in `CountFn`.
  */
-export type GroupFn = (q: { query: string; fromDate: string; toDate: string }) => Promise<Array<{ key: string; count: number }>>
+export type GroupFn = (q: {
+  query: string
+  fromDate: string
+  toDate: string
+  topicId?: string
+}) => Promise<Array<{ key: string; count: number }>>
 
 // Copied from src/lib/spark/scoop.ts's createLimiter (not exported there) — a minimal
 // FIFO concurrency limiter: at most `maxConcurrent` tasks run at once, the rest queue.
@@ -63,12 +74,13 @@ async function fetchGroupedWeeklyVolume(
   groupFn: GroupFn,
   query: string,
   weekStarts: string[],
+  topicId?: string,
 ): Promise<VolumePoint[] | null> {
   if (weekStarts.length === 0) return null
   try {
     const fromDate = weekStarts[0]
     const toDate = weekEnd(weekStarts[weekStarts.length - 1])
-    const groups = await groupFn({ query, fromDate, toDate })
+    const groups = await groupFn({ query, fromDate, toDate, topicId })
     if (!Array.isArray(groups) || groups.length === 0) return null
 
     const buckets = new Map<string, number>(weekStarts.map((weekStart) => [weekStart, 0]))
@@ -96,15 +108,21 @@ async function fetchGroupedWeeklyVolume(
  * concurrent calls. Returns `VolumePoint[]` aligned 1:1 with `weekStarts` (same order),
  * or `null` if any single week's count throws (the fallback signal — caller should fall
  * back to a cached/derived series rather than show a partial one).
+ *
+ * `topicId` (optional) is threaded into BOTH paths, so the grouped fast path
+ * and the per-week fallback produce the same topic-scoped series — a fallback
+ * that silently reverted to a free-text search on the topic name would put a
+ * chart and a growth badge that disagree on the same row (SP4 §3).
  */
 export async function fetchWeeklyVolume(
   countFn: CountFn,
   query: string,
   weekStarts: string[],
   groupFn?: GroupFn,
+  topicId?: string,
 ): Promise<VolumePoint[] | null> {
   if (groupFn) {
-    const grouped = await fetchGroupedWeeklyVolume(groupFn, query, weekStarts)
+    const grouped = await fetchGroupedWeeklyVolume(groupFn, query, weekStarts, topicId)
     if (grouped) return grouped
   }
 
@@ -112,7 +130,7 @@ export async function fetchWeeklyVolume(
   try {
     const counts = await Promise.all(
       weekStarts.map((weekStart) =>
-        limit(() => countFn({ query, fromDate: weekStart, toDate: weekEnd(weekStart) })),
+        limit(() => countFn({ query, fromDate: weekStart, toDate: weekEnd(weekStart), topicId })),
       ),
     )
     return weekStarts.map((weekStart, i) => ({ weekStart, count: counts[i] }))

@@ -143,8 +143,10 @@ describe("TrendingFieldsCard", () => {
 
   it("states the OpenAlex quota honestly", async () => {
     const { host } = await mount(settings())
-    expect(host.textContent).toContain("25")
-    expect(host.textContent).toContain("30")
+    // Revised after the prior-count-lookup fix: one recent group_by per anchor
+    // plus ~20 per-candidate prior lookups plus the per-topic series.
+    expect(host.textContent).toContain("35")
+    expect(host.textContent).toContain("45")
     expect(host.textContent).toContain("1,000")
     expect(host.textContent).toMatch(/free API key/i)
     expect(host.textContent).toContain("100")

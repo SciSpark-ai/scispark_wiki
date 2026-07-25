@@ -202,6 +202,18 @@ function clampLimit(limit: number | undefined): number {
 interface BuildUrlOpts {
   /** Sets group_by=<value> and forces per_page to GROUP_BY_PER_PAGE (a group_by response has no per-work rows, so the normal limit clamp doesn't apply). */
   groupBy?: string
+  /** Extra `filter=` clauses, joined ahead of the date clauses (e.g. `primary_topic.id:T10689`). */
+  filters?: string[]
+}
+
+/**
+ * `primary_topic.id:<id>` clause for a topic key. `group_by` returns keys as
+ * full entity URLs ("https://openalex.org/T10689"); OpenAlex accepts either
+ * form in a filter, but the bare id keeps the request URL short and
+ * unambiguous once URLSearchParams percent-encodes the value.
+ */
+function topicFilterClause(topicId: string): string {
+  return `primary_topic.id:${idTail(topicId) ?? topicId}`
 }
 
 function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps, opts: BuildUrlOpts = {}): string {
@@ -214,7 +226,7 @@ function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps, opts: BuildUrlOpts = {})
   if (deps.apiKey) {
     url.searchParams.set("api_key", deps.apiKey)
   }
-  const filterClauses: string[] = []
+  const filterClauses: string[] = [...(opts.filters ?? [])]
   if (q.fromDate) {
     filterClauses.push(`from_publication_date:${q.fromDate}`)
   }
@@ -293,12 +305,24 @@ export async function searchOpenAlex(q: OpenAlexQuery, deps: OpenAlexDeps = {}):
  * Returns the total OpenAlex work count for a query within a date range,
  * without fetching any paper records (per_page is fixed at 1). Used by
  * trending weekly aggregation to get real per-week counts cheaply.
+ *
+ * `topicId` additionally scopes the count to one `primary_topic.id`. That is
+ * the leaderboard's PRIOR-count lookup (SP4 §3): a count carries no 200-bucket
+ * horizon, so it reads a topic's true total where `groupWorksByTopic` would
+ * simply omit the topic below its visibility threshold. Pass the SAME `query`
+ * as the grouped call being compared against — the count is scoped by
+ * `search=` too, so an unscoped lookup would return a much larger corpus-wide
+ * figure and manufacture a fake decline (live check, Computer Science /
+ * T10689, 2026-07-25: 16 scoped vs 149 unscoped for the same prior window,
+ * against a scoped recent count of 27).
  */
 export async function countOpenAlexWorks(
-  q: { query: string; fromDate: string; toDate: string },
+  q: { query: string; fromDate: string; toDate: string; topicId?: string },
   deps: OpenAlexDeps = {},
 ): Promise<number> {
-  const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate, limit: 1 }, deps)
+  const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate, limit: 1 }, deps, {
+    filters: q.topicId ? [topicFilterClause(q.topicId)] : undefined,
+  })
   const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexWorksResponse
   return body.meta?.count ?? 0
 }
@@ -324,13 +348,20 @@ interface OpenAlexGroupByResponse {
  * Tolerates missing/malformed entries in the response (skips them rather than
  * throwing) since group_by's shape isn't validated by OpenAlex the way
  * `results[]` is.
+ *
+ * `topicId` narrows the series to one `primary_topic.id` — the leaderboard's
+ * per-topic sparkline (SP4 §3), which MUST be scoped exactly like the growth
+ * figures beside it. Before that, the sparkline free-text-searched the topic's
+ * NAME, so a row could show a two-week count of 27 next to a series summing
+ * 6,245.
  */
 export async function groupWorksByPublicationDate(
-  q: { query: string; fromDate: string; toDate: string },
+  q: { query: string; fromDate: string; toDate: string; topicId?: string },
   deps: OpenAlexDeps = {},
 ): Promise<Array<{ key: string; count: number }>> {
   const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate }, deps, {
     groupBy: "publication_date",
+    filters: q.topicId ? [topicFilterClause(q.topicId)] : undefined,
   })
   const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexGroupByResponse
   const groups = body.group_by ?? []
