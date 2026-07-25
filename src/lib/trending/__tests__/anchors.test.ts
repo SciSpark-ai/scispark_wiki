@@ -29,6 +29,22 @@ describe("deriveAnchorDisciplines", () => {
     ])
   })
 
+  it("sums counts across labels rather than taking the max", async () => {
+    // f/cs: 40 + 40 = 80 (sum) vs 40 (max). f/neuro: 60 (sum) = 60 (max).
+    // True summing ranks cs (80) above neuro (60); a max-based bug would rank
+    // neuro (60) above cs (40).
+    const fieldGroupFn = vi.fn(async (q: { query: string }) =>
+      q.query === "x" || q.query === "y"
+        ? [{ key: "f/cs", label: "Computer Science", count: 40 }]
+        : [{ key: "f/neuro", label: "Neuroscience", count: 60 }],
+    )
+    const out = await deriveAnchorDisciplines(["x", "y", "z"], fieldGroupFn, WINDOW)
+    expect(out).toEqual([
+      { id: "f/cs", label: "Computer Science" },   // 40 + 40 = 80
+      { id: "f/neuro", label: "Neuroscience" },    // 60
+    ])
+  })
+
   it("caps at MAX_ANCHORS", async () => {
     let n = 0
     const fieldGroupFn = vi.fn(async () => {
