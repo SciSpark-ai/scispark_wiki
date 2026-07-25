@@ -53,14 +53,26 @@ Requires a small extension to the OpenAlex adapter: the topic hierarchy (`subfie
 
 ## 3. Leaderboard computation (deterministic)
 
-Per anchor discipline, two `group_by=primary_topic` requests — one over the **recent window**, one over the **prior window** — yield per-topic counts in both. Windows follow v1.1's week-aligned convention: the recent window is the **last 2 complete ISO weeks**, the prior window the **2 complete weeks before those**. Then:
+**Corrected 2026-07-25 after the live run — see "The 200-bucket horizon" below. The original two-group-by design is superseded.**
+
+Per anchor discipline, **one** `group_by=primary_topic` request over the **recent window** yields the candidate topics and their recent counts. Windows follow v1.1's week-aligned convention: the recent window is the **last 2 complete ISO weeks**, the prior window the **2 complete weeks before those**. Each candidate's **prior count is then looked up directly** — one `filter=primary_topic.id:<id>,from_publication_date:…,to_publication_date:…` count request per candidate (1 credit each), reading the true total rather than inferring it from a second grouped list. Then:
 
 - **Growth** `(recent − prior) / prior`, `null` when prior is 0 (rendered as "new", never as ∞ or a fake %).
 - **Volume floor:** topics with fewer than **5 papers in the recent window** (a named constant, tunable in one place) are excluded from ranking outright — without it, 2→5 papers reads as +150% and noise dominates the board.
 - **The in-progress week is excluded entirely** from both windows. This also retires the M10 caveat where the newest bucket was a partial week, making every field look like it was declining.
 - Topics from all anchor disciplines merge into one ranked list; the top **10** (a named constant) are kept.
 
-Per kept topic: one `group_by=publication_date` request for its weekly series (the sparkline), and one search for representative papers.
+Per kept topic: one `group_by=publication_date` request **filtered to that topic's `primary_topic.id`** for its weekly series (the sparkline), and one search for representative papers.
+
+### The 200-bucket horizon (why the original design was wrong)
+
+OpenAlex returns at most **200 group buckets** per request. Measured on the live vault (Computer Science, 2026-07-25): the recent window's 200th bucket held 14 works, the prior window's held 22 — the prior window is more completely indexed, so its visibility threshold sits *higher*. A mid-sized topic therefore clears the recent list's bar while falling off the prior list's, and a join between the two grouped lists records `priorCount: 0` for it. That zero means "below our visibility horizon", not "no papers".
+
+Because `null` growth rendered as "new" and sorted first, those artifacts filled the entire leaderboard: 60 of 200 topics were affected, all in the 14–27 recent-count band, and the bias is one-directional — the design could manufacture a "new" topic but never a decline. The live board showed ten rows all labelled "new"; its top row, "Remote-Sensing Image Classification", had actually gone 16 → 27 (a real +69%).
+
+Hence: **never infer a prior count from a second grouped list.** Look it up per candidate. `growth: null` now means a genuine zero prior, so "new" is trustworthy, and the sparkline must use the same `primary_topic.id` filter as the growth figures so a row's chart and its badge can never disagree (before the fix, one row showed 27 papers in two weeks beside a series summing 6,245 — the series was a free-text search on the topic's name).
+
+**Revised cost:** roughly 1 recent group-by + 1 total count per anchor, ~20 prior lookups, and ~10 series requests ≈ **35–45 credits per refresh** (was 25–30). Still comfortable on a free key (1000/day); roughly two refreshes a day on the keyless tier.
 
 `groupBy` is already a generic string parameter on the OpenAlex request builder (only `publication_date` uses it today), so grouping by topic is an extension of an existing mechanism, not a new one.
 
@@ -75,7 +87,7 @@ One pure function over the wiki bundle and the interest labels decides both lens
 
 Per refresh: load settings + user model → anchor disciplines (cached) → 2 `group_by` requests per discipline → growth ranking → per-kept-topic series + representative papers → deterministic breakout papers (reusing the existing `retrieve` movers logic) → one **strong**-tier LLM call per discipline producing qualitative text only → pure relevance/KB pass → persist.
 
-**Cost:** roughly 2×disciplines + 10 topics×2 ≈ **25–30 OpenAlex credits per refresh**. Comfortable on a free API key (1000/day); on the keyless tier (100/day) this is about three refreshes per day, which the settings copy must state honestly. LLM roughly $0.05–0.2 per refresh, under the existing daily budget enforcement.
+**Cost:** roughly **35–45 OpenAlex credits per refresh** (see the revised breakdown in §3). Comfortable on a free API key (1000/day); on the keyless tier (100/day) about two refreshes per day, which the settings copy must state honestly. LLM roughly $0.05–0.2 per refresh, under the existing daily budget enforcement.
 
 **Cache:** still `.scispark/trending/dashboard.json` with the staleness-triggered refresh and manual Refresh unchanged. The cached shape changes, so a **structure-version guard** is required: an unrecognized or old-shaped cache is treated as no cache (cold start), never a parse crash.
 
