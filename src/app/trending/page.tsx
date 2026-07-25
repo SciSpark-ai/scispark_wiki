@@ -13,22 +13,21 @@ import {
   type TrendingBoard,
 } from "@/lib/trending/dashboard"
 import { refreshTrendingDashboard } from "@/lib/trending/client"
+import { useUIStore } from "@/stores/ui-store"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Button } from "@/components/ui/Button"
 import { LoadingState } from "@/components/ui/LoadingState"
+import { Chip } from "@/components/ui/Chip"
+import { OverviewStrip } from "@/components/trending/OverviewStrip"
+import { Leaderboard } from "@/components/trending/Leaderboard"
+import { BreakoutPapers } from "@/components/trending/BreakoutPapers"
 
 type State =
   | { status: "loading" }
   | { status: "empty" } // no tracked fields
   | { status: "ready"; dashboard: TrendingBoard }
   | { status: "error"; message: string }
-
-/** `+38%` / `−12%`, and the literal word "new" when prior volume was 0. */
-function formatGrowth(growth: number | null): string {
-  if (growth === null) return "new"
-  return `${growth >= 0 ? "+" : ""}${Math.round(growth * 100)}%`
-}
 
 function formatUpdated(iso: string): string {
   try {
@@ -46,8 +45,16 @@ export default function TrendingPage() {
   // precedent: refresh errors stay local, old content remains visible with a
   // retry affordance).
   const [refreshError, setRefreshError] = useState<string | null>(null)
-  const [refreshingField, setRefreshingField] = useState<string | null>(null)
+  // Fires with each anchor DISCIPLINE's label (not the user's narrow
+  // interest fields — SP4 scopes retrieval to broad anchor disciplines).
+  const [refreshingDiscipline, setRefreshingDiscipline] = useState<string | null>(null)
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const started = useRef(false)
+  const openSettingsModal = useUIStore((s) => s.openSettingsModal)
+
+  const toggleTopic = useCallback((key: string) => {
+    setExpandedKey((prev) => (prev === key ? null : key))
+  }, [])
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
@@ -63,7 +70,7 @@ export default function TrendingPage() {
         setState({ status: "empty" })
         return
       }
-      const dashboard = await refreshTrendingDashboard(fields, (slug) => setRefreshingField(slug))
+      const dashboard = await refreshTrendingDashboard(fields, (discipline) => setRefreshingDiscipline(discipline))
       setState({ status: "ready", dashboard })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -75,7 +82,7 @@ export default function TrendingPage() {
       setRefreshError(message)
     } finally {
       setRefreshing(false)
-      setRefreshingField(null)
+      setRefreshingDiscipline(null)
     }
   }, [])
 
@@ -129,8 +136,8 @@ export default function TrendingPage() {
         actions={
           state.status === "ready" ? (
             <>
-              {refreshing && refreshingField && (
-                <span className="text-[12px] text-muted-text">Gathering trends… ({refreshingField})</span>
+              {refreshing && refreshingDiscipline && (
+                <span className="text-[12px] text-muted-text">Gathering trends… ({refreshingDiscipline})</span>
               )}
               <span className="text-[12px] text-muted-text">Updated {formatUpdated(state.dashboard.generatedAt)}</span>
               <Button onClick={refresh} disabled={refreshing}>
@@ -141,13 +148,28 @@ export default function TrendingPage() {
         }
       />
 
+      {state.status === "ready" && state.dashboard.anchors.length > 0 && (
+        <div className="mb-6 -mt-2 flex flex-wrap gap-1.5">
+          {state.dashboard.anchors.map((anchor) => (
+            <button
+              key={anchor.id}
+              type="button"
+              onClick={() => openSettingsModal("trending")}
+              title="Edit your trending disciplines"
+            >
+              <Chip tone="accent">{anchor.label}</Chip>
+            </button>
+          ))}
+        </div>
+      )}
+
       {state.status === "loading" && (
         <LoadingState
           label={
             refreshing
-              ? refreshingField
-                ? `Gathering your fields’ trends… (${refreshingField})`
-                : "Gathering your fields’ trends…"
+              ? refreshingDiscipline
+                ? `Gathering your disciplines’ trends… (${refreshingDiscipline})`
+                : "Gathering your disciplines’ trends…"
               : "Loading…"
           }
         />
@@ -174,36 +196,19 @@ export default function TrendingPage() {
       {state.status === "ready" && (
         <>
           {refreshError && (
-            <div className="mt-3">
+            <div className="mb-4">
               <LlmErrorMessage message={refreshError} />
             </div>
           )}
-          {/* SP4 Task 7 interim rendering — the orchestrator's board shape is
-              live, the leaderboard components (Task 8) and the rebuilt page
-              (Task 9) replace this block wholesale. */}
           {state.dashboard.surveyError && (
-            <p className="mt-3 text-[12px] text-muted-text tracking-body">
+            <p className="mb-4 text-[12px] text-muted-text tracking-body">
               Written summaries unavailable. Reason: {state.dashboard.surveyError}
             </p>
           )}
-          <div className="mt-6 flex flex-col gap-2">
-            {state.dashboard.topics.map((topic, i) => (
-              <div key={topic.key} className="border border-border-warm rounded-card px-4 py-3 bg-light-surface">
-                <div className="flex items-baseline gap-3">
-                  <span className="text-[12px] text-muted-text">{i + 1}</span>
-                  <span className="font-heading text-[15px] text-espresso tracking-heading-card">{topic.label}</span>
-                  <span className="text-[12px] text-muted-text">{formatGrowth(topic.growth)}</span>
-                  <span className="text-[12px] text-muted-text">{topic.discipline}</span>
-                  {topic.relevant && <span className="text-[12px] text-orange">Relevant to you</span>}
-                </div>
-                {topic.why && <p className="mt-2 text-[13px] text-espresso tracking-body">{topic.why}</p>}
-              </div>
-            ))}
-            {state.dashboard.topics.length === 0 && (
-              <p className="text-[13px] text-muted-text tracking-body">
-                No topic cleared the activity threshold this window.
-              </p>
-            )}
+          <div className="flex flex-col gap-5">
+            <OverviewStrip overview={state.dashboard.overview} />
+            <Leaderboard board={state.dashboard} expandedKey={expandedKey} onToggle={toggleTopic} />
+            <BreakoutPapers breakouts={state.dashboard.breakouts} />
           </div>
         </>
       )}
