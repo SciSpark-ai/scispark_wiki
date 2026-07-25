@@ -273,3 +273,32 @@ describe("TrendingPage — surveyError (SP4 Task 9)", () => {
     cleanup()
   })
 })
+
+describe("TrendingPage — dataError", () => {
+  it("surfaces a deterministic-layer failure the same way, and still shows whatever ranked", async () => {
+    loadBoardMock.mockResolvedValue(
+      board({ dataError: "Machine Learning: earlier-window count failed (openalex 429)" }),
+    )
+    isStaleMock.mockReturnValue(false)
+    anchorsMatchBoardMock.mockReturnValue(true)
+
+    const { container, cleanup } = await renderPage()
+
+    expect(container.textContent).toContain("openalex 429")
+    expect(container.textContent).toContain("Sparse Attention")
+
+    cleanup()
+  })
+
+  it("says nothing about data failures when there were none", async () => {
+    loadBoardMock.mockResolvedValue(board())
+    isStaleMock.mockReturnValue(false)
+    anchorsMatchBoardMock.mockReturnValue(true)
+
+    const { container, cleanup } = await renderPage()
+
+    expect(container.textContent).not.toMatch(/couldn’t be measured/i)
+
+    cleanup()
+  })
+})

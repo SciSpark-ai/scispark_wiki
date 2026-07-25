@@ -390,8 +390,17 @@ export async function searchTopCitedWorks(q: TopCitedWorksQuery, deps: OpenAlexD
 
 /**
  * Returns the total OpenAlex work count for a query within a date range,
- * without fetching any paper records (per_page is fixed at 1). Used by
- * trending weekly aggregation to get real per-week counts cheaply.
+ * without fetching any paper records (per_page is fixed at 1). This is
+ * trending's counting primitive: it measures each anchor discipline's corpus
+ * size in both windows (the share denominators) and every candidate topic's
+ * prior-window count.
+ *
+ * THROWS when the response carries no `meta.count`. It must never return 0 for
+ * a malformed-but-200 body: on the prior-count path a fabricated zero reads as
+ * `growth: null` → rendered "new" → sorted FIRST, which is precisely the
+ * artifact class SP4 removed by looking prior counts up instead of joining two
+ * grouped lists. Callers already treat a throw as "unmeasured" and omit the
+ * discipline/topic, which is the honest outcome.
  *
  * `topicId` additionally scopes the count to one `primary_topic.id`. That is
  * the leaderboard's PRIOR-count lookup (SP4 §3): a count carries no 200-bucket
@@ -411,7 +420,11 @@ export async function countOpenAlexWorks(
     filters: q.topicId ? [topicFilterClause(q.topicId)] : undefined,
   })
   const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexWorksResponse
-  return body.meta?.count ?? 0
+  const count = body.meta?.count
+  if (typeof count !== "number" || !Number.isFinite(count)) {
+    throw new PaperSourceError("OpenAlex count response carried no meta.count")
+  }
+  return count
 }
 
 interface OpenAlexGroupByEntry {

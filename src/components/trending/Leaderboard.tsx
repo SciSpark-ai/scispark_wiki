@@ -12,7 +12,18 @@ export interface LeaderboardProps {
 /** The ordered "Academia Right Now" topic list, one row per BoardTopic. */
 export function Leaderboard({ board, expandedKey, onToggle }: LeaderboardProps) {
   if (board.topics.length === 0) {
-    return <EmptyState title="No topic cleared the activity threshold this window" />
+    // An empty board has two very different causes. Only claim the quiet-window
+    // one when the deterministic layer actually succeeded: if a count or
+    // grouping request failed, its rows were DROPPED (never defaulted to zero),
+    // so blaming the data would be a false explanation of our own outage.
+    return board.dataError ? (
+      <EmptyState
+        title="Couldn’t measure activity for this window"
+        hint={`Nothing is being claimed about the field — the numbers simply didn’t come back. Reason: ${board.dataError}`}
+      />
+    ) : (
+      <EmptyState title="No topic cleared the activity threshold this window" />
+    )
   }
 
   return (

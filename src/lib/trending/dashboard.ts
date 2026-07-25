@@ -107,6 +107,17 @@ export interface TrendingBoard {
    * their spend is still accumulated into the `trending_refresh` event.
    */
   surveyError?: string
+  /**
+   * Present iff a DETERMINISTIC retrieval step failed: a discipline's topic
+   * grouping, a corpus-size count, or a candidate's prior-count lookup. Those
+   * failures correctly DROP the affected rows (never falling back to raw
+   * counts), which means they can silently empty the whole leaderboard — and an
+   * empty leaderboard renders "No topic cleared the activity threshold", a
+   * confident statement about the data when the truth is a failed fetch.
+   * Carrying the reason applies the same failure-honesty rule the LLM layer
+   * already follows via `surveyError`.
+   */
+  dataError?: string
   generatedAt: string
 }
 
@@ -189,10 +200,13 @@ export interface RunTrendingBoardOpts {
  * Every layer degrades independently: a failed discipline drops only its own
  * topics, a failed paper search yields `papers: []`, and a failed skill leaves
  * the whole ranking intact with `why: null` plus a `surveyError` stating the
- * real reason. The one degradation that can cost rows is a failed CORPUS count
- * (`measureCorpusTotals`): that discipline's share denominator is unknown, and
- * ranking it on raw counts instead is the very artifact this design removes, so
- * its rows are dropped rather than silently computed a different way.
+ * real reason. The degradations that can cost ROWS are the deterministic ones —
+ * a failed topic grouping, a failed CORPUS count (`measureCorpusTotals`, whose
+ * share denominator is then unknown; ranking on raw counts instead is the very
+ * artifact this design removes) and a failed prior-count lookup. Those rows are
+ * dropped rather than silently computed a different way, and the reason is
+ * carried on the board as `dataError` so an emptied leaderboard never reads as
+ * "nothing is trending".
  *
  * Concurrency: home's fire-and-forget auto-refresh (`maybeAutoRefreshTrending`)
  * and /trending's own mount-time refresh can both observe a stale/missing
@@ -234,6 +248,12 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
   // ONE group_by request per anchor, over the RECENT window only: it yields the
   // candidate topics and their recent counts. A discipline whose request fails
   // drops out of the ranking entirely; the others are unaffected.
+  // Every deterministic-retrieval failure lands here and is surfaced on the
+  // board as `dataError`. These failures drop rows on purpose (a missing count
+  // is unknown, never zero), so without this sink a fetch outage renders as a
+  // confident "nothing is trending" — see `TrendingBoard.dataError`.
+  const dataErrors: string[] = []
+
   const perDiscipline: DisciplineBuckets[] = []
   for (const anchor of anchors) {
     opts.onProgress?.(anchor.label)
@@ -242,19 +262,20 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
       perDiscipline.push({ discipline: anchor.label, recent })
     } catch (err) {
       console.warn(`[trending] topic grouping failed for "${anchor.label}":`, err)
+      dataErrors.push(`${anchor.label}: topic activity lookup failed (${describeError(err)})`)
     }
   }
   // Each anchor's corpus size in BOTH windows (one count request each): the
   // denominators every growth figure and every bar is scaled by.
-  const recentTotals = await measureCorpusTotals(opts, perDiscipline, windows.recent)
-  const priorTotals = await measureCorpusTotals(opts, perDiscipline, windows.prior)
+  const recentTotals = await measureCorpusTotals(opts, perDiscipline, windows.recent, dataErrors)
+  const priorTotals = await measureCorpusTotals(opts, perDiscipline, windows.prior, dataErrors)
   const corpusTotals = new Map<string, CorpusTotals>(
     perDiscipline.map(({ discipline }) => [
       discipline,
       { recent: recentTotals.get(discipline) ?? null, prior: priorTotals.get(discipline) ?? null },
     ]),
   )
-  const priorCounts = await lookupPriorCounts(opts, perDiscipline, windows.prior)
+  const priorCounts = await lookupPriorCounts(opts, perDiscipline, windows.prior, dataErrors)
   const ranked = rankHeatingTopics(perDiscipline, priorCounts, corpusTotals)
   const totalRecent = sumRecentWorks(perDiscipline, recentTotals)
 
@@ -328,12 +349,13 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
   })
 
   const topics: BoardTopic[] = enriched.map(({ topic, papers }) => {
-    // The lens is pure, but it walks user-editable frontmatter (tags) and
-    // source-supplied titles; one malformed page must not blank the board, so
-    // a throw degrades this row to "not relevant, no links" instead.
-    let lens = { relevant: false, wikiPageIds: [] as string[] }
+    // The lens is pure, but it walks user-editable frontmatter (tags); one
+    // malformed page must not blank the board, so a throw degrades this row to
+    // "not relevant" instead. Per-paper wiki links are resolved separately
+    // (`resolveWikiPageId`) and are unaffected.
+    let lens = { relevant: false }
     try {
-      lens = topicLens({ label: topic.label, papers }, interestLabels, bundle)
+      lens = topicLens({ label: topic.label }, interestLabels, bundle)
     } catch (err) {
       console.warn(`[trending] lens failed for "${topic.label}":`, err)
     }
@@ -369,6 +391,7 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
     })),
     crossDisciplineNote,
     ...(surveyErrors.length > 0 ? { surveyError: surveyErrors.join("; ") } : {}),
+    ...(dataErrors.length > 0 ? { dataError: dataErrors.join("; ") } : {}),
     generatedAt,
   }
 
@@ -437,6 +460,7 @@ async function lookupPriorCounts(
   opts: RunTrendingBoardOpts,
   perDiscipline: DisciplineBuckets[],
   priorWindow: { fromDate: string; toDate: string },
+  dataErrors: string[],
 ): Promise<Map<string, number>> {
   const priorCounts = new Map<string, number>()
   for (const candidate of selectTopicCandidates(perDiscipline)) {
@@ -447,6 +471,7 @@ async function lookupPriorCounts(
       )
     } catch (err) {
       console.warn(`[trending] prior-count lookup failed for "${candidate.label}":`, err)
+      dataErrors.push(`${candidate.label}: earlier-window count failed (${describeError(err)})`)
     }
   }
   return priorCounts
@@ -473,6 +498,7 @@ async function measureCorpusTotals(
   opts: RunTrendingBoardOpts,
   perDiscipline: DisciplineBuckets[],
   window: { fromDate: string; toDate: string },
+  dataErrors: string[],
 ): Promise<Map<string, number>> {
   const totals = new Map<string, number>()
   for (const { discipline } of perDiscipline) {
@@ -480,9 +506,17 @@ async function measureCorpusTotals(
       totals.set(discipline, await opts.countFn({ query: discipline, ...window }))
     } catch (err) {
       console.warn(`[trending] corpus count failed for "${discipline}" (${window.fromDate}..${window.toDate}):`, err)
+      dataErrors.push(
+        `${discipline}: corpus size for ${window.fromDate}..${window.toDate} failed (${describeError(err)})`,
+      )
     }
   }
   return totals
+}
+
+/** One short line for a caught unknown — never a stack, never "[object Object]". */
+function describeError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
 /**

@@ -228,6 +228,7 @@ describe("runTrendingBoard", () => {
     expect(board.topics[1].why).toBe("because speech models got good")
     expect(board.crossDisciplineNote).toBe(BRIEFS_ONE.crossDisciplineNote)
     expect(board.surveyError).toBeUndefined()
+    expect(board.dataError).toBeUndefined() // nothing failed, so nothing is claimed to have
     expect(board.breakouts.length).toBeGreaterThan(0)
     expect(board.breakouts[0].citationCount).toBe(9)
 
@@ -939,6 +940,73 @@ describe("runTrendingBoard", () => {
     )
     expect(seen).toContain("Neuroscience")
     expect(seen).toContain("Computer Science")
+  })
+})
+
+describe("dataError — the deterministic layer fails honestly too", () => {
+  it("a failed corpus count empties the board AND says so (never a silent 'nothing is trending')", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO])
+    const failingTotal: CountFn = async (q) => {
+      if (isPriorLookup(q)) return countFn(q)
+      throw new Error("openalex down")
+    }
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    const board = await runTrendingBoard(
+      storage,
+      baseOpts({ countFn: failingTotal, providerOverride: { strong: provider } }),
+    )
+    // Dropping the rows is correct (an unmeasured corpus is unknown, not
+    // unchanged) — but with no reason carried, the empty leaderboard renders
+    // "No topic cleared the activity threshold", which blames the field for our
+    // own outage.
+    expect(board.topics).toEqual([])
+    expect(board.dataError).toBeTruthy()
+    expect(board.dataError).toContain("Neuroscience")
+    expect(board.dataError).toContain("corpus size")
+    expect(board.dataError).toContain("openalex down")
+    // It survives the round-trip to disk, so a cached board explains itself too.
+    expect((await loadBoard(storage))?.dataError).toBe(board.dataError)
+  })
+
+  it("a failed topic grouping names the discipline that dropped out", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO])
+    const failingGroup: TopicGroupFn = async () => {
+      throw new Error("group_by 500")
+    }
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    const board = await runTrendingBoard(
+      storage,
+      baseOpts({ topicGroupFn: failingGroup, providerOverride: { strong: provider } }),
+    )
+    expect(board.topics).toEqual([])
+    expect(board.dataError).toContain("Neuroscience")
+    expect(board.dataError).toContain("group_by 500")
+  })
+
+  it("a failed prior-count lookup names the topic it cost, while the surviving rows still render", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO])
+    const failT1: CountFn = async (q) => {
+      if (isPriorLookup(q) && q.topicId === "T1") throw new Error("openalex 429")
+      return countFn(q)
+    }
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    const board = await runTrendingBoard(storage, baseOpts({ countFn: failT1, providerOverride: { strong: provider } }))
+    expect(board.topics.map((t) => t.key)).toEqual(["T2"])
+    expect(board.dataError).toContain("Auditory Attention Decoding")
+    expect(board.dataError).toContain("openalex 429")
+  })
+
+  it("a failed SURVEY is not a data error (the two layers stay distinguishable)", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO])
+    const provider = new MockProvider([new Error("llm exploded")])
+    const board = await runTrendingBoard(storage, baseOpts({ providerOverride: { strong: provider } }))
+    expect(board.surveyError).toBeTruthy()
+    expect(board.dataError).toBeUndefined()
+    expect(board.topics.map((t) => t.key)).toEqual(["T1", "T2"]) // numbers unaffected
   })
 })
 

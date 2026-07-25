@@ -44,6 +44,14 @@ function topicGroupFnFor(now: Date): TopicGroupFn {
 // The routes don't take a `now` override, so the grouper follows the real clock.
 const topicGroupFn: TopicGroupFn = async (q) => topicGroupFnFor(new Date())(q)
 
+/**
+ * The default count fake: a topic-scoped request is a prior-count lookup and
+ * must clear MIN_PRIOR_COUNT (the symmetric volume floor) or the row is dropped
+ * as noise; an unscoped request is the anchor's corpus size, the denominator
+ * every share is scaled by.
+ */
+const countFn: CountFn = async (q) => (q.topicId === undefined ? 1000 : 10)
+
 /** True for a whole-prior-window, topic-scoped request — the leaderboard's prior-count lookup. */
 function isPriorLookup(q: { fromDate: string; toDate: string; topicId?: string }): boolean {
   const windows = completeWindows(new Date())
@@ -63,7 +71,6 @@ describe("trending skill routes", () => {
 
   it("POST /api/skills/trending/refresh streams per-discipline progress, results in a versioned TrendingBoard, and writes the cache to the test vault", async () => {
     const provider = new MockProvider([structured(BRIEFS)])
-    const countFn: CountFn = async () => 1
     setSkillTestOverrides({ providerOverride: { strong: provider }, topWorksFn: fakeTopWorksFn, countFn, topicGroupFn, fieldGroupFn })
 
     const fields = [
@@ -98,7 +105,6 @@ describe("trending skill routes", () => {
   })
 
   it("POST /api/skills/trending/refresh: a second refresh rewrites dashboard.json with an ADVANCED generatedAt", async () => {
-    const countFn: CountFn = async () => 1
     const fields = [{ slug: "nlp", label: "NLP" }]
     const callRefresh = async (): Promise<TrendingBoard> => {
       // Fresh provider per call — MockProvider drains its queued responses.
@@ -128,7 +134,6 @@ describe("trending skill routes", () => {
 
   it("POST /api/skills/trending/refresh: a skill failure still terminates the stream with a usable (degraded) board, not a terminal error", async () => {
     const provider = new MockProvider([new Error("llm exploded")])
-    const countFn: CountFn = async () => 1
     setSkillTestOverrides({ providerOverride: { strong: provider }, topWorksFn: fakeTopWorksFn, countFn, topicGroupFn, fieldGroupFn })
 
     const res = await refreshRoute.POST(
@@ -194,7 +199,6 @@ describe("trending skill routes", () => {
       anchorsOverridden: false,
     })
     const provider = new MockProvider([structured(BRIEFS)])
-    const countFn: CountFn = async () => 1
     setSkillTestOverrides({ providerOverride: { strong: provider }, topWorksFn: fakeTopWorksFn, countFn, topicGroupFn, fieldGroupFn })
 
     const res = await autoRefreshRoute.POST(

@@ -18,7 +18,7 @@ Note when editing the fork: its `CLAUDE.md`/`AGENTS.md` warn that Next.js 16 has
 
 | Screen | Source | Notes |
 |---|---|---|
-| Trending | new | as of the M10 reframe, a **personalized** dashboard scoped to the user's own tracked fields (not a public/anonymous landing page); refresh runs server-side behind `/api/skills/trending/refresh` (M11) on the user's own key; the originally-planned public/anonymous cron-fed `/api/trending/{field}` model remains a documented v2 growth path (see [03-backend](03-backend.md)) |
+| Trending | new | as of the M10 reframe, a **personalized** dashboard (not a public/anonymous landing page); as of SP4 it is "Academia Right Now": a leaderboard of topics ranked by growth in share of their discipline's corpus, **scoped by broad anchor disciplines** (derived from the user's interests, editable in Settings), with the user's narrow interest labels acting as a **relevance lens** ("relevant to you" markers) rather than the retrieval scope; refresh runs server-side behind `/api/skills/trending/refresh` (M11) on the user's own key; the originally-planned public/anonymous cron-fed `/api/trending/{field}` model remains a documented v2 growth path (see [03-backend](03-backend.md)) |
 | Onboarding | adapt existing onboarding-chat | general-research questions; creates local profile; optional email registration at final step |
 | Home / For-You feed | adapt | agentic feed with per-card "why" explanations; Trending as sibling tab |
 | Paper digest | adapt | real Digest Skill output; "Add to knowledge base" button + ingest progress |

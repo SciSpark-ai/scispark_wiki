@@ -13,4 +13,12 @@
  * so the only surviving series path was one request per week per topic. The
  * board draws before/after bars from the counts it already has instead.
  */
+/*
+ * CONTRACT: resolves only with a REALLY MEASURED count. An implementation that
+ * cannot measure one — a transport failure, or a 200 response carrying no
+ * `meta.count` — must REJECT, never resolve 0: the orchestrator reads a
+ * rejection as "unknown" and omits that discipline/topic (surfacing the reason
+ * as `TrendingBoard.dataError`), whereas a fabricated zero would rank a topic
+ * as brand-new at the top of the board.
+ */
 export type CountFn = (q: { query: string; fromDate: string; toDate: string; topicId?: string }) => Promise<number>

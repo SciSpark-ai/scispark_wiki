@@ -34,12 +34,23 @@ describe("TopicBriefsSchema", () => {
     expect(TopicBriefsSchema.safeParse({ ...SAMPLE, topics: [{ key: "", why: "why" }] }).success).toBe(false)
   })
 
-  it("rejects a missing crossDisciplineNote", () => {
-    expect(TopicBriefsSchema.safeParse({ topics: SAMPLE.topics }).success).toBe(false)
+  // crossDisciplineNote is OPTIONAL on purpose: nothing renders it, so making
+  // it required was a pure failure switch — an omission failed zod for the
+  // whole call, which nulls EVERY `why` on that discipline and posts a
+  // surveyError.
+  it("accepts a brief set with NO crossDisciplineNote at all", () => {
+    const parsed = TopicBriefsSchema.safeParse({ topics: SAMPLE.topics })
+    expect(parsed.success).toBe(true)
+    if (parsed.success) {
+      expect(parsed.data.topics[0].why).toBe(SAMPLE.topics[0].why)
+      expect(parsed.data.crossDisciplineNote).toBeUndefined()
+    }
   })
 
-  it("rejects a blank crossDisciplineNote", () => {
-    expect(TopicBriefsSchema.safeParse({ ...SAMPLE, crossDisciplineNote: "" }).success).toBe(false)
+  it("accepts a blank crossDisciplineNote without failing the topics alongside it", () => {
+    const parsed = TopicBriefsSchema.safeParse({ ...SAMPLE, crossDisciplineNote: "" })
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data.topics).toHaveLength(1)
   })
 
   it("accepts a well-formed brief set and round-trips keys verbatim", () => {
@@ -195,14 +206,24 @@ describe("trendingSkill", () => {
     expect(provider.calls).toHaveLength(2)
   })
 
-  it("surfaces the schema-shaped empty skeleton (empty topics / blank note) as an error", async () => {
+  it("surfaces the schema-shaped empty skeleton (empty topics) as an error", async () => {
     const storage = new MemoryVaultStorage()
     const skeleton = { topics: [], crossDisciplineNote: "" }
     const provider = new MockProvider([structured(skeleton), structured(skeleton)])
     const run = await runSkill({ skill: trendingSkill, input: INPUT, storage, providerOverride: { strong: provider } })
     expect(run.status).toBe("error")
     expect(run.error).toContain("topics")
-    expect(run.error).toContain("crossDisciplineNote")
+  })
+
+  it("a run that omits crossDisciplineNote entirely still returns every brief", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([structured({ topics: [{ key: "topic-1", why: "converging fast" }] })])
+    const run = await runSkill({ skill: trendingSkill, input: INPUT, storage, providerOverride: { strong: provider } })
+    expect(run.status).toBe("ok")
+    expect(run.output?.topics).toEqual([{ key: "diffusion-models", why: "converging fast" }])
+    expect(run.output?.crossDisciplineNote).toBeUndefined()
+    // One call — no retry was spent on a field nothing renders.
+    expect(provider.calls).toHaveLength(1)
   })
 })
 
@@ -232,7 +253,9 @@ describe("the output contract the model actually sees", () => {
       }
       required: string[]
     }
-    expect(jsonSchema.required).toEqual(["topics", "crossDisciplineNote"])
+    // Only `topics` is required — crossDisciplineNote is advisory, and the
+    // wire schema must say so on both the structured and prompt-JSON paths.
+    expect(jsonSchema.required).toEqual(["topics"])
     expect(jsonSchema.properties.topics.items.required).toEqual(["key", "why"])
     expect(jsonSchema.properties.topics.description).toBeTruthy()
     expect(jsonSchema.properties.topics.items.properties.key.description).toBeTruthy()

@@ -206,6 +206,12 @@ export default function TrendingPage() {
               Written summaries unavailable. Reason: {state.dashboard.surveyError}
             </p>
           )}
+          {state.dashboard.dataError && (
+            <p className="mb-4 text-[12px] text-muted-text tracking-body">
+              Some activity data couldn’t be measured, so those topics are left off rather than guessed at. Reason:{" "}
+              {state.dashboard.dataError}
+            </p>
+          )}
           <div className="flex flex-col gap-5">
             <OverviewStrip overview={state.dashboard.overview} />
             <Leaderboard board={state.dashboard} expandedKey={expandedKey} onToggle={toggleTopic} />

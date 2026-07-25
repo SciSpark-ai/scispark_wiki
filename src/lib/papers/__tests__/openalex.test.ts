@@ -446,8 +446,27 @@ describe("countOpenAlexWorks", () => {
     expect(decodeURIComponent(calledUrl)).toContain("to_publication_date:2026-07-12")
   })
 
-  it("returns 0 when meta/count is missing", async () => {
+  it("THROWS when a 200 response carries no meta.count (never fabricates a zero)", async () => {
+    // A zero here is not harmless: on trending's prior-count path it reads as
+    // "no papers before" → growth null → rendered "new" → sorted first. The
+    // caller treats a throw as "unmeasured" and omits the topic instead.
     const fetchFn = (async () => new Response(JSON.stringify({ results: [] }), { status: 200 })) as unknown as typeof fetch
+    await expect(
+      countOpenAlexWorks({ query: "x", fromDate: "2026-07-06", toDate: "2026-07-12" }, { fetchFn }),
+    ).rejects.toThrow(PaperSourceError)
+  })
+
+  it("THROWS when meta.count is present but not a finite number", async () => {
+    const fetchFn = (async () =>
+      new Response(JSON.stringify({ results: [], meta: { count: null } }), { status: 200 })) as unknown as typeof fetch
+    await expect(
+      countOpenAlexWorks({ query: "x", fromDate: "2026-07-06", toDate: "2026-07-12" }, { fetchFn }),
+    ).rejects.toThrow(PaperSourceError)
+  })
+
+  it("returns a real zero when OpenAlex actually reports one", async () => {
+    const fetchFn = (async () =>
+      new Response(JSON.stringify({ results: [], meta: { count: 0 } }), { status: 200 })) as unknown as typeof fetch
     expect(await countOpenAlexWorks({ query: "x", fromDate: "2026-07-06", toDate: "2026-07-12" }, { fetchFn })).toBe(0)
   })
 

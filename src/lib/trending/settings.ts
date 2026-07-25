@@ -22,8 +22,18 @@ export interface TrendingSettings {
   /** Derived (or user-set) broad anchor disciplines the leaderboard scopes
    * to. `[]` means not yet derived. */
   anchors: AnchorDiscipline[]
-  /** True once the user has set anchors by hand — derivation must not
-   * overwrite a hand-set list on a later refresh. */
+  /**
+   * True once the user has set anchors by hand. **Recorded intent only — NO
+   * production code branches on it today.** It is written by the settings
+   * editor, normalized, persisted and round-tripped, and that is the whole of
+   * its life: "Reset to auto" and "remove the last anchor chip" are
+   * behaviorally identical, because what actually protects a hand-set list is
+   * the non-empty-list rule in `resolveAnchors` (a non-empty `anchors` is
+   * authoritative and never recomputed; an empty one always derives, flag or
+   * no flag — see that function's comment for why honoring the flag on an
+   * empty list would silently strand the board on the narrow interest labels).
+   * Kept because the semantics may matter later; do not read it as load-bearing.
+   */
   anchorsOverridden: boolean
 }
 
@@ -133,7 +143,8 @@ export async function saveTrendingSettings(storage: VaultStorage, settings: Tren
  * network calls that take seconds; a snapshot-then-write would silently revert
  * a cadence/fields edit the user made in that window (the same lost-update
  * class M12 closed for the `llm` section). Never touches `anchorsOverridden` —
- * a derived list refreshes the user's scope, it does not un-set their intent.
+ * a derived list refreshes the user's scope, it does not un-set their recorded
+ * intent (which nothing branches on; see the field's own doc).
  */
 export async function saveDerivedAnchors(storage: VaultStorage, anchors: AnchorDiscipline[]): Promise<void> {
   await withSettingsWrite(storage, (file) => ({

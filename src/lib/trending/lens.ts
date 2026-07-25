@@ -1,13 +1,4 @@
 import type { Bundle } from "../vault/bundle"
-import type { PaperRecord } from "../papers/types"
-import { findPaperPage } from "../papers/page-state"
-import { paperSlug } from "../wiki/authoring"
-
-export interface TopicLensResult {
-  relevant: boolean
-  /** Wiki page ids for those representative papers that already exist in the vault. */
-  wikiPageIds: string[]
-}
 
 const MIN_TOKEN_LENGTH = 4
 const STOPWORDS = new Set([
@@ -50,16 +41,19 @@ function sharesSignificantToken(a: Set<string>, b: Set<string>): boolean {
  * The relevance lens for SP4's trending leaderboard: a topic is "relevant to
  * you" when its label shares a significant term (deterministic tokenizer,
  * see `significantTokens`) with any of the user's interest labels, or with
- * any tag on any page already in the wiki. Separately, resolves the topic's
- * representative papers against the vault (via `findPaperPage`/`paperSlug`)
- * to surface links into existing wiki pages. Produces NO counts — the UI
- * renders links, or nothing, from `wikiPageIds`.
+ * any tag on any page already in the wiki. Produces NO counts and no scores —
+ * a single boolean, which is all the UI's "relevant to you" marker needs.
+ *
+ * It deliberately does NOT resolve the topic's representative papers to wiki
+ * pages: that link is per-PAPER (`BoardPaper.wikiPageId`, resolved in
+ * dashboard.ts, which is what the UI actually renders), and this module used to
+ * compute a parallel per-topic `wikiPageIds` list that every caller discarded.
  */
 export function topicLens(
-  topic: { label: string; papers: PaperRecord[] },
+  topic: { label: string },
   interestLabels: string[],
   bundle: Bundle,
-): TopicLensResult {
+): { relevant: boolean } {
   const topicTokens = significantTokens(topic.label)
 
   let relevant = false
@@ -88,15 +82,5 @@ export function topicLens(
     }
   }
 
-  const seen = new Set<string>()
-  const wikiPageIds: string[] = []
-  for (const paper of topic.papers) {
-    const page = findPaperPage(bundle, paperSlug(paper))
-    if (page && !seen.has(page.id)) {
-      seen.add(page.id)
-      wikiPageIds.push(page.id)
-    }
-  }
-
-  return { relevant, wikiPageIds }
+  return { relevant }
 }

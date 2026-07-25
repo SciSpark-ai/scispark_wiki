@@ -316,11 +316,27 @@ describe("Leaderboard", () => {
     expect(html).toContain("Sparse Attention")
   })
 
-  it("renders the threshold empty state when board.topics is empty", () => {
+  it("renders the threshold empty state when board.topics is empty and nothing failed", () => {
     const html = renderToStaticMarkup(
       <Leaderboard board={board({ topics: [] })} expandedKey={null} onToggle={() => {}} />,
     )
     expect(html).toMatch(/No topic cleared the activity threshold this window/)
+  })
+
+  it("does NOT blame the data when the board was emptied by a failed measurement", () => {
+    // A failed count/grouping DROPS rows on purpose, so "no topic cleared the
+    // threshold" would be a confident statement about the field when the truth
+    // is our own outage.
+    const html = renderToStaticMarkup(
+      <Leaderboard
+        board={board({ topics: [], dataError: "Machine Learning: corpus size for a..b failed (openalex down)" })}
+        expandedKey={null}
+        onToggle={() => {}}
+      />,
+    )
+    expect(html).not.toMatch(/cleared the activity threshold/)
+    expect(html).toMatch(/Couldn’t measure activity/)
+    expect(html).toContain("openalex down")
   })
 })
 

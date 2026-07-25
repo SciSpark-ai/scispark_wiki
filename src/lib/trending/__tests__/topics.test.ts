@@ -4,6 +4,7 @@ import {
   rankHeatingTopics,
   selectTopicCandidates,
   MIN_RECENT_COUNT,
+  MIN_PRIOR_COUNT,
   MAX_LEADERBOARD_TOPICS,
   CANDIDATE_POOL,
 } from "../topics"
@@ -116,13 +117,42 @@ describe("rankHeatingTopics", () => {
     expect(out.map((t) => t.key)).toEqual(["measured"])
   })
 
-  it("drops topics under the volume floor", () => {
+  it("drops topics under the RECENT volume floor", () => {
     const out = rankHeatingTopics(
       [d("Neuro", [["small", MIN_RECENT_COUNT - 1], ["big", MIN_RECENT_COUNT]])],
-      priors([["small", 1], ["big", 1]]),
+      priors([["small", MIN_PRIOR_COUNT], ["big", MIN_PRIOR_COUNT]]),
       totals("Neuro"),
     )
     expect(out.map((t) => t.key)).toEqual(["big"])
+  })
+
+  it("drops a topic whose NONZERO prior is under the prior floor (noise cannot top the board)", () => {
+    // The asymmetry this closes: 1 → 5 clears MIN_RECENT_COUNT and posts +400%
+    // share growth off a denominator of one paper, outranking a topic that
+    // really did double off a measurable base.
+    const out = rankHeatingTopics(
+      [d("Neuro", [["noise", MIN_RECENT_COUNT], ["real", 40]])],
+      priors([["noise", MIN_PRIOR_COUNT - 1], ["real", 20]]),
+      totals("Neuro"),
+    )
+    expect(out.map((t) => t.key)).toEqual(["real"])
+  })
+
+  it("keeps a topic sitting exactly ON the prior floor", () => {
+    const out = rankHeatingTopics(
+      [d("Neuro", [["edge", 40]])],
+      priors([["edge", MIN_PRIOR_COUNT]]),
+      totals("Neuro"),
+    )
+    expect(out.map((t) => t.key)).toEqual(["edge"])
+  })
+
+  it("the prior floor does NOT swallow the genuine-zero \"new\" case", () => {
+    // priorCount 0 is a measured zero, not a tiny baseline: no division
+    // happens, so there is nothing noisy to divide by.
+    const out = rankHeatingTopics([d("Neuro", [["new", 40]])], priors([["new", 0]]), totals("Neuro"))
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ key: "new", growth: null, priorCount: 0 })
   })
 
   it("merges disciplines into one board and tags each row's discipline", () => {

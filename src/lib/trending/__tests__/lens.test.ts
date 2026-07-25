@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest"
 import type { Bundle } from "../../vault/bundle"
 import type { Frontmatter, WikiPage } from "../../vault/types"
-import type { PaperRecord } from "../../papers/types"
 import { topicLens } from "../lens"
 
 const fm = (type: string, title: string, extra: Partial<Frontmatter> = {}): Frontmatter => ({
@@ -32,22 +31,10 @@ function bundleFromPages(
 
 const emptyBundle: Bundle = { pages: new Map(), links: [], errors: [] }
 
-function paper(overrides: Partial<PaperRecord> & { arxiv?: string } = {}): PaperRecord {
-  const { arxiv, ...rest } = overrides
-  return {
-    ids: arxiv ? { arxiv } : {},
-    title: "Untitled paper",
-    authors: [],
-    fields: [],
-    source: "arxiv",
-    ...rest,
-  }
-}
-
 describe("topicLens — relevance via interest labels", () => {
   it("is relevant when the topic label shares a significant term with an interest label", () => {
     const result = topicLens(
-      { label: "Retrieval Augmented Generation", papers: [] },
+      { label: "Retrieval Augmented Generation" },
       ["Text Generation Systems"],
       emptyBundle,
     )
@@ -57,7 +44,7 @@ describe("topicLens — relevance via interest labels", () => {
 
   it("is not relevant when the only shared token is a stopword", () => {
     const result = topicLens(
-      { label: "Data Analysis With Models", papers: [] },
+      { label: "Data Analysis With Models" },
       ["Model Data From Surveys"],
       emptyBundle,
     )
@@ -67,7 +54,7 @@ describe("topicLens — relevance via interest labels", () => {
 
   it("is not relevant when the only shared token is <=3 characters", () => {
     const result = topicLens(
-      { label: "Ant Colony Optimization", papers: [] },
+      { label: "Ant Colony Optimization" },
       ["Ant Farm Robotics"],
       emptyBundle,
     )
@@ -77,7 +64,7 @@ describe("topicLens — relevance via interest labels", () => {
 
   it("ignores case and punctuation when matching", () => {
     const result = topicLens(
-      { label: "GRAPH-Neural, Networks!", papers: [] },
+      { label: "GRAPH-Neural, Networks!" },
       ["graph neural nets"],
       emptyBundle,
     )
@@ -87,7 +74,7 @@ describe("topicLens — relevance via interest labels", () => {
 
   it("is not relevant when there is no significant token overlap at all", () => {
     const result = topicLens(
-      { label: "Quantum Computing Hardware", papers: [] },
+      { label: "Quantum Computing Hardware" },
       ["Coral Reef Ecology"],
       emptyBundle,
     )
@@ -104,7 +91,7 @@ describe("topicLens — relevance via wiki page tags", () => {
       },
     ])
     const result = topicLens(
-      { label: "Retrieval Augmented Generation", papers: [] },
+      { label: "Retrieval Augmented Generation" },
       ["Completely Unrelated Interest"],
       bundle,
     )
@@ -113,27 +100,20 @@ describe("topicLens — relevance via wiki page tags", () => {
 })
 
 describe("topicLens — empty inputs", () => {
-  it("empty interests + empty bundle yields not relevant and no page ids", () => {
-    const result = topicLens({ label: "Anything At All", papers: [] }, [], emptyBundle)
-    expect(result).toEqual({ relevant: false, wikiPageIds: [] })
+  it("empty interests + empty bundle yields not relevant", () => {
+    const result = topicLens({ label: "Anything At All" }, [], emptyBundle)
+    expect(result).toEqual({ relevant: false })
   })
 })
 
-describe("topicLens — wikiPageIds resolution", () => {
-  it("resolves representative papers that exist in the vault, in order, without duplicates", () => {
-    const p1 = paper({ arxiv: "2409.08710", title: "Paper One" })
-    const p2 = paper({ arxiv: "2410.00001", title: "Paper Two" })
-    const bundle = bundleFromPages([
-      { id: "wiki/papers/2409-08710", frontmatter: fm("paper", "Paper One") },
-      { id: "wiki/papers/2410-00001", frontmatter: fm("paper", "Paper Two") },
-    ])
-    const result = topicLens({ label: "Some Topic", papers: [p1, p2, p1] }, [], bundle)
-    expect(result.wikiPageIds).toEqual(["wiki/papers/2409-08710", "wiki/papers/2410-00001"])
-  })
-
-  it("yields an empty array for papers absent from the vault", () => {
-    const p1 = paper({ arxiv: "9999.99999", title: "Missing Paper" })
-    const result = topicLens({ label: "Some Topic", papers: [p1] }, [], emptyBundle)
-    expect(result.wikiPageIds).toEqual([])
+describe("topicLens — output shape", () => {
+  // The lens used to ALSO resolve a topic's representative papers to wiki page
+  // ids, which every caller discarded (dashboard.ts resolves the link it
+  // actually renders per-paper). This asserts the surface stayed collapsed:
+  // relevance only, and no paper input at all.
+  it("returns exactly one field — relevance — and nothing paper-shaped", () => {
+    const result = topicLens({ label: "Retrieval Augmented Generation" }, ["Retrieval Systems"], emptyBundle)
+    expect(Object.keys(result)).toEqual(["relevant"])
+    expect(result.relevant).toBe(true)
   })
 })

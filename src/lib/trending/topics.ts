@@ -3,11 +3,29 @@ import { isoWeekStart } from "./weeks"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
-/** How many complete ISO weeks each window (recent/prior) spans. */
-export const WINDOW_WEEKS = 2
+/** How many complete ISO weeks each window (recent/prior) spans. Module-local:
+ * the window shape is `completeWindows`' business, and nothing outside this file
+ * has ever needed the number. */
+const WINDOW_WEEKS = 2
 
 /** A topic must clear this many recent-window works to make the leaderboard at all. */
 export const MIN_RECENT_COUNT = 5
+
+/**
+ * The same volume floor on the PRIOR window — the symmetric half of
+ * MIN_RECENT_COUNT, defined once so the two bars can never drift apart.
+ *
+ * Without it the floor guarded only the numerator's window: a topic going
+ * 1 → 5 works clears MIN_RECENT_COUNT and posts several hundred percent share
+ * growth off a denominator that is pure noise, then tops a board whose whole
+ * claim is "these are the topics heating up". A nonzero prior below this bar
+ * is therefore dropped rather than ranked.
+ *
+ * A prior of EXACTLY 0 is deliberately not filtered here: that is the "new
+ * topic" case (`growth: null`, rendered "new", no division), which the
+ * prior-count lookup made trustworthy and which the board is meant to show.
+ */
+export const MIN_PRIOR_COUNT = MIN_RECENT_COUNT
 
 /** Upper bound on how many topics the leaderboard returns. */
 export const MAX_LEADERBOARD_TOPICS = 10
@@ -59,8 +77,10 @@ export interface DisciplineBuckets {
   recent: GroupEntry[]
 }
 
-/** A recent-window topic that qualifies for a prior-count lookup. */
-export interface TopicCandidate {
+/** A recent-window topic that qualifies for a prior-count lookup. Module-local:
+ * callers consume `RankedTopic` (which extends it) or the `TopicCandidate[]`
+ * `selectTopicCandidates` returns; nothing imports the name itself. */
+interface TopicCandidate {
   key: string
   label: string
   discipline: string
@@ -170,9 +190,11 @@ export function selectTopicCandidates(perDiscipline: DisciplineBuckets[]): Topic
  * −27% raw but +19% by share, and "Complexity and Algorithms in Graphs"
  * 39 → 60 is +54% raw but +151% by share. Both are correct here.
  *
- * The volume floor (MIN_RECENT_COUNT) still applies to the RAW recent count —
- * a share floor would mean nothing across disciplines of different sizes — and
- * both raw counts are carried through for honest absolute volume.
+ * The volume floors (MIN_RECENT_COUNT, MIN_PRIOR_COUNT) still apply to the RAW
+ * counts on BOTH sides — a share floor would mean nothing across disciplines of
+ * different sizes — and both raw counts are carried through for honest absolute
+ * volume. A nonzero prior below MIN_PRIOR_COUNT is dropped: its share is noise,
+ * and dividing by it manufactures a chart-topping percentage.
  *
  * A discipline whose corpus size was NOT measured (`null`, i.e. its count
  * request failed) cannot produce a share, so its rows are DROPPED rather than
@@ -206,6 +228,10 @@ export function rankHeatingTopics(
       ranked.push({ ...candidate, priorCount, recentShare, priorShare: 0, growth: null })
       continue
     }
+
+    // Symmetric volume floor: a nonzero-but-tiny prior is noise, not a baseline
+    // (see MIN_PRIOR_COUNT).
+    if (priorCount < MIN_PRIOR_COUNT) continue
 
     const totalPrior = totals?.prior
     if (!isMeasuredSize(totalPrior)) continue
