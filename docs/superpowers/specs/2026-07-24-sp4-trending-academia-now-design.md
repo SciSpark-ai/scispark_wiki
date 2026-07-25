@@ -40,7 +40,7 @@ The narrow labels are not discarded; they change job.
 
 1. **Header** — title, anchor-discipline chips (click through to the settings editor), last-updated, Refresh.
 2. **Overview strip** — three figures: total new papers this window across anchor disciplines · the fastest-rising topic (name + %) · how many rising topics are relevant to the user.
-3. **Heating-topics leaderboard (the page's body)** — one list, **mixed across disciplines**, ranked by growth. Each row: rank · growth badge · topic name · weekly sparkline · discipline chip · a "relevant to you" marker when the lens matches. Rows expand in place to show the LLM's account of why the topic is heating up plus up to 3 representative papers (each with a one-line why, linking to `/paper/[key]`). Where a topic's representative paper already exists in the wiki, its row links to that page — the KB connection is a link, never a count.
+3. **Heating-topics leaderboard (the page's body)** — one list, **mixed across disciplines**, ranked by growth. Each row: rank · growth badge · topic name · a prior→recent comparison bar · discipline chip · a "relevant to you" marker when the lens matches. Rows expand in place to show the LLM's account of why the topic is heating up plus up to 3 representative papers (each with a one-line why, linking to `/paper/[key]`). Where a topic's representative paper already exists in the wiki, its row links to that page — the KB connection is a link, never a count.
 4. **Breakout papers** — a secondary strip of recent papers with unusual citation velocity, deterministically ranked.
 
 ## 2. Anchor-discipline derivation
@@ -62,7 +62,7 @@ Per anchor discipline, **one** `group_by=primary_topic` request over the **recen
 - **The in-progress week is excluded entirely** from both windows. This also retires the M10 caveat where the newest bucket was a partial week, making every field look like it was declining.
 - Topics from all anchor disciplines merge into one ranked list; the top **10** (a named constant) are kept.
 
-Per kept topic: one `group_by=publication_date` request **filtered to that topic's `primary_topic.id`** for its weekly series (the sparkline), and one search for representative papers.
+Per kept topic: one search for representative papers. **There is no weekly series** — see "No sparkline" below.
 
 ### The 200-bucket horizon (why the original design was wrong)
 
@@ -72,7 +72,7 @@ Because `null` growth rendered as "new" and sorted first, those artifacts filled
 
 Hence: **never infer a prior count from a second grouped list.** Look it up per candidate. `growth: null` now means a genuine zero prior, so "new" is trustworthy, and the sparkline must use the same `primary_topic.id` filter as the growth figures so a row's chart and its badge can never disagree (before the fix, one row showed 27 papers in two weeks beside a series summing 6,245 — the series was a free-text search on the topic's name).
 
-**Revised cost:** roughly 1 recent group-by + 1 total count per anchor, ~20 prior lookups, and ~10 series requests ≈ **35–45 credits per refresh** (was 25–30). Still comfortable on a free key (1000/day); roughly two refreshes a day on the keyless tier.
+**Revised cost:** roughly 1 recent group-by + 1 total count per anchor, ~20 prior lookups, and ~10 representative-paper searches ≈ **~40 credits per refresh** (was 25–30). Still comfortable on a free key (1000/day); roughly two refreshes a day on the keyless tier.
 
 `groupBy` is already a generic string parameter on the OpenAlex request builder (only `publication_date` uses it today), so grouping by topic is an extension of an existing mechanism, not a new one.
 
@@ -114,3 +114,9 @@ Every layer degrades independently; the page is never blank:
 - **New:** `src/lib/trending/anchors.ts` (derivation), `src/lib/trending/topics.ts` (group_by-by-topic + growth ranking), `src/lib/trending/lens.ts` (relevance + KB resolution), `src/components/trending/Leaderboard.tsx`, `TopicRow.tsx`, `OverviewStrip.tsx`, `BreakoutPapers.tsx`.
 - **Reworked:** `src/app/trending/page.tsx`, `src/lib/trending/dashboard.ts` (new panel/leaderboard shape + version guard), `src/lib/skills/trending.ts` (qualitative-only output re-scoped to topics), the settings modal's trending section, and the OpenAlex adapter's topic-hierarchy mapping.
 - **Retired:** `FieldPanelView.tsx` and the per-field panel shape it renders (superseded by the leaderboard).
+
+### No sparkline (decided 2026-07-25)
+
+OpenAlex now rejects `group_by=publication_date` outright — HTTP 400 "Invalid query parameters error" in every form, while `group_by=publication_year` and `group_by=primary_topic.id` still return 200. That was the request v1.1 shipped as its headline optimization ("1 credit per field instead of 80"); it has been failing in production and silently falling back to the per-week count ladder ever since. Nothing broke, which is exactly why it went unnoticed.
+
+Without it an 8-week sparkline costs 8 requests per topic (~80 per refresh). So the row's visual is a **prior→recent comparison bar** instead: two bars scaled to the larger of `priorCount` and `recentCount`. It costs **zero** extra requests — both numbers are already computed for the growth figure — and because it is drawn from precisely the values the badge is computed from, a row's chart can never contradict its badge. `priorCount: 0` renders an empty prior bar, which is the honest picture of "new".
