@@ -338,43 +338,16 @@ interface OpenAlexGroupByResponse {
 }
 
 /**
- * Fetches per-day work counts for a query within a date range via a SINGLE
- * `group_by=publication_date` request — 1 OpenAlex credit, vs. 10 credits for
- * a per_page-limited search and vs. issuing one countOpenAlexWorks call per
- * week (8 requests x 10 credits = 80 credits for trending's 8-week window).
- * Used by trending's weekly-volume aggregation (fetchWeeklyVolume) to derive
- * real per-ISO-week counts from the daily buckets in one shot; falls back to
- * countOpenAlexWorks per-week when this throws or returns nothing usable.
- * Tolerates missing/malformed entries in the response (skips them rather than
- * throwing) since group_by's shape isn't validated by OpenAlex the way
- * `results[]` is.
- *
- * `topicId` narrows the series to one `primary_topic.id` — the leaderboard's
- * per-topic sparkline (SP4 §3), which MUST be scoped exactly like the growth
- * figures beside it. Before that, the sparkline free-text-searched the topic's
- * NAME, so a row could show a two-week count of 27 next to a series summing
- * 6,245.
+ * NOTE (2026-07-25): there is deliberately NO `group_by=publication_date`
+ * helper here. Trending once used one to buy a whole weekly series for 1
+ * credit, but OpenAlex now rejects that grouping outright — HTTP 400 "Invalid
+ * query parameters error" in every form tried (plain, with date filters, with
+ * and without an API key), while `group_by=publication_year` and
+ * `group_by=primary_topic.id` on the same endpoint return 200. The helper was
+ * therefore permanently falling back to the per-week count ladder, and it is
+ * removed rather than left as a path that can never succeed. Don't reintroduce
+ * it without re-verifying against the live API first.
  */
-export async function groupWorksByPublicationDate(
-  q: { query: string; fromDate: string; toDate: string; topicId?: string },
-  deps: OpenAlexDeps = {},
-): Promise<Array<{ key: string; count: number }>> {
-  const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate }, deps, {
-    groupBy: "publication_date",
-    filters: q.topicId ? [topicFilterClause(q.topicId)] : undefined,
-  })
-  const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexGroupByResponse
-  const groups = body.group_by ?? []
-  const result: Array<{ key: string; count: number }> = []
-  for (const g of groups) {
-    if (g == null) continue
-    const key = typeof g.key === "string" ? g.key : undefined
-    const count = typeof g.count === "number" ? g.count : undefined
-    if (key === undefined || count === undefined) continue
-    result.push({ key, count })
-  }
-  return result
-}
 
 export interface GroupEntry {
   key: string
@@ -384,8 +357,7 @@ export interface GroupEntry {
 
 /**
  * Shared body-parsing/mapping for the labeled group_by variants used by
- * trending's "heating topics" leaderboard (SP4): unlike
- * groupWorksByPublicationDate's {key,count} buckets, these carry a
+ * trending's "heating topics" leaderboard (SP4): each bucket carries a
  * key_display_name that becomes the human-readable label. Drops entries with
  * no display name and OpenAlex's literal "unknown" bucket (its catch-all for
  * unclassified works — never a real topic/field).

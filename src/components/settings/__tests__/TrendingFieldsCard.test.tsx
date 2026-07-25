@@ -143,10 +143,11 @@ describe("TrendingFieldsCard", () => {
 
   it("states the OpenAlex quota honestly", async () => {
     const { host } = await mount(settings())
-    // Revised after the prior-count-lookup fix: one recent group_by per anchor
-    // plus ~20 per-candidate prior lookups plus the per-topic series.
-    expect(host.textContent).toContain("35")
-    expect(host.textContent).toContain("45")
+    // ~40: one field group_by per label, one recent group_by per anchor, ~20
+    // per-candidate prior lookups, one recent total per anchor, and the
+    // per-topic/breakout searches. The per-topic weekly series (8 more requests
+    // per topic once `group_by=publication_date` started 400ing) is gone.
+    expect(host.textContent).toContain("40")
     expect(host.textContent).toContain("1,000")
     expect(host.textContent).toMatch(/free API key/i)
     expect(host.textContent).toContain("100")

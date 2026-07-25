@@ -8,7 +8,7 @@ import { saveTrendingSettings } from "../settings"
 import { maybeAutoRefreshTrending } from "../auto-refresh"
 import { loadBoard, TRENDING_BOARD_VERSION, DASHBOARD_CACHE_PATH } from "../dashboard"
 import { completeWindows } from "../topics"
-import type { CountFn } from "../weekly-volume"
+import type { CountFn } from "../counts"
 
 const NOW = () => new Date("2026-07-14T00:00:00.000Z")
 const WINDOWS = completeWindows(NOW())

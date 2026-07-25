@@ -223,8 +223,8 @@ export function TrendingFieldsCard() {
           </div>
 
           <p className="text-[12px] text-muted-text">
-            A refresh costs roughly 35–45 OpenAlex credits — comfortable with a free API key (1,000/day), about
-            two refreshes a day without one (100/day).
+            A refresh costs about 40 OpenAlex credits — comfortable on a free API key (1,000/day), a couple of
+            refreshes a day on the keyless tier (100/day).
           </p>
         </div>
       )}

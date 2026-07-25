@@ -17,9 +17,8 @@ import {
 } from "../dashboard"
 import type { TrendingBoard } from "../dashboard"
 import { completeWindows } from "../topics"
-import { isoWeekStart } from "../weeks"
 import { loadTrendingSettings, saveTrendingSettings } from "../settings"
-import type { CountFn, GroupFn } from "../weekly-volume"
+import type { CountFn } from "../counts"
 
 const NOW = () => new Date("2026-07-14T00:00:00.000Z")
 const WINDOWS = completeWindows(NOW())
@@ -53,9 +52,8 @@ function topicGroupFnFor(spec: GroupSpec): TopicGroupFn {
 
 /**
  * A CountFn standing in for OpenAlex: a prior-window request carrying a
- * `topicId` answers from the spec's prior map, everything else (sparkline
- * weeks, anchor-wide recent totals) returns `perWeek` so those assertions stay
- * exact.
+ * `topicId` answers from the spec's prior map, everything else (the
+ * anchor-wide recent totals) returns `other` so those assertions stay exact.
  */
 function countFnFor(spec: GroupSpec, other = 4): CountFn {
   return async ({ query, fromDate, toDate, topicId }) => {
@@ -69,8 +67,9 @@ function countFnFor(spec: GroupSpec, other = 4): CountFn {
 
 /**
  * A prior-count lookup spans the WHOLE prior window and names a topic. Both
- * halves matter: the 8-week sparkline series also carries a topicId, and one
- * of its week starts coincides with `prior.fromDate`.
+ * halves are still asserted even though the board no longer issues any OTHER
+ * topic-scoped count: a test that stopped distinguishing them would go green
+ * against a reintroduced per-topic series.
  */
 function isPriorLookup(q: { fromDate: string; toDate: string; topicId?: string }): boolean {
   return q.topicId !== undefined && q.fromDate === WINDOWS.prior.fromDate && q.toDate === WINDOWS.prior.toDate
@@ -104,7 +103,6 @@ const searchFn: SearchFn = async (_source, query) => [
 
 /** Deterministic per-week counts (and prior lookups) so assertions stay exact. */
 const countFn: CountFn = countFnFor(ONE_DISCIPLINE)
-const groupFn: GroupFn = async () => []
 
 function baseOpts(over: Partial<Parameters<typeof runTrendingBoard>[1]> = {}) {
   return {
@@ -113,7 +111,6 @@ function baseOpts(over: Partial<Parameters<typeof runTrendingBoard>[1]> = {}) {
     topicGroupFn: topicGroupFnFor(ONE_DISCIPLINE),
     fieldGroupFn,
     countFn,
-    groupFn,
     settings: SETTINGS,
     now: NOW,
     ...over,
@@ -130,7 +127,7 @@ async function seedAnchors(storage: MemoryVaultStorage, anchors: Array<{ id: str
 }
 
 describe("runTrendingBoard", () => {
-  it("produces a ranked, versioned board with sparklines, papers and whys, persists it, and logs an event", async () => {
+  it("produces a ranked, versioned board with before/after counts, papers and whys, persists it, and logs an event", async () => {
     const storage = new MemoryVaultStorage()
     await seedAnchors(storage, [NEURO])
     const provider = new MockProvider([structured(BRIEFS_ONE)])
@@ -145,8 +142,7 @@ describe("runTrendingBoard", () => {
     expect(board.topics[0].discipline).toBe("Neuroscience")
     expect(board.topics[0].growth).toBeCloseTo(3)
     expect(board.topics[0].recentCount).toBe(40)
-    expect(board.topics[0].weekly.length).toBe(8)
-    expect(board.topics[0].weekly.every((v) => v.count === 4)).toBe(true)
+    expect(board.topics[0].priorCount).toBe(10) // the looked-up prior, carried onto the board for the bars
     expect(board.overview.totalRecent).toBe(4) // real count call, not the bucket sum
     expect(board.topics[0].papers.map((p) => p.record.title)).toEqual(["Rep paper for Auditory Attention Decoding"])
     expect(board.topics[0].papers[0].wikiPageId).toBeNull()
@@ -203,26 +199,29 @@ describe("runTrendingBoard", () => {
     expect(board.topics.map((t) => t.key)).toEqual(["T0", "T10689"])
   })
 
-  it("scopes a topic's sparkline by primary_topic.id, so the chart and the growth badge cannot disagree", async () => {
+  it("issues NO per-topic series requests — every topic-scoped count is a prior lookup", async () => {
     const storage = new MemoryVaultStorage()
     await seedAnchors(storage, [NEURO])
-    const seen: Array<{ query: string; topicId?: string }> = []
+    const seen: Array<{ query: string; fromDate: string; toDate: string; topicId?: string }> = []
     const spyCount: CountFn = async (q) => {
-      if (!isPriorLookup(q)) seen.push({ query: q.query, topicId: q.topicId })
+      seen.push({ query: q.query, fromDate: q.fromDate, toDate: q.toDate, topicId: q.topicId })
       return countFn(q)
     }
     const provider = new MockProvider([structured(BRIEFS_ONE)])
     await runTrendingBoard(storage, baseOpts({ countFn: spyCount, providerOverride: { strong: provider } }))
 
-    // Every per-week request carries the topic filter and the DISCIPLINE query
-    // the growth numbers were measured under — never a free-text search on the
-    // topic's name, which is what made a row show 27 papers beside a series
-    // summing 6,245.
-    const series = seen.filter((s) => s.topicId !== undefined)
-    expect(series.length).toBeGreaterThan(0)
-    expect(series.every((s) => s.query === "Neuroscience")).toBe(true)
-    expect(new Set(series.map((s) => s.topicId))).toEqual(new Set(["T1", "T2"]))
-    expect(seen.some((s) => s.query === "Auditory Attention Decoding")).toBe(false)
+    // The bars are drawn from the prior/recent counts already in hand, so the
+    // ONLY topic-scoped requests are the prior lookups (one per candidate over
+    // the whole prior window). An 8-week sparkline would have cost 8 more
+    // requests per topic here — that cost, and the chart-vs-badge mismatch it
+    // caused when the series was scoped differently, is what this replaces.
+    const topicScoped = seen.filter((s) => s.topicId !== undefined)
+    expect(topicScoped.length).toBe(2) // T1 and T2 (T3 is under the floor)
+    expect(topicScoped.every((s) => isPriorLookup(s))).toBe(true)
+    expect(topicScoped.every((s) => s.query === "Neuroscience")).toBe(true)
+    expect(new Set(topicScoped.map((s) => s.topicId))).toEqual(new Set(["T1", "T2"]))
+    // Plus exactly one anchor-wide recent total; nothing else.
+    expect(seen.filter((s) => s.topicId === undefined)).toHaveLength(1)
   })
 
   it("groups only the RECENT window — the prior window is never grouped", async () => {
@@ -238,19 +237,24 @@ describe("runTrendingBoard", () => {
     expect(windowsAsked).toEqual([WINDOWS.recent.fromDate])
   })
 
-  it("anchors the sparkline to the last COMPLETE week, never the in-progress one", async () => {
+  it("carries the exact numbers growth was computed from, so a row's bars can never contradict its badge", async () => {
     const storage = new MemoryVaultStorage()
     await seedAnchors(storage, [NEURO])
     const provider = new MockProvider([structured(BRIEFS_ONE)])
     const board = await runTrendingBoard(storage, baseOpts({ providerOverride: { strong: provider } }))
 
-    const weekly = board.topics[0].weekly
-    // NOW() is Tue 2026-07-14; its ISO week starts Mon 2026-07-13 (in progress,
-    // systematically low). The recent window ends Sun 2026-07-12, whose week
-    // starts Mon 2026-07-06 — that must be the newest bucket, or every
-    // sparkline dips while its growth badge (complete weeks only) rises.
-    expect(weekly[weekly.length - 1].weekStart).toBe("2026-07-06")
-    expect(weekly.some((v) => v.weekStart === isoWeekStart(NOW()))).toBe(false)
+    for (const t of board.topics) {
+      expect(Number.isFinite(t.priorCount)).toBe(true)
+      if (t.priorCount === 0) {
+        expect(t.growth).toBeNull()
+      } else {
+        expect(t.growth).toBeCloseTo((t.recentCount - t.priorCount) / t.priorCount)
+      }
+    }
+    expect(board.topics.map((t) => [t.priorCount, t.recentCount])).toEqual([
+      [10, 40],
+      [20, 20],
+    ])
   })
 
   it("never sends any number to the LLM (no counts, growth or dates in the prompt)", async () => {
@@ -295,24 +299,6 @@ describe("runTrendingBoard", () => {
     expect(board.topics.map((t) => t.key)).toEqual(["T1", "T2"])
     expect(board.topics.every((t) => t.discipline === "Neuroscience")).toBe(true)
     expect(provider.calls).toHaveLength(1)
-  })
-
-  it("a weekly-series failure yields weekly: [] with the row still present", async () => {
-    const storage = new MemoryVaultStorage()
-    await seedAnchors(storage, [NEURO])
-    const provider = new MockProvider([structured(BRIEFS_ONE)])
-    // Prior lookups succeed; every per-week series request fails.
-    const failingSeriesCount: CountFn = async (q) => {
-      if (isPriorLookup(q)) return countFn(q)
-      throw new Error("openalex down")
-    }
-    const board = await runTrendingBoard(
-      storage,
-      baseOpts({ countFn: failingSeriesCount, providerOverride: { strong: provider } }),
-    )
-    expect(board.topics.map((t) => t.key)).toEqual(["T1", "T2"])
-    expect(board.topics[0].weekly).toEqual([])
-    expect(board.topics[0].growth).toBeCloseTo(3) // numbers untouched by the series failure
   })
 
   it("a representative-paper search failure yields papers: [] with the row still present", async () => {

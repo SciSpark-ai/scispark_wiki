@@ -2,7 +2,7 @@ import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
 import type { SearchFn } from "../skills/feed"
-import type { CountFn, GroupFn } from "./weekly-volume"
+import type { CountFn } from "./counts"
 import type { TopicGroupFn } from "../papers/node-search"
 import { readUserModel } from "../usermodel/pages"
 import { effectiveTrackedFields } from "./fields"
@@ -33,7 +33,6 @@ export async function maybeAutoRefreshTrending(
     providerOverride?: Partial<Record<Tier, LLMProvider>>
     /** Required: the board's prior-count lookups (and so its whole growth column) run through it — see RunTrendingBoardOpts.countFn. */
     countFn: CountFn
-    groupFn?: GroupFn
   },
 ): Promise<"refreshed" | "fresh" | "no-fields"> {
   const now = deps.now ?? (() => new Date())
@@ -52,7 +51,6 @@ export async function maybeAutoRefreshTrending(
     topicGroupFn: deps.topicGroupFn,
     fieldGroupFn: deps.fieldGroupFn,
     countFn: deps.countFn,
-    groupFn: deps.groupFn,
     settings: deps.settings,
     providerOverride: deps.providerOverride,
     now: deps.now,

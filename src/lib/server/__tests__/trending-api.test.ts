@@ -10,7 +10,7 @@ import type { SearchFn } from "../../skills/feed"
 import type { TopicGroupFn } from "../../papers/node-search"
 import { loadBoard, DASHBOARD_CACHE_PATH, TRENDING_BOARD_VERSION, type TrendingBoard } from "../../trending/dashboard"
 import { completeWindows } from "../../trending/topics"
-import type { CountFn, GroupFn } from "../../trending/weekly-volume"
+import type { CountFn } from "../../trending/counts"
 import * as refreshRoute from "../../../app/api/skills/trending/refresh/route"
 import * as autoRefreshRoute from "../../../app/api/skills/trending/auto-refresh/route"
 
@@ -60,9 +60,7 @@ describe("trending skill routes", () => {
   it("POST /api/skills/trending/refresh streams per-discipline progress, results in a versioned TrendingBoard, and writes the cache to the test vault", async () => {
     const provider = new MockProvider([structured(BRIEFS)])
     const countFn: CountFn = async () => 1
-    // Empty groupFn result → falls back to countFn (exercised on its own below); keeps this test off the real network.
-    const groupFn: GroupFn = async () => []
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, groupFn, topicGroupFn, fieldGroupFn })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, topicGroupFn, fieldGroupFn })
 
     const fields = [
       { slug: "nlp", label: "NLP" },
@@ -97,11 +95,10 @@ describe("trending skill routes", () => {
 
   it("POST /api/skills/trending/refresh: a second refresh rewrites dashboard.json with an ADVANCED generatedAt", async () => {
     const countFn: CountFn = async () => 1
-    const groupFn: GroupFn = async () => []
     const fields = [{ slug: "nlp", label: "NLP" }]
     const callRefresh = async (): Promise<TrendingBoard> => {
       // Fresh provider per call — MockProvider drains its queued responses.
-      setSkillTestOverrides({ providerOverride: { strong: new MockProvider([structured(BRIEFS)]) }, searchFn: fakeSearchFn, countFn, groupFn, topicGroupFn, fieldGroupFn })
+      setSkillTestOverrides({ providerOverride: { strong: new MockProvider([structured(BRIEFS)]) }, searchFn: fakeSearchFn, countFn, topicGroupFn, fieldGroupFn })
       const res = await refreshRoute.POST(
         new Request("http://x/api/skills/trending/refresh", { method: "POST", body: JSON.stringify({ fields }) }),
       )
@@ -128,8 +125,7 @@ describe("trending skill routes", () => {
   it("POST /api/skills/trending/refresh: a skill failure still terminates the stream with a usable (degraded) board, not a terminal error", async () => {
     const provider = new MockProvider([new Error("llm exploded")])
     const countFn: CountFn = async () => 1
-    const groupFn: GroupFn = async () => []
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, groupFn, topicGroupFn, fieldGroupFn })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, topicGroupFn, fieldGroupFn })
 
     const res = await refreshRoute.POST(
       new Request("http://x/api/skills/trending/refresh", {
@@ -150,38 +146,17 @@ describe("trending skill routes", () => {
     expect(cached!.generatedAt).toBe(result.generatedAt)
   })
 
-  it("POST /api/skills/trending/refresh: setSkillTestOverrides countFn is wired through to a real per-week series in the result", async () => {
+  it("POST /api/skills/trending/refresh: setSkillTestOverrides countFn is wired through to the board's prior counts", async () => {
     const provider = new MockProvider([structured(BRIEFS)])
-    const countFn: CountFn = async () => 7
-    const groupFn: GroupFn = async () => [] // empty → falls back to countFn, exercising the countFn-only path this test targets
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, groupFn, topicGroupFn, fieldGroupFn })
-
-    const res = await refreshRoute.POST(
-      new Request("http://x/api/skills/trending/refresh", {
-        method: "POST",
-        body: JSON.stringify({ fields: [{ slug: "nlp", label: "NLP" }] }),
-      }),
-    )
-    const result = (await readNdjson(res, () => undefined)) as TrendingBoard
-    expect(result.topics[0].weekly.length).toBe(8)
-    expect(result.topics[0].weekly.every((v) => v.count === 7)).toBe(true)
-  })
-
-  it("POST /api/skills/trending/refresh: setSkillTestOverrides groupFn is wired through and preferred over countFn in the result", async () => {
-    const provider = new MockProvider([structured(BRIEFS)])
-    // Prior lookups still go through countFn (they are counts, not series);
-    // any per-WEEK series call would mean groupFn wasn't preferred.
+    // 7 for a prior-count lookup, 1 for the anchor-wide recent total — the only
+    // two things the board counts. There is no per-topic series any more, so a
+    // countFn that answered a third kind of request would mean one crept back.
     const countFn: CountFn = async (q) => {
-      if (isPriorLookup(q)) return 10
-      if (q.topicId !== undefined) throw new Error("countFn must not serve the series when groupFn succeeds")
+      if (isPriorLookup(q)) return 7
+      if (q.topicId !== undefined) throw new Error("no topic-scoped count other than the prior lookup should be issued")
       return 1
     }
-    // groupFn echoes back a group keyed on the actual (real, un-mocked-clock)
-    // fromDate it's called with, which is exactly weekStarts[0] for the
-    // window fetchWeeklyVolume requests — so this stays correct regardless
-    // of the real wall-clock date the test happens to run on.
-    const groupFn: GroupFn = async (q) => [{ key: q.fromDate, count: 3 }]
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, groupFn, topicGroupFn, fieldGroupFn })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, topicGroupFn, fieldGroupFn })
 
     const res = await refreshRoute.POST(
       new Request("http://x/api/skills/trending/refresh", {
@@ -190,10 +165,9 @@ describe("trending skill routes", () => {
       }),
     )
     const result = (await readNdjson(res, () => undefined)) as TrendingBoard
-    const weekly = result.topics[0].weekly
-    expect(weekly.length).toBe(8)
-    expect(weekly[0].count).toBe(3) // oldest week matches the grouped key
-    expect(weekly.slice(1).every((v) => v.count === 0)).toBe(true) // rest zero-filled
+    expect(result.topics[0].priorCount).toBe(7)
+    expect(result.topics[0].recentCount).toBe(40)
+    expect(result.overview.totalRecent).toBe(1)
   })
 
   it("POST /api/skills/trending/auto-refresh returns 'no-fields' on an empty vault (no tracked fields, no interests.md)", async () => {
@@ -217,8 +191,7 @@ describe("trending skill routes", () => {
     })
     const provider = new MockProvider([structured(BRIEFS)])
     const countFn: CountFn = async () => 1
-    const groupFn: GroupFn = async () => []
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, groupFn, topicGroupFn, fieldGroupFn })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, topicGroupFn, fieldGroupFn })
 
     const res = await autoRefreshRoute.POST(
       new Request("http://x/api/skills/trending/auto-refresh", { method: "POST", body: JSON.stringify({}) }),

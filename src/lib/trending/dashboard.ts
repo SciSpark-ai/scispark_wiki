@@ -18,9 +18,7 @@ import { deriveAnchorDisciplines, MAX_ANCHORS } from "./anchors"
 import { completeWindows, rankHeatingTopics, selectTopicCandidates, type DisciplineBuckets, type RankedTopic } from "./topics"
 import { topicLens } from "./lens"
 import { retrieveFieldCandidates } from "./retrieve"
-import { DEFAULT_WEEKS, type VolumePoint } from "./metrics"
-import { buildWeekStarts } from "./weeks"
-import { fetchWeeklyVolume, type CountFn, type GroupFn } from "./weekly-volume"
+import type { CountFn } from "./counts"
 import { trendingSkill } from "../skills/trending"
 
 /**
@@ -28,8 +26,12 @@ import { trendingSkill } from "../skills/trending"
  * Bumped whenever the persisted shape changes; `loadBoard` treats any other
  * version — including the M10/v1.1 shape, which carried no `version` at all —
  * as a cold start rather than parsing it into the wrong type.
+ *
+ * 3: `weekly` (the sparkline series) replaced by `priorCount` (the before/after
+ * bars). A v2 board carries no `priorCount`, so rendering one would size the
+ * bars off `undefined` — the bump makes it a cold start instead.
  */
-export const TRENDING_BOARD_VERSION = 2
+export const TRENDING_BOARD_VERSION = 3
 
 export interface BoardPaper {
   record: PaperRecord
@@ -45,8 +47,15 @@ export interface BoardTopic {
   /** (recent − prior) / prior; null when prior is 0 — rendered as "new", never ∞. */
   growth: number | null
   recentCount: number
-  /** [] when the series call failed (or no counter was injected) — the row just loses its sparkline. */
-  weekly: VolumePoint[]
+  /**
+   * The topic's TRUE prior-window count (`lookupPriorCounts`) — the very number
+   * `growth` is computed from. The row's before/after bars are drawn from
+   * {priorCount, recentCount}, so a row's chart can never contradict its growth
+   * badge (the sparkline it replaced was a separately-fetched series that
+   * could, and did). 0 means "genuinely new this window" and is drawn as an
+   * empty prior bar.
+   */
+  priorCount: number
   papers: BoardPaper[]
   /** LLM-written; null when the skill failed for this topic's discipline, or when the model returned no brief whose `key` matched this topic verbatim. */
   why: string | null
@@ -104,14 +113,12 @@ export interface RunTrendingBoardOpts {
   onProgress?: (discipline: string) => void
   /**
    * Real OpenAlex work counter (`countOpenAlexWorks`). REQUIRED: besides the
-   * per-topic sparklines and the overview's recent-work totals, it now performs
-   * every candidate's prior-count lookup, which the growth column is computed
+   * overview's recent-work totals, it performs every candidate's prior-count
+   * lookup, which the growth column AND the before/after bars are computed
    * from — without it there is no leaderboard at all, so this is a hard dep
    * rather than an enhancement.
    */
   countFn: CountFn
-  /** One-request `group_by=publication_date` counter; tried before countFn's per-week path. */
-  groupFn?: GroupFn
 }
 
 /**
@@ -122,10 +129,14 @@ export interface RunTrendingBoardOpts {
  * Per refresh: resolve anchor disciplines (a non-empty stored list, else
  * derived and persisted, else the narrow interest labels) → `completeWindows(now)` → ONE
  * recent-window `topicGroupFn` call per anchor → a prior-count lookup per
- * candidate (`lookupPriorCounts`) → `rankHeatingTopics` → per kept topic one
- * weekly series and one representative-paper search → deterministic breakouts
+ * candidate (`lookupPriorCounts`) → `rankHeatingTopics` → one
+ * representative-paper search per kept topic → deterministic breakouts
  * → one `runSkill(trendingSkill)` per anchor discipline → the deterministic
  * lens → assemble + persist.
+ *
+ * There is NO per-topic time series: the row's chart is two bars drawn from
+ * the prior/recent counts already in hand, which costs zero extra requests and
+ * makes a chart-vs-badge contradiction structurally impossible.
  *
  * EVERY number on the board comes from OpenAlex counts. The skill's input
  * structurally carries no counts/percentages/dates, and its briefs are joined
@@ -133,9 +144,9 @@ export interface RunTrendingBoardOpts {
  * topic's `why` null rather than attaching text to the wrong topic.
  *
  * Every layer degrades independently and never blanks the board: a failed
- * discipline drops only its own topics, a failed series yields `weekly: []`, a
- * failed paper search yields `papers: []`, and a failed skill leaves the whole
- * ranking intact with `why: null` plus a `surveyError` stating the real reason.
+ * discipline drops only its own topics, a failed paper search yields
+ * `papers: []`, and a failed skill leaves the whole ranking intact with
+ * `why: null` plus a `surveyError` stating the real reason.
  *
  * Concurrency: home's fire-and-forget auto-refresh (`maybeAutoRefreshTrending`)
  * and /trending's own mount-time refresh can both observe a stale/missing
@@ -191,23 +202,13 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
   const ranked = rankHeatingTopics(perDiscipline, priorCounts)
   const totalRecent = await countRecentWorks(opts, perDiscipline, windows.recent)
 
-  // --- Per-topic enrichment (sparkline + representative papers) ---------------
+  // --- Per-topic enrichment (representative papers) ---------------------------
   // Sequential on purpose: at most MAX_LEADERBOARD_TOPICS topics, and OpenAlex
   // is credit-priced and rate-limited — bounded, predictable load beats speed.
-  //
-  // The series is anchored to the LAST COMPLETE ISO week (the recent window's
-  // final day), never to `at`: buildWeekStarts(at, …) would end on the
-  // in-progress week, whose count is systematically low, so every sparkline
-  // would dip at the right-hand end while its growth badge — computed on
-  // complete weeks only — said the topic was accelerating. Excluding the
-  // partial week everywhere is exactly the M10 "everything looks like it's
-  // declining" caveat this milestone retires (spec §3).
-  const weekStarts = buildWeekStarts(new Date(`${windows.recent.toDate}T00:00:00.000Z`), DEFAULT_WEEKS)
-  const enriched: Array<{ topic: RankedTopic; weekly: VolumePoint[]; papers: PaperRecord[] }> = []
+  const enriched: Array<{ topic: RankedTopic; papers: PaperRecord[] }> = []
   for (const topic of ranked) {
-    const weekly = await fetchTopicWeekly(opts, topic, weekStarts)
     const papers = await searchTopicPapers(opts, topic.label, windows.recent.fromDate)
-    enriched.push({ topic, weekly, papers })
+    enriched.push({ topic, papers })
   }
 
   // --- Deterministic breakouts (recent, citation-ranked, across the anchors) --
@@ -270,7 +271,7 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
     return { pages: new Map(), links: [], errors: [] }
   })
 
-  const topics: BoardTopic[] = enriched.map(({ topic, weekly, papers }) => {
+  const topics: BoardTopic[] = enriched.map(({ topic, papers }) => {
     // The lens is pure, but it walks user-editable frontmatter (tags) and
     // source-supplied titles; one malformed page must not blank the board, so
     // a throw degrades this row to "not relevant, no links" instead.
@@ -286,7 +287,7 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
       discipline: topic.discipline,
       growth: topic.growth,
       recentCount: topic.recentCount,
-      weekly,
+      priorCount: topic.priorCount,
       papers: papers.map((record) => ({ record, wikiPageId: resolveWikiPageId(bundle, record) })),
       why: whyByKey.get(topic.key) ?? null,
       relevant: lens.relevant,
@@ -421,29 +422,6 @@ async function countRecentWorks(
     }
   }
   return total
-}
-
-/**
- * The topic's weekly series, scoped by `primary_topic.id` and by the same
- * discipline `query` its growth figures were computed from — NOT by a free-text
- * search on the topic's name, which is what made one live row show 27 papers in
- * two weeks beside a series summing 6,245 (SP4 §3).
- *
- * `[]` on any failure — the row just loses its sparkline.
- */
-async function fetchTopicWeekly(
-  opts: RunTrendingBoardOpts,
-  topic: RankedTopic,
-  weekStarts: string[],
-): Promise<VolumePoint[]> {
-  const series = await fetchWeeklyVolume(
-    opts.countFn,
-    topic.discipline,
-    weekStarts,
-    opts.groupFn,
-    topic.key,
-  ).catch(() => null)
-  return series ?? []
 }
 
 /** `[]` on any failure — the expanded row shows text only. */

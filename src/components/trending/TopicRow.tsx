@@ -6,7 +6,7 @@ import { displayTitle } from "@/lib/papers/title"
 import { wikiHref } from "@/lib/wiki/href"
 import { paperSlug } from "@/lib/wiki/authoring"
 import type { BoardTopic } from "@/lib/trending/dashboard"
-import { Sparkline } from "./Sparkline"
+import { TrendBars } from "./TrendBars"
 
 /**
  * `growth: null` means "no prior-window activity to compare against" — the
@@ -57,7 +57,7 @@ export function TopicRow({ topic, rank, expanded, onToggle }: TopicRowProps) {
         <span className="w-5 shrink-0 text-[12px] text-muted-text tracking-body">{rank}</span>
         <GrowthBadge growth={topic.growth} />
         <span className="min-w-0 flex-1 truncate text-[13px] text-espresso tracking-body">{topic.label}</span>
-        <Sparkline points={topic.weekly} />
+        <TrendBars priorCount={topic.priorCount} recentCount={topic.recentCount} />
         <Chip>{topic.discipline}</Chip>
         {topic.relevant && (
           <span className="rounded-pill bg-orange/10 px-2 py-0.5 text-[11px] font-medium text-orange tracking-body">

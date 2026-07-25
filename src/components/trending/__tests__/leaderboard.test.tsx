@@ -2,9 +2,9 @@
 import { describe, it, expect } from "vitest"
 import { renderToStaticMarkup } from "react-dom/server"
 import type { PaperRecord } from "@/lib/papers/types"
-import type { VolumePoint } from "@/lib/trending/metrics"
 import type { BoardTopic, BoardPaper, TrendingBoard } from "@/lib/trending/dashboard"
-import { Sparkline } from "../Sparkline"
+import { TRENDING_BOARD_VERSION } from "@/lib/trending/dashboard"
+import { TrendBars } from "../TrendBars"
 import { TopicRow } from "../TopicRow"
 import { OverviewStrip } from "../OverviewStrip"
 import { Leaderboard } from "../Leaderboard"
@@ -36,7 +36,7 @@ function topic(overrides: Partial<BoardTopic> = {}): BoardTopic {
     discipline: "Machine Learning",
     growth: 1,
     recentCount: 42,
-    weekly: [],
+    priorCount: 21,
     papers: [boardPaper()],
     why: "Several groups converged on sub-quadratic attention this quarter.",
     relevant: false,
@@ -44,24 +44,40 @@ function topic(overrides: Partial<BoardTopic> = {}): BoardTopic {
   }
 }
 
-function volumeSeries(n: number): VolumePoint[] {
-  return Array.from({ length: n }, (_, i) => ({ weekStart: `2026-06-0${i + 1}`, count: i + 1 }))
+/** Every `height="…"` in the rendered SVG, in document order (prior bar, then recent bar). */
+function barHeights(html: string): number[] {
+  return [...html.matchAll(/height="([^"]*)"/g)]
+    .map((m) => m[1])
+    .slice(1) // the <svg> element's own height comes first
+    .map(Number)
 }
 
-describe("Sparkline", () => {
-  it("renders nothing for a 1-point series", () => {
-    const html = renderToStaticMarkup(<Sparkline points={volumeSeries(1)} />)
-    expect(html).toBe("")
+describe("TrendBars", () => {
+  it("renders a zero-height prior bar for priorCount: 0 (the 'new' case) without NaN", () => {
+    const html = renderToStaticMarkup(<TrendBars priorCount={0} recentCount={30} />)
+    expect(html).not.toContain("NaN")
+    const [prior, recent] = barHeights(html)
+    expect(prior).toBe(0)
+    expect(recent).toBeGreaterThan(0)
   })
 
-  it("renders nothing for an empty series", () => {
-    const html = renderToStaticMarkup(<Sparkline points={[]} />)
-    expect(html).toBe("")
+  it("scales both bars to the larger of the two counts", () => {
+    const taller = renderToStaticMarkup(<TrendBars priorCount={10} recentCount={20} />)
+    const [priorUp, recentUp] = barHeights(taller)
+    expect(recentUp).toBeGreaterThan(priorUp)
+    expect(priorUp / recentUp).toBeCloseTo(0.5, 1) // recent is the max → full height, prior is half of it
+
+    // ...and symmetrically for a DECLINING row, where prior is the max.
+    const shorter = renderToStaticMarkup(<TrendBars priorCount={20} recentCount={10} />)
+    const [priorDown, recentDown] = barHeights(shorter)
+    expect(priorDown).toBeGreaterThan(recentDown)
+    expect(priorDown).toBe(recentUp) // the max always fills the same full height
   })
 
-  it("renders a polyline for a 5-point series", () => {
-    const html = renderToStaticMarkup(<Sparkline points={volumeSeries(5)} />)
-    expect(html).toContain("<polyline")
+  it("renders both bars flat, with no NaN, when both counts are zero", () => {
+    const html = renderToStaticMarkup(<TrendBars priorCount={0} recentCount={0} />)
+    expect(html).not.toContain("NaN")
+    expect(barHeights(html)).toEqual([0, 0])
   })
 })
 
@@ -205,7 +221,7 @@ describe("OverviewStrip", () => {
 
 function board(overrides: Partial<TrendingBoard> = {}): TrendingBoard {
   return {
-    version: 2,
+    version: TRENDING_BOARD_VERSION,
     anchors: [{ id: "ml", label: "Machine Learning" }],
     overview: { totalRecent: 10, topTopicLabel: "Sparse Attention", topTopicGrowth: 1, relevantCount: 1 },
     topics: [topic()],

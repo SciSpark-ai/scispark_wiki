@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import type { PaperRecord } from "../../papers/types"
-import { computeFieldMetrics, type VolumePoint } from "../metrics"
+import { computeFieldMetrics } from "../metrics"
 
 const NOW = new Date("2026-07-14T00:00:00.000Z") // a Tuesday
 
@@ -89,57 +89,5 @@ describe("computeFieldMetrics", () => {
     expect(m.weeklyVolume.length).toBe(8)
     expect(m.weeklyVolume.every((v) => v.count === 0)).toBe(true)
     expect(m.paperCountPrior).toBe(0)
-  })
-})
-
-describe("computeFieldMetrics — realWeeklyVolume", () => {
-  it("uses realWeeklyVolume verbatim and computes week-aligned recent/prior/pctChange", () => {
-    const realWeeklyVolume: VolumePoint[] = [
-      { weekStart: "2026-05-18", count: 3 },
-      { weekStart: "2026-05-25", count: 4 },
-      { weekStart: "2026-06-01", count: 5 },
-      { weekStart: "2026-06-08", count: 6 },
-      { weekStart: "2026-06-15", count: 7 },
-      { weekStart: "2026-06-22", count: 8 },
-      { weekStart: "2026-06-29", count: 9 },
-      { weekStart: "2026-07-06", count: 10 },
-    ]
-    const m = computeFieldMetrics({ recent: [], movers: [] }, { now: NOW, realWeeklyVolume })
-    expect(m.weeklyVolume).toEqual(realWeeklyVolume) // verbatim, not re-bucketed
-    expect(m.paperCountRecent).toBe(10 + 9) // last 2 buckets: 07-06, 06-29
-    expect(m.paperCountPrior).toBe(8 + 7) // 2 buckets before those: 06-22, 06-15
-    expect(m.pctChange).toBeCloseTo((19 - 15) / 15)
-  })
-
-  it("pctChange is null when the prior 2 buckets sum to zero", () => {
-    const realWeeklyVolume: VolumePoint[] = [
-      { weekStart: "2026-06-22", count: 0 },
-      { weekStart: "2026-06-29", count: 0 },
-      { weekStart: "2026-07-06", count: 5 },
-    ]
-    const m = computeFieldMetrics({ recent: [], movers: [] }, { now: NOW, realWeeklyVolume })
-    expect(m.paperCountRecent).toBe(0 + 5)
-    expect(m.paperCountPrior).toBe(0)
-    expect(m.pctChange).toBeNull()
-  })
-
-  it("handles a series with fewer than 4 buckets, treating missing older weeks as 0", () => {
-    const realWeeklyVolume: VolumePoint[] = [
-      { weekStart: "2026-06-29", count: 3 },
-      { weekStart: "2026-07-06", count: 4 },
-    ]
-    const m = computeFieldMetrics({ recent: [], movers: [] }, { now: NOW, realWeeklyVolume })
-    expect(m.weeklyVolume).toEqual(realWeeklyVolume)
-    expect(m.paperCountRecent).toBe(3 + 4)
-    expect(m.paperCountPrior).toBe(0) // no buckets before the only 2 present
-    expect(m.pctChange).toBeNull()
-  })
-
-  it("topMovers/topVenues still derive from the sample even when realWeeklyVolume is present", () => {
-    const movers = [paper({ title: "hi", citationCount: 50, venue: "ACL" })]
-    const realWeeklyVolume: VolumePoint[] = [{ weekStart: "2026-07-06", count: 1 }]
-    const m = computeFieldMetrics({ recent: [], movers }, { now: NOW, realWeeklyVolume })
-    expect(m.topMovers.map((t) => t.paper.title)).toEqual(["hi"])
-    expect(m.topVenues[0]).toEqual({ venue: "ACL", count: 1 })
   })
 })

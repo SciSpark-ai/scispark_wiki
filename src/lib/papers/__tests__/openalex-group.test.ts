@@ -46,6 +46,22 @@ describe("groupWorksByTopic", () => {
     const out = await groupWorksByTopic({ query: "x", fromDate: "2026-07-06", toDate: "2026-07-19" }, { fetchFn })
     expect(out).toEqual([])
   })
+
+  /**
+   * buildUrl invariants for EVERY grouped request, inherited from the deleted
+   * `groupWorksByPublicationDate` tests (that grouping is now rejected by
+   * OpenAlex and the helper is gone, but these guards are about buildUrl, not
+   * about which field is grouped). A `sort` on a grouped query is
+   * ignored/rejected by OpenAlex — buildUrl's `else if` is what prevents it —
+   * and a grouped request must ask for the full 200-bucket page.
+   */
+  it("never sends sort on a grouped request, and asks for per_page=200", async () => {
+    const fetchFn = fetchReturning({ group_by: [] })
+    await groupWorksByTopic({ query: "x", fromDate: "2026-07-06", toDate: "2026-07-19" }, { fetchFn })
+    const url = new URL(String(fetchFn.mock.calls[0][0]))
+    expect(url.searchParams.get("sort")).toBeNull()
+    expect(url.searchParams.get("per_page")).toBe("200")
+  })
 })
 
 describe("groupWorksByTopicField", () => {

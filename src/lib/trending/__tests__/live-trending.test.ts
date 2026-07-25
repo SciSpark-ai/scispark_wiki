@@ -3,7 +3,7 @@ import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { DEFAULT_SETTINGS } from "../../llm/settings"
 import { searchArxiv } from "../../papers/arxiv"
 import { searchOpenAlex } from "../../papers/openalex"
-import { nodeCountFn, nodeGroupFn, nodeTopicGroupFn, nodeTopicFieldGroupFn } from "../../papers/node-search"
+import { nodeCountFn, nodeTopicGroupFn, nodeTopicFieldGroupFn } from "../../papers/node-search"
 import { readRecentEvents } from "../../events/log"
 import { runTrendingBoard, TRENDING_BOARD_VERSION } from "../dashboard"
 import { TopicBriefsSchema } from "../../skills/trending"
@@ -30,11 +30,11 @@ import type { SearchFn } from "../../skills/feed"
  * real money — never runs in CI. Far lighter than Deep Spark: retrieval plus
  * exactly one strong-tier call for the single field's survey.
  *
- * v1.1: also wires a real `countFn` (countOpenAlexWorks — keyless, no LLM
- * key needed) so the run exercises real per-week OpenAlex work counts
- * (metrics.ts's realWeeklyVolume) instead of the retrieval-sample-derived
- * weeklyVolume, and asserts the resulting series is non-degenerate (at least
- * two weeks with count > 0).
+ * Wires a real `countFn` (countOpenAlexWorks — keyless, no LLM key needed) so
+ * the run exercises real OpenAlex work counts: one prior-window lookup per
+ * candidate topic (the growth column AND the row's before/after bars) plus the
+ * anchor-wide recent totals. There is no per-week series any more — the
+ * `group_by=publication_date` request it relied on is rejected by OpenAlex.
  */
 const BASE_URL = process.env.LIVE_LLM_BASE_URL
 const API_KEY = process.env.LIVE_LLM_API_KEY
@@ -84,7 +84,7 @@ const FIELD = { slug: "natural-language-processing", label: "Natural Language Pr
 
 describe.skipIf(!live)("LIVE trending board gate", () => {
   it(
-    "runTrendingBoard for one interest label against real OpenAlex group_by + search + a real LLM: real anchors, real growth numbers, schema-valid (or gracefully degraded) briefs, bounded cost",
+    "runTrendingBoard for one interest label against real OpenAlex group_by + search + a real LLM: real anchors, real growth numbers and prior counts, schema-valid (or gracefully degraded) briefs, bounded cost",
     { timeout: LIVE_TIMEOUT },
     async () => {
       const storage = new MemoryVaultStorage()
@@ -93,13 +93,11 @@ describe.skipIf(!live)("LIVE trending board gate", () => {
         fields: [FIELD],
         searchFn: nodeSearchFn(),
         // The PRODUCTION node groupers/counters, so this run exercises exactly
-        // the wiring the trending routes use: two group_by=primary_topic.id
-        // requests per anchor for the leaderboard, one
+        // the wiring the trending routes use: one group_by=primary_topic.id
+        // request per anchor for the leaderboard, one
         // group_by=primary_topic.field.id per label for anchor derivation, and
-        // the 1-credit group_by=publication_date fast path for each topic's
-        // sparkline (falling back to nodeCountFn's per-week path).
+        // one filtered count per candidate for its true prior-window figure.
         countFn: nodeCountFn(),
-        groupFn: nodeGroupFn(),
         topicGroupFn: nodeTopicGroupFn(),
         fieldGroupFn: nodeTopicFieldGroupFn(),
         settings: liveSettings(),
@@ -122,10 +120,10 @@ describe.skipIf(!live)("LIVE trending board gate", () => {
       expect(top.recentCount).toBeGreaterThanOrEqual(MIN_RECENT_COUNT)
       expect(board.overview.totalRecent).toBeGreaterThan(0)
 
-      // Real multi-week series behind the sparkline (not a degenerate
-      // single-bucket sample series).
-      console.log("[live-trending] top weekly:", JSON.stringify(top.weekly))
-      expect(top.weekly.filter((v) => v.count > 0).length).toBeGreaterThanOrEqual(2)
+      // The bars are drawn from the same measured counts as the badge, so the
+      // prior figure must be a real, finite number on every row.
+      expect(board.topics.every((t) => Number.isFinite(t.priorCount) && t.priorCount >= 0)).toBe(true)
+      console.log("[live-trending] top prior/recent:", top.priorCount, "→", top.recentCount)
 
       if (board.surveyError) {
         // Acceptable for the gate (GMI backend-replica flake etc.) as long as

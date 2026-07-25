@@ -1,6 +1,6 @@
 import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
-import { nodeSearchFn, nodeCountFn, nodeGroupFn, nodeTopicGroupFn, nodeTopicFieldGroupFn } from "@/lib/papers/node-search"
+import { nodeSearchFn, nodeCountFn, nodeTopicGroupFn, nodeTopicFieldGroupFn } from "@/lib/papers/node-search"
 
 import { runTrendingBoard } from "@/lib/trending/dashboard"
 import type { TrackedField } from "@/lib/trending/fields"
@@ -17,8 +17,8 @@ interface RefreshInput {
  * the result event. Builds its own deps server-side (per M11's local-runtime
  * pivot: the browser never runs skills or holds LLM keys) — getServerVault()
  * (via ndjsonSkillRoute), loadSettings(vault), a Node searchFn, a real
- * per-week OpenAlex counter for the sparklines, and the two `group_by`
- * groupers behind the leaderboard and anchor derivation — so the client only
+ * OpenAlex work counter (prior-count lookups + anchor totals), and the two
+ * `group_by` groupers behind the leaderboard and anchor derivation — so the client only
  * ever sends the tracked fields. `setSkillTestOverrides` lets tests inject a
  * MockProvider/fake searchFn/countFn/groupers instead of the real network calls.
  */
@@ -29,7 +29,6 @@ export const POST = ndjsonSkillRoute<RefreshInput>(async (input, vault, emit) =>
     fields: input.fields,
     searchFn: overrides.searchFn ?? nodeSearchFn(),
     countFn: overrides.countFn ?? nodeCountFn(),
-    groupFn: overrides.groupFn ?? nodeGroupFn(),
     topicGroupFn: overrides.topicGroupFn ?? nodeTopicGroupFn(),
     fieldGroupFn: overrides.fieldGroupFn ?? nodeTopicFieldGroupFn(),
     settings,
