@@ -1,9 +1,8 @@
 import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
-import type { SearchFn } from "../skills/feed"
 import type { CountFn } from "./counts"
-import type { TopicGroupFn } from "../papers/node-search"
+import type { TopicGroupFn, TopWorksFn } from "../papers/node-search"
 import { readUserModel } from "../usermodel/pages"
 import { effectiveTrackedFields } from "./fields"
 import { loadTrendingSettings } from "./settings"
@@ -25,7 +24,8 @@ import { loadBoard, isStale, anchorsMatchBoard, runTrendingBoard } from "./dashb
 export async function maybeAutoRefreshTrending(
   storage: VaultStorage,
   deps: {
-    searchFn: SearchFn
+    /** Required: every paper on the board (topic rows + breakout strip) is fetched through it — see RunTrendingBoardOpts.topWorksFn. */
+    topWorksFn: TopWorksFn
     topicGroupFn: TopicGroupFn
     fieldGroupFn: TopicGroupFn
     settings: LLMSettings
@@ -47,7 +47,7 @@ export async function maybeAutoRefreshTrending(
   if (!isStale(cached, tSettings.cadence, now()) && !scopeStale) return "fresh"
   await runTrendingBoard(storage, {
     fields,
-    searchFn: deps.searchFn,
+    topWorksFn: deps.topWorksFn,
     topicGroupFn: deps.topicGroupFn,
     fieldGroupFn: deps.fieldGroupFn,
     countFn: deps.countFn,

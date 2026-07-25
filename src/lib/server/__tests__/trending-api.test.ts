@@ -6,8 +6,7 @@ import { readNdjson } from "../ndjson"
 import { MockProvider } from "../../llm/mock-provider"
 import type { LLMResult } from "../../llm/types"
 import type { PaperRecord } from "../../papers/types"
-import type { SearchFn } from "../../skills/feed"
-import type { TopicGroupFn } from "../../papers/node-search"
+import type { TopicGroupFn, TopWorksFn } from "../../papers/node-search"
 import { loadBoard, DASHBOARD_CACHE_PATH, TRENDING_BOARD_VERSION, type TrendingBoard } from "../../trending/dashboard"
 import { completeWindows } from "../../trending/topics"
 import type { CountFn } from "../../trending/counts"
@@ -21,8 +20,13 @@ function structured(output: unknown): LLMResult {
   return { text: JSON.stringify(output), json: output, usage: { inputTokens: 10, outputTokens: 5 }, model: "m", provider: "anthropic", stopReason: "end_turn" }
 }
 const BRIEFS = { topics: [{ key: "T1", why: "x" }], crossDisciplineNote: "up" }
-const fakeSearchFn: SearchFn = async (_source, query) => [
-  paper({ title: `Fresh in ${query}`, date: "2026-07-10", year: 2026, citationCount: 3, venue: "ACL" }),
+/**
+ * A fake entity-scoped works retriever: answers whatever scope it is handed, so
+ * the route tests never touch the network for the board's topic or breakout
+ * papers. The record is dated inside whichever window is asked for.
+ */
+const fakeTopWorksFn: TopWorksFn = async (q) => [
+  paper({ title: `Fresh in ${q.topicId ?? q.fieldId ?? q.query ?? "?"}`, date: q.toDate, year: 2026, citationCount: 3, venue: "ACL" }),
 ]
 
 const NEURO = { id: "https://openalex.org/fields/28", label: "Neuroscience" }
@@ -60,7 +64,7 @@ describe("trending skill routes", () => {
   it("POST /api/skills/trending/refresh streams per-discipline progress, results in a versioned TrendingBoard, and writes the cache to the test vault", async () => {
     const provider = new MockProvider([structured(BRIEFS)])
     const countFn: CountFn = async () => 1
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, topicGroupFn, fieldGroupFn })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, topWorksFn: fakeTopWorksFn, countFn, topicGroupFn, fieldGroupFn })
 
     const fields = [
       { slug: "nlp", label: "NLP" },
@@ -98,7 +102,7 @@ describe("trending skill routes", () => {
     const fields = [{ slug: "nlp", label: "NLP" }]
     const callRefresh = async (): Promise<TrendingBoard> => {
       // Fresh provider per call — MockProvider drains its queued responses.
-      setSkillTestOverrides({ providerOverride: { strong: new MockProvider([structured(BRIEFS)]) }, searchFn: fakeSearchFn, countFn, topicGroupFn, fieldGroupFn })
+      setSkillTestOverrides({ providerOverride: { strong: new MockProvider([structured(BRIEFS)]) }, topWorksFn: fakeTopWorksFn, countFn, topicGroupFn, fieldGroupFn })
       const res = await refreshRoute.POST(
         new Request("http://x/api/skills/trending/refresh", { method: "POST", body: JSON.stringify({ fields }) }),
       )
@@ -125,7 +129,7 @@ describe("trending skill routes", () => {
   it("POST /api/skills/trending/refresh: a skill failure still terminates the stream with a usable (degraded) board, not a terminal error", async () => {
     const provider = new MockProvider([new Error("llm exploded")])
     const countFn: CountFn = async () => 1
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, topicGroupFn, fieldGroupFn })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, topWorksFn: fakeTopWorksFn, countFn, topicGroupFn, fieldGroupFn })
 
     const res = await refreshRoute.POST(
       new Request("http://x/api/skills/trending/refresh", {
@@ -156,7 +160,7 @@ describe("trending skill routes", () => {
       if (q.topicId !== undefined) throw new Error("no topic-scoped count other than the prior lookup should be issued")
       return 1
     }
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, topicGroupFn, fieldGroupFn })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, topWorksFn: fakeTopWorksFn, countFn, topicGroupFn, fieldGroupFn })
 
     const res = await refreshRoute.POST(
       new Request("http://x/api/skills/trending/refresh", {
@@ -171,7 +175,7 @@ describe("trending skill routes", () => {
   })
 
   it("POST /api/skills/trending/auto-refresh returns 'no-fields' on an empty vault (no tracked fields, no interests.md)", async () => {
-    setSkillTestOverrides({ searchFn: fakeSearchFn, topicGroupFn, fieldGroupFn })
+    setSkillTestOverrides({ topWorksFn: fakeTopWorksFn, topicGroupFn, fieldGroupFn })
     const res = await autoRefreshRoute.POST(
       new Request("http://x/api/skills/trending/auto-refresh", { method: "POST", body: JSON.stringify({}) }),
     )
@@ -191,7 +195,7 @@ describe("trending skill routes", () => {
     })
     const provider = new MockProvider([structured(BRIEFS)])
     const countFn: CountFn = async () => 1
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, topicGroupFn, fieldGroupFn })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, topWorksFn: fakeTopWorksFn, countFn, topicGroupFn, fieldGroupFn })
 
     const res = await autoRefreshRoute.POST(
       new Request("http://x/api/skills/trending/auto-refresh", { method: "POST", body: JSON.stringify({}) }),

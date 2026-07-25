@@ -2,7 +2,7 @@ import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { SearchFn } from "../skills/feed"
 import type { CountFn } from "../trending/counts"
-import type { TopicGroupFn } from "../papers/node-search"
+import type { TopicGroupFn, TopWorksFn } from "../papers/node-search"
 import { getServerVault } from "./vault"
 
 /**
@@ -132,6 +132,8 @@ export interface SkillTestOverrides {
   topicGroupFn?: TopicGroupFn
   /** Injects a fake `group_by=primary_topic.field.id` grouper (anchor-discipline derivation) so trending route tests stay off the network. */
   fieldGroupFn?: TopicGroupFn
+  /** Injects a fake entity-scoped works retriever (the trending board's topic + breakout papers) so trending route tests stay off the network. */
+  topWorksFn?: TopWorksFn
 }
 
 let skillTestOverrides: SkillTestOverrides = {}

@@ -1,6 +1,6 @@
 import { jsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
-import { nodeSearchFn, nodeCountFn, nodeTopicGroupFn, nodeTopicFieldGroupFn } from "@/lib/papers/node-search"
+import { nodeTopWorksFn, nodeCountFn, nodeTopicGroupFn, nodeTopicFieldGroupFn } from "@/lib/papers/node-search"
 
 import { maybeAutoRefreshTrending } from "@/lib/trending/auto-refresh"
 
@@ -9,8 +9,9 @@ import { maybeAutoRefreshTrending } from "@/lib/trending/auto-refresh"
  * `{result: "refreshed"|"fresh"|"no-fields"}`. The home page's v1 "cron":
  * fire-and-forget on app open, refreshing the cached trending board only
  * when it's stale or anchor-scope-mismatched. Builds its own deps server-side
- * (getServerVault() via jsonSkillRoute, loadSettings(vault), a Node searchFn,
- * a real OpenAlex work counter, and the two `group_by` groupers) exactly
+ * (getServerVault() via jsonSkillRoute, loadSettings(vault), an entity-scoped
+ * OpenAlex works retriever, a real OpenAlex work counter, and the two
+ * `group_by` groupers) exactly
  * like the refresh route, so the browser never needs its own
  * settings/searchFn/counter wiring.
  */
@@ -18,7 +19,7 @@ export const POST = jsonSkillRoute<Record<string, never>, "refreshed" | "fresh" 
   const settings = await loadSettings(vault)
   const overrides = getSkillTestOverrides()
   return maybeAutoRefreshTrending(vault, {
-    searchFn: overrides.searchFn ?? nodeSearchFn(),
+    topWorksFn: overrides.topWorksFn ?? nodeTopWorksFn(),
     countFn: overrides.countFn ?? nodeCountFn(),
     topicGroupFn: overrides.topicGroupFn ?? nodeTopicGroupFn(),
     fieldGroupFn: overrides.fieldGroupFn ?? nodeTopicFieldGroupFn(),

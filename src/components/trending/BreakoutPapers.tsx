@@ -9,13 +9,21 @@ export interface BreakoutPapersProps {
   breakouts: TrendingBoard["breakouts"]
 }
 
-/** A compact secondary strip: recent papers with unusual citation counts. Renders nothing when there are none — an empty strip is an honest, expected outcome (see dashboard.ts's `retrieveBreakouts` doc comment). */
+/**
+ * A compact secondary strip: the most-cited papers published across the user's
+ * anchor disciplines in the last quarter. The window is stated in the subtitle
+ * rather than left to the word "breakout" — these are NOT papers from the
+ * board's own two-week window, which is far too short for citations to accrue
+ * (see dashboard.ts's `retrieveBreakouts`). Renders nothing when there are
+ * none — an empty strip stays an honest outcome.
+ */
 export function BreakoutPapers({ breakouts }: BreakoutPapersProps) {
   if (breakouts.length === 0) return null
 
   return (
     <Card className="p-3">
-      <h2 className="mb-2 text-[13px] font-medium text-espresso tracking-body">Breakout papers</h2>
+      <h2 className="text-[13px] font-medium text-espresso tracking-body">Breakout papers</h2>
+      <p className="mb-2 text-[11px] text-muted-text tracking-body">Most-cited in your fields over the last 90 days</p>
       <ul className="flex flex-col gap-1.5">
         {breakouts.map((b) => (
           <li key={paperSlug(b.record)} className="flex items-center gap-2 text-[12px] tracking-body">

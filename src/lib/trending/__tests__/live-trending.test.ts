@@ -1,32 +1,29 @@
 import { describe, it, expect } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { DEFAULT_SETTINGS } from "../../llm/settings"
-import { searchArxiv } from "../../papers/arxiv"
-import { searchOpenAlex } from "../../papers/openalex"
-import { nodeCountFn, nodeTopicGroupFn, nodeTopicFieldGroupFn } from "../../papers/node-search"
+import { nodeCountFn, nodeTopicGroupFn, nodeTopicFieldGroupFn, nodeTopWorksFn } from "../../papers/node-search"
 import { readRecentEvents } from "../../events/log"
 import { runTrendingBoard, TRENDING_BOARD_VERSION } from "../dashboard"
 import { TopicBriefsSchema } from "../../skills/trending"
 import { MIN_RECENT_COUNT } from "../topics"
-import type { SearchFn } from "../../skills/feed"
 
 /**
  * LIVE end-to-end gate for the trending board (M10 → SP4): a real board
  * refresh seeded from one interest label ("Natural Language Processing")
- * against real OpenAlex `group_by` ranking, real arXiv/OpenAlex search, and a
- * real LLM (the persona-free `trendingSkill`, one strong-tier structured call
- * per anchor discipline). Mirrors the M9 live-gate idiom
- * (src/lib/spark/__tests__/live-spark.test.ts): env-gated, node searchFn
- * calling search-core directly, in-memory vault, generous timeout, an
- * always-on "skips cleanly" wiring test. Skipped unless all three env vars
- * are set:
+ * against real OpenAlex `group_by` ranking, real entity-scoped OpenAlex paper
+ * retrieval, and a real LLM (the persona-free `trendingSkill`, one strong-tier
+ * structured call per anchor discipline). Mirrors the M9 live-gate idiom
+ * (src/lib/spark/__tests__/live-spark.test.ts): env-gated, the PRODUCTION node
+ * dep factories calling search-core directly, in-memory vault, generous
+ * timeout, an always-on "skips cleanly" wiring test. Skipped unless all three
+ * env vars are set:
  *
  *   LIVE_LLM_BASE_URL=https://api.gmi-serving.com/v1 \
  *   LIVE_LLM_MODEL='anthropic/claude-sonnet-5' \
  *   LIVE_LLM_API_KEY=<key> \
  *   npx vitest run src/lib/trending/__tests__/live-trending.test.ts
  *
- * Makes real network calls (arXiv + OpenAlex + the LLM endpoint) and spends
+ * Makes real network calls (OpenAlex + the LLM endpoint) and spends
  * real money — never runs in CI. Far lighter than Deep Spark: retrieval plus
  * exactly one strong-tier call for the single field's survey.
  *
@@ -42,30 +39,6 @@ const MODEL = process.env.LIVE_LLM_MODEL
 
 const live = Boolean(BASE_URL && API_KEY && MODEL)
 const LIVE_TIMEOUT = 120_000
-
-/**
- * Node relay-free SearchFn: calls the M3 search-core adapters (searchArxiv,
- * searchOpenAlex) directly — no HTTP server, no /api/search proxy. A failed
- * query resolves to [] (per the SearchFn contract, and per
- * retrieveFieldCandidates's own per-source try/catch) rather than failing
- * the whole run. Mirrors live-spark.test.ts's nodeSearchFn; trending's own
- * retrieveFieldCandidates only ever calls with source "arxiv" or "openalex"
- * (src/lib/trending/retrieve.ts's SOURCES), so no s2/pubmed remap is needed.
- */
-function nodeSearchFn(): SearchFn {
-  const mailto = process.env.OPENALEX_MAILTO
-  return async (source, query, limit) => {
-    try {
-      if (source === "arxiv") {
-        return await searchArxiv({ query, limit })
-      }
-      return await searchOpenAlex({ query, limit }, { mailto })
-    } catch (err) {
-      console.warn(`[live-trending] search failed for source=${source} query="${query}":`, err)
-      return []
-    }
-  }
-}
 
 function liveSettings() {
   return {
@@ -91,7 +64,10 @@ describe.skipIf(!live)("LIVE trending board gate", () => {
 
       const board = await runTrendingBoard(storage, {
         fields: [FIELD],
-        searchFn: nodeSearchFn(),
+        // Real entity-scoped paper retrieval: every row's papers come back
+        // filtered by that row's primary_topic.id, and the breakout strip by
+        // the anchor's field id (src/lib/papers/openalex.ts).
+        topWorksFn: nodeTopWorksFn(),
         // The PRODUCTION node groupers/counters, so this run exercises exactly
         // the wiring the trending routes use: one group_by=primary_topic.id
         // request per anchor for the leaderboard, one
@@ -166,6 +142,29 @@ describe.skipIf(!live)("LIVE trending board gate", () => {
         ).toBe(true)
         console.log("[live-trending] sample topic brief:", board.topics.find((t) => t.why)?.why)
       }
+
+      // Every representative paper must really carry its row's topic. OpenAlex
+      // returns each work's topics (highest-scoring first, which is the
+      // primary topic the filter matched), so a row's label has to appear
+      // among its papers' fields — the whole point of filtering by topic id.
+      const rowWithPapers = board.topics.find((t) => t.papers.length > 0)
+      if (rowWithPapers) {
+        console.log(
+          `[live-trending] papers for "${rowWithPapers.label}":`,
+          JSON.stringify(rowWithPapers.papers.map((p) => p.record.title)),
+        )
+        for (const p of rowWithPapers.papers) {
+          expect(p.record.fields.map((f) => f.toLowerCase())).toContain(rowWithPapers.label.toLowerCase())
+        }
+      }
+
+      // The breakout strip: real papers, really cited, ranked. It may legitimately
+      // be empty, but it must never contain an uncited record.
+      console.log(
+        "[live-trending] breakouts:",
+        JSON.stringify(board.breakouts.map((b) => [b.record.title, b.citationCount])),
+      )
+      expect(board.breakouts.every((b) => b.citationCount > 0)).toBe(true)
 
       // runTrendingBoard doesn't return cost directly (TrendingBoard has no
       // costUsd field) — the accumulated cost is logged onto the

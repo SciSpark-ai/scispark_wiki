@@ -74,6 +74,27 @@ export interface OpenAlexQuery {
   sort?: "relevance" | "date"
 }
 
+/**
+ * A works request scoped by OpenAlex ENTITY ids rather than (or in addition to)
+ * free text — see `searchTopCitedWorks`. At least one of `query`/`topicId`/
+ * `fieldId` should be set; a bare date window would return the whole corpus.
+ */
+export interface TopCitedWorksQuery {
+  /** Optional free-text `search=` scope. Omitted → no `search` param at all. */
+  query?: string
+  /** `primary_topic.id:` filter — a topic key as returned by `groupWorksByTopic`. */
+  topicId?: string
+  /** `primary_topic.field.id:` filter — a field key as returned by `groupWorksByTopicField`. */
+  fieldId?: string
+  fromDate: string
+  toDate: string
+  limit?: number
+}
+
+/** Drops OpenAlex's journal-/issue-level records, which are venues rather than papers. */
+const NON_PARATEXT_FILTER = "is_paratext:false"
+const CITED_BY_COUNT_DESC = "cited_by_count:desc"
+
 export interface OpenAlexDeps {
   fetchFn?: typeof fetch
   mailto?: string
@@ -204,6 +225,8 @@ interface BuildUrlOpts {
   groupBy?: string
   /** Extra `filter=` clauses, joined ahead of the date clauses (e.g. `primary_topic.id:T10689`). */
   filters?: string[]
+  /** Literal OpenAlex `sort=` value (e.g. "cited_by_count:desc"). Takes precedence over `q.sort`; ignored for a group_by request. */
+  sort?: string
 }
 
 /**
@@ -216,9 +239,25 @@ function topicFilterClause(topicId: string): string {
   return `primary_topic.id:${idTail(topicId) ?? topicId}`
 }
 
+/**
+ * `primary_topic.field.id:<id>` clause for a FIELD key (the coarser grouping
+ * topics roll up into — what `group_by=primary_topic.field.id` returns, e.g.
+ * "https://openalex.org/fields/17"). Same id-tail normalization as
+ * `topicFilterClause`; verified live 2026-07-25 that OpenAlex accepts the
+ * bare "17", "fields/17" and the full URL identically.
+ */
+function fieldFilterClause(fieldId: string): string {
+  return `primary_topic.field.id:${idTail(fieldId) ?? fieldId}`
+}
+
 function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps, opts: BuildUrlOpts = {}): string {
   const url = new URL(OPENALEX_WORKS_URL)
-  url.searchParams.set("search", q.query)
+  // An EMPTY query means "no text scope at all" (an entity-filtered request
+  // such as `searchTopCitedWorks({topicId})`), not "search for nothing":
+  // sending `search=` would make OpenAlex reject or mis-rank the request.
+  if (q.query.trim() !== "") {
+    url.searchParams.set("search", q.query)
+  }
   url.searchParams.set("per_page", String(opts.groupBy ? GROUP_BY_PER_PAGE : clampLimit(q.limit)))
   if (deps.mailto) {
     url.searchParams.set("mailto", deps.mailto)
@@ -238,6 +277,8 @@ function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps, opts: BuildUrlOpts = {})
   }
   if (opts.groupBy) {
     url.searchParams.set("group_by", opts.groupBy)
+  } else if (opts.sort) {
+    url.searchParams.set("sort", opts.sort)
   } else if (q.sort === "date") {
     // Recency-intent search: newest-first. Relevance ("relevance"/omitted) is
     // OpenAlex's default for a `search` query, so we leave sort unset there.
@@ -299,6 +340,52 @@ export async function searchOpenAlex(q: OpenAlexQuery, deps: OpenAlexDeps = {}):
   const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexWorksResponse
   const results = body.results ?? []
   return results.map(mapWork)
+}
+
+/**
+ * An ENTITY-SCOPED works request: the papers OpenAlex itself classifies under a
+ * topic (or field), within a date window, most-cited first.
+ *
+ * `topicId`/`fieldId` are the point of this function. A topic's identity is its
+ * `primary_topic.id`, NOT its display name, and the two are not
+ * interchangeable: a free-text `search=Teaching and Learning Programming`
+ * returns "English Language Teaching and Learning Program", "Teaching styles of
+ * Australian tennis coaches" and "Rewiring our teaching practice" — none of
+ * which carry that topic — while `filter=primary_topic.id:T10533` over the same
+ * window returns papers about teaching programming (both verified live against
+ * api.openalex.org, 2026-07-25). Every other number the trending board shows
+ * comes from `primary_topic.id`, so its papers must too.
+ *
+ * `query` is an OPTIONAL additional free-text scope, kept for the callers whose
+ * scope really is a text query (the board's anchor disciplines, whose ids may
+ * be interest slugs rather than OpenAlex field ids). Omit it and the request
+ * carries no `search` at all — pure entity + date filtering.
+ *
+ * Always `is_paratext:false`: without it a citation-sorted recent window is
+ * topped by OpenAlex's journal-level records ("Image Processing On Line",
+ * "IJARCCE", "Sociological Science" — all `is_paratext: true`, all carrying
+ * hundreds of inherited citations), which are venues, not papers. Preprints,
+ * conference papers and dissertations are all kept (a `type:article` filter
+ * would drop half of a CS window's real output).
+ *
+ * Ordering is `cited_by_count:desc` — "the most-noticed work in this window".
+ * Relevance ranking needs a text query (the very thing this call exists to
+ * avoid) and date ranking inside an already date-bounded window is arbitrary
+ * churn. CAVEAT: over a two-week window most papers have 0 citations, so ties
+ * fall back to OpenAlex's own ordering; the guarantee this call makes is
+ * MEMBERSHIP (every result provably carries the topic), not that the top result
+ * is the most important paper of the fortnight.
+ */
+export async function searchTopCitedWorks(q: TopCitedWorksQuery, deps: OpenAlexDeps = {}): Promise<PaperRecord[]> {
+  const filters = [NON_PARATEXT_FILTER]
+  if (q.topicId) filters.push(topicFilterClause(q.topicId))
+  if (q.fieldId) filters.push(fieldFilterClause(q.fieldId))
+  const url = buildUrl({ query: q.query ?? "", fromDate: q.fromDate, toDate: q.toDate, limit: q.limit }, deps, {
+    filters,
+    sort: CITED_BY_COUNT_DESC,
+  })
+  const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexWorksResponse
+  return (body.results ?? []).map(mapWork)
 }
 
 /**

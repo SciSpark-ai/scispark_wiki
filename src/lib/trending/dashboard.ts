@@ -1,10 +1,9 @@
 import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
-import type { SearchFn } from "../skills/feed"
 import type { PaperRecord } from "../papers/types"
 import { paperKey } from "../papers/types"
-import type { TopicGroupFn } from "../papers/node-search"
+import type { TopicGroupFn, TopWorksFn } from "../papers/node-search"
 import { findPaperPage } from "../papers/page-state"
 import { paperSlug } from "../wiki/authoring"
 import { loadBundle, type Bundle } from "../vault/bundle"
@@ -14,17 +13,17 @@ import type { TrackedField } from "./fields"
 import type { Cadence } from "./settings"
 import { loadTrendingSettings, saveDerivedAnchors } from "./settings"
 import type { AnchorDiscipline } from "./anchors"
-import { deriveAnchorDisciplines, MAX_ANCHORS } from "./anchors"
+import { deriveAnchorDisciplines, openAlexFieldId, MAX_ANCHORS } from "./anchors"
 import {
   completeWindows,
   rankHeatingTopics,
   selectTopicCandidates,
+  type DateWindow,
   type CorpusTotals,
   type DisciplineBuckets,
   type RankedTopic,
 } from "./topics"
 import { topicLens } from "./lens"
-import { retrieveFieldCandidates } from "./retrieve"
 import type { CountFn } from "./counts"
 import { trendingSkill } from "../skills/trending"
 
@@ -120,11 +119,28 @@ const CADENCE_MS: Record<Cadence, number> = { daily: DAY_MS, weekly: 7 * DAY_MS 
 const MAX_TOPIC_PAPERS = 3
 /** Breakout papers kept for the secondary strip. */
 const MAX_BREAKOUTS = 5
+/**
+ * How far back the breakout strip looks, ending where the leaderboard's recent
+ * window ends. Deliberately MUCH wider than that two-week window: citations
+ * take months to accrue, so "most-cited papers of the last fortnight" is a list
+ * of ones and zeros (measured live 2026-07-25 over Computer Science: 79, 5, 4,
+ * 3, 3, 2, 1, 1 citations), whereas the same query over a quarter returns
+ * papers with 1420 / 79 / 75 / 40 / 35. The strip's label says the window out
+ * loud rather than implying these are papers from the board's own window.
+ */
+const BREAKOUT_WINDOW_DAYS = 90
 
 export interface RunTrendingBoardOpts {
   /** The user's narrow interest labels (the LENS, and the fallback scope when anchor derivation fails). */
   fields: TrackedField[]
-  searchFn: SearchFn
+  /**
+   * OpenAlex works, entity-scoped and citation-ranked (`searchTopCitedWorks`).
+   * Every paper the board shows comes from here: a row's representative papers
+   * are filtered by that row's `primary_topic.id`, and the breakout strip by
+   * the anchor discipline — so a paper can never be shown under a topic it
+   * doesn't carry (which is exactly what a name-based search did).
+   */
+  topWorksFn: TopWorksFn
   /** OpenAlex `group_by=primary_topic.id` — the leaderboard's per-topic counts. */
   topicGroupFn: TopicGroupFn
   /** OpenAlex `group_by=primary_topic.field.id` — anchor-discipline derivation. */
@@ -155,7 +171,8 @@ export interface RunTrendingBoardOpts {
  * BOTH windows (`measureCorpusTotals`, two counts per anchor — the share
  * denominators) → a prior-count lookup per candidate (`lookupPriorCounts`) →
  * `rankHeatingTopics` → one
- * representative-paper search per kept topic → deterministic breakouts
+ * topic-id-filtered representative-paper request per kept topic → one
+ * discipline-scoped, citation-ranked breakout request per anchor
  * → one `runSkill(trendingSkill)` per anchor discipline → the deterministic
  * lens → assemble + persist.
  *
@@ -246,12 +263,12 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
   // is credit-priced and rate-limited — bounded, predictable load beats speed.
   const enriched: Array<{ topic: RankedTopic; papers: PaperRecord[] }> = []
   for (const topic of ranked) {
-    const papers = await searchTopicPapers(opts, topic.label, windows.recent.fromDate)
+    const papers = await fetchTopicPapers(opts, topic, windows.recent)
     enriched.push({ topic, papers })
   }
 
-  // --- Deterministic breakouts (recent, citation-ranked, across the anchors) --
-  const breakoutRecords = await retrieveBreakouts(opts, anchors, at)
+  // --- Deterministic breakouts (citation-ranked, across the anchors) ----------
+  const breakoutRecords = await retrieveBreakouts(opts, anchors, windows.recent)
 
   // --- Qualitative layer: one strong-tier call per anchor discipline ----------
   const whyByKey = new Map<string, string>()
@@ -485,43 +502,96 @@ function sumRecentWorks(perDiscipline: DisciplineBuckets[], recentTotals: Map<st
   return total
 }
 
-/** `[]` on any failure — the expanded row shows text only. */
-async function searchTopicPapers(
+/**
+ * A row's representative papers: works OpenAlex classifies under THAT TOPIC ID,
+ * published inside the same recent window the row's counts are measured over,
+ * most-cited first.
+ *
+ * The topic id — never the label — is the scope. A topic's label is prose that
+ * happens to name it; searching for the text returned papers with no connection
+ * to the topic whenever the label used common words (live, 2026-07-25: "Teaching
+ * and Learning Programming" produced "Teaching styles of Australian tennis
+ * coaches" and "Rewiring our teaching practice"). Every other figure on the row
+ * — recent count, prior count, growth, both bars — is measured by
+ * `primary_topic.id`, so the papers must be as well, otherwise the row's
+ * evidence contradicts its own numbers. The brief-writing skill sees these
+ * titles too, so an off-topic set poisons the qualitative layer as well.
+ *
+ * `[]` on any failure — the expanded row shows text only.
+ */
+async function fetchTopicPapers(
   opts: RunTrendingBoardOpts,
-  label: string,
-  fromDate: string,
+  topic: RankedTopic,
+  window: DateWindow,
 ): Promise<PaperRecord[]> {
   try {
-    return (await opts.searchFn("openalex", label, MAX_TOPIC_PAPERS, { fromDate })).slice(0, MAX_TOPIC_PAPERS)
+    const papers = await opts.topWorksFn({
+      topicId: topic.key,
+      fromDate: window.fromDate,
+      toDate: window.toDate,
+      limit: MAX_TOPIC_PAPERS,
+    })
+    return papers.slice(0, MAX_TOPIC_PAPERS)
   } catch (err) {
-    console.warn(`[trending] representative-paper search failed for "${label}":`, err)
+    console.warn(`[trending] representative-paper fetch failed for "${topic.label}" (${topic.key}):`, err)
     return []
   }
 }
 
 /**
- * Breakout papers: RECENT papers with unusual citation counts — one retrieval
- * pass per anchor discipline, merged and deduped, ranked by citations.
+ * Breakout papers: the most-cited papers published across the anchor
+ * disciplines in the last BREAKOUT_WINDOW_DAYS — one request per anchor,
+ * merged, deduped and re-ranked.
  *
- * `candidates.movers` is the whole undated sample sorted by citations, so
- * ranking it directly would surface the same field classics on every refresh
- * forever ("recent papers with unusual citation velocity" would be a false
- * label). Movers are therefore intersected with `candidates.recent` — the same
- * retrieval, no extra requests — and an empty strip is an acceptable, honest
- * outcome (the component renders nothing).
+ * REPLACES an intersection that could never produce anything (the live board
+ * reported `breakouts: 0` on every single run). It took `retrieveFieldCandidates`'
+ * citation-sorted `movers` and kept only records also present in its
+ * date-filtered `recent` list, but the two lists come from disjoint sources by
+ * construction: the OpenAlex half is a relevance-ranked, undated search whose
+ * results are field classics (searching "Computer Science" live on 2026-07-25
+ * returned 25 works dated 1975–2020, zero inside a two-week window), while the
+ * arXiv half is genuinely recent but the arXiv API returns no citation counts
+ * at all (`citationCount: undefined` in the adapter), so every arXiv record
+ * failed the `citationCount > 0` test. Recent ∧ cited was therefore empty for
+ * reasons that had nothing to do with the arXiv timeouts seen in the live runs.
+ *
+ * Scoping: the anchor's label as the text scope, PLUS `primary_topic.field.id`
+ * when the anchor carries a real OpenAlex field key (a fallback anchor's id is
+ * an interest slug, which is no filter value at all). Both, not either —
+ * measured live 2026-07-25 over a 90-day window, dropping the text scope let
+ * re-dated classics and preprint-farm records top the strip ("Givenness,
+ * Contrastiveness, Definiteness…", a 1976 linguistics paper carrying 1843
+ * citations, headlined Computer Science; Neuroscience returned "Shakti: A
+ * Trauma-Informed Trilingual Women's Safety AI"), while keeping it returned
+ * recognisable recent work in both (connectome control circuits, precision fMRI
+ * / M2SNet, HuntGPT). It also matches how every other figure on the board is
+ * scoped: the discipline's corpus counts are `search`-scoped too.
+ * `is_paratext:false` inside `searchTopCitedWorks` keeps journal-level records
+ * off the strip.
+ *
+ * A record with no positive citation count is still dropped — "breakout" has to
+ * mean something — and an empty strip remains an honest outcome (the component
+ * renders nothing) rather than a padded one.
  */
 async function retrieveBreakouts(
   opts: RunTrendingBoardOpts,
   anchors: AnchorDiscipline[],
-  at: Date,
+  recentWindow: DateWindow,
 ): Promise<PaperRecord[]> {
+  const fromDate = shiftIsoDate(recentWindow.toDate, -BREAKOUT_WINDOW_DAYS)
   const merged = new Map<string, PaperRecord>()
+
   for (const anchor of anchors) {
+    const fieldId = openAlexFieldId(anchor)
     try {
-      const candidates = await retrieveFieldCandidates(opts.searchFn, { slug: anchor.id, label: anchor.label }, { now: at })
-      const recentKeys = new Set(candidates.recent.map((r) => paperKey(r)))
-      for (const record of candidates.movers) {
-        if (!recentKeys.has(paperKey(record))) continue
+      const records = await opts.topWorksFn({
+        query: anchor.label,
+        fieldId,
+        fromDate,
+        toDate: recentWindow.toDate,
+        limit: MAX_BREAKOUTS,
+      })
+      for (const record of records) {
         if (typeof record.citationCount !== "number" || record.citationCount <= 0) continue
         const key = paperKey(record)
         const existing = merged.get(key)
@@ -531,9 +601,15 @@ async function retrieveBreakouts(
       console.warn(`[trending] breakout retrieval failed for "${anchor.label}":`, err)
     }
   }
+
   return [...merged.values()]
     .sort((a, b) => (b.citationCount ?? 0) - (a.citationCount ?? 0))
     .slice(0, MAX_BREAKOUTS)
+}
+
+/** `date` (YYYY-MM-DD) shifted by whole days, back as YYYY-MM-DD. */
+function shiftIsoDate(date: string, days: number): string {
+  return new Date(new Date(`${date}T00:00:00.000Z`).getTime() + days * DAY_MS).toISOString().slice(0, 10)
 }
 
 /** null on any failure (including a malformed record that can't be slugified) — the row simply carries no wiki link. */

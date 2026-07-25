@@ -1,5 +1,14 @@
 import { searchArxiv } from "./arxiv"
-import { searchOpenAlex, countOpenAlexWorks, groupWorksByTopic, groupWorksByTopicField, type GroupEntry } from "./openalex"
+import {
+  searchOpenAlex,
+  searchTopCitedWorks,
+  countOpenAlexWorks,
+  groupWorksByTopic,
+  groupWorksByTopicField,
+  type GroupEntry,
+  type TopCitedWorksQuery,
+} from "./openalex"
+import type { PaperRecord } from "./types"
 import type { SearchFn } from "../skills/feed"
 import type { CountFn } from "../trending/counts"
 
@@ -56,6 +65,28 @@ export function nodeCountFn(): CountFn {
   const mailto = process.env.OPENALEX_MAILTO
   const apiKey = process.env.OPENALEX_API_KEY
   return (q) => countOpenAlexWorks(q, { mailto, apiKey })
+}
+
+/**
+ * Entity-scoped, citation-ranked works retrieval — see
+ * `searchTopCitedWorks`. Trending's ONE paper-retrieval primitive: the
+ * leaderboard's representative papers (scoped by `topicId`) and the breakout
+ * strip (scoped by an anchor's `fieldId`/label) are the same request with
+ * different scopes, so a paper on the board provably belongs to the row it
+ * sits under.
+ */
+export type TopWorksFn = (q: TopCitedWorksQuery) => Promise<PaperRecord[]>
+
+/**
+ * Node TopWorksFn: calls searchTopCitedWorks directly, threading
+ * OPENALEX_MAILTO/OPENALEX_API_KEY exactly like nodeCountFn. A failing
+ * request throws; call sites decide how to degrade (a failed paper fetch
+ * yields `papers: []` for that row and never fails the refresh).
+ */
+export function nodeTopWorksFn(): TopWorksFn {
+  const mailto = process.env.OPENALEX_MAILTO
+  const apiKey = process.env.OPENALEX_API_KEY
+  return (q) => searchTopCitedWorks(q, { mailto, apiKey })
 }
 
 /**

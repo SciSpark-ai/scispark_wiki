@@ -3,9 +3,8 @@ import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { MockProvider } from "../../llm/mock-provider"
 import type { LLMResult } from "../../llm/types"
 import type { PaperRecord } from "../../papers/types"
-import type { SearchFn } from "../../skills/feed"
 import type { GroupEntry } from "../../papers/openalex"
-import type { TopicGroupFn } from "../../papers/node-search"
+import type { TopicGroupFn, TopWorksFn } from "../../papers/node-search"
 import { readRecentEvents } from "../../events/log"
 import {
   runTrendingBoard,
@@ -107,9 +106,78 @@ const BRIEFS_ONE = {
   crossDisciplineNote: "both ride the same representation-learning wave",
 }
 
-const searchFn: SearchFn = async (_source, query) => [
-  paper({ title: `Rep paper for ${query}`, date: "2026-07-10", year: 2026, citationCount: 9, venue: "ACL" }),
+/**
+ * One work in the fake OpenAlex corpus, carrying the entity ids OpenAlex would
+ * classify it under. `topicId`/`fieldId` are the paper's IDENTITY; its title is
+ * just prose, exactly as in the real API.
+ */
+interface FakeWork {
+  record: PaperRecord
+  topicId?: string
+  fieldId?: string
+}
+
+/**
+ * A fake `searchTopCitedWorks`: filters the corpus by the requested entity ids
+ * and date window, then ranks most-cited first.
+ *
+ * `query` is honoured with LOOSE token matching (any shared word), modelling
+ * OpenAlex free-text search — which is precisely how an off-topic paper reaches
+ * a row whose label happens to use common words. A stub that ignored `query`
+ * would silently pass a regression back to name-based fetching.
+ */
+function topWorksFnFor(corpus: FakeWork[]): TopWorksFn {
+  return async (q) =>
+    corpus
+      .filter((w) => (q.topicId === undefined || w.topicId === q.topicId))
+      .filter((w) => (q.fieldId === undefined || w.fieldId === q.fieldId))
+      .filter((w) => (q.query === undefined || sharesToken(w.record.title ?? "", q.query)))
+      .filter((w) => inWindow(w.record.date, q.fromDate, q.toDate))
+      .map((w) => w.record)
+      .sort((a, b) => (b.citationCount ?? 0) - (a.citationCount ?? 0))
+      .slice(0, q.limit ?? 25)
+}
+
+function sharesToken(title: string, query: string): boolean {
+  const words = new Set(title.toLowerCase().split(/\W+/).filter(Boolean))
+  return query
+    .toLowerCase()
+    .split(/\W+/)
+    .filter(Boolean)
+    .some((w) => words.has(w))
+}
+
+function inWindow(date: string | undefined, fromDate: string, toDate: string): boolean {
+  return date !== undefined && date >= fromDate && date <= toDate
+}
+
+/** `date` (YYYY-MM-DD) shifted back by whole days. */
+function daysBefore(date: string, days: number): string {
+  return new Date(new Date(`${date}T00:00:00.000Z`).getTime() - days * 86_400_000).toISOString().slice(0, 10)
+}
+
+/**
+ * The default corpus: one paper per leaderboard topic inside the recent window,
+ * plus a heavier-cited Neuroscience paper carrying NO leaderboard topic — it is
+ * reachable only through the field-scoped breakout request, so it proves the
+ * two retrieval scopes are wired separately.
+ */
+const REP_T1 = paper({ title: "Attention decoding at scale", date: WINDOWS.recent.fromDate, year: 2026, citationCount: 4, venue: "ACL" })
+const REP_T2 = paper({ title: "Speech processing survey", date: WINDOWS.recent.fromDate, year: 2026, citationCount: 2, venue: "Interspeech" })
+// Breakout-strip papers: inside the 90-day window, in the anchor's field, and
+// matching its label as text (the strip is scoped by BOTH). Neither carries a
+// leaderboard topic, so they are reachable only through the breakout request.
+const BREAKOUT = paper({ title: "Cortical mapping in neuroscience", date: daysBefore(WINDOWS.recent.toDate, 40), year: 2026, citationCount: 9 })
+const BREAKOUT_2 = paper({ title: "Neuroscience methods roundup", date: daysBefore(WINDOWS.recent.toDate, 10), year: 2026, citationCount: 5 })
+
+const CORPUS: FakeWork[] = [
+  { topicId: "T1", fieldId: NEURO.id, record: REP_T1 },
+  { topicId: "T2", fieldId: NEURO.id, record: REP_T2 },
+  { topicId: "T99", fieldId: NEURO.id, record: BREAKOUT },
+  { topicId: "T98", fieldId: NEURO.id, record: BREAKOUT_2 },
 ]
+
+const topWorksFn = topWorksFnFor(CORPUS)
 
 /** Deterministic per-week counts (and prior lookups) so assertions stay exact. */
 const countFn: CountFn = countFnFor(ONE_DISCIPLINE)
@@ -117,7 +185,7 @@ const countFn: CountFn = countFnFor(ONE_DISCIPLINE)
 function baseOpts(over: Partial<Parameters<typeof runTrendingBoard>[1]> = {}) {
   return {
     fields: [{ slug: "auditory-attention", label: "auditory attention decoding" }],
-    searchFn,
+    topWorksFn,
     topicGroupFn: topicGroupFnFor(ONE_DISCIPLINE),
     fieldGroupFn,
     countFn,
@@ -154,7 +222,7 @@ describe("runTrendingBoard", () => {
     expect(board.topics[0].recentCount).toBe(40)
     expect(board.topics[0].priorCount).toBe(10) // the looked-up prior, carried onto the board for the bars
     expect(board.overview.totalRecent).toBe(4) // real count call, not the bucket sum
-    expect(board.topics[0].papers.map((p) => p.record.title)).toEqual(["Rep paper for Auditory Attention Decoding"])
+    expect(board.topics[0].papers.map((p) => p.record.title)).toEqual(["Attention decoding at scale"])
     expect(board.topics[0].papers[0].wikiPageId).toBeNull()
     expect(board.topics[0].why).toBe("because attention decoding got cheap")
     expect(board.topics[1].why).toBe("because speech models got good")
@@ -364,16 +432,16 @@ describe("runTrendingBoard", () => {
     expect(provider.calls).toHaveLength(1)
   })
 
-  it("a representative-paper search failure yields papers: [] with the row still present", async () => {
+  it("a representative-paper fetch failure yields papers: [] with the row still present", async () => {
     const storage = new MemoryVaultStorage()
     await seedAnchors(storage, [NEURO])
     const provider = new MockProvider([structured(BRIEFS_ONE)])
-    const failingSearch: SearchFn = async () => {
-      throw new Error("search exploded")
+    const failingFetch: TopWorksFn = async () => {
+      throw new Error("openalex exploded")
     }
     const board = await runTrendingBoard(
       storage,
-      baseOpts({ searchFn: failingSearch, providerOverride: { strong: provider } }),
+      baseOpts({ topWorksFn: failingFetch, providerOverride: { strong: provider } }),
     )
     expect(board.topics.map((t) => t.key)).toEqual(["T1", "T2"])
     expect(board.topics[0].papers).toEqual([])
@@ -643,21 +711,129 @@ describe("runTrendingBoard", () => {
     expect(board.topics.map((t) => t.key)).toEqual(["T2"])
   })
 
-  it("breakouts are RECENT papers only — an all-old sample yields an empty strip", async () => {
+  it("breakouts are scoped to the anchor (field id + label), over their own wider window, ranked by citations", async () => {
     const storage = new MemoryVaultStorage()
     await seedAnchors(storage, [NEURO])
-    // A heavily-cited field classic from years ago: `movers` ranks it first,
-    // but it is not recent, so it must not headline "what's breaking out now".
-    const oldSearchFn: SearchFn = async (_source, query) => [
-      paper({ title: `Classic on ${query}`, date: "2019-01-01", year: 2019, citationCount: 9000 }),
+    const requests: Array<Parameters<TopWorksFn>[0]> = []
+    const recording: TopWorksFn = async (q) => {
+      requests.push(q)
+      return topWorksFnFor(CORPUS)(q)
+    }
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    const board = await runTrendingBoard(
+      storage,
+      baseOpts({ topWorksFn: recording, providerOverride: { strong: provider } }),
+    )
+
+    // Papers carrying no leaderboard topic at all, citation-ranked.
+    expect(board.breakouts.map((b) => b.record.title)).toEqual([
+      "Cortical mapping in neuroscience",
+      "Neuroscience methods roundup",
+    ])
+    expect(board.breakouts[0].citationCount).toBe(9)
+
+    // Scope + window of the request itself: the anchor's OpenAlex field id AND
+    // its label, over a window that starts well before the leaderboard's.
+    const breakoutRequest = requests.find((q) => q.fieldId !== undefined)!
+    expect(breakoutRequest.fieldId).toBe(NEURO.id)
+    expect(breakoutRequest.query).toBe("Neuroscience")
+    expect(breakoutRequest.topicId).toBeUndefined()
+    expect(breakoutRequest.toDate).toBe(WINDOWS.recent.toDate)
+    expect(breakoutRequest.fromDate < WINDOWS.recent.fromDate).toBe(true)
+  })
+
+  it("a fallback anchor (an interest slug, not an OpenAlex field key) is scoped by label alone — never by a bogus filter", async () => {
+    const storage = new MemoryVaultStorage()
+    // No stored anchors and a derivation that yields nothing → the board falls
+    // back to the interest label itself, whose "id" is a slug.
+    const requests: Array<Parameters<TopWorksFn>[0]> = []
+    const recording: TopWorksFn = async (q) => {
+      requests.push(q)
+      return []
+    }
+    const provider = new MockProvider([structured({ topics: [], crossDisciplineNote: null })])
+    await runTrendingBoard(
+      storage,
+      baseOpts({
+        fieldGroupFn: async () => [],
+        topicGroupFn: topicGroupFnFor({ "auditory attention decoding": ONE_DISCIPLINE.Neuroscience }),
+        countFn: countFnFor({ "auditory attention decoding": ONE_DISCIPLINE.Neuroscience }),
+        topWorksFn: recording,
+        providerOverride: { strong: provider },
+      }),
+    )
+    const breakoutRequest = requests.find((q) => q.topicId === undefined)!
+    expect(breakoutRequest.query).toBe("auditory attention decoding")
+    expect(breakoutRequest.fieldId).toBeUndefined()
+  })
+
+  it("breakouts exclude other fields, uncited papers, and anything older than the breakout window", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO])
+    // Each of these matches the anchor's text scope and fails exactly one of
+    // the strip's other conditions.
+    const corpus: FakeWork[] = [
+      { topicId: "T1", fieldId: "https://openalex.org/fields/17", record: paper({ title: "Neuroscience, but filed under another field", date: WINDOWS.recent.fromDate, citationCount: 500 }) },
+      { topicId: "T1", fieldId: NEURO.id, record: paper({ title: "Recent neuroscience, uncited", date: WINDOWS.recent.fromDate, citationCount: 0 }) },
+      { topicId: "T1", fieldId: NEURO.id, record: paper({ title: "Cited neuroscience, but ancient", date: "2019-01-01", citationCount: 9000 }) },
     ]
     const provider = new MockProvider([structured(BRIEFS_ONE)])
     const board = await runTrendingBoard(
       storage,
-      baseOpts({ searchFn: oldSearchFn, providerOverride: { strong: provider } }),
+      baseOpts({ topWorksFn: topWorksFnFor(corpus), providerOverride: { strong: provider } }),
     )
     expect(board.breakouts).toEqual([])
     expect(board.topics.length).toBeGreaterThan(0) // the rest of the board is unaffected
+  })
+
+  it("REGRESSION: representative papers come from the topic's ID, never a search for its NAME", async () => {
+    // The live failure (2026-07-25): the row "Teaching and Learning Programming"
+    // carried "English Language Teaching and Learning Program", "Teaching styles
+    // of Australian tennis coaches" and "Rewiring our teaching practice" — three
+    // papers whose only connection to the topic is the words in its label. The
+    // decoys below are more-cited than the real paper, so a name-based fetch
+    // (or a fetch that merely added the label as a text scope) would rank them
+    // first and this test would fail on the titles alone.
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO])
+    const spec: GroupSpec = {
+      Neuroscience: {
+        recent: [{ key: "T10533", label: "Teaching and Learning Programming", count: 40 }],
+        prior: { T10533: 10 },
+      },
+    }
+    const corpus: FakeWork[] = [
+      { topicId: "T10533", fieldId: NEURO.id, record: paper({ title: "What Bugs Do Prolog Students Write?", date: WINDOWS.recent.fromDate, citationCount: 1 }) },
+      { topicId: "T10008", fieldId: NEURO.id, record: paper({ title: "English Language Teaching and Learning Program", date: WINDOWS.recent.fromDate, citationCount: 80 }) },
+      { topicId: "T12671", fieldId: NEURO.id, record: paper({ title: "Teaching styles of Australian tennis coaches", date: WINDOWS.recent.fromDate, citationCount: 60 }) },
+      { topicId: "T12671", fieldId: NEURO.id, record: paper({ title: "Rewiring our teaching practice", date: WINDOWS.recent.fromDate, citationCount: 50 }) },
+    ]
+    const requests: Array<Parameters<TopWorksFn>[0]> = []
+    const recording: TopWorksFn = async (q) => {
+      requests.push(q)
+      return topWorksFnFor(corpus)(q)
+    }
+    const provider = new MockProvider([structured({ topics: [], crossDisciplineNote: null })])
+    const board = await runTrendingBoard(
+      storage,
+      baseOpts({
+        topicGroupFn: topicGroupFnFor(spec),
+        countFn: countFnFor(spec),
+        topWorksFn: recording,
+        providerOverride: { strong: provider },
+      }),
+    )
+
+    const row = board.topics.find((t) => t.key === "T10533")!
+    expect(row.papers.map((p) => p.record.title)).toEqual(["What Bugs Do Prolog Students Write?"])
+
+    // The request itself, not just its result: the topic id is the scope and
+    // the label never becomes a text query.
+    const topicRequests = requests.filter((q) => q.topicId !== undefined)
+    expect(topicRequests).toHaveLength(1)
+    expect(topicRequests[0].topicId).toBe("T10533")
+    expect(topicRequests[0].query).toBeUndefined()
+    expect(requests.every((q) => q.query !== "Teaching and Learning Programming")).toBe(true)
   })
 
   it("marks topics the user's interest labels touch (the lens) without any per-row count", async () => {
@@ -675,11 +851,11 @@ describe("runTrendingBoard", () => {
     const storage = new MemoryVaultStorage()
     await seedAnchors(storage, [NEURO])
     await storage.write(
-      "wiki/papers/rep-paper-for-auditory-attention-decoding.md",
+      "wiki/papers/attention-decoding-at-scale.md",
       [
         "---",
         "type: paper",
-        "title: Rep paper for Auditory Attention Decoding",
+        "title: Attention decoding at scale",
         "created: 2026-07-01",
         "updated: 2026-07-01",
         "tags: []",
@@ -694,7 +870,7 @@ describe("runTrendingBoard", () => {
     const provider = new MockProvider([structured(BRIEFS_ONE)])
     const board = await runTrendingBoard(storage, baseOpts({ providerOverride: { strong: provider } }))
     const topic = board.topics.find((t) => t.key === "T1")!
-    expect(topic.papers[0].wikiPageId).toBe("wiki/papers/rep-paper-for-auditory-attention-decoding")
+    expect(topic.papers[0].wikiPageId).toBe("wiki/papers/attention-decoding-at-scale")
     expect(board.breakouts[0].wikiPageId).toBeNull() // different title → no page, no decoration
   })
 

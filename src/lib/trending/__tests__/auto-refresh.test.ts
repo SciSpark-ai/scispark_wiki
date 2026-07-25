@@ -2,8 +2,7 @@ import { describe, it, expect } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { MockProvider } from "../../llm/mock-provider"
 import type { LLMResult } from "../../llm/types"
-import type { SearchFn } from "../../skills/feed"
-import type { TopicGroupFn } from "../../papers/node-search"
+import type { TopicGroupFn, TopWorksFn } from "../../papers/node-search"
 import { saveTrendingSettings } from "../settings"
 import { maybeAutoRefreshTrending } from "../auto-refresh"
 import { loadBoard, TRENDING_BOARD_VERSION, DASHBOARD_CACHE_PATH } from "../dashboard"
@@ -17,7 +16,8 @@ function structured(o: unknown): LLMResult {
 }
 const BRIEFS = { topics: [{ key: "T1", why: "x" }], crossDisciplineNote: "up" }
 const SETTINGS = { keys: { openai: "sk" }, tierModels: { fast: { provider: "openai", model: "m" }, strong: { provider: "openai", model: "m" } }, dailyBudgetUsd: 100, baseUrls: { openai: "https://x/v1" } } as const
-const searchFn: SearchFn = async () => []
+/** No papers: this suite is about staleness/scope decisions, not retrieval. */
+const topWorksFn: TopWorksFn = async () => []
 
 const NEURO = { id: "https://openalex.org/fields/28", label: "Neuroscience" }
 const OLD_ANCHOR = { id: "https://openalex.org/fields/17", label: "Computer Science" }
@@ -29,7 +29,7 @@ const topicGroupFn: TopicGroupFn = async ({ fromDate }) =>
 const countFn: CountFn = async ({ topicId, fromDate }) =>
   topicId === "T1" && fromDate === WINDOWS.prior.fromDate ? 10 : 4
 
-const deps = { searchFn, topicGroupFn, fieldGroupFn, countFn, settings: SETTINGS, now: NOW }
+const deps = { topWorksFn, topicGroupFn, fieldGroupFn, countFn, settings: SETTINGS, now: NOW }
 
 /** A cached board of the CURRENT structure version, generated at `generatedAt`. */
 async function writeBoard(

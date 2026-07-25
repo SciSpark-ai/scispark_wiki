@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest"
-import { countOpenAlexWorks, searchOpenAlex } from "../openalex"
+import { countOpenAlexWorks, searchOpenAlex, searchTopCitedWorks } from "../openalex"
 import { PaperSourceError } from "../types"
 import fixture from "./fixtures/openalex-works.json"
 
@@ -568,4 +568,73 @@ describe("api_key param", () => {
     expect(new URL(calledUrl).searchParams.get("api_key")).toBe("secret-key")
   })
 
+})
+
+describe("searchTopCitedWorks (entity-scoped, citation-ranked works)", () => {
+  const capture = (body: unknown = { results: [] }) => {
+    const seen = { url: "" }
+    const fetchFn = (async (url: string) => {
+      seen.url = String(url)
+      return new Response(JSON.stringify(body), { status: 200 })
+    }) as unknown as typeof fetch
+    return { seen, fetchFn }
+  }
+
+  it("scopes by primary_topic.id and the date window, ranks by citations, and sends NO search term", async () => {
+    const { seen, fetchFn } = capture()
+    await searchTopCitedWorks({ topicId: "T10533", fromDate: "2026-07-06", toDate: "2026-07-19", limit: 3 }, { fetchFn })
+
+    const url = new URL(seen.url)
+    // A topic's identity is its id. Sending the label as `search` is the bug
+    // this call exists to remove — a topic named with common words ("Teaching
+    // and Learning Programming") matches papers with no connection to it.
+    expect(url.searchParams.has("search")).toBe(false)
+    expect(url.searchParams.get("filter")).toBe(
+      "is_paratext:false,primary_topic.id:T10533,from_publication_date:2026-07-06,to_publication_date:2026-07-19",
+    )
+    expect(url.searchParams.get("sort")).toBe("cited_by_count:desc")
+    expect(url.searchParams.get("per_page")).toBe("3")
+  })
+
+  it("scopes by primary_topic.field.id, normalizing the full entity URL group_by returns", async () => {
+    const { seen, fetchFn } = capture()
+    await searchTopCitedWorks(
+      { fieldId: "https://openalex.org/fields/17", fromDate: "2026-04-20", toDate: "2026-07-19" },
+      { fetchFn },
+    )
+    expect(new URL(seen.url).searchParams.get("filter")).toContain("primary_topic.field.id:17")
+  })
+
+  it("keeps a free-text scope when one is given (the fallback anchor path)", async () => {
+    const { seen, fetchFn } = capture()
+    await searchTopCitedWorks({ query: "auditory attention", fromDate: "a", toDate: "b" }, { fetchFn })
+    expect(new URL(seen.url).searchParams.get("search")).toBe("auditory attention")
+  })
+
+  it("threads mailto/api_key like every other OpenAlex call", async () => {
+    const { seen, fetchFn } = capture()
+    await searchTopCitedWorks({ topicId: "T1", fromDate: "a", toDate: "b" }, { fetchFn, mailto: "x@y.z", apiKey: "k" })
+    const url = new URL(seen.url)
+    expect(url.searchParams.get("mailto")).toBe("x@y.z")
+    expect(url.searchParams.get("api_key")).toBe("k")
+  })
+
+  it("maps results through the same PaperRecord mapping as searchOpenAlex", async () => {
+    const { fetchFn } = capture({ results: [fixture.results[0]] })
+    const records = await searchTopCitedWorks({ topicId: "T1", fromDate: "a", toDate: "b" }, { fetchFn })
+    expect(records).toHaveLength(1)
+    expect(records[0].source).toBe("openalex")
+    expect(records[0].title).toBe(fixture.results[0].display_name)
+  })
+
+  it("retries a 429 with backoff like the other OpenAlex calls", async () => {
+    let calls = 0
+    const fetchFn = (async () => {
+      calls += 1
+      if (calls === 1) return new Response("rate limited", { status: 429 })
+      return new Response(JSON.stringify({ results: [] }), { status: 200 })
+    }) as unknown as typeof fetch
+    await searchTopCitedWorks({ topicId: "T1", fromDate: "a", toDate: "b" }, { fetchFn, sleep: noSleep })
+    expect(calls).toBe(2)
+  })
 })

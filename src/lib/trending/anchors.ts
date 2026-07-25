@@ -14,6 +14,23 @@ export interface AnchorDiscipline {
 /** Upper bound on how many anchor disciplines the leaderboard scopes to. */
 export const MAX_ANCHORS = 3
 
+/** An OpenAlex field key: "https://openalex.org/fields/17", "fields/17" or "17". */
+const OPENALEX_FIELD_ID = /^(?:https?:\/\/openalex\.org\/)?(?:fields\/)?\d+$/i
+
+/**
+ * The anchor's id as an OpenAlex `primary_topic.field.id` value, or undefined
+ * when it isn't one.
+ *
+ * A DERIVED anchor's id is a real field key (it comes straight from
+ * `group_by=primary_topic.field.id`), so requests for that discipline can be
+ * filtered by entity. The FALLBACK anchors built when derivation fails carry
+ * the user's interest SLUG instead (see dashboard.ts's `resolveAnchors`), which
+ * would be a nonsense filter value — those callers fall back to text scoping.
+ */
+export function openAlexFieldId(anchor: AnchorDiscipline): string | undefined {
+  return OPENALEX_FIELD_ID.test(anchor.id.trim()) ? anchor.id.trim() : undefined
+}
+
 /**
  * Rolls a user's narrow interest labels up to their broad parent
  * disciplines. For each label, issues one `fieldGroupFn` call and takes the
