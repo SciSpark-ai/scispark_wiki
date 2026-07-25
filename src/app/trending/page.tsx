@@ -156,6 +156,7 @@ export default function TrendingPage() {
               type="button"
               onClick={() => openSettingsModal("trending")}
               title="Edit your trending disciplines"
+              aria-label="Edit your trending disciplines"
             >
               <Chip tone="accent">{anchor.label}</Chip>
             </button>
