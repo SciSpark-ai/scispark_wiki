@@ -3,17 +3,19 @@ import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { DEFAULT_SETTINGS } from "../../llm/settings"
 import { searchArxiv } from "../../papers/arxiv"
 import { searchOpenAlex } from "../../papers/openalex"
-import { nodeCountFn, nodeGroupFn } from "../../papers/node-search"
+import { nodeCountFn, nodeGroupFn, nodeTopicGroupFn, nodeTopicFieldGroupFn } from "../../papers/node-search"
 import { readRecentEvents } from "../../events/log"
-import { runTrendingDashboard } from "../dashboard"
+import { runTrendingBoard, TRENDING_BOARD_VERSION } from "../dashboard"
 import { TopicBriefsSchema } from "../../skills/trending"
+import { MIN_RECENT_COUNT } from "../topics"
 import type { SearchFn } from "../../skills/feed"
 
 /**
- * LIVE end-to-end gate for M10: a real trending-dashboard refresh for one
- * tracked field ("Natural Language Processing") against real arXiv/OpenAlex
- * search and a real LLM (the persona-free `trendingSkill`, a single
- * strong-tier structured call). Mirrors the M9 live-gate idiom
+ * LIVE end-to-end gate for the trending board (M10 → SP4): a real board
+ * refresh seeded from one interest label ("Natural Language Processing")
+ * against real OpenAlex `group_by` ranking, real arXiv/OpenAlex search, and a
+ * real LLM (the persona-free `trendingSkill`, one strong-tier structured call
+ * per anchor discipline). Mirrors the M9 live-gate idiom
  * (src/lib/spark/__tests__/live-spark.test.ts): env-gated, node searchFn
  * calling search-core directly, in-memory vault, generous timeout, an
  * always-on "skips cleanly" wiring test. Skipped unless all three env vars
@@ -80,58 +82,70 @@ function liveSettings() {
 
 const FIELD = { slug: "natural-language-processing", label: "Natural Language Processing" }
 
-describe.skipIf(!live)("LIVE trending dashboard gate", () => {
+describe.skipIf(!live)("LIVE trending board gate", () => {
   it(
-    "runTrendingDashboard for one field against real search + a real LLM: real metrics, schema-valid (or gracefully degraded) survey, bounded cost",
+    "runTrendingBoard for one interest label against real OpenAlex group_by + search + a real LLM: real anchors, real growth numbers, schema-valid (or gracefully degraded) briefs, bounded cost",
     { timeout: LIVE_TIMEOUT },
     async () => {
       const storage = new MemoryVaultStorage()
 
-      const dash = await runTrendingDashboard(storage, {
+      const board = await runTrendingBoard(storage, {
         fields: [FIELD],
         searchFn: nodeSearchFn(),
-        // Real per-week OpenAlex work counts (keyless — no LLM key needed),
-        // so even this env-gated live run exercises the v1.1 real-count path
-        // rather than the old retrieval-sample-derived weeklyVolume. Uses the
-        // PRODUCTION nodeCountFn so OPENALEX_MAILTO is threaded (polite pool),
-        // matching the trending routes' wiring exactly. Also wires the
-        // production nodeGroupFn (v1.1 Addendum Task 5) so this live run
-        // exercises the 1-credit group_by fast path exactly like production,
-        // falling back to nodeCountFn only if OpenAlex's group_by ever fails.
+        // The PRODUCTION node groupers/counters, so this run exercises exactly
+        // the wiring the trending routes use: two group_by=primary_topic.id
+        // requests per anchor for the leaderboard, one
+        // group_by=primary_topic.field.id per label for anchor derivation, and
+        // the 1-credit group_by=publication_date fast path for each topic's
+        // sparkline (falling back to nodeCountFn's per-week path).
         countFn: nodeCountFn(),
         groupFn: nodeGroupFn(),
+        topicGroupFn: nodeTopicGroupFn(),
+        fieldGroupFn: nodeTopicFieldGroupFn(),
         settings: liveSettings(),
         now: () => new Date(),
       })
 
-      expect(dash.panels).toHaveLength(1)
-      const panel = dash.panels[0]
+      expect(board.version).toBe(TRENDING_BOARD_VERSION)
+      expect(board.anchors.length).toBeGreaterThan(0)
+      console.log("[live-trending] anchors:", JSON.stringify(board.anchors))
+      console.log("[live-trending] overview:", JSON.stringify(board.overview))
 
-      // Deterministic metrics, derived from real retrieved papers.
-      expect(panel.metrics.weeklyVolume.length).toBe(8)
-      expect(typeof panel.metrics.paperCountRecent).toBe("number")
+      // Real, deterministic ranking: at least one topic cleared the volume
+      // floor, and every number came from OpenAlex counts.
+      expect(board.topics.length).toBeGreaterThan(0)
+      const top = board.topics[0]
+      console.log(
+        "[live-trending] top topic:",
+        JSON.stringify({ label: top.label, discipline: top.discipline, growth: top.growth, recentCount: top.recentCount }),
+      )
+      expect(top.recentCount).toBeGreaterThanOrEqual(MIN_RECENT_COUNT)
+      expect(board.overview.totalRecent).toBeGreaterThan(0)
 
-      console.log("[live-trending] weeklyVolume:", JSON.stringify(panel.metrics.weeklyVolume))
-      console.log("[live-trending] paperCountRecent:", panel.metrics.paperCountRecent)
+      // Real multi-week series behind the sparkline (not a degenerate
+      // single-bucket sample series).
+      console.log("[live-trending] top weekly:", JSON.stringify(top.weekly))
+      expect(top.weekly.filter((v) => v.count > 0).length).toBeGreaterThanOrEqual(2)
 
-      // Proves real multi-week OpenAlex counts drove weeklyVolume (not the
-      // old degenerate [0..0, N] retrieval-sample series where only the most
-      // recent bucket was ever non-zero).
-      expect(panel.metrics.weeklyVolume.filter((v) => v.count > 0).length).toBeGreaterThanOrEqual(2)
-
-      if (panel.survey) {
-        // Schema-valid survey is the expected happy path.
-        expect(TopicBriefsSchema.safeParse(panel.survey).success).toBe(true)
-        console.log("[live-trending] sample topic brief:", panel.survey.topics[0]?.why)
-      } else {
+      if (board.surveyError) {
         // Acceptable for the gate (GMI backend-replica flake etc.) as long as
-        // the failure surfaces an error string rather than silently vanishing.
-        expect(panel.surveyError).toBeTruthy()
-        console.log("[live-trending] survey unavailable, error:", panel.surveyError)
+        // the failure surfaces its real reason rather than silently vanishing.
+        console.log("[live-trending] survey unavailable, error:", board.surveyError)
+        expect(board.topics.every((t) => t.why === null)).toBe(true)
+      } else {
+        // Schema-valid briefs are the expected happy path, joined by key.
+        expect(board.topics.some((t) => t.why !== null)).toBe(true)
+        expect(
+          TopicBriefsSchema.safeParse({
+            topics: board.topics.filter((t) => t.why !== null).map((t) => ({ key: t.key, why: t.why as string })),
+            crossDisciplineNote: board.crossDisciplineNote ?? "n/a",
+          }).success,
+        ).toBe(true)
+        console.log("[live-trending] sample topic brief:", board.topics.find((t) => t.why)?.why)
       }
 
-      // runTrendingDashboard doesn't return cost directly (TrendingDashboard has
-      // no costUsd field) — the accumulated cost is logged onto the
+      // runTrendingBoard doesn't return cost directly (TrendingBoard has no
+      // costUsd field) — the accumulated cost is logged onto the
       // trending_refresh event instead (src/lib/trending/dashboard.ts).
       const events = await readRecentEvents(storage)
       const refresh = events.find((e) => e.type === "trending_refresh") as { costUsd?: number } | undefined
@@ -141,11 +155,4 @@ describe.skipIf(!live)("LIVE trending dashboard gate", () => {
       expect(costUsd).toBeLessThan(0.5)
     },
   )
-})
-
-// Always-on guard so the file is never an empty suite when env is unset.
-describe("live trending gate wiring", () => {
-  it("skips cleanly without LIVE_LLM_* env", () => {
-    expect(typeof live).toBe("boolean")
-  })
 })

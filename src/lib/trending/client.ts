@@ -1,6 +1,6 @@
 import { readNdjson } from "../server/ndjson"
 import type { TrackedField } from "./fields"
-import type { TrendingDashboard } from "./dashboard"
+import type { TrendingBoard } from "./dashboard"
 
 /**
  * Browser-side callers for the trending skill routes (M11 Task 5). Both
@@ -19,15 +19,15 @@ import type { TrendingDashboard } from "./dashboard"
  */
 
 /**
- * POST /api/skills/trending/refresh with the given fields; streams NDJSON
- * progress (`onField` fires with each field's slug as its panel starts) and
- * resolves with the finished TrendingDashboard.
+ * POST /api/skills/trending/refresh with the given interest labels; streams
+ * NDJSON progress (`onField` fires with each anchor discipline's label as its
+ * group-by requests start) and resolves with the finished TrendingBoard.
  */
 export async function refreshTrendingDashboard(
   fields: TrackedField[],
-  onField?: (fieldSlug: string) => void,
+  onField?: (discipline: string) => void,
   fetchFn: typeof fetch = fetch,
-): Promise<TrendingDashboard> {
+): Promise<TrendingBoard> {
   const res = await fetchFn("/api/skills/trending/refresh", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -35,7 +35,7 @@ export async function refreshTrendingDashboard(
   })
   return readNdjson(res, (event) => {
     if (event?.type === "progress" && typeof event.field === "string") onField?.(event.field)
-  }) as Promise<TrendingDashboard>
+  }) as Promise<TrendingBoard>
 }
 
 /**

@@ -3,23 +3,31 @@ import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
 import type { SearchFn } from "../skills/feed"
 import type { CountFn, GroupFn } from "./weekly-volume"
+import type { TopicGroupFn } from "../papers/node-search"
 import { readUserModel } from "../usermodel/pages"
 import { effectiveTrackedFields } from "./fields"
 import { loadTrendingSettings } from "./settings"
-import { loadDashboard, isStale, fieldsMatchDashboard, runTrendingDashboard } from "./dashboard"
+import { loadBoard, isStale, anchorsMatchBoard, runTrendingBoard } from "./dashboard"
 
 /**
- * v1 "cron": on app open, refresh the trending dashboard if it is stale for the
- * user's cadence, OR if the cached dashboard's panels are for a different field
- * set than currently tracked (mirrors /trending's own staleness check — see
- * dashboard.ts's fieldsMatchDashboard JSDoc: a cache can be time-fresh but
- * field-stale after a /profile settings change). Fire-and-forget from the home
- * page — never blocks render.
+ * v1 "cron": on app open, refresh the trending board if it is stale for the
+ * user's cadence, OR if the cached board was built for a different set of
+ * anchor disciplines than the settings now hold (mirrors /trending's own
+ * staleness check — see dashboard.ts's anchorsMatchBoard JSDoc: a cache can be
+ * time-fresh but scope-stale after an anchor edit). Fire-and-forget from the
+ * home page — never blocks render.
+ *
+ * Stored anchors that are EMPTY are not used for the scope comparison: an
+ * empty list means "not derived yet / derivation failed", and comparing
+ * against it would mark every board scope-stale and refresh (spending
+ * strong-tier tokens) on every single app open.
  */
 export async function maybeAutoRefreshTrending(
   storage: VaultStorage,
   deps: {
     searchFn: SearchFn
+    topicGroupFn: TopicGroupFn
+    fieldGroupFn: TopicGroupFn
     settings: LLMSettings
     now?: () => Date
     providerOverride?: Partial<Record<Tier, LLMProvider>>
@@ -31,14 +39,17 @@ export async function maybeAutoRefreshTrending(
   const [tSettings, userModel, cached] = await Promise.all([
     loadTrendingSettings(storage),
     readUserModel(storage),
-    loadDashboard(storage),
+    loadBoard(storage),
   ])
   const fields = effectiveTrackedFields(tSettings.fields, userModel.interests)
   if (fields.length === 0) return "no-fields"
-  if (!isStale(cached, tSettings.cadence, now()) && fieldsMatchDashboard(cached, fields)) return "fresh"
-  await runTrendingDashboard(storage, {
+  const scopeStale = tSettings.anchors.length > 0 && !anchorsMatchBoard(cached, tSettings.anchors)
+  if (!isStale(cached, tSettings.cadence, now()) && !scopeStale) return "fresh"
+  await runTrendingBoard(storage, {
     fields,
     searchFn: deps.searchFn,
+    topicGroupFn: deps.topicGroupFn,
+    fieldGroupFn: deps.fieldGroupFn,
     countFn: deps.countFn,
     groupFn: deps.groupFn,
     settings: deps.settings,

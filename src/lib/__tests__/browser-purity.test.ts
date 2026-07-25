@@ -84,7 +84,7 @@ const WHOLE_MODULE_BANS = new Set([
 const PROVIDERS_PREFIX = "lib/llm/providers"
 
 const NAMED_BANS: Record<string, string[]> = {
-  "lib/trending/dashboard": ["runTrendingDashboard"],
+  "lib/trending/dashboard": ["runTrendingBoard"],
   "lib/skills/feed": ["runFeed"],
   "lib/skills/digest": ["generateDigest"],
   "lib/vault/changesets": ["applyChangeset", "revertChangeset"],

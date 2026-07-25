@@ -7,14 +7,13 @@ import { readUserModel } from "@/lib/usermodel/pages"
 import { effectiveTrackedFields } from "@/lib/trending/fields"
 import { loadTrendingSettingsRemote } from "@/lib/trending/settings-client"
 import {
-  loadDashboard,
+  loadBoard,
   isStale,
-  fieldsMatchDashboard,
-  type TrendingDashboard,
+  anchorsMatchBoard,
+  type TrendingBoard,
 } from "@/lib/trending/dashboard"
 import { refreshTrendingDashboard } from "@/lib/trending/client"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
-import { FieldPanelView } from "@/components/trending/FieldPanelView"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Button } from "@/components/ui/Button"
 import { LoadingState } from "@/components/ui/LoadingState"
@@ -22,8 +21,14 @@ import { LoadingState } from "@/components/ui/LoadingState"
 type State =
   | { status: "loading" }
   | { status: "empty" } // no tracked fields
-  | { status: "ready"; dashboard: TrendingDashboard }
+  | { status: "ready"; dashboard: TrendingBoard }
   | { status: "error"; message: string }
+
+/** `+38%` / `−12%`, and the literal word "new" when prior volume was 0. */
+function formatGrowth(growth: number | null): string {
+  if (growth === null) return "new"
+  return `${growth >= 0 ? "+" : ""}${Math.round(growth * 100)}%`
+}
 
 function formatUpdated(iso: string): string {
   try {
@@ -83,29 +88,32 @@ export default function TrendingPage() {
         const [tSettings, userModel, cached] = await Promise.all([
           loadTrendingSettingsRemote(),
           readUserModel(vault),
-          loadDashboard(vault),
+          loadBoard(vault),
         ])
         const fields = effectiveTrackedFields(tSettings.fields, userModel.interests)
         if (fields.length === 0) {
           setState({ status: "empty" })
           return
         }
-        if (cached && fieldsMatchDashboard(cached, fields)) {
-          // Stale-while-revalidate: show the cached dashboard immediately —
-          // fresh or stale — so panels never disappear. A stale cache then
-          // triggers a background refresh; the Refresh button's own
+        // An EMPTY stored anchor list means "not derived yet" — there is
+        // nothing to compare against, so scope-staleness doesn't apply.
+        const scopeStale = tSettings.anchors.length > 0 && !anchorsMatchBoard(cached, tSettings.anchors)
+        if (cached && !scopeStale) {
+          // Stale-while-revalidate: show the cached board immediately —
+          // fresh or stale — so the leaderboard never disappears. A stale
+          // cache then triggers a background refresh; the Refresh button's own
           // `refreshing` spinner is the in-progress indicator.
           setState({ status: "ready", dashboard: cached })
           if (isStale(cached, tSettings.cadence, new Date())) {
             await refresh()
           }
         } else {
-          // No cache at all, OR the cached panels are for a different set of
-          // tracked fields (e.g. the user just changed fields on /profile).
-          // Unlike time-staleness, a field-set mismatch means the cached
-          // panels are for the WRONG fields — showing them first would be
-          // actively misleading, so go through the loading path instead of
-          // stale-while-revalidate.
+          // No cache at all (including an old-shaped one, which loadBoard
+          // reports as a cold start), OR the cached board was built for a
+          // different set of anchor disciplines. Unlike time-staleness, a
+          // scope mismatch means the cached rows are for the WRONG scope —
+          // showing them first would be actively misleading, so go through the
+          // loading path instead of stale-while-revalidate.
           await refresh()
         }
       } catch (err) {
@@ -170,10 +178,32 @@ export default function TrendingPage() {
               <LlmErrorMessage message={refreshError} />
             </div>
           )}
-          <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {state.dashboard.panels.map((panel) => (
-              <FieldPanelView key={panel.field.slug} panel={panel} />
+          {/* SP4 Task 7 interim rendering — the orchestrator's board shape is
+              live, the leaderboard components (Task 8) and the rebuilt page
+              (Task 9) replace this block wholesale. */}
+          {state.dashboard.surveyError && (
+            <p className="mt-3 text-[12px] text-muted-text tracking-body">
+              Written summaries unavailable. Reason: {state.dashboard.surveyError}
+            </p>
+          )}
+          <div className="mt-6 flex flex-col gap-2">
+            {state.dashboard.topics.map((topic, i) => (
+              <div key={topic.key} className="border border-border-warm rounded-card px-4 py-3 bg-light-surface">
+                <div className="flex items-baseline gap-3">
+                  <span className="text-[12px] text-muted-text">{i + 1}</span>
+                  <span className="font-heading text-[15px] text-espresso tracking-heading-card">{topic.label}</span>
+                  <span className="text-[12px] text-muted-text">{formatGrowth(topic.growth)}</span>
+                  <span className="text-[12px] text-muted-text">{topic.discipline}</span>
+                  {topic.relevant && <span className="text-[12px] text-orange">Relevant to you</span>}
+                </div>
+                {topic.why && <p className="mt-2 text-[13px] text-espresso tracking-body">{topic.why}</p>}
+              </div>
             ))}
+            {state.dashboard.topics.length === 0 && (
+              <p className="text-[13px] text-muted-text tracking-body">
+                No topic cleared the activity threshold this window.
+              </p>
+            )}
           </div>
         </>
       )}
