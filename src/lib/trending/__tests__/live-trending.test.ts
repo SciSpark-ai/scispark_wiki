@@ -6,7 +6,7 @@ import { searchOpenAlex } from "../../papers/openalex"
 import { nodeCountFn, nodeGroupFn } from "../../papers/node-search"
 import { readRecentEvents } from "../../events/log"
 import { runTrendingDashboard } from "../dashboard"
-import { TrendingSurveySchema } from "../../skills/trending"
+import { TopicBriefsSchema } from "../../skills/trending"
 import type { SearchFn } from "../../skills/feed"
 
 /**
@@ -121,8 +121,8 @@ describe.skipIf(!live)("LIVE trending dashboard gate", () => {
 
       if (panel.survey) {
         // Schema-valid survey is the expected happy path.
-        expect(TrendingSurveySchema.safeParse(panel.survey).success).toBe(true)
-        console.log("[live-trending] sample notable title:", panel.survey.notablePapers[0]?.title)
+        expect(TopicBriefsSchema.safeParse(panel.survey).success).toBe(true)
+        console.log("[live-trending] sample topic brief:", panel.survey.topics[0]?.why)
       } else {
         // Acceptable for the gate (GMI backend-replica flake etc.) as long as
         // the failure surfaces an error string rather than silently vanishing.

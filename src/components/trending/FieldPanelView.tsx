@@ -32,26 +32,16 @@ export function FieldPanelView({ panel }: { panel: FieldPanel }) {
       {survey ? (
         <>
           <div className="mt-4">
-            <h3 className="text-[12px] uppercase tracking-wide text-muted-text">Notable</h3>
+            <h3 className="text-[12px] uppercase tracking-wide text-muted-text">Topic briefs</h3>
             <ul className="mt-1 space-y-1">
-              {survey.notablePapers.map((p, i) => (
+              {survey.topics.map((t, i) => (
                 <li key={i} className="text-[13px] text-espresso tracking-body">
-                  <span className="font-medium">{displayTitle(String(p.title ?? ""))}</span> — <span className="text-muted-text">{p.why}</span>
+                  <span className="text-muted-text">{t.why}</span>
                 </li>
               ))}
             </ul>
           </div>
-          <div className="mt-4">
-            <h3 className="text-[12px] uppercase tracking-wide text-muted-text">Emerging</h3>
-            <ul className="mt-1 space-y-1">
-              {survey.emergingTopics.map((t, i) => (
-                <li key={i} className="text-[13px] text-espresso tracking-body">
-                  <span className="font-medium">{t.topic}</span> — <span className="text-muted-text">{t.why}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <p className="mt-4 text-[13px] text-espresso tracking-body">{survey.momentum}</p>
+          <p className="mt-4 text-[13px] text-espresso tracking-body">{survey.crossDisciplineNote}</p>
         </>
       ) : (
         <div className="mt-4">

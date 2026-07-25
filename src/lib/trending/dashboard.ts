@@ -10,12 +10,12 @@ import { retrieveFieldCandidates } from "./retrieve"
 import { computeFieldMetrics, DEFAULT_WEEKS, type FieldMetrics, type VolumePoint } from "./metrics"
 import { buildWeekStarts } from "./weeks"
 import { fetchWeeklyVolume, type CountFn, type GroupFn } from "./weekly-volume"
-import { trendingSkill, type TrendingSurvey } from "../skills/trending"
+import { trendingSkill, type TopicBriefs } from "../skills/trending"
 
 export interface FieldPanel {
   field: TrackedField
   metrics: FieldMetrics
-  survey: TrendingSurvey | null
+  survey: TopicBriefs | null
   /**
    * Present iff the qualitative survey failed for this field (the LLM call
    * erred, the run was budget-exceeded, or retrieval/metrics threw). Carries
@@ -113,11 +113,26 @@ async function runTrendingDashboardUncached(storage: VaultStorage, opts: RunTren
       }
       const metrics = computeFieldMetrics(candidates, { now: at, realWeeklyVolume: realVol ?? undefined })
 
-      let survey: TrendingSurvey | null = null
+      let survey: TopicBriefs | null = null
       let surveyError: string | undefined
+      // Minimal adaptation to the topic-brief skill's new input shape (no
+      // counts/percentages/dates — see src/lib/skills/trending.ts): treats
+      // the whole field as a single "topic" keyed by its slug, backed by the
+      // titles of its most recent candidate papers. Task 7 replaces this with
+      // the real per-topic leaderboard (topics.ts's RankedTopic list) joined
+      // back onto the LLM's briefs by `key`.
       const run = await runSkill({
         skill: trendingSkill,
-        input: { field, recent: candidates.recent, movers: candidates.movers },
+        input: {
+          discipline: field.label,
+          topics: [
+            {
+              key: field.slug,
+              label: field.label,
+              paperTitles: candidates.recent.map((p) => p.title).filter((t): t is string => Boolean(t)),
+            },
+          ],
+        },
         storage,
         settings: opts.settings,
         providerOverride: opts.providerOverride,

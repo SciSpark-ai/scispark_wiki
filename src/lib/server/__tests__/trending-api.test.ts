@@ -18,7 +18,7 @@ function paper(o: Partial<PaperRecord> & { title: string }): PaperRecord {
 function structured(output: unknown): LLMResult {
   return { text: JSON.stringify(output), json: output, usage: { inputTokens: 10, outputTokens: 5 }, model: "m", provider: "anthropic", stopReason: "end_turn" }
 }
-const SURVEY = { notablePapers: [{ title: "A", why: "x" }], emergingTopics: [{ topic: "T", why: "y" }], momentum: "up" }
+const SURVEY = { topics: [{ key: "nlp", why: "x" }], crossDisciplineNote: "up" }
 const fakeSearchFn: SearchFn = async (_source, fieldLabel) => [
   paper({ title: `Fresh in ${fieldLabel}`, date: "2026-07-10", year: 2026, citationCount: 3, venue: "ACL" }),
 ]

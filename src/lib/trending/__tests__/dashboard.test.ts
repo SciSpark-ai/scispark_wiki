@@ -17,7 +17,7 @@ function paper(o: Partial<PaperRecord> & { title: string }): PaperRecord {
 function structured(output: unknown): LLMResult {
   return { text: JSON.stringify(output), json: output, usage: { inputTokens: 100, outputTokens: 50 }, model: "m", provider: "anthropic", stopReason: "end_turn" }
 }
-const SURVEY = { notablePapers: [{ title: "A", why: "x" }], emergingTopics: [{ topic: "T", why: "y" }], momentum: "up" }
+const SURVEY = { topics: [{ key: "nlp", why: "x" }], crossDisciplineNote: "up" }
 const SETTINGS = { keys: { openai: "sk" }, tierModels: { fast: { provider: "openai", model: "m" }, strong: { provider: "openai", model: "m" } }, dailyBudgetUsd: 100, baseUrls: { openai: "https://x/v1" } } as const
 
 describe("runTrendingDashboard", () => {

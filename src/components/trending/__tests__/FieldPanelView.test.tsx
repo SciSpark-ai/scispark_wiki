@@ -13,9 +13,8 @@ const METRICS: FieldMetrics = {
   topVenues: [],
 }
 const SURVEY = {
-  notablePapers: [{ title: "Attention Redux", why: "sharp result" }],
-  emergingTopics: [{ topic: "long-context", why: "momentum" }],
-  momentum: "The field is accelerating.",
+  topics: [{ key: "attention", why: "Attention Redux delivers a sharp result" }],
+  crossDisciplineNote: "The field is accelerating.",
 }
 function panel(over: Partial<FieldPanel>): FieldPanel {
   return { field: { slug: "nlp", label: "NLP" }, metrics: METRICS, survey: null, generatedAt: "2026-07-15T00:00:00.000Z", ...over }
@@ -45,7 +44,7 @@ describe("FieldPanelView", () => {
     expect(html).not.toContain("Reason:")
   })
 
-  it("strips markup tags from mover and notable paper titles", () => {
+  it("strips markup tags from mover titles", () => {
     const metricsWithMovers: FieldMetrics = {
       ...METRICS,
       topMovers: [
@@ -62,17 +61,10 @@ describe("FieldPanelView", () => {
         },
       ],
     }
-    const surveyWithMarkup = {
-      notablePapers: [{ title: "Transform<i>er</i>s Redux", why: "sharp result" }],
-      emergingTopics: [{ topic: "long-context", why: "momentum" }],
-      momentum: "The field is accelerating.",
-    }
-    const html = renderToStaticMarkup(<FieldPanelView panel={panel({ metrics: metricsWithMovers, survey: surveyWithMarkup })} />)
+    const html = renderToStaticMarkup(<FieldPanelView panel={panel({ metrics: metricsWithMovers, survey: SURVEY })} />)
     // The stripped (non-italic) version should appear in the output.
     expect(html).toContain("On really deep networks")
-    expect(html).toContain("Transformers Redux")
     // The raw markup should NOT appear (verifies stripping happened).
     expect(html).not.toContain("<i>really</i>")
-    expect(html).not.toContain("<i>er</i>")
   })
 })
