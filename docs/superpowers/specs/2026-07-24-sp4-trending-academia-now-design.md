@@ -1,7 +1,7 @@
 # SP4 — Academia Right Now: Trending Rework (UI/UX redesign, part 4 of 6)
 
 **Date:** 2026-07-24
-**Status:** Designed — approved by Tong 2026-07-24 (approach C, sections 1–6 approved in conversation)
+**Status:** Built — 2026-07-25, branch `uiux/sp4-trending-academia-now`, 11 tasks via subagent-driven development plus five live-run corrections, 1818 tests green, live-verified end-to-end against real OpenAlex + GMI. §3 was rewritten mid-build after the live run invalidated the original two-group-by design; growth is now share-of-corpus (see "Indexing lag" below).
 **Origin:** The six-SP redesign brainstormed 2026-07-16 (see `2026-07-16-sp1-shell-and-system-design.md`, whose roadmap row reads "SP4 | Trending redesign: broader 'academia right now' fields + visual overhaul (incl. its backend/field-selection component)"). SP1–SP3 have shipped.
 
 ## Context
@@ -120,3 +120,11 @@ Every layer degrades independently; the page is never blank:
 OpenAlex now rejects `group_by=publication_date` outright — HTTP 400 "Invalid query parameters error" in every form, while `group_by=publication_year` and `group_by=primary_topic.id` still return 200. That was the request v1.1 shipped as its headline optimization ("1 credit per field instead of 80"); it has been failing in production and silently falling back to the per-week count ladder ever since. Nothing broke, which is exactly why it went unnoticed.
 
 Without it an 8-week sparkline costs 8 requests per topic (~80 per refresh). So the row's visual is a **prior→recent comparison bar** instead: two bars scaled to the larger of `priorCount` and `recentCount`. It costs **zero** extra requests — both numbers are already computed for the growth figure — and because it is drawn from precisely the values the badge is computed from, a row's chart can never contradict its badge. `priorCount: 0` renders an empty prior bar, which is the honest picture of "new".
+
+### Indexing lag (corrected 2026-07-25, second live run)
+
+Raw count ratios are not a valid growth measure here. Measured live: Computer Science ran 16,624 → 22,808 → 13,953 works across three consecutive complete fortnights, i.e. the most recent window holds only ~61% of the previous one's volume (Neuroscience ~69%). The middle window being the highest rules out a real slump — OpenAlex back-fills recent publication dates for weeks. Every topic therefore carried a ~39% headwind, and the first corrected board came back with 8 of 10 rows negative on a page whose premise is "what is heating up"; a row reading −29% was in fact outperforming its corpus.
+
+Growth is therefore **share of corpus**: `(topicRecent/totalRecent) ÷ (topicPrior/totalPrior) − 1`. The lag applies near-uniformly across topics within a discipline, so it cancels. This costs one extra count request per anchor (the prior-window corpus total). The comparison bars are drawn from the same share figures, so a row's chart cannot disagree with its badge. A discipline whose corpus total fails to fetch drops its rows rather than silently falling back to raw counts, which would reintroduce the artifact.
+
+Representative papers and breakouts are likewise scoped by `primary_topic.id`, never by a free-text search on the topic's name — the live board had shown "English Language Teaching and Learning Program (DOS)" and "Teaching styles of Australian tennis coaches" under a computer-science-education topic, which the topic-brief LLM itself flagged as a poor fit.

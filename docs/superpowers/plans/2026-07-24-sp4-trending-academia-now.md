@@ -1,5 +1,7 @@
 # SP4 — Academia Right Now (Trending Rework) Implementation Plan
 
+**Status (2026-07-25):** Built — 11 tasks complete and reviewed, plus five corrections forced by live runs against the real OpenAlex API. The plan's §3/§4 growth arithmetic is SUPERSEDED: raw two-window count ratios proved invalid (200-bucket horizon, then indexing back-fill), and growth is now share-of-corpus with prior counts looked up per topic. Weekly sparklines were dropped entirely (`group_by=publication_date` no longer exists upstream) in favour of prior→recent comparison bars. See the spec for the corrected design.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace `/trending`'s per-narrow-field panels with an "Academia Right Now" board: a dense, cross-discipline leaderboard of genuinely accelerating topics — real growth numbers from OpenAlex `group_by`, sparklines, discipline chips, a relevance marker from the user's interests, and per-topic LLM interpretation on expand.
