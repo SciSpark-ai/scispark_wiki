@@ -9,6 +9,11 @@ import type { BoardTopic } from "@/lib/trending/dashboard"
 import { TrendBars } from "./TrendBars"
 
 /**
+ * The change in the topic's SHARE of its discipline, not in its raw paper
+ * count (OpenAlex under-indexes the recent window for every topic alike, which
+ * raw counts would read as a board-wide decline). The bars beside this badge
+ * are drawn from the same two shares, so the two can never disagree.
+ *
  * `growth: null` means "no prior-window activity to compare against" — the
  * COMMON case for a freshly-heating topic, not an edge case. It renders the
  * literal word "new", never `∞`/`NaN%`/an em dash (the em dash is reserved
@@ -57,7 +62,12 @@ export function TopicRow({ topic, rank, expanded, onToggle }: TopicRowProps) {
         <span className="w-5 shrink-0 text-[12px] text-muted-text tracking-body">{rank}</span>
         <GrowthBadge growth={topic.growth} />
         <span className="min-w-0 flex-1 truncate text-[13px] text-espresso tracking-body">{topic.label}</span>
-        <TrendBars priorCount={topic.priorCount} recentCount={topic.recentCount} />
+        <TrendBars
+          priorShare={topic.priorShare}
+          recentShare={topic.recentShare}
+          priorCount={topic.priorCount}
+          recentCount={topic.recentCount}
+        />
         <Chip>{topic.discipline}</Chip>
         {topic.relevant && (
           <span className="rounded-pill bg-orange/10 px-2 py-0.5 text-[11px] font-medium text-orange tracking-body">
@@ -68,6 +78,11 @@ export function TopicRow({ topic, rank, expanded, onToggle }: TopicRowProps) {
 
       {expanded && (
         <div className="px-3 pb-3 pl-11">
+          {/* Absolute volume in words: the badge and bars are both share-based,
+              so the honest raw counts live here rather than being drawn. */}
+          <p className="mb-1 text-[12px] text-muted-text tracking-body">
+            {topic.recentCount} papers this window · {topic.priorCount} in the prior window
+          </p>
           {topic.why !== null ? (
             <p className="text-[13px] leading-[1.5] text-muted-text tracking-body">{topic.why}</p>
           ) : (

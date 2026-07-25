@@ -67,9 +67,24 @@ export interface TopicCandidate {
   recentCount: number
 }
 
+/**
+ * One anchor discipline's measured corpus size in each window — the count of
+ * ALL works matching the discipline search over that window, unscoped by topic.
+ * `null` means the count request failed, i.e. the size is UNKNOWN (never 0).
+ */
+export interface CorpusTotals {
+  recent: number | null
+  prior: number | null
+}
+
 export interface RankedTopic extends TopicCandidate {
   priorCount: number
-  growth: number | null // null when priorCount === 0 → genuinely "new"
+  /** `recentCount / corpus recent total` — the topic's slice of its discipline. */
+  recentShare: number
+  /** `priorCount / corpus prior total`; exactly 0 when priorCount is 0. */
+  priorShare: number
+  /** (recentShare − priorShare) / priorShare; null when priorCount === 0 → genuinely "new". */
+  growth: number | null
 }
 
 /**
@@ -135,22 +150,73 @@ export function selectTopicCandidates(perDiscipline: DisciplineBuckets[]): Topic
  * `growth: null` now means a genuine zero prior, and "new" is trustworthy;
  * null therefore still sorts first, which is now correct.
  *
- * Sorted fastest-growing first, tie-broken by recentCount desc then label
+ * GROWTH IS A RATIO OF SHARES, NOT OF RAW COUNTS. OpenAlex back-fills recent
+ * publication dates for weeks, so the most recent complete fortnight is only
+ * partially indexed when we read it. Measured live 2026-07-25, per discipline:
+ *
+ *   Computer Science  window(-3) 16624 → prior 22808 → recent 13953
+ *   Neuroscience      window(-3)  4251 → prior  5881 → recent  4036
+ *
+ * The MIDDLE window is the highest in both, so this is indexing lag, not a
+ * real slump: the recent window is only ~61%/69% indexed. Ranking raw counts
+ * therefore hands every topic the same ~39% headwind, and the live board came
+ * back 8-of-10 negative on a page whose whole premise is "what is heating up".
+ * The lag applies near-uniformly to every topic inside a discipline, so it
+ * CANCELS in a ratio of shares:
+ *
+ *   growth = (recentCount/totalRecent − priorCount/totalPrior) / (priorCount/totalPrior)
+ *
+ * On tonight's real CS numbers, "Multimodal Machine Learning" 184 → 134 is
+ * −27% raw but +19% by share, and "Complexity and Algorithms in Graphs"
+ * 39 → 60 is +54% raw but +151% by share. Both are correct here.
+ *
+ * The volume floor (MIN_RECENT_COUNT) still applies to the RAW recent count —
+ * a share floor would mean nothing across disciplines of different sizes — and
+ * both raw counts are carried through for honest absolute volume.
+ *
+ * A discipline whose corpus size was NOT measured (`null`, i.e. its count
+ * request failed) cannot produce a share, so its rows are DROPPED rather than
+ * silently falling back to raw-count growth — mixing the two would make the
+ * ranking incomparable and reintroduce exactly the artifact above. The prior
+ * total is only needed by rows that actually divide by it: a genuine
+ * `priorCount === 0` row is still "new" with `priorShare: 0`, no division and
+ * no `NaN`/`Infinity` — and a genuinely empty prior corpus (`totalPrior: 0`)
+ * can only produce such rows, so it needs no special case either.
+ *
+ * Sorted fastest-growing first, tie-broken by RAW recentCount desc then label
  * asc, capped at MAX_LEADERBOARD_TOPICS.
  */
 export function rankHeatingTopics(
   perDiscipline: DisciplineBuckets[],
   priorCounts: Map<string, number>,
+  corpusTotals: Map<string, CorpusTotals>,
 ): RankedTopic[] {
   const ranked: RankedTopic[] = []
 
   for (const candidate of mergeRecentBuckets(perDiscipline)) {
     const priorCount = priorCounts.get(candidate.key)
     if (priorCount === undefined) continue
+
+    const totals = corpusTotals.get(candidate.discipline)
+    const totalRecent = totals?.recent
+    if (!isMeasuredSize(totalRecent)) continue
+    const recentShare = candidate.recentCount / totalRecent
+
+    if (priorCount === 0) {
+      ranked.push({ ...candidate, priorCount, recentShare, priorShare: 0, growth: null })
+      continue
+    }
+
+    const totalPrior = totals?.prior
+    if (!isMeasuredSize(totalPrior)) continue
+    const priorShare = priorCount / totalPrior
+
     ranked.push({
       ...candidate,
       priorCount,
-      growth: priorCount === 0 ? null : (candidate.recentCount - priorCount) / priorCount,
+      recentShare,
+      priorShare,
+      growth: (recentShare - priorShare) / priorShare,
     })
   }
 
@@ -162,6 +228,16 @@ export function rankHeatingTopics(
   })
 
   return ranked.slice(0, MAX_LEADERBOARD_TOPICS)
+}
+
+/**
+ * A corpus size usable as a share denominator: really measured, finite and
+ * positive. A missing/failed count is `null` (unknown, not zero), and a
+ * non-positive or non-finite one is malformed — either way, dividing by it
+ * would put `Infinity`/`NaN` on the board.
+ */
+function isMeasuredSize(n: number | null | undefined): n is number {
+  return typeof n === "number" && Number.isFinite(n) && n > 0
 }
 
 /** Descending growth comparator treating `null` as the largest value. */

@@ -59,7 +59,7 @@ function paper(overrides: Partial<PaperRecord> = {}): PaperRecord {
 
 function board(overrides: Partial<TrendingBoard> = {}): TrendingBoard {
   return {
-    version: 3,
+    version: 4, // literal: the dashboard module is mocked above
     anchors: [{ id: "machine-learning", label: "Machine Learning" }],
     overview: {
       totalRecent: 128,
@@ -75,6 +75,8 @@ function board(overrides: Partial<TrendingBoard> = {}): TrendingBoard {
         growth: 1,
         recentCount: 42,
         priorCount: 21,
+        recentShare: 42 / 1000,
+        priorShare: 21 / 1000,
         papers: [{ record: paper(), wikiPageId: null }],
         why: "Several groups converged on sub-quadratic attention this quarter.",
         relevant: true,
@@ -86,6 +88,8 @@ function board(overrides: Partial<TrendingBoard> = {}): TrendingBoard {
         growth: 0.5,
         recentCount: 20,
         priorCount: 13,
+        recentShare: 20 / 1000,
+        priorShare: 13 / 1000,
         papers: [{ record: paper({ title: "Diffusion Priors for Inverse Problems" }), wikiPageId: null }],
         why: "A second cluster of work on learned priors.",
         relevant: false,

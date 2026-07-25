@@ -15,7 +15,14 @@ import type { Cadence } from "./settings"
 import { loadTrendingSettings, saveDerivedAnchors } from "./settings"
 import type { AnchorDiscipline } from "./anchors"
 import { deriveAnchorDisciplines, MAX_ANCHORS } from "./anchors"
-import { completeWindows, rankHeatingTopics, selectTopicCandidates, type DisciplineBuckets, type RankedTopic } from "./topics"
+import {
+  completeWindows,
+  rankHeatingTopics,
+  selectTopicCandidates,
+  type CorpusTotals,
+  type DisciplineBuckets,
+  type RankedTopic,
+} from "./topics"
 import { topicLens } from "./lens"
 import { retrieveFieldCandidates } from "./retrieve"
 import type { CountFn } from "./counts"
@@ -30,8 +37,11 @@ import { trendingSkill } from "../skills/trending"
  * 3: `weekly` (the sparkline series) replaced by `priorCount` (the before/after
  * bars). A v2 board carries no `priorCount`, so rendering one would size the
  * bars off `undefined` — the bump makes it a cold start instead.
+ * 4: growth is a ratio of SHARES of the discipline corpus, and the bars are
+ * drawn from `recentShare`/`priorShare`. A v3 board carries neither field, so
+ * rendering one would size every bar off `undefined`; cold-start instead.
  */
-export const TRENDING_BOARD_VERSION = 3
+export const TRENDING_BOARD_VERSION = 4
 
 export interface BoardPaper {
   record: PaperRecord
@@ -44,18 +54,31 @@ export interface BoardTopic {
   label: string
   /** The anchor discipline this topic was ranked within (an `AnchorDiscipline.label`). */
   discipline: string
-  /** (recent − prior) / prior; null when prior is 0 — rendered as "new", never ∞. */
+  /**
+   * Change in the topic's SHARE of its discipline: (recentShare − priorShare) /
+   * priorShare. Null when priorCount is 0 — rendered as "new", never ∞.
+   * Share-based because OpenAlex's indexing lag shrinks the recent window's
+   * corpus for every topic alike, which raw counts would read as a board-wide
+   * decline (see `rankHeatingTopics` for the measured figures).
+   */
   growth: number | null
   recentCount: number
   /**
-   * The topic's TRUE prior-window count (`lookupPriorCounts`) — the very number
-   * `growth` is computed from. The row's before/after bars are drawn from
-   * {priorCount, recentCount}, so a row's chart can never contradict its growth
-   * badge (the sparkline it replaced was a separately-fetched series that
-   * could, and did). 0 means "genuinely new this window" and is drawn as an
-   * empty prior bar.
+   * The topic's TRUE prior-window count (`lookupPriorCounts`). Kept alongside
+   * `recentCount` as honest ABSOLUTE volume — rendered as text on the expanded
+   * row, never drawn to scale (bars are share-scaled, below).
    */
   priorCount: number
+  /**
+   * The two shares `growth` is computed from: `recentCount / discipline's
+   * recent-window corpus` and `priorCount / its prior-window corpus`. The row's
+   * before/after bars are drawn from THESE, so a row's chart can never
+   * contradict its badge — a topic whose raw count fell while its share rose
+   * must not show a shrinking bar beside a positive percentage. `priorShare: 0`
+   * is the "new" case and draws an empty prior bar.
+   */
+  recentShare: number
+  priorShare: number
   papers: BoardPaper[]
   /** LLM-written; null when the skill failed for this topic's discipline, or when the model returned no brief whose `key` matched this topic verbatim. */
   why: string | null
@@ -112,11 +135,11 @@ export interface RunTrendingBoardOpts {
   /** Fires with each anchor discipline's label as its group-by requests start. */
   onProgress?: (discipline: string) => void
   /**
-   * Real OpenAlex work counter (`countOpenAlexWorks`). REQUIRED: besides the
-   * overview's recent-work totals, it performs every candidate's prior-count
-   * lookup, which the growth column AND the before/after bars are computed
-   * from — without it there is no leaderboard at all, so this is a hard dep
-   * rather than an enhancement.
+   * Real OpenAlex work counter (`countOpenAlexWorks`). REQUIRED: it produces
+   * the overview's recent-work totals, each anchor's corpus size in both
+   * windows (the share denominators) and every candidate's prior count — i.e.
+   * the growth column AND the before/after bars. Without it there is no
+   * leaderboard at all, so this is a hard dep rather than an enhancement.
    */
   countFn: CountFn
 }
@@ -128,25 +151,31 @@ export interface RunTrendingBoardOpts {
  *
  * Per refresh: resolve anchor disciplines (a non-empty stored list, else
  * derived and persisted, else the narrow interest labels) → `completeWindows(now)` → ONE
- * recent-window `topicGroupFn` call per anchor → a prior-count lookup per
- * candidate (`lookupPriorCounts`) → `rankHeatingTopics` → one
+ * recent-window `topicGroupFn` call per anchor → each anchor's corpus size in
+ * BOTH windows (`measureCorpusTotals`, two counts per anchor — the share
+ * denominators) → a prior-count lookup per candidate (`lookupPriorCounts`) →
+ * `rankHeatingTopics` → one
  * representative-paper search per kept topic → deterministic breakouts
  * → one `runSkill(trendingSkill)` per anchor discipline → the deterministic
  * lens → assemble + persist.
  *
  * There is NO per-topic time series: the row's chart is two bars drawn from
- * the prior/recent counts already in hand, which costs zero extra requests and
- * makes a chart-vs-badge contradiction structurally impossible.
+ * the same two SHARES the growth badge is computed from, which costs zero
+ * extra requests and makes a chart-vs-badge contradiction structurally
+ * impossible.
  *
  * EVERY number on the board comes from OpenAlex counts. The skill's input
  * structurally carries no counts/percentages/dates, and its briefs are joined
  * back onto the ranking by `key` VERBATIM — an unmatched key leaves that
  * topic's `why` null rather than attaching text to the wrong topic.
  *
- * Every layer degrades independently and never blanks the board: a failed
- * discipline drops only its own topics, a failed paper search yields
- * `papers: []`, and a failed skill leaves the whole ranking intact with
- * `why: null` plus a `surveyError` stating the real reason.
+ * Every layer degrades independently: a failed discipline drops only its own
+ * topics, a failed paper search yields `papers: []`, and a failed skill leaves
+ * the whole ranking intact with `why: null` plus a `surveyError` stating the
+ * real reason. The one degradation that can cost rows is a failed CORPUS count
+ * (`measureCorpusTotals`): that discipline's share denominator is unknown, and
+ * ranking it on raw counts instead is the very artifact this design removes, so
+ * its rows are dropped rather than silently computed a different way.
  *
  * Concurrency: home's fire-and-forget auto-refresh (`maybeAutoRefreshTrending`)
  * and /trending's own mount-time refresh can both observe a stale/missing
@@ -198,9 +227,19 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
       console.warn(`[trending] topic grouping failed for "${anchor.label}":`, err)
     }
   }
+  // Each anchor's corpus size in BOTH windows (one count request each): the
+  // denominators every growth figure and every bar is scaled by.
+  const recentTotals = await measureCorpusTotals(opts, perDiscipline, windows.recent)
+  const priorTotals = await measureCorpusTotals(opts, perDiscipline, windows.prior)
+  const corpusTotals = new Map<string, CorpusTotals>(
+    perDiscipline.map(({ discipline }) => [
+      discipline,
+      { recent: recentTotals.get(discipline) ?? null, prior: priorTotals.get(discipline) ?? null },
+    ]),
+  )
   const priorCounts = await lookupPriorCounts(opts, perDiscipline, windows.prior)
-  const ranked = rankHeatingTopics(perDiscipline, priorCounts)
-  const totalRecent = await countRecentWorks(opts, perDiscipline, windows.recent)
+  const ranked = rankHeatingTopics(perDiscipline, priorCounts, corpusTotals)
+  const totalRecent = sumRecentWorks(perDiscipline, recentTotals)
 
   // --- Per-topic enrichment (representative papers) ---------------------------
   // Sequential on purpose: at most MAX_LEADERBOARD_TOPICS topics, and OpenAlex
@@ -288,6 +327,8 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
       growth: topic.growth,
       recentCount: topic.recentCount,
       priorCount: topic.priorCount,
+      recentShare: topic.recentShare,
+      priorShare: topic.priorShare,
       papers: papers.map((record) => ({ record, wikiPageId: resolveWikiPageId(bundle, record) })),
       why: whyByKey.get(topic.key) ?? null,
       relevant: lens.relevant,
@@ -395,31 +436,51 @@ async function lookupPriorCounts(
 }
 
 /**
- * "New papers this window" across the anchor disciplines. Uses one real
- * `countFn` call per anchor over the complete recent window rather than summing
- * the `group_by` buckets we already have: group_by is capped at 200 groups, so
- * summing it silently truncates the long tail and understates the total — and
- * SP4's premise is that every displayed figure is a real count.
+ * Each anchor discipline's CORPUS SIZE over one window — one real `countFn`
+ * call per anchor, unscoped by topic. Two roles:
  *
- * CAVEAT (carried into the UI label): a work matching two anchors' searches is
- * counted once per anchor, so overlapping disciplines can double-count. If a
- * count fails, that anchor falls back to the summed buckets — a low-but-honest
- * number beats a missing figure.
+ *  - the recent map is the overview's "new papers this window";
+ *  - both maps are the denominators `rankHeatingTopics` turns raw counts into
+ *    shares with, which is what makes OpenAlex's indexing lag cancel.
+ *
+ * A count is used rather than a sum of the `group_by` buckets we already have
+ * because group_by caps at 200 groups: the bucket sum silently truncates the
+ * long tail and understates the corpus. That matters doubly as a denominator —
+ * a truncated recent total against a real prior total would inflate every
+ * topic's recent share and manufacture board-wide growth — so a failed count
+ * is simply OMITTED here. The overview falls back to the bucket sum for
+ * display (`sumRecentWorks`); the ranking treats a missing size as unknown and
+ * drops those rows.
  */
-async function countRecentWorks(
+async function measureCorpusTotals(
   opts: RunTrendingBoardOpts,
   perDiscipline: DisciplineBuckets[],
-  recentWindow: { fromDate: string; toDate: string },
-): Promise<number> {
+  window: { fromDate: string; toDate: string },
+): Promise<Map<string, number>> {
+  const totals = new Map<string, number>()
+  for (const { discipline } of perDiscipline) {
+    try {
+      totals.set(discipline, await opts.countFn({ query: discipline, ...window }))
+    } catch (err) {
+      console.warn(`[trending] corpus count failed for "${discipline}" (${window.fromDate}..${window.toDate}):`, err)
+    }
+  }
+  return totals
+}
+
+/**
+ * "New papers this window" across the anchor disciplines.
+ *
+ * CAVEAT (carried into the UI label): a work matching two anchors' searches is
+ * counted once per anchor, so overlapping disciplines can double-count. An
+ * anchor whose count failed falls back to its summed buckets — a low-but-honest
+ * number beats a missing figure. That fallback is display-only and deliberately
+ * NOT reused as a share denominator (see `measureCorpusTotals`).
+ */
+function sumRecentWorks(perDiscipline: DisciplineBuckets[], recentTotals: Map<string, number>): number {
   let total = 0
   for (const { discipline, recent } of perDiscipline) {
-    const bucketSum = recent.reduce((s, entry) => s + entry.count, 0)
-    try {
-      total += await opts.countFn({ query: discipline, ...recentWindow })
-    } catch (err) {
-      console.warn(`[trending] recent-work count failed for "${discipline}":`, err)
-      total += bucketSum
-    }
+    total += recentTotals.get(discipline) ?? recent.reduce((s, entry) => s + entry.count, 0)
   }
   return total
 }

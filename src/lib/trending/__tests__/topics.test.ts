@@ -7,6 +7,7 @@ import {
   MAX_LEADERBOARD_TOPICS,
   CANDIDATE_POOL,
 } from "../topics"
+import type { CorpusTotals } from "../topics"
 
 describe("completeWindows", () => {
   it("excludes the in-progress week and returns two 14-day windows", () => {
@@ -30,6 +31,19 @@ const d = (discipline: string, recent: Array<[string, number]>) => ({
 })
 
 const priors = (entries: Array<[string, number]>) => new Map(entries)
+
+/**
+ * Corpus sizes per discipline. `totals("Neuro")` gives both windows the SAME
+ * size, so share growth reduces to raw growth and the pre-existing ranking
+ * assertions still read naturally; the share-specific tests pass real,
+ * different sizes.
+ */
+const totals = (...disciplines: string[]) =>
+  new Map<string, CorpusTotals>(disciplines.map((label) => [label, { recent: 1000, prior: 1000 }]))
+
+/** One discipline's real, DIFFERENT corpus sizes in the two windows. */
+const corpus = (discipline: string, recent: number | null, prior: number | null) =>
+  new Map<string, CorpusTotals>([[discipline, { recent, prior }]])
 
 describe("selectTopicCandidates", () => {
   it("orders by recent volume and caps the pool at CANDIDATE_POOL", () => {
@@ -59,7 +73,7 @@ describe("selectTopicCandidates", () => {
 
 describe("rankHeatingTopics", () => {
   it("computes growth from the looked-up prior counts and sorts fastest first", () => {
-    const out = rankHeatingTopics([d("Neuro", [["a", 20], ["b", 12]])], priors([["a", 10], ["b", 10]]))
+    const out = rankHeatingTopics([d("Neuro", [["a", 20], ["b", 12]])], priors([["a", 10], ["b", 10]]), totals("Neuro"))
     expect(out.map((t) => [t.key, t.growth])).toEqual([
       ["a", 1],
       ["b", 0.2],
@@ -77,6 +91,7 @@ describe("rankHeatingTopics", () => {
     const out = rankHeatingTopics(
       [{ discipline: "Computer Science", recent: [{ key: "T10689", label: "Remote-Sensing Image Classification", count: 27 }] }],
       priors([["T10689", 16]]),
+      totals("Computer Science"),
     )
     expect(out).toHaveLength(1)
     expect(out[0].priorCount).toBe(16)
@@ -85,7 +100,7 @@ describe("rankHeatingTopics", () => {
   })
 
   it("a GENUINE zero prior still yields growth null (that is what \"new\" now means)", () => {
-    const out = rankHeatingTopics([d("Neuro", [["new", 9], ["grown", 20]])], priors([["new", 0], ["grown", 10]]))
+    const out = rankHeatingTopics([d("Neuro", [["new", 9], ["grown", 20]])], priors([["new", 0], ["grown", 10]]), totals("Neuro"))
     expect(out[0]).toMatchObject({ key: "new", growth: null, priorCount: 0 })
     expect(out[1]).toMatchObject({ key: "grown", growth: 1 })
   })
@@ -93,7 +108,11 @@ describe("rankHeatingTopics", () => {
   it("drops a candidate whose prior count was never measured (unknown is not zero)", () => {
     // Outside the bounded candidate pool, or its lookup request failed: the
     // row is omitted rather than defaulted to 0 and mislabelled "new".
-    const out = rankHeatingTopics([d("Neuro", [["measured", 20], ["unmeasured", 30]])], priors([["measured", 10]]))
+    const out = rankHeatingTopics(
+      [d("Neuro", [["measured", 20], ["unmeasured", 30]])],
+      priors([["measured", 10]]),
+      totals("Neuro"),
+    )
     expect(out.map((t) => t.key)).toEqual(["measured"])
   })
 
@@ -101,12 +120,17 @@ describe("rankHeatingTopics", () => {
     const out = rankHeatingTopics(
       [d("Neuro", [["small", MIN_RECENT_COUNT - 1], ["big", MIN_RECENT_COUNT]])],
       priors([["small", 1], ["big", 1]]),
+      totals("Neuro"),
     )
     expect(out.map((t) => t.key)).toEqual(["big"])
   })
 
   it("merges disciplines into one board and tags each row's discipline", () => {
-    const out = rankHeatingTopics([d("Neuro", [["n", 30]]), d("CS", [["c", 12]])], priors([["n", 10], ["c", 10]]))
+    const out = rankHeatingTopics(
+      [d("Neuro", [["n", 30]]), d("CS", [["c", 12]])],
+      priors([["n", 10], ["c", 10]]),
+      totals("Neuro", "CS"),
+    )
     expect(out.map((t) => [t.key, t.discipline])).toEqual([
       ["n", "Neuro"],
       ["c", "CS"],
@@ -114,13 +138,21 @@ describe("rankHeatingTopics", () => {
   })
 
   it("keeps the higher-count side when one topic appears under two disciplines", () => {
-    const out = rankHeatingTopics([d("Neuro", [["shared", 8]]), d("CS", [["shared", 30]])], priors([["shared", 10]]))
+    const out = rankHeatingTopics(
+      [d("Neuro", [["shared", 8]]), d("CS", [["shared", 30]])],
+      priors([["shared", 10]]),
+      totals("Neuro", "CS"),
+    )
     expect(out).toHaveLength(1)
     expect(out[0]).toMatchObject({ key: "shared", discipline: "CS", recentCount: 30 })
   })
 
   it("keeps the higher-count side regardless of which discipline is listed first", () => {
-    const out = rankHeatingTopics([d("CS", [["shared", 30]]), d("Neuro", [["shared", 8]])], priors([["shared", 10]]))
+    const out = rankHeatingTopics(
+      [d("CS", [["shared", 30]]), d("Neuro", [["shared", 8]])],
+      priors([["shared", 10]]),
+      totals("Neuro", "CS"),
+    )
     expect(out).toHaveLength(1)
     expect(out[0]).toMatchObject({ key: "shared", discipline: "CS", recentCount: 30 })
   })
@@ -128,7 +160,7 @@ describe("rankHeatingTopics", () => {
   it("caps the board at MAX_LEADERBOARD_TOPICS and keeps the highest-growth topics", () => {
     const recent = Array.from({ length: 20 }, (_, i) => [`t${i}`, 10 + i] as [string, number])
     const prior = priors(Array.from({ length: 20 }, (_, i) => [`t${i}`, 5] as [string, number]))
-    const out = rankHeatingTopics([d("Neuro", recent)], prior)
+    const out = rankHeatingTopics([d("Neuro", recent)], prior, totals("Neuro"))
     expect(out).toHaveLength(MAX_LEADERBOARD_TOPICS)
     // recentCount 10+i over prior=5 for all → growth is monotonic in i, so the
     // surviving set must be the 10 highest-i topics (t10..t19), highest first.
@@ -139,6 +171,145 @@ describe("rankHeatingTopics", () => {
   })
 
   it("returns [] for no input", () => {
-    expect(rankHeatingTopics([], new Map())).toEqual([])
+    expect(rankHeatingTopics([], new Map(), new Map())).toEqual([])
+  })
+})
+
+describe("rankHeatingTopics: growth is a share of the corpus, not a raw count", () => {
+  // Tonight's real Computer Science windows (measured live 2026-07-25):
+  // window(-3) 16624 → prior 22808 → recent 13953. The MIDDLE window is the
+  // highest, so the ~39% drop into the recent window is OpenAlex's indexing
+  // back-fill, not a real slump in computer science.
+  const CS_RECENT = 13953
+  const CS_PRIOR = 22808
+  const csCorpus = corpus("Computer Science", CS_RECENT, CS_PRIOR)
+
+  it("HEADLINE: a topic whose RAW count fell but whose SHARE rose ranks as GROWING", () => {
+    // "Multimodal Machine Learning", live: 184 → 134. Raw: −27%. By share:
+    // 134/13953 = 0.960% vs 184/22808 = 0.807% → +19%. Ranking it negative was
+    // handing every row the corpus-wide ~39% headwind.
+    const out = rankHeatingTopics(
+      [d("Computer Science", [["mml", 134]])],
+      priors([["mml", 184]]),
+      csCorpus,
+    )
+    expect(out).toHaveLength(1)
+    const [row] = out
+    expect(row.recentCount).toBeLessThan(row.priorCount) // raw volume really did fall
+    expect(row.growth).toBeGreaterThan(0) // ...and it is still heating up
+    expect(row.growth).toBeCloseTo(0.19, 2)
+  })
+
+  it("scales a genuinely fast riser by the same corpus shrinkage", () => {
+    // "Complexity and Algorithms in Graphs", live: 39 → 60. Raw +54%; by share
+    // 60/13953 vs 39/22808 → +151%.
+    const out = rankHeatingTopics([d("Computer Science", [["graphs", 60]])], priors([["graphs", 39]]), csCorpus)
+    expect(out[0].growth).toBeCloseTo(1.5147, 3)
+  })
+
+  it("still ranks a topic that lost share as declining", () => {
+    // Falling faster than the corpus: 184 → 60 is −49% by share, and must not
+    // be rescued by the correction.
+    const out = rankHeatingTopics([d("Computer Science", [["fading", 60]])], priors([["fading", 184]]), csCorpus)
+    expect(out[0].growth).toBeLessThan(0)
+    expect(out[0].growth).toBeCloseTo(-0.467, 2)
+  })
+
+  it("orders the board by share growth, not by raw growth", () => {
+    // Raw: riser +54%, shrinker −27% → riser first either way, but the
+    // shrinker must be ABOVE zero, not below it.
+    const out = rankHeatingTopics(
+      [d("Computer Science", [["mml", 134], ["graphs", 60]])],
+      priors([["mml", 184], ["graphs", 39]]),
+      csCorpus,
+    )
+    expect(out.map((t) => t.key)).toEqual(["graphs", "mml"])
+    expect(out.every((t) => (t.growth ?? 0) > 0)).toBe(true)
+  })
+
+  it("carries the two shares growth was computed from (so the bars can be drawn from them)", () => {
+    const out = rankHeatingTopics([d("Computer Science", [["mml", 134]])], priors([["mml", 184]]), csCorpus)
+    const [row] = out
+    expect(row.recentShare).toBeCloseTo(134 / CS_RECENT, 10)
+    expect(row.priorShare).toBeCloseTo(184 / CS_PRIOR, 10)
+    expect(row.growth).toBeCloseTo((row.recentShare - row.priorShare) / row.priorShare, 10)
+    // The raw counts survive too — absolute volume is still shown as text.
+    expect([row.priorCount, row.recentCount]).toEqual([184, 134])
+  })
+
+  it("keeps the volume floor on the RAW recent count (a share floor would be meaningless)", () => {
+    // Under the floor in raw terms, yet a huge share gain: it must still be out.
+    const out = rankHeatingTopics(
+      [d("Computer Science", [["tiny", MIN_RECENT_COUNT - 1]])],
+      priors([["tiny", 1]]),
+      csCorpus,
+    )
+    expect(out).toEqual([])
+  })
+
+  it("a genuine zero prior is still \"new\", with priorShare 0 and a real recentShare", () => {
+    const out = rankHeatingTopics([d("Computer Science", [["fresh", 40]])], priors([["fresh", 0]]), csCorpus)
+    expect(out[0]).toMatchObject({ growth: null, priorCount: 0, priorShare: 0 })
+    expect(out[0].recentShare).toBeCloseTo(40 / CS_RECENT, 10)
+  })
+
+  it("an EMPTY prior corpus yields no NaN/Infinity — every such row is a genuine 'new'", () => {
+    // totalPrior 0 can only coexist with priorCount 0 (a topic cannot outnumber
+    // its corpus), so the row is "new" and no division is ever attempted.
+    const out = rankHeatingTopics(
+      [d("Computer Science", [["fresh", 40]])],
+      priors([["fresh", 0]]),
+      corpus("Computer Science", CS_RECENT, 0),
+    )
+    expect(out).toHaveLength(1)
+    expect(out[0].growth).toBeNull()
+    expect(Number.isFinite(out[0].recentShare)).toBe(true)
+    expect(out[0].priorShare).toBe(0)
+  })
+
+  it("drops rows whose discipline's PRIOR corpus was never measured (no raw-count fallback)", () => {
+    // A failed count is unknown, not 1: falling back to raw growth would
+    // silently reintroduce the indexing-lag headwind on those rows only, making
+    // the board's ranking incomparable. A genuine "new" row needs no prior
+    // denominator, so it survives.
+    const out = rankHeatingTopics(
+      [d("Computer Science", [["ratio", 134], ["fresh", 40]])],
+      priors([["ratio", 184], ["fresh", 0]]),
+      corpus("Computer Science", CS_RECENT, null),
+    )
+    expect(out.map((t) => t.key)).toEqual(["fresh"])
+  })
+
+  it("drops every row of a discipline whose RECENT corpus was never measured", () => {
+    const out = rankHeatingTopics(
+      [d("Computer Science", [["ratio", 134], ["fresh", 40]])],
+      priors([["ratio", 184], ["fresh", 0]]),
+      corpus("Computer Science", null, CS_PRIOR),
+    )
+    expect(out).toEqual([])
+  })
+
+  it("drops rows of a discipline with no totals entry at all, keeping the other discipline's", () => {
+    const out = rankHeatingTopics(
+      [d("Computer Science", [["cs", 134]]), d("Neuro", [["n", 20]])],
+      priors([["cs", 184], ["n", 10]]),
+      totals("Neuro"),
+    )
+    expect(out.map((t) => t.key)).toEqual(["n"])
+  })
+
+  it("never emits a non-finite growth or share for malformed corpus sizes", () => {
+    for (const bad of [0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const out = rankHeatingTopics(
+        [d("Computer Science", [["x", 134]])],
+        priors([["x", 184]]),
+        corpus("Computer Science", bad, bad),
+      )
+      for (const row of out) {
+        expect(Number.isFinite(row.recentShare)).toBe(true)
+        expect(Number.isFinite(row.priorShare)).toBe(true)
+        expect(row.growth === null || Number.isFinite(row.growth)).toBe(true)
+      }
+    }
   })
 })

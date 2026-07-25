@@ -120,10 +120,35 @@ describe.skipIf(!live)("LIVE trending board gate", () => {
       expect(top.recentCount).toBeGreaterThanOrEqual(MIN_RECENT_COUNT)
       expect(board.overview.totalRecent).toBeGreaterThan(0)
 
-      // The bars are drawn from the same measured counts as the badge, so the
-      // prior figure must be a real, finite number on every row.
+      // The prior figure must be a real, finite number on every row...
       expect(board.topics.every((t) => Number.isFinite(t.priorCount) && t.priorCount >= 0)).toBe(true)
       console.log("[live-trending] top prior/recent:", top.priorCount, "→", top.recentCount)
+
+      // ...and so must the two SHARES the badge AND the bars are both drawn
+      // from. A share is a real fraction of a real corpus: finite, in [0, 1],
+      // and consistent with the growth figure beside it (OpenAlex's recent
+      // window is only partially indexed, so raw counts are NOT).
+      expect(
+        board.topics.every(
+          (t) =>
+            Number.isFinite(t.recentShare) &&
+            Number.isFinite(t.priorShare) &&
+            t.recentShare >= 0 &&
+            t.recentShare <= 1 &&
+            t.priorShare >= 0 &&
+            t.priorShare <= 1,
+        ),
+      ).toBe(true)
+      for (const t of board.topics) {
+        if (t.growth === null) expect(t.priorCount).toBe(0)
+        else expect(t.growth).toBeCloseTo((t.recentShare - t.priorShare) / t.priorShare, 9)
+        // The bars can never contradict the badge: sign agreement is structural.
+        if (t.growth !== null) expect(t.recentShare > t.priorShare).toBe(t.growth > 0)
+      }
+      console.log(
+        "[live-trending] top shares:",
+        `${(top.priorShare * 100).toFixed(3)}% → ${(top.recentShare * 100).toFixed(3)}%`,
+      )
 
       if (board.surveyError) {
         // Acceptable for the gate (GMI backend-replica flake etc.) as long as

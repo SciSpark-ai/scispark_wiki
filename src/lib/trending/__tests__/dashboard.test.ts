@@ -52,17 +52,27 @@ function topicGroupFnFor(spec: GroupSpec): TopicGroupFn {
 
 /**
  * A CountFn standing in for OpenAlex: a prior-window request carrying a
- * `topicId` answers from the spec's prior map, everything else (the
- * anchor-wide recent totals) returns `other` so those assertions stay exact.
+ * `topicId` answers from the spec's prior map; everything else is an
+ * anchor-wide CORPUS total (one per window per discipline — the share
+ * denominators) and returns `other`, or `priorTotal` for the prior window.
+ *
+ * The two default to the SAME size, so growth-by-share reduces to
+ * growth-by-raw-count and the ranking assertions below stay readable. The
+ * corpus-shrinkage cases pass a smaller recent total explicitly.
  */
-function countFnFor(spec: GroupSpec, other = 4): CountFn {
+function countFnFor(spec: GroupSpec, other = 4, priorTotal = other): CountFn {
   return async ({ query, fromDate, toDate, topicId }) => {
     if (isPriorLookup({ fromDate, toDate, topicId })) {
       const prior = spec[query]?.prior ?? {}
       return prior[topicId!] ?? 0
     }
-    return other
+    return fromDate === WINDOWS.prior.fromDate ? priorTotal : other
   }
+}
+
+/** True for an anchor-wide corpus count (no topicId) over the PRIOR window. */
+function isPriorCorpusTotal(q: { fromDate: string; topicId?: string }): boolean {
+  return q.topicId === undefined && q.fromDate === WINDOWS.prior.fromDate
 }
 
 /**
@@ -210,18 +220,24 @@ describe("runTrendingBoard", () => {
     const provider = new MockProvider([structured(BRIEFS_ONE)])
     await runTrendingBoard(storage, baseOpts({ countFn: spyCount, providerOverride: { strong: provider } }))
 
-    // The bars are drawn from the prior/recent counts already in hand, so the
-    // ONLY topic-scoped requests are the prior lookups (one per candidate over
-    // the whole prior window). An 8-week sparkline would have cost 8 more
-    // requests per topic here — that cost, and the chart-vs-badge mismatch it
-    // caused when the series was scoped differently, is what this replaces.
+    // The bars are drawn from the shares already in hand, so the ONLY
+    // topic-scoped requests are the prior lookups (one per candidate over the
+    // whole prior window). An 8-week sparkline would have cost 8 more requests
+    // per topic here — that cost, and the chart-vs-badge mismatch it caused
+    // when the series was scoped differently, is what this replaces.
     const topicScoped = seen.filter((s) => s.topicId !== undefined)
     expect(topicScoped.length).toBe(2) // T1 and T2 (T3 is under the floor)
     expect(topicScoped.every((s) => isPriorLookup(s))).toBe(true)
     expect(topicScoped.every((s) => s.query === "Neuroscience")).toBe(true)
     expect(new Set(topicScoped.map((s) => s.topicId))).toEqual(new Set(["T1", "T2"]))
-    // Plus exactly one anchor-wide recent total; nothing else.
-    expect(seen.filter((s) => s.topicId === undefined)).toHaveLength(1)
+    // Plus exactly TWO anchor-wide corpus totals — this discipline's size in
+    // each window, the share denominators. Nothing else.
+    const corpusTotals = seen.filter((s) => s.topicId === undefined)
+    expect(corpusTotals).toHaveLength(2)
+    expect(corpusTotals.every((s) => s.query === "Neuroscience")).toBe(true)
+    expect(new Set(corpusTotals.map((s) => s.fromDate))).toEqual(
+      new Set([WINDOWS.recent.fromDate, WINDOWS.prior.fromDate]),
+    )
   })
 
   it("groups only the RECENT window — the prior window is never grouped", async () => {
@@ -237,24 +253,71 @@ describe("runTrendingBoard", () => {
     expect(windowsAsked).toEqual([WINDOWS.recent.fromDate])
   })
 
-  it("carries the exact numbers growth was computed from, so a row's bars can never contradict its badge", async () => {
+  it("carries the exact SHARES growth was computed from, so a row's bars can never contradict its badge", async () => {
     const storage = new MemoryVaultStorage()
     await seedAnchors(storage, [NEURO])
     const provider = new MockProvider([structured(BRIEFS_ONE)])
-    const board = await runTrendingBoard(storage, baseOpts({ providerOverride: { strong: provider } }))
+    // Deliberately unequal corpus sizes, so a row whose bars were drawn from
+    // raw counts would visibly disagree with its share-based badge.
+    const shrinking = countFnFor(ONE_DISCIPLINE, 400, 800)
+    const board = await runTrendingBoard(
+      storage,
+      baseOpts({ countFn: shrinking, providerOverride: { strong: provider } }),
+    )
 
     for (const t of board.topics) {
       expect(Number.isFinite(t.priorCount)).toBe(true)
+      expect(t.recentShare).toBeCloseTo(t.recentCount / 400, 10)
       if (t.priorCount === 0) {
         expect(t.growth).toBeNull()
+        expect(t.priorShare).toBe(0)
       } else {
-        expect(t.growth).toBeCloseTo((t.recentCount - t.priorCount) / t.priorCount)
+        expect(t.priorShare).toBeCloseTo(t.priorCount / 800, 10)
+        expect(t.growth).toBeCloseTo((t.recentShare - t.priorShare) / t.priorShare, 10)
       }
     }
     expect(board.topics.map((t) => [t.priorCount, t.recentCount])).toEqual([
       [10, 40],
       [20, 20],
     ])
+  })
+
+  it("HEADLINE: a shrinking corpus cannot fake a decline — a topic losing raw papers but gaining share ranks positive", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [CS])
+    // Tonight's real Computer Science windows: prior 22808 → recent 13953,
+    // i.e. the recent fortnight is only ~61% indexed. "Multimodal Machine
+    // Learning" went 184 → 134 (−27% raw, +19% by share) and "Complexity and
+    // Algorithms in Graphs" 39 → 60 (+54% raw, +151% by share). Ranked on raw
+    // counts, 8 of 10 live rows came back negative on a page about what is
+    // heating up.
+    const spec: GroupSpec = {
+      "Computer Science": {
+        recent: [
+          { key: "mml", label: "Multimodal Machine Learning", count: 134 },
+          { key: "graphs", label: "Complexity and Algorithms in Graphs", count: 60 },
+        ],
+        prior: { mml: 184, graphs: 39 },
+      },
+    }
+    const provider = new MockProvider([structured({ topics: [], crossDisciplineNote: null })])
+    const board = await runTrendingBoard(
+      storage,
+      baseOpts({
+        topicGroupFn: topicGroupFnFor(spec),
+        countFn: countFnFor(spec, 13953, 22808),
+        providerOverride: { strong: provider },
+      }),
+    )
+
+    const mml = board.topics.find((t) => t.key === "mml")!
+    expect(mml.recentCount).toBeLessThan(mml.priorCount) // raw volume really did fall
+    expect(mml.growth).toBeGreaterThan(0) // ...and the badge says "heating up"
+    expect(mml.growth).toBeCloseTo(0.19, 2)
+    expect(board.topics.find((t) => t.key === "graphs")!.growth).toBeCloseTo(1.5147, 3)
+    // ...and the bars are drawn from shares that agree with those badges.
+    expect(mml.recentShare).toBeGreaterThan(mml.priorShare)
+    expect(board.topics.map((t) => t.key)).toEqual(["graphs", "mml"])
   })
 
   it("never sends any number to the LLM (no counts, growth or dates in the prompt)", async () => {
@@ -509,11 +572,11 @@ describe("runTrendingBoard", () => {
     expect(board.overview.totalRecent).toBe(1300)
   })
 
-  it("overview totalRecent falls back to the group buckets when the count call fails", async () => {
+  it("overview totalRecent falls back to the group buckets when the corpus count fails — but the ranking does NOT", async () => {
     const storage = new MemoryVaultStorage()
     await seedAnchors(storage, [NEURO])
-    // Only the anchor-wide total fails; prior lookups still resolve, so the
-    // leaderboard is intact and the fallback is isolated to the overview.
+    // Both anchor-wide corpus counts fail; the per-topic prior lookups still
+    // resolve.
     const failingTotal: CountFn = async (q) => {
       if (isPriorLookup(q)) return countFn(q)
       throw new Error("openalex down")
@@ -523,8 +586,47 @@ describe("runTrendingBoard", () => {
       storage,
       baseOpts({ countFn: failingTotal, providerOverride: { strong: provider } }),
     )
-    expect(board.overview.totalRecent).toBe(62) // 40 + 20 + 2: low but honest, never blank
-    expect(board.topics.map((t) => t.key)).toEqual(["T1", "T2"])
+    // The overview may show the summed buckets: low but honest, never blank.
+    expect(board.overview.totalRecent).toBe(62) // 40 + 20 + 2
+    // The RANKING may not: the bucket sum is truncated at 200 groups, and using
+    // it as a share denominator would inflate every recent share. With no
+    // measured corpus size there is no share, and ranking those rows on raw
+    // counts instead is precisely the indexing-lag artifact this design
+    // removes — so they drop.
+    expect(board.topics).toEqual([])
+  })
+
+  it("a failed PRIOR corpus count drops only the rows that divide by it — genuine 'new' rows survive", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO])
+    const spec: GroupSpec = {
+      Neuroscience: {
+        recent: [
+          { key: "T1", label: "Ratio Row", count: 40 },
+          { key: "T2", label: "Genuinely New", count: 20 },
+        ],
+        prior: { T1: 10, T2: 0 },
+      },
+    }
+    const base = countFnFor(spec)
+    const failPriorTotal: CountFn = async (q) => {
+      if (isPriorCorpusTotal(q)) throw new Error("openalex 429")
+      return base(q)
+    }
+    const provider = new MockProvider([structured({ topics: [], crossDisciplineNote: null })])
+    const board = await runTrendingBoard(
+      storage,
+      baseOpts({
+        topicGroupFn: topicGroupFnFor(spec),
+        countFn: failPriorTotal,
+        providerOverride: { strong: provider },
+      }),
+    )
+    // A zero prior needs no prior-corpus denominator to be "new"; a ratio row
+    // does, and an unmeasured corpus is unknown rather than unchanged.
+    expect(board.topics.map((t) => t.key)).toEqual(["T2"])
+    expect(board.topics[0].growth).toBeNull()
+    expect(board.topics[0].priorShare).toBe(0)
   })
 
   it("a failed prior-count lookup drops only that topic (an unmeasured prior is never read as zero)", async () => {

@@ -2,28 +2,42 @@ const WIDTH = 40
 const HEIGHT = 22
 const BAR_WIDTH = 14
 const GAP = WIDTH - BAR_WIDTH * 2
-/** Floor so a tiny-but-nonzero count is still a visible sliver rather than nothing. */
+/** Floor so a tiny-but-nonzero share is still a visible sliver rather than nothing. */
 const MIN_VISIBLE = 2
+
+export interface TrendBarsProps {
+  /** The topic's share of its discipline's prior-window corpus (0 = "new"). */
+  priorShare: number
+  /** Its share of the recent-window corpus. */
+  recentShare: number
+  /** Raw volumes — described in the accessible label, never drawn to scale. */
+  priorCount: number
+  recentCount: number
+}
 
 /**
  * Two hand-rolled bars — the topic's PRIOR window beside its RECENT one — in
  * place of the weekly sparkline this replaced. No chart library.
  *
- * Both bars are drawn from the exact numbers `growth` is computed from
- * (`priorCount`/`recentCount`), so a row's chart can never disagree with its
- * growth badge; the old sparkline was a separately-fetched series scoped
- * differently, and it did disagree. It also costs zero requests: the counts are
- * already in hand by the time a row exists.
+ * Both bars are scaled from the exact figures `growth` is computed from: the
+ * SHARES (`priorShare`/`recentShare`), not the raw counts. That is the whole
+ * point. OpenAlex under-indexes the most recent window for every topic alike,
+ * so raw counts fall board-wide (~39% on the live 2026-07-25 numbers) while
+ * shares do not; drawing raw bars beside a share-based badge would show a
+ * visibly SHRINKING recent bar next to a positive percentage — a chart
+ * disagreeing with the number beside it, which is exactly the defect the
+ * sparkline was removed for. Raw counts stay in the accessible label (and as
+ * text on the expanded row) as honest absolute volume.
  *
- * `priorCount: 0` (the "new" case, common rather than exceptional) draws an
+ * `priorShare: 0` (the "new" case, common rather than exceptional) draws an
  * EMPTY prior bar: heights scale to `Math.max(prior, recent)`, which is > 0 in
  * that case, and the all-zero case short-circuits to a flat baseline — so no
  * division by zero and no NaN height can reach the DOM.
  */
-export function TrendBars({ priorCount, recentCount }: { priorCount: number; recentCount: number }) {
-  const max = Math.max(priorCount, recentCount)
-  const priorHeight = barHeight(priorCount, max)
-  const recentHeight = barHeight(recentCount, max)
+export function TrendBars({ priorShare, recentShare, priorCount, recentCount }: TrendBarsProps) {
+  const max = Math.max(priorShare, recentShare)
+  const priorHeight = barHeight(priorShare, max)
+  const recentHeight = barHeight(recentShare, max)
 
   return (
     <svg
@@ -31,7 +45,10 @@ export function TrendBars({ priorCount, recentCount }: { priorCount: number; rec
       height={HEIGHT}
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       role="img"
-      aria-label={`${priorCount} papers in the prior window, ${recentCount} in the recent window`}
+      aria-label={
+        `${formatShare(priorShare)} of the field's papers in the prior window (${priorCount}), ` +
+        `${formatShare(recentShare)} in the recent window (${recentCount})`
+      }
       className="shrink-0"
     >
       <rect
@@ -55,11 +72,17 @@ export function TrendBars({ priorCount, recentCount }: { priorCount: number; rec
 }
 
 /**
- * Height in px for `count` against the row's larger count. Always finite:
- * `max <= 0` (both counts zero, or a malformed non-positive count) returns 0
+ * Height in px for `share` against the row's larger share. Always finite:
+ * `max <= 0` (both shares zero, or a malformed non-positive share) returns 0
  * rather than dividing, and a non-finite input is treated as zero.
  */
-function barHeight(count: number, max: number): number {
-  if (!Number.isFinite(count) || count <= 0 || max <= 0) return 0
-  return Math.max(MIN_VISIBLE, Math.round((count / max) * HEIGHT))
+function barHeight(share: number, max: number): number {
+  if (!Number.isFinite(share) || share <= 0 || max <= 0) return 0
+  return Math.max(MIN_VISIBLE, Math.round((share / max) * HEIGHT))
+}
+
+/** A share as a percentage of the discipline; never NaN%. */
+function formatShare(share: number): string {
+  if (!Number.isFinite(share) || share <= 0) return "0%"
+  return `${(share * 100).toFixed(2)}%`
 }

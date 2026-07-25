@@ -37,6 +37,8 @@ function topic(overrides: Partial<BoardTopic> = {}): BoardTopic {
     growth: 1,
     recentCount: 42,
     priorCount: 21,
+    recentShare: 0.042,
+    priorShare: 0.021,
     papers: [boardPaper()],
     why: "Several groups converged on sub-quadratic attention this quarter.",
     relevant: false,
@@ -53,29 +55,66 @@ function barHeights(html: string): number[] {
 }
 
 describe("TrendBars", () => {
-  it("renders a zero-height prior bar for priorCount: 0 (the 'new' case) without NaN", () => {
-    const html = renderToStaticMarkup(<TrendBars priorCount={0} recentCount={30} />)
+  it("renders a zero-height prior bar for priorShare: 0 (the 'new' case) without NaN", () => {
+    const html = renderToStaticMarkup(
+      <TrendBars priorShare={0} recentShare={0.03} priorCount={0} recentCount={30} />,
+    )
     expect(html).not.toContain("NaN")
     const [prior, recent] = barHeights(html)
     expect(prior).toBe(0)
     expect(recent).toBeGreaterThan(0)
   })
 
-  it("scales both bars to the larger of the two counts", () => {
-    const taller = renderToStaticMarkup(<TrendBars priorCount={10} recentCount={20} />)
+  it("scales both bars to the larger of the two SHARES", () => {
+    const taller = renderToStaticMarkup(
+      <TrendBars priorShare={0.01} recentShare={0.02} priorCount={10} recentCount={20} />,
+    )
     const [priorUp, recentUp] = barHeights(taller)
     expect(recentUp).toBeGreaterThan(priorUp)
     expect(priorUp / recentUp).toBeCloseTo(0.5, 1) // recent is the max → full height, prior is half of it
 
-    // ...and symmetrically for a DECLINING row, where prior is the max.
-    const shorter = renderToStaticMarkup(<TrendBars priorCount={20} recentCount={10} />)
+    // ...and symmetrically for a row that really did lose share.
+    const shorter = renderToStaticMarkup(
+      <TrendBars priorShare={0.02} recentShare={0.01} priorCount={20} recentCount={10} />,
+    )
     const [priorDown, recentDown] = barHeights(shorter)
     expect(priorDown).toBeGreaterThan(recentDown)
     expect(priorDown).toBe(recentUp) // the max always fills the same full height
   })
 
-  it("renders both bars flat, with no NaN, when both counts are zero", () => {
-    const html = renderToStaticMarkup(<TrendBars priorCount={0} recentCount={0} />)
+  it("REGRESSION: falling raw counts but a RISING share draws a TALLER recent bar, not a shorter one", () => {
+    // The live Computer Science row: 184 → 134 papers while the corpus shrank
+    // 22808 → 13953, i.e. −27% raw but +19% by share. Bars drawn from the raw
+    // counts would shrink visibly beside a "+19%" badge — a chart contradicting
+    // the number next to it, which is exactly the defect this replaced.
+    const html = renderToStaticMarkup(
+      <TrendBars priorShare={184 / 22808} recentShare={134 / 13953} priorCount={184} recentCount={134} />,
+    )
+    const [prior, recent] = barHeights(html)
+    expect(recent).toBeGreaterThan(prior)
+  })
+
+  it("keeps the raw volumes in the accessible label without drawing them", () => {
+    const html = renderToStaticMarkup(
+      <TrendBars priorShare={184 / 22808} recentShare={134 / 13953} priorCount={184} recentCount={134} />,
+    )
+    expect(html).toContain("184")
+    expect(html).toContain("134")
+    expect(html).not.toContain("NaN")
+  })
+
+  it("renders both bars flat, with no NaN, when both shares are zero", () => {
+    const html = renderToStaticMarkup(
+      <TrendBars priorShare={0} recentShare={0} priorCount={0} recentCount={0} />,
+    )
+    expect(html).not.toContain("NaN")
+    expect(barHeights(html)).toEqual([0, 0])
+  })
+
+  it("cannot emit a NaN height for a malformed share", () => {
+    const html = renderToStaticMarkup(
+      <TrendBars priorShare={Number.NaN} recentShare={Number.NaN} priorCount={1} recentCount={2} />,
+    )
     expect(html).not.toContain("NaN")
     expect(barHeights(html)).toEqual([0, 0])
   })
@@ -104,6 +143,43 @@ describe("TopicRow growth badge", () => {
       <TopicRow topic={topic({ growth: -0.25 })} rank={1} expanded={false} onToggle={() => {}} />,
     )
     expect(html).toContain("-25%")
+  })
+})
+
+describe("TopicRow badge/bar agreement", () => {
+  it("a positive badge is never drawn beside a shrinking recent bar", () => {
+    // The live row: 184 → 134 papers, corpus 22808 → 13953. Badge +19%, and
+    // the bars must agree with it.
+    const html = renderToStaticMarkup(
+      <TopicRow
+        topic={topic({
+          growth: 0.19,
+          priorCount: 184,
+          recentCount: 134,
+          priorShare: 184 / 22808,
+          recentShare: 134 / 13953,
+        })}
+        rank={1}
+        expanded={false}
+        onToggle={() => {}}
+      />,
+    )
+    expect(html).toContain("+19%")
+    const [prior, recent] = barHeights(html)
+    expect(recent).toBeGreaterThan(prior)
+  })
+
+  it("shows the honest raw volumes as text on the expanded row", () => {
+    const html = renderToStaticMarkup(
+      <TopicRow
+        topic={topic({ priorCount: 184, recentCount: 134 })}
+        rank={1}
+        expanded={true}
+        onToggle={() => {}}
+      />,
+    )
+    expect(html).toMatch(/134 papers this window/)
+    expect(html).toMatch(/184 in the prior window/)
   })
 })
 
