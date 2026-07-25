@@ -24,7 +24,12 @@ describe("maybeAutoRefreshTrending", () => {
 
   it("refreshes when fields exist and no dashboard is cached", async () => {
     const storage = new MemoryVaultStorage()
-    await saveTrendingSettings(storage, { fields: [{ slug: "nlp", label: "NLP" }], cadence: "weekly" })
+    await saveTrendingSettings(storage, {
+      fields: [{ slug: "nlp", label: "NLP" }],
+      cadence: "weekly",
+      anchors: [],
+      anchorsOverridden: false,
+    })
     const provider = new MockProvider([structured(SURVEY)])
     const r = await maybeAutoRefreshTrending(storage, { searchFn, settings: SETTINGS, now: NOW, providerOverride: { strong: provider } })
     expect(r).toBe("refreshed")
@@ -33,7 +38,12 @@ describe("maybeAutoRefreshTrending", () => {
 
   it("returns 'fresh' when a recent dashboard already exists for the same fields", async () => {
     const storage = new MemoryVaultStorage()
-    await saveTrendingSettings(storage, { fields: [{ slug: "nlp", label: "NLP" }], cadence: "weekly" })
+    await saveTrendingSettings(storage, {
+      fields: [{ slug: "nlp", label: "NLP" }],
+      cadence: "weekly",
+      anchors: [],
+      anchorsOverridden: false,
+    })
     await storage.write(
       ".scispark/trending/dashboard.json",
       JSON.stringify({
@@ -47,7 +57,12 @@ describe("maybeAutoRefreshTrending", () => {
 
   it("refreshes when the cached dashboard's panels are for a different field set than tracked fields", async () => {
     const storage = new MemoryVaultStorage()
-    await saveTrendingSettings(storage, { fields: [{ slug: "nlp", label: "NLP" }], cadence: "weekly" })
+    await saveTrendingSettings(storage, {
+      fields: [{ slug: "nlp", label: "NLP" }],
+      cadence: "weekly",
+      anchors: [],
+      anchorsOverridden: false,
+    })
     // Cached dashboard is time-fresh (generatedAt == NOW) but for a DIFFERENT field ("old"),
     // simulating a settings change (e.g. via /profile) that swapped tracked fields without a
     // corresponding refresh. Per T8's fieldsMatchDashboard addition, this must still refresh.

@@ -2,6 +2,8 @@ import type { VaultStorage } from "../vault/storage"
 import { withSettingsWrite } from "../vault/settings-write"
 import type { TrackedField } from "./fields"
 import { MAX_TRACKED_FIELDS } from "./fields"
+import type { AnchorDiscipline } from "./anchors"
+import { MAX_ANCHORS } from "./anchors"
 
 /**
  * Trending settings — stored under a top-level "trending" key in
@@ -17,9 +19,20 @@ export type Cadence = "daily" | "weekly"
 export interface TrendingSettings {
   fields: TrackedField[]
   cadence: Cadence
+  /** Derived (or user-set) broad anchor disciplines the leaderboard scopes
+   * to. `[]` means not yet derived. */
+  anchors: AnchorDiscipline[]
+  /** True once the user has set anchors by hand — derivation must not
+   * overwrite a hand-set list on a later refresh. */
+  anchorsOverridden: boolean
 }
 
-export const DEFAULT_TRENDING_SETTINGS: TrendingSettings = { fields: [], cadence: "weekly" }
+export const DEFAULT_TRENDING_SETTINGS: TrendingSettings = {
+  fields: [],
+  cadence: "weekly",
+  anchors: [],
+  anchorsOverridden: false,
+}
 
 const CADENCE_VALUES: readonly Cadence[] = ["daily", "weekly"]
 
@@ -35,6 +48,17 @@ function isTrackedField(v: unknown): v is TrackedField {
     typeof (v as TrackedField).label === "string" &&
     (v as TrackedField).slug.length > 0 &&
     (v as TrackedField).label.length > 0
+  )
+}
+
+function isAnchor(v: unknown): v is AnchorDiscipline {
+  return (
+    v !== null &&
+    typeof v === "object" &&
+    typeof (v as AnchorDiscipline).id === "string" &&
+    typeof (v as AnchorDiscipline).label === "string" &&
+    (v as AnchorDiscipline).id.length > 0 &&
+    (v as AnchorDiscipline).label.length > 0
   )
 }
 
@@ -80,9 +104,14 @@ export function normalizeTrendingSettings(raw: unknown): TrendingSettings {
   const fields = Array.isArray(t.fields)
     ? dedupeFieldsBySlug(t.fields.filter(isTrackedField) as TrackedField[]).slice(0, MAX_TRACKED_FIELDS)
     : DEFAULT_TRENDING_SETTINGS.fields
+  const anchors = Array.isArray(t.anchors)
+    ? (t.anchors.filter(isAnchor) as AnchorDiscipline[]).slice(0, MAX_ANCHORS)
+    : DEFAULT_TRENDING_SETTINGS.anchors
   return {
     fields,
     cadence: isCadence(t.cadence) ? t.cadence : DEFAULT_TRENDING_SETTINGS.cadence,
+    anchors,
+    anchorsOverridden: typeof t.anchorsOverridden === "boolean" ? t.anchorsOverridden : DEFAULT_TRENDING_SETTINGS.anchorsOverridden,
   }
 }
 

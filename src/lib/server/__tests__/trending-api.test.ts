@@ -182,7 +182,12 @@ describe("trending skill routes", () => {
 
   it("POST /api/skills/trending/auto-refresh: 'refreshed' when fields are tracked and nothing is cached yet, using the injected provider (no network)", async () => {
     const { saveTrendingSettings } = await import("../../trending/settings")
-    await saveTrendingSettings(storage, { fields: [{ slug: "nlp", label: "NLP" }], cadence: "weekly" })
+    await saveTrendingSettings(storage, {
+      fields: [{ slug: "nlp", label: "NLP" }],
+      cadence: "weekly",
+      anchors: [],
+      anchorsOverridden: false,
+    })
     const provider = new MockProvider([structured(SURVEY)])
     const countFn: CountFn = async () => 1
     const groupFn: GroupFn = async () => []

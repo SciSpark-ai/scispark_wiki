@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { readUserModel } from "@/lib/usermodel/pages"
 import { effectiveTrackedFields, slugify, MAX_TRACKED_FIELDS } from "@/lib/trending/fields"
+import type { AnchorDiscipline } from "@/lib/trending/anchors"
 import type { Cadence } from "@/lib/trending/settings"
 import { loadTrendingSettingsRemote, saveTrendingSettingsRemote } from "@/lib/trending/settings-client"
 
@@ -18,6 +19,12 @@ export function TrendingFieldsCard() {
   const [trendingLoading, setTrendingLoading] = useState(true)
   const [fieldLabels, setFieldLabels] = useState<string[]>([])
   const [cadence, setCadence] = useState<Cadence>("weekly")
+  // Anchors are derived/edited elsewhere (Task 10's editor); this card only
+  // owns fields + cadence, but a save here still round-trips the whole
+  // TrendingSettings object, so it must carry the loaded anchors state
+  // through unchanged rather than silently wiping it back to defaults.
+  const [anchors, setAnchors] = useState<AnchorDiscipline[]>([])
+  const [anchorsOverridden, setAnchorsOverridden] = useState(false)
   const [trendingStatus, setTrendingStatus] = useState<string | null>(null)
   const [trendingError, setTrendingError] = useState<string | null>(null)
   const [trendingSaving, setTrendingSaving] = useState(false)
@@ -43,6 +50,8 @@ export function TrendingFieldsCard() {
         const fields = effectiveTrackedFields(settings.fields, interests)
         setFieldLabels(fields.map((f) => f.label))
         setCadence(settings.cadence)
+        setAnchors(settings.anchors)
+        setAnchorsOverridden(settings.anchorsOverridden)
       } catch (e) {
         if (!cancelled) setTrendingError(e instanceof Error ? e.message : String(e))
       } finally {
@@ -76,7 +85,7 @@ export function TrendingFieldsCard() {
         .map((label) => ({ slug: slugify(label), label }))
         .filter((f) => f.slug.length > 0)
         .slice(0, MAX_TRACKED_FIELDS)
-      await saveTrendingSettingsRemote({ fields, cadence })
+      await saveTrendingSettingsRemote({ fields, cadence, anchors, anchorsOverridden })
       setFieldLabels(fields.map((f) => f.label))
       setTrendingStatus("Saved")
       setTimeout(() => setTrendingStatus(null), 2000)
