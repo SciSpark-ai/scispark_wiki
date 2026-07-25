@@ -62,10 +62,26 @@ describe("rankHeatingTopics", () => {
     expect(out[0]).toMatchObject({ key: "shared", discipline: "CS", recentCount: 30 })
   })
 
-  it("caps the board at MAX_LEADERBOARD_TOPICS", () => {
+  it("keeps the higher-count side regardless of which discipline is listed first", () => {
+    const out = rankHeatingTopics([
+      d("CS", [["shared", 30]], [["shared", 10]]),
+      d("Neuro", [["shared", 8]], [["shared", 4]]),
+    ])
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ key: "shared", discipline: "CS", recentCount: 30 })
+  })
+
+  it("caps the board at MAX_LEADERBOARD_TOPICS and keeps the highest-growth topics", () => {
     const recent = Array.from({ length: 20 }, (_, i) => [`t${i}`, 10 + i] as [string, number])
     const prior = Array.from({ length: 20 }, (_, i) => [`t${i}`, 5] as [string, number])
-    expect(rankHeatingTopics([d("Neuro", recent, prior)])).toHaveLength(MAX_LEADERBOARD_TOPICS)
+    const out = rankHeatingTopics([d("Neuro", recent, prior)])
+    expect(out).toHaveLength(MAX_LEADERBOARD_TOPICS)
+    // recentCount 10+i over prior=5 for all → growth is monotonic in i, so the
+    // surviving set must be the 10 highest-i topics (t10..t19), highest first.
+    expect(out.map((t) => t.key)).toEqual(["t19", "t18", "t17", "t16", "t15", "t14", "t13", "t12", "t11", "t10"])
+    for (const dropped of ["t0", "t1", "t8", "t9"]) {
+      expect(out.map((t) => t.key)).not.toContain(dropped)
+    }
   })
 
   it("returns [] for no input", () => {
