@@ -13,7 +13,7 @@ import { runSkill } from "../skills/runner"
 import { logEvent } from "../events/log"
 import type { TrackedField } from "./fields"
 import type { Cadence } from "./settings"
-import { loadTrendingSettings, saveTrendingSettings } from "./settings"
+import { loadTrendingSettings, saveDerivedAnchors } from "./settings"
 import type { AnchorDiscipline } from "./anchors"
 import { deriveAnchorDisciplines, MAX_ANCHORS } from "./anchors"
 import { completeWindows, rankHeatingTopics, type RankedTopic } from "./topics"
@@ -55,7 +55,7 @@ export interface BoardTopic {
 }
 
 export interface BoardOverview {
-  /** Sum of every recent-window group bucket across the anchor disciplines (not just the ranked ones). */
+  /** Real OpenAlex work count over the complete recent window, summed across the anchor disciplines (a work matching two anchors is counted twice). */
   totalRecent: number
   topTopicLabel: string | null
   topTopicGrowth: number | null
@@ -103,7 +103,7 @@ export interface RunTrendingBoardOpts {
   now?: () => Date
   /** Fires with each anchor discipline's label as its group-by requests start. */
   onProgress?: (discipline: string) => void
-  /** Real per-week OpenAlex work counter for the per-topic sparklines. */
+  /** Real OpenAlex work counter (`countOpenAlexWorks`): drives the per-topic sparklines AND the overview's recent-work totals. */
   countFn?: CountFn
   /** One-request `group_by=publication_date` counter; tried before countFn's per-week path. */
   groupFn?: GroupFn
@@ -114,8 +114,8 @@ export interface RunTrendingBoardOpts {
  * this module owns retrieval, ranking, and storage so `trendingSkill`
  * (src/lib/skills/trending.ts) stays a pure LLM unit.
  *
- * Per refresh: resolve anchor disciplines (stored/overridden, else derived and
- * persisted, else the narrow interest labels) → `completeWindows(now)` → two
+ * Per refresh: resolve anchor disciplines (a non-empty stored list, else
+ * derived and persisted, else the narrow interest labels) → `completeWindows(now)` → two
  * `topicGroupFn` calls per anchor → `rankHeatingTopics` → per kept topic one
  * weekly series and one representative-paper search → deterministic breakouts
  * → one `runSkill(trendingSkill)` per anchor discipline → the deterministic
@@ -184,15 +184,20 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
     }
   }
   const ranked = rankHeatingTopics(perDiscipline)
-  const totalRecent = perDiscipline.reduce(
-    (sum, d) => sum + d.recent.reduce((s, entry) => s + entry.count, 0),
-    0,
-  )
+  const totalRecent = await countRecentWorks(opts, perDiscipline, windows.recent)
 
   // --- Per-topic enrichment (sparkline + representative papers) ---------------
   // Sequential on purpose: at most MAX_LEADERBOARD_TOPICS topics, and OpenAlex
   // is credit-priced and rate-limited — bounded, predictable load beats speed.
-  const weekStarts = buildWeekStarts(at, DEFAULT_WEEKS)
+  //
+  // The series is anchored to the LAST COMPLETE ISO week (the recent window's
+  // final day), never to `at`: buildWeekStarts(at, …) would end on the
+  // in-progress week, whose count is systematically low, so every sparkline
+  // would dip at the right-hand end while its growth badge — computed on
+  // complete weeks only — said the topic was accelerating. Excluding the
+  // partial week everywhere is exactly the M10 "everything looks like it's
+  // declining" caveat this milestone retires (spec §3).
+  const weekStarts = buildWeekStarts(new Date(`${windows.recent.toDate}T00:00:00.000Z`), DEFAULT_WEEKS)
   const enriched: Array<{ topic: RankedTopic; weekly: VolumePoint[]; papers: PaperRecord[] }> = []
   for (const topic of ranked) {
     const weekly = await fetchTopicWeekly(opts, topic.label, weekStarts)
@@ -200,7 +205,7 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
     enriched.push({ topic, weekly, papers })
   }
 
-  // --- Deterministic breakouts (citation-ranked movers across the anchors) ----
+  // --- Deterministic breakouts (recent, citation-ranked, across the anchors) --
   const breakoutRecords = await retrieveBreakouts(opts, anchors, at)
 
   // --- Qualitative layer: one strong-tier call per anchor discipline ----------
@@ -309,12 +314,17 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
 }
 
 /**
- * Stored anchors win (a hand-set list is NEVER silently recomputed, and an
- * already-derived list is not re-derived every refresh). Otherwise derive from
- * the narrow interest labels and persist the result. If derivation yields
- * nothing (every lookup failed, or there are no labels), fall back to treating
- * the narrow labels themselves as anchors — the page still renders — but do
- * NOT persist that fallback, so the next refresh retries the real derivation.
+ * A NON-EMPTY stored list is authoritative — hand-set or already-derived, it is
+ * never silently recomputed. An EMPTY list means "derive", *regardless of
+ * `anchorsOverridden`*: the settings editor produces `{anchors: [], overridden:
+ * true}` when the user removes the last anchor chip, and honoring the flag
+ * there would leave the board silently scoped by the narrow interest labels —
+ * exactly the scoping SP4 exists to replace — with nothing to show for it.
+ *
+ * Only when derivation itself yields nothing (every lookup failed, or there are
+ * no labels) does the board fall back to the narrow labels as anchors, so the
+ * page still renders. That fallback is NOT persisted: the next refresh retries
+ * the real derivation.
  */
 async function resolveAnchors(
   storage: VaultStorage,
@@ -322,26 +332,57 @@ async function resolveAnchors(
   recentWindow: { fromDate: string; toDate: string },
 ): Promise<AnchorDiscipline[]> {
   const settings = await loadTrendingSettings(storage).catch(() => null)
+  if (settings && settings.anchors.length > 0) return settings.anchors
 
-  if (settings && (settings.anchorsOverridden || settings.anchors.length > 0)) {
-    if (settings.anchors.length > 0) return settings.anchors
-  } else {
-    const derived = await deriveAnchorDisciplines(
-      opts.fields.map((f) => f.label),
-      opts.fieldGroupFn,
-      recentWindow,
-    ).catch(() => [] as AnchorDiscipline[])
-    if (derived.length > 0) {
-      if (settings) {
-        await saveTrendingSettings(storage, { ...settings, anchors: derived }).catch((err) => {
-          console.warn("[trending] persisting derived anchors failed:", err)
-        })
-      }
-      return derived
-    }
+  const derived = await deriveAnchorDisciplines(
+    opts.fields.map((f) => f.label),
+    opts.fieldGroupFn,
+    recentWindow,
+  ).catch(() => [] as AnchorDiscipline[])
+  if (derived.length > 0) {
+    // Patched inside the settings write-lock (never a snapshot-then-overwrite):
+    // a cadence/fields edit made while derivation was in flight must survive.
+    await saveDerivedAnchors(storage, derived).catch((err) => {
+      console.warn("[trending] persisting derived anchors failed:", err)
+    })
+    return derived
   }
 
   return opts.fields.slice(0, MAX_ANCHORS).map((f) => ({ id: f.slug, label: f.label }))
+}
+
+/**
+ * "New papers this window" across the anchor disciplines. Uses one real
+ * `countFn` call per anchor over the complete recent window rather than summing
+ * the `group_by` buckets we already have: group_by is capped at 200 groups, so
+ * summing it silently truncates the long tail and understates the total — and
+ * SP4's premise is that every displayed figure is a real count.
+ *
+ * CAVEAT (carried into the UI label): a work matching two anchors' searches is
+ * counted once per anchor, so overlapping disciplines can double-count. With no
+ * counter injected, or if a count fails, that anchor falls back to the summed
+ * buckets — a low-but-honest number beats a missing figure.
+ */
+async function countRecentWorks(
+  opts: RunTrendingBoardOpts,
+  perDiscipline: Array<{ discipline: string; recent: GroupEntry[] }>,
+  recentWindow: { fromDate: string; toDate: string },
+): Promise<number> {
+  let total = 0
+  for (const { discipline, recent } of perDiscipline) {
+    const bucketSum = recent.reduce((s, entry) => s + entry.count, 0)
+    if (!opts.countFn) {
+      total += bucketSum
+      continue
+    }
+    try {
+      total += await opts.countFn({ query: discipline, ...recentWindow })
+    } catch (err) {
+      console.warn(`[trending] recent-work count failed for "${discipline}":`, err)
+      total += bucketSum
+    }
+  }
+  return total
 }
 
 /** `[]` on any failure (or with no counter injected) — the row just loses its sparkline. */
@@ -375,9 +416,15 @@ async function searchTopicPapers(
 }
 
 /**
- * Breakout papers: the citation-ranked `movers` from the existing retrieval
- * path, one pass per anchor discipline, merged and deduped. Deterministic —
- * no LLM, no per-paper scoring beyond the source's own citation count.
+ * Breakout papers: RECENT papers with unusual citation counts — one retrieval
+ * pass per anchor discipline, merged and deduped, ranked by citations.
+ *
+ * `candidates.movers` is the whole undated sample sorted by citations, so
+ * ranking it directly would surface the same field classics on every refresh
+ * forever ("recent papers with unusual citation velocity" would be a false
+ * label). Movers are therefore intersected with `candidates.recent` — the same
+ * retrieval, no extra requests — and an empty strip is an acceptable, honest
+ * outcome (the component renders nothing).
  */
 async function retrieveBreakouts(
   opts: RunTrendingBoardOpts,
@@ -388,7 +435,9 @@ async function retrieveBreakouts(
   for (const anchor of anchors) {
     try {
       const candidates = await retrieveFieldCandidates(opts.searchFn, { slug: anchor.id, label: anchor.label }, { now: at })
+      const recentKeys = new Set(candidates.recent.map((r) => paperKey(r)))
       for (const record of candidates.movers) {
+        if (!recentKeys.has(paperKey(record))) continue
         if (typeof record.citationCount !== "number" || record.citationCount <= 0) continue
         const key = paperKey(record)
         const existing = merged.get(key)

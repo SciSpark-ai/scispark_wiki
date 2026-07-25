@@ -95,7 +95,7 @@ const NAMED_BANS: Record<string, string[]> = {
   // wrappers (→ /api/settings). Pure exports (types, normalize*, DEFAULT_*,
   // SESSION_BUDGET) stay allowed.
   "lib/companion/settings": ["loadCompanionSettings", "saveCompanionSettings"],
-  "lib/trending/settings": ["loadTrendingSettings", "saveTrendingSettings"],
+  "lib/trending/settings": ["loadTrendingSettings", "saveTrendingSettings", "saveDerivedAnchors"],
 }
 
 interface Violation {

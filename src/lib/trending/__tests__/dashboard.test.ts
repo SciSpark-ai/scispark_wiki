@@ -17,6 +17,7 @@ import {
 } from "../dashboard"
 import type { TrendingBoard } from "../dashboard"
 import { completeWindows } from "../topics"
+import { isoWeekStart } from "../weeks"
 import { loadTrendingSettings, saveTrendingSettings } from "../settings"
 import type { CountFn, GroupFn } from "../weekly-volume"
 
@@ -119,6 +120,7 @@ describe("runTrendingBoard", () => {
     expect(board.topics[0].recentCount).toBe(40)
     expect(board.topics[0].weekly.length).toBe(8)
     expect(board.topics[0].weekly.every((v) => v.count === 4)).toBe(true)
+    expect(board.overview.totalRecent).toBe(4) // real count call, not the bucket sum
     expect(board.topics[0].papers.map((p) => p.record.title)).toEqual(["Rep paper for Auditory Attention Decoding"])
     expect(board.topics[0].papers[0].wikiPageId).toBeNull()
     expect(board.topics[0].why).toBe("because attention decoding got cheap")
@@ -136,6 +138,21 @@ describe("runTrendingBoard", () => {
 
     const events = await readRecentEvents(storage)
     expect(events.some((e) => e.type === "trending_refresh")).toBe(true)
+  })
+
+  it("anchors the sparkline to the last COMPLETE week, never the in-progress one", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO])
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    const board = await runTrendingBoard(storage, baseOpts({ providerOverride: { strong: provider } }))
+
+    const weekly = board.topics[0].weekly
+    // NOW() is Tue 2026-07-14; its ISO week starts Mon 2026-07-13 (in progress,
+    // systematically low). The recent window ends Sun 2026-07-12, whose week
+    // starts Mon 2026-07-06 — that must be the newest bucket, or every
+    // sparkline dips while its growth badge (complete weeks only) rises.
+    expect(weekly[weekly.length - 1].weekStart).toBe("2026-07-06")
+    expect(weekly.some((v) => v.weekStart === isoWeekStart(NOW()))).toBe(false)
   })
 
   it("never sends any number to the LLM (no counts, growth or dates in the prompt)", async () => {
@@ -233,6 +250,38 @@ describe("runTrendingBoard", () => {
     expect(persisted?.generatedAt).toBe(board.generatedAt)
   })
 
+  it("meters a failed survey: the trending_refresh event still carries the spend", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO])
+    // A PRICED model, so the run's cost is a real non-zero number rather than
+    // pricing.ts's null for an unknown id.
+    const pricedSettings = {
+      ...SETTINGS,
+      tierModels: {
+        fast: { provider: "openai", model: "claude-sonnet-5" },
+        strong: { provider: "openai", model: "claude-sonnet-5" },
+      },
+    } as const
+    // Well-formed responses that FAIL the schema (`topics` must be non-empty):
+    // completeStructured burns both attempts, then throws a
+    // StructuredOutputError carrying the summed usage. Those tokens were really
+    // spent, so they must reach the refresh event — a survey that fails while
+    // silently billing was a real production bug (M10 failure honesty).
+    const invalid = { topics: [], crossDisciplineNote: "x" }
+    const provider = new MockProvider([structured(invalid), structured(invalid)])
+    const board = await runTrendingBoard(
+      storage,
+      baseOpts({ settings: pricedSettings, providerOverride: { strong: provider } }),
+    )
+
+    expect(board.surveyError).toBeTruthy()
+    expect(board.topics.every((t) => t.why === null)).toBe(true)
+    const events = await readRecentEvents(storage)
+    const refresh = events.find((e) => e.type === "trending_refresh") as { costUsd?: number } | undefined
+    expect(refresh).toBeTruthy()
+    expect(refresh!.costUsd).toBeGreaterThan(0)
+  })
+
   it("derives anchors when none are stored and persists them to trending settings", async () => {
     const storage = new MemoryVaultStorage()
     const provider = new MockProvider([structured(BRIEFS_ONE)])
@@ -265,6 +314,63 @@ describe("runTrendingBoard", () => {
     expect(board.anchors).toEqual([CS])
   })
 
+  it("does not re-derive a stored, non-overridden anchor list either", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [CS]) // anchorsOverridden: false
+    const derivationMustNotRun: TopicGroupFn = async () => {
+      throw new Error("fieldGroupFn must not be called when anchors are already stored")
+    }
+    const provider = new MockProvider([structured({ topics: [{ key: "T1", why: "w" }], crossDisciplineNote: "n" })])
+    const board = await runTrendingBoard(
+      storage,
+      baseOpts({
+        fieldGroupFn: derivationMustNotRun,
+        topicGroupFn: topicGroupFnFor({ "Computer Science": ONE_DISCIPLINE.Neuroscience }),
+        providerOverride: { strong: provider },
+      }),
+    )
+    // deriveAnchorDisciplines swallows per-label throws, so a re-derivation
+    // would silently produce the narrow-label fallback instead of [CS].
+    expect(board.anchors).toEqual([CS])
+  })
+
+  it("re-derives when the user removed the last anchor chip (empty list, override flag still set)", async () => {
+    const storage = new MemoryVaultStorage()
+    // Exactly the state the settings editor leaves behind when the last chip is
+    // removed. Honoring the flag here would silently scope the board by the
+    // narrow interest labels — the scoping SP4 exists to replace.
+    await saveTrendingSettings(storage, {
+      fields: [{ slug: "auditory-attention", label: "auditory attention decoding" }],
+      cadence: "weekly",
+      anchors: [],
+      anchorsOverridden: true,
+    })
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    const board = await runTrendingBoard(storage, baseOpts({ providerOverride: { strong: provider } }))
+    expect(board.anchors).toEqual([NEURO])
+    const settings = await loadTrendingSettings(storage)
+    expect(settings.anchors).toEqual([NEURO])
+    expect(settings.anchorsOverridden).toBe(true) // a re-derivation never un-sets the user's intent
+  })
+
+  it("persisting derived anchors does not revert a settings edit made during derivation", async () => {
+    const storage = new MemoryVaultStorage()
+    const fields = [{ slug: "auditory-attention", label: "auditory attention decoding" }]
+    await saveTrendingSettings(storage, { fields, cadence: "weekly", anchors: [], anchorsOverridden: false })
+    const editDuringDerivation: TopicGroupFn = async (q) => {
+      // The user flips cadence in settings while the (slow, networked)
+      // derivation is in flight. A snapshot-then-overwrite would revert it.
+      await saveTrendingSettings(storage, { fields, cadence: "daily", anchors: [], anchorsOverridden: false })
+      return fieldGroupFn(q)
+    }
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    await runTrendingBoard(storage, baseOpts({ fieldGroupFn: editDuringDerivation, providerOverride: { strong: provider } }))
+
+    const settings = await loadTrendingSettings(storage)
+    expect(settings.cadence).toBe("daily")
+    expect(settings.anchors).toEqual([NEURO])
+  })
+
   it("falls back to the narrow field labels as anchors when derivation fails", async () => {
     const storage = new MemoryVaultStorage()
     const failingFieldGroup: TopicGroupFn = async () => {
@@ -285,16 +391,66 @@ describe("runTrendingBoard", () => {
     expect((await loadTrendingSettings(storage)).anchors).toEqual([])
   })
 
-  it("overview figures are the sums/max of the underlying deterministic data", async () => {
+  it("overview figures come from the underlying deterministic data (real counts, top-ranked topic)", async () => {
     const storage = new MemoryVaultStorage()
     await seedAnchors(storage, [NEURO])
     const provider = new MockProvider([structured(BRIEFS_ONE)])
-    const board = await runTrendingBoard(storage, baseOpts({ providerOverride: { strong: provider } }))
-    // 40 + 20 + 2 = every recent group bucket across the anchor disciplines.
-    expect(board.overview.totalRecent).toBe(62)
+    // A real recent-window count that is deliberately LARGER than the group
+    // buckets sum to (40+20+2=62): group_by caps at 200 groups, so the bucket
+    // sum silently truncates the long tail — the overview must not use it.
+    const bigCount: CountFn = async () => 5000
+    const board = await runTrendingBoard(
+      storage,
+      baseOpts({ countFn: bigCount, providerOverride: { strong: provider } }),
+    )
+    expect(board.overview.totalRecent).toBe(5000)
     expect(board.overview.topTopicLabel).toBe("Auditory Attention Decoding")
     expect(board.overview.topTopicGrowth).toBeCloseTo(3)
     expect(board.overview.relevantCount).toBe(board.topics.filter((t) => t.relevant).length)
+  })
+
+  it("overview totalRecent sums one real count per anchor discipline", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO, CS])
+    const spec: GroupSpec = { ...ONE_DISCIPLINE, "Computer Science": ONE_DISCIPLINE.Neuroscience }
+    const perAnchor: CountFn = async ({ query }) => (query === "Neuroscience" ? 1000 : 300)
+    const provider = new MockProvider([structured(BRIEFS_ONE), structured(BRIEFS_ONE)])
+    const board = await runTrendingBoard(
+      storage,
+      baseOpts({ topicGroupFn: topicGroupFnFor(spec), countFn: perAnchor, providerOverride: { strong: provider } }),
+    )
+    expect(board.overview.totalRecent).toBe(1300)
+  })
+
+  it("overview totalRecent falls back to the group buckets when the count call fails", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO])
+    const failingCount: CountFn = async () => {
+      throw new Error("openalex down")
+    }
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    const board = await runTrendingBoard(
+      storage,
+      baseOpts({ countFn: failingCount, providerOverride: { strong: provider } }),
+    )
+    expect(board.overview.totalRecent).toBe(62) // 40 + 20 + 2: low but honest, never blank
+  })
+
+  it("breakouts are RECENT papers only — an all-old sample yields an empty strip", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [NEURO])
+    // A heavily-cited field classic from years ago: `movers` ranks it first,
+    // but it is not recent, so it must not headline "what's breaking out now".
+    const oldSearchFn: SearchFn = async (_source, query) => [
+      paper({ title: `Classic on ${query}`, date: "2019-01-01", year: 2019, citationCount: 9000 }),
+    ]
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    const board = await runTrendingBoard(
+      storage,
+      baseOpts({ searchFn: oldSearchFn, providerOverride: { strong: provider } }),
+    )
+    expect(board.breakouts).toEqual([])
+    expect(board.topics.length).toBeGreaterThan(0) // the rest of the board is unaffected
   })
 
   it("marks topics the user's interest labels touch (the lens) without any per-row count", async () => {

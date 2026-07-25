@@ -126,3 +126,18 @@ export async function saveTrendingSettings(storage: VaultStorage, settings: Tren
     trending: { ...settings, fields: dedupeFieldsBySlug(settings.fields) },
   }))
 }
+
+/**
+ * Patches ONLY the `anchors` key, re-reading the current trending section
+ * INSIDE the settings write-lock. The board orchestrator derives anchors from
+ * network calls that take seconds; a snapshot-then-write would silently revert
+ * a cadence/fields edit the user made in that window (the same lost-update
+ * class M12 closed for the `llm` section). Never touches `anchorsOverridden` —
+ * a derived list refreshes the user's scope, it does not un-set their intent.
+ */
+export async function saveDerivedAnchors(storage: VaultStorage, anchors: AnchorDiscipline[]): Promise<void> {
+  await withSettingsWrite(storage, (file) => ({
+    ...file,
+    trending: { ...normalizeTrendingSettings(file.trending), anchors: anchors.slice(0, MAX_ANCHORS) },
+  }))
+}
