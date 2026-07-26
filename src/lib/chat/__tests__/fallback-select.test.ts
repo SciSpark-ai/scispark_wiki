@@ -64,8 +64,44 @@ describe("fallbackSelectPages — realistic matching", () => {
 
   it("returns [] when the question's tokens are all stopwords or too short", () => {
     // "with" and "model"/"models" are stopwords, "the"/"of" are <4 chars —
-    // nothing survives significantTokens.
+    // nothing survives significantTokens, and none of the short words ("the",
+    // "of") match any page's tags either.
     const result = fallbackSelectPages(REALISTIC_BUNDLE, "with the model of models")
+    expect(result).toEqual([])
+  })
+})
+
+describe("fallbackSelectPages — short domain acronyms matching tags exactly", () => {
+  it("reaches the eeg-tagged page for a question whose only content word is a short acronym", () => {
+    // "EEG" is 3 characters — significantTokens drops it on both sides of
+    // the match, which is exactly the SP4-class bug the review caught: the
+    // TRF page is tagged "eeg" and this vault's whole subject is EEG, so a
+    // fallback that can never match short tags fails on precisely the real
+    // data it exists to serve. "what"/"know"/"about" survive significantTokens
+    // but share nothing with any page, so this result is driven entirely by
+    // the exact short-word-to-tag match on "eeg".
+    const result = fallbackSelectPages(REALISTIC_BUNDLE, "what do we know about EEG?")
+    expect(result).toEqual(["wiki/methods/trf-estimation"])
+  })
+
+  it("returns [] when a short question word matches no page's tags", () => {
+    const result = fallbackSelectPages(REALISTIC_BUNDLE, "abc")
+    expect(result).toEqual([])
+  })
+
+  it("does not match a short question word against a page's title — tags only", () => {
+    // Deliberately tag-only: "erp" appears in this page's TITLE but not in
+    // its tags, so it must NOT match. If this ever gets loosened to also
+    // check titles, this assertion should fail and force that to be a
+    // conscious decision.
+    const bundle = bundleFromPages([
+      {
+        id: "wiki/methods/erp-component-analysis",
+        title: "ERP Component Analysis Methods",
+        tags: ["event-related-potentials", "component-analysis"],
+      },
+    ])
+    const result = fallbackSelectPages(bundle, "erp")
     expect(result).toEqual([])
   })
 })
@@ -112,9 +148,10 @@ describe("fallbackSelectPages — ranking and stability", () => {
         tags: ["trf", "encoding-models", "eeg"],
       },
     ])
-    // "encoding" and "neural" both appear on the decoding-models page; only
-    // "encoding" appears on the TRF page (via its tag) — the decoding page
-    // should outrank it.
+    // "encoding", "neural", and "signal" all appear on the decoding-models
+    // page (title + tags combined) — a 3-token match; only "encoding"
+    // appears on the TRF page (via its tag) — a 1-token match. The
+    // decoding page should outrank it.
     const result = fallbackSelectPages(bundle, "encoding and neural signal methods")
     expect(result).toEqual([
       "wiki/concepts/encoding-decoding-models",
