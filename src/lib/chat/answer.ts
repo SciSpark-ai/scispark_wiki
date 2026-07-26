@@ -116,7 +116,15 @@ export const chatAnswerSkill: SkillDefinition<ChatAnswerInput, ChatAnswer> = def
           { role: "user", content: buildUserMessage(input) },
         ],
         // Explicit output budget (endpoint defaults can truncate JSON — M4 lesson).
-        maxTokens: 2048,
+        // 4096, not reading-companion.ts's 2048: that skill grounds in one passage plus
+        // a neighborhood snippet, but this skill's `context` can span up to
+        // MAX_SELECTED_PAGES (8) whole pages, so the synthesized answer is plausibly much
+        // longer prose plus a citation array. This codebase has hit this exact failure
+        // twice already — trending.ts's survey went 2048->4096 and ingest-analysis.ts
+        // needed 8192, both for reasoning-heavy completions truncating the JSON — and
+        // because the response is structured, a truncation here degrades to a hard
+        // skill error, not a visibly-short answer.
+        maxTokens: 4096,
       },
       ChatAnswerSchema,
     )
