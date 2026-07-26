@@ -18,8 +18,13 @@ const TOKEN_SPLIT_RE = /[^a-z0-9]+/
  * Lowercases, splits on any run of non-alphanumeric characters, and drops
  * tokens shorter than MIN_TOKEN_LENGTH or in the stopword set — deterministic,
  * no locale/unicode-awareness beyond ASCII case folding.
+ *
+ * Exported for a second real consumer: `src/lib/chat/fallback-select.ts`
+ * (the deterministic degradation path for KB chat's page-selection skill).
+ * There is exactly one definition of "significant token" in this codebase —
+ * do not fork a second tokenizer.
  */
-function significantTokens(text: string): Set<string> {
+export function significantTokens(text: string): Set<string> {
   const tokens = text.toLowerCase().split(TOKEN_SPLIT_RE)
   const result = new Set<string>()
   for (const token of tokens) {
