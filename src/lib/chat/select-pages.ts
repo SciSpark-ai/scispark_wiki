@@ -58,9 +58,19 @@ function renderHistory(history: SelectPagesInput["history"]): string {
  * left the model free to call it something else (`ids`/`relevantPages`/
  * `selected`), and since zod strips unknown keys a renamed field reads as
  * flatly MISSING rather than surfacing a clear error.
+ *
+ * The example ids are BARE SLUGS because that is what the index the model is
+ * given actually contains: `buildIndexMarkdown` renders every page as
+ * `- [[<slug>]] — <title>`, final path segment only. An earlier example showed
+ * path-ish ids (`concept/attention-mechanism`) whose singular prefixes match no
+ * real directory (`concepts/`, `papers/`), so it taught a shape the
+ * orchestrator's resolver — which resolves a path-qualified slug against real
+ * directories and DROPS what matches nothing — would silently discard. The
+ * prompt already demands ids copied verbatim from the INDEX; the example now
+ * shows the form the INDEX holds.
  */
 const OUTPUT_EXAMPLE = JSON.stringify({
-  pageIds: ["concept/attention-mechanism", "paper/vaswani2017attention"],
+  pageIds: ["attention-mechanism", "vaswani2017attention"],
 })
 
 function buildSystemPrompt(): string {

@@ -106,6 +106,10 @@ describe("selectPagesSkill", () => {
     expect(system).toContain('"pageIds"')
     // A concrete, parseable example of the whole object — not just a field name.
     expect(system).toContain('{"pageIds":[')
+    // The example ids are BARE SLUGS, the form `buildIndexMarkdown` actually
+    // renders (`- [[<slug>]]`). A path-ish example would teach a shape the
+    // orchestrator's resolver drops when the prefix names no real directory.
+    expect(system).toContain('{"pageIds":["attention-mechanism","vaswani2017attention"]}')
     expect(system).toContain(String(MAX_SELECTED_PAGES))
     expect(system).toContain("verbatim")
   })
