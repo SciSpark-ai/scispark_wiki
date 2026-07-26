@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { MockProvider } from "../../llm/mock-provider"
-import type { LLMResult } from "../../llm/types"
+import type { LLMProvider, LLMResult } from "../../llm/types"
 import type { Frontmatter } from "../../vault/types"
 import { serializeDocument } from "../../vault/frontmatter"
 import { loadSession, saveSession, type ChatSession } from "../session"
@@ -143,6 +143,36 @@ describe("askChat — happy path", () => {
     expect(strongProvider.calls).toHaveLength(1)
   })
 
+  /**
+   * The brief's headline invariant, pinned where it can actually fail: asserting
+   * the transcript AFTER the turn passes even without the pre-LLM save, because
+   * the final save writes both turns anyway. So this asserts the ON-DISK state
+   * from INSIDE the answering call. Mutation-checked: deleting the `saveSession`
+   * before the pipeline turns this red (the file does not exist yet).
+   */
+  it("has already persisted the user turn by the time the LLM is called", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedVault(storage)
+    const seenMidCall: Array<ChatSession | null> = []
+    const strongProvider: LLMProvider = {
+      id: "anthropic",
+      async complete() {
+        seenMidCall.push(await loadSession(storage, "chat_mid_call"))
+        return structured({ answer: "A TRF is a linear filter.", citedPageIds: [] })
+      },
+    }
+
+    await askChat(storage, {
+      input: { sessionId: "chat_mid_call", question: "What is a TRF?", readSourcesOnly: false },
+      settings: SETTINGS,
+      providerOverride: { fast: new MockProvider([structured({ pageIds: [] })]), strong: strongProvider },
+      now: NOW,
+    })
+
+    expect(seenMidCall).toHaveLength(1)
+    expect(seenMidCall[0]?.messages).toEqual([{ role: "user", content: "What is a TRF?" }])
+  })
+
   it("appends to an existing session rather than starting a new one", async () => {
     const storage = new MemoryVaultStorage()
     await seedVault(storage)
@@ -197,6 +227,37 @@ describe("askChat — validation is the orchestrator's job", () => {
     const prompt = promptOf(strongProvider, 0)
     expect(prompt).not.toContain("ghost-page-that-does-not-exist")
     expect(prompt).toContain(CONCEPT_ID)
+    expect(result.message.citedPageIds).toEqual([CONCEPT_ID])
+  })
+
+  /**
+   * Pins the DROPPING, not just the resolution. A single ghost id proves
+   * nothing: `assembleContext` independently skips ids missing from the bundle,
+   * so the ghost never reaches the prompt either way. With MAX_SELECTED_PAGES
+   * ghosts ahead of it, only a filter that removes them leaves room for the one
+   * real page — without it the cap fills with ghosts and the real page is
+   * squeezed out. Mutation-checked against `canonicalId` returning unknown ids
+   * unchanged.
+   */
+  it("keeps the one real page when the selector buries it under a full cap of fabricated ids", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedVault(storage)
+    const ghosts = Array.from({ length: 8 }, (_, i) => `wiki/concepts/ghost-${i}`)
+    const { strongProvider, override } = providers(
+      [structured({ pageIds: [...ghosts, "temporal-response-function"] })],
+      [structured({ answer: "A TRF is a linear filter.", citedPageIds: [CONCEPT_ID] })],
+    )
+
+    const result = await askChat(storage, {
+      input: { sessionId: null, question: "What is a TRF?", readSourcesOnly: false },
+      settings: SETTINGS,
+      providerOverride: override,
+      now: NOW,
+    })
+
+    const prompt = promptOf(strongProvider, 0)
+    expect(prompt).toContain("linear filter mapping a stimulus envelope")
+    for (const ghost of ghosts) expect(prompt).not.toContain(ghost)
     expect(result.message.citedPageIds).toEqual([CONCEPT_ID])
   })
 
@@ -347,6 +408,25 @@ describe("askChat — degradation ladder", () => {
     const session = await loadSession(storage, result.sessionId)
     expect(session?.messages).toHaveLength(2)
     expect(session?.messages[1].content).toContain("/papers")
+  })
+
+  it("says pages failed to load — never 'empty' — when every page failed to parse", async () => {
+    const storage = new MemoryVaultStorage()
+    await storage.write("wiki/concepts/broken.md", "no frontmatter here at all\n")
+    const { fastProvider, strongProvider, override } = providers([], [])
+
+    const result = await askChat(storage, {
+      input: { sessionId: null, question: "What is a TRF?", readSourcesOnly: false },
+      settings: SETTINGS,
+      providerOverride: override,
+      now: NOW,
+    })
+
+    expect(fastProvider.calls).toHaveLength(0)
+    expect(strongProvider.calls).toHaveLength(0)
+    expect(result.message.content).not.toContain("empty")
+    expect(result.message.content).toContain("failed to load")
+    expect(result.message.error).toContain("wiki/concepts/broken.md")
   })
 
   it("treats a vault with no paper pages as empty when Read Sources Only is on", async () => {

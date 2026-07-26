@@ -5,7 +5,11 @@ export const CHATS_DIR = ".scispark/chats"
 export interface ChatMessage {
   role: "user" | "assistant"
   content: string
-  /** Assistant only: bare bundle ids the answer leaned on. */
+  /** Assistant only: FULL bundle ids the answer leaned on — `wiki/papers/x`,
+   * not the bare slug `x`. That is the form `wikiHref`/`resolveWikiRouteId`
+   * resolve against, and the orchestrator canonicalizes every model-written
+   * citation to it (see `resolveIds` in `./orchestrator.ts`), so a renderer can
+   * link one straight through without re-resolving. */
   citedPageIds?: string[]
   /** Assistant only: whether Read-Sources-Only was in effect for this answer. */
   readSourcesOnly?: boolean

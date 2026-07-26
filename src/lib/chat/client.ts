@@ -18,6 +18,12 @@ import type { AskChatInput, AskChatResult } from "./orchestrator"
 
 export type ChatStage = "selecting" | "answering"
 
+const CHAT_STAGES: readonly string[] = ["selecting", "answering"]
+
+function isChatStage(value: unknown): value is ChatStage {
+  return typeof value === "string" && CHAT_STAGES.includes(value)
+}
+
 /**
  * POST /api/skills/chat with an `AskChatInput`; streams NDJSON progress
  * (`onStage` fires as each stage starts: "selecting" → "answering") and
@@ -38,6 +44,8 @@ export async function askChatRemote(
     body: JSON.stringify(input),
   })
   return readNdjson(res, (event) => {
-    if (event?.type === "progress" && typeof event.stage === "string") onStage?.(event.stage as ChatStage)
+    // Membership-checked, not cast: an unknown stage name is ignored rather
+    // than handed to a caller that will switch on it.
+    if (event?.type === "progress" && isChatStage(event.stage)) onStage?.(event.stage)
   }) as Promise<AskChatResult>
 }

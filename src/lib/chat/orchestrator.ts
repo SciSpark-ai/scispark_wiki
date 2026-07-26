@@ -3,7 +3,7 @@ import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
 import type { Bundle } from "../vault/bundle"
 import type { WikiPage } from "../vault/types"
-import { loadBundle } from "../vault/bundle"
+import { loadBundle, resolveLink } from "../vault/bundle"
 import { buildIndexMarkdown } from "../vault/index-builder"
 import { parseDocument } from "../vault/frontmatter"
 import { runSkill } from "../skills/runner"
@@ -186,7 +186,7 @@ async function answerQuestion(
 
   const candidates = candidatePages(bundle, input.readSourcesOnly)
 
-  if (candidates.length === 0) return emptyKnowledgeBaseMessage(input.readSourcesOnly)
+  if (candidates.length === 0) return noCandidatesMessage(bundle, input.readSourcesOnly)
 
   const candidateBundle: Bundle = {
     pages: new Map(candidates.map((page) => [page.id, page])),
@@ -197,7 +197,7 @@ async function answerQuestion(
   opts.onProgress?.("selecting")
   const { pageIds, selectionFallback } = await selectPages(storage, opts, candidateBundle, history)
 
-  const { context, includedIds, skippedPageIds } = await assembleContext(storage, candidateBundle, pageIds)
+  const { context, includedBundle, skippedPageIds } = await assembleContext(storage, candidateBundle, pageIds)
 
   opts.onProgress?.("answering")
   const companionName = await resolveCompanionName(storage)
@@ -237,9 +237,10 @@ async function answerQuestion(
   return {
     ...base,
     content: run.output.answer,
-    // The second anti-hallucination filter: only ids that were genuinely in
-    // the context we supplied survive, canonicalized to bundle ids.
-    citedPageIds: validateCitations(run.output.citedPageIds, includedIds),
+    // The second anti-hallucination filter: resolved against the pages whose
+    // content we ACTUALLY supplied (so a skipped page can't be cited either),
+    // canonicalized to full bundle ids — what `wikiHref` resolves against.
+    citedPageIds: resolveIds(run.output.citedPageIds, includedBundle),
   }
 }
 
@@ -271,7 +272,7 @@ async function selectPages(
   })
 
   if (run.status === "ok" && run.output !== undefined) {
-    return { pageIds: resolveSelectedIds(run.output.pageIds, candidateBundle), selectionFallback: false }
+    return { pageIds: resolveIds(run.output.pageIds, candidateBundle), selectionFallback: false }
   }
 
   console.warn("[chat] page selection failed; falling back to term overlap:", run.error)
@@ -282,46 +283,41 @@ async function selectPages(
 }
 
 /**
- * The first anti-hallucination filter: every id the model returned is resolved
- * against the REAL candidate set and dropped when it matches nothing.
+ * BOTH anti-hallucination filters run through here: every id a model wrote —
+ * whether selecting pages to read or citing pages it used — is resolved against
+ * a REAL set of pages and DROPPED when it matches nothing.
  *
- * Both id shapes are accepted because both are plausibly "verbatim from the
+ * Two id shapes are accepted because both are plausibly "verbatim from the
  * INDEX": `buildIndexMarkdown` renders each page as `- [[<slug>]] — <title>`,
  * i.e. only the final path segment, while the skill's illustrative example
- * shows a path-ish id — so a model may echo either. A bare slug shared by two
- * pages resolves to the first by sorted id, deterministically. Results are
- * deduped, kept in the model's order, and capped at MAX_SELECTED_PAGES.
+ * shows a path-ish id — so a model may echo either. Slug resolution is
+ * `resolveLink`'s (the vault's one implementation: handles path-qualified
+ * slugs like `concepts/x` too, and breaks a shared-slug tie by sorted id).
+ * Results are deduped, kept in the model's order, and capped at `limit`.
  */
-function resolveSelectedIds(ids: string[], candidateBundle: Bundle): string[] {
-  const bySlug = new Map<string, string>()
-  for (const id of [...candidateBundle.pages.keys()].sort()) {
-    const slug = id.split("/").pop() as string
-    if (!bySlug.has(slug)) bySlug.set(slug, id)
-  }
-
+function resolveIds(ids: string[], bundle: Bundle, limit: number = MAX_SELECTED_PAGES): string[] {
   const resolved: string[] = []
   for (const raw of ids) {
-    const id = canonicalId(raw, candidateBundle, bySlug)
+    const id = canonicalId(raw, bundle)
     if (id == null || resolved.includes(id)) continue
     resolved.push(id)
-    if (resolved.length === MAX_SELECTED_PAGES) break
+    if (resolved.length === limit) break
   }
   return resolved
 }
 
 /** A model-written id → the real bundle id it names, or null when it names nothing. */
-function canonicalId(raw: string, candidateBundle: Bundle, bySlug: Map<string, string>): string | null {
+function canonicalId(raw: string, bundle: Bundle): string | null {
   const trimmed = raw.trim().replace(/^\[\[|\]\]$/g, "").replace(/\.md$/i, "")
   if (trimmed.length === 0) return null
-  if (candidateBundle.pages.has(trimmed)) return trimmed
-  const slug = trimmed.split("/").pop() as string
-  return bySlug.get(slug) ?? null
+  if (bundle.pages.has(trimmed)) return trimmed
+  return resolveLink(bundle, trimmed)?.id ?? null
 }
 
 interface AssembledContext {
   context: string
-  /** The ids actually represented in `context` — the citation whitelist. */
-  includedIds: string[]
+  /** Exactly the pages represented in `context` — the citation whitelist. */
+  includedBundle: Bundle
   /** Selected pages dropped because reading them failed. */
   skippedPageIds: string[]
 }
@@ -338,7 +334,7 @@ async function assembleContext(
   pageIds: string[],
 ): Promise<AssembledContext> {
   const blocks: string[] = []
-  const includedIds: string[] = []
+  const included = new Map<string, WikiPage>()
   const skippedPageIds: string[] = []
 
   for (const id of pageIds) {
@@ -351,8 +347,9 @@ async function assembleContext(
         continue
       }
       const { frontmatter, body } = parseDocument(raw)
-      blocks.push(renderContextBlock({ ...page, frontmatter, body }))
-      includedIds.push(id)
+      const fresh: WikiPage = { ...page, frontmatter, body }
+      blocks.push(renderContextBlock(fresh))
+      included.set(id, fresh)
     } catch (err) {
       console.warn(`[chat] context read failed for "${id}"; skipping it:`, err)
       skippedPageIds.push(id)
@@ -361,7 +358,7 @@ async function assembleContext(
 
   const context =
     blocks.length > 0 ? blocks.join("\n\n---\n\n") : "(no pages in the knowledge base matched this question)"
-  return { context, includedIds, skippedPageIds }
+  return { context, includedBundle: { pages: included, links: [], errors: [] }, skippedPageIds }
 }
 
 /**
@@ -394,30 +391,27 @@ function extractSection(body: string, name: string): string | null {
   return section === "" ? null : section
 }
 
-/** Keeps only citations that name a page whose content we actually supplied.
- * Accepts the same two id shapes as `resolveSelectedIds` (full bundle id or
- * bare slug, first-by-sorted-id on a shared slug) and canonicalizes to the
- * bundle id, which is what `wikiHref` and the paper route resolve against. */
-function validateCitations(citedPageIds: string[], includedIds: string[]): string[] {
-  const included = new Set(includedIds)
-  const bySlug = new Map<string, string>()
-  for (const id of [...includedIds].sort()) {
-    const slug = id.split("/").pop() as string
-    if (!bySlug.has(slug)) bySlug.set(slug, id)
+/**
+ * Deterministic, LLM-free answer when there is nothing to answer FROM.
+ *
+ * "Empty" and "unreadable" are told apart on purpose: a vault whose files ALL
+ * failed to parse also yields zero pages, and calling that "your knowledge base
+ * is empty" is exactly the pretend-success SP5 §5 forbids — the pages are on
+ * disk, they just didn't load, and the user can fix that. The real parse errors
+ * ride along in `error`.
+ */
+function noCandidatesMessage(bundle: Bundle, readSourcesOnly: boolean): ChatMessage {
+  if (bundle.pages.size === 0 && bundle.errors.length > 0) {
+    return {
+      role: "assistant",
+      content:
+        "I couldn't read any pages from your knowledge base — every file in it failed to load, so there is nothing for me to answer from. Your pages are still on disk; the reason is below.",
+      citedPageIds: [],
+      readSourcesOnly,
+      error: bundle.errors.map((e) => `${e.path}: ${e.message}`).join("; "),
+    }
   }
 
-  const kept: string[] = []
-  for (const raw of citedPageIds) {
-    const trimmed = raw.trim().replace(/^\[\[|\]\]$/g, "").replace(/\.md$/i, "")
-    const id = included.has(trimmed) ? trimmed : (bySlug.get(trimmed.split("/").pop() ?? "") ?? null)
-    if (id == null || kept.includes(id)) continue
-    kept.push(id)
-  }
-  return kept
-}
-
-/** Deterministic, LLM-free answer for a knowledge base with nothing to answer from. */
-function emptyKnowledgeBaseMessage(readSourcesOnly: boolean): ChatMessage {
   const content = readSourcesOnly
     ? "You have no saved papers yet, so there are no sources for me to read from. Search for papers on /papers and save one — then ask me again."
     : "Your knowledge base is empty, so there is nothing for me to answer from yet. Search for papers on /papers and save one — then ask me again."
