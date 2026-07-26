@@ -70,6 +70,7 @@ const CLIENT_LIB_FILES = [
   join("src", "lib", "vault", "changeset-client.ts"),
   join("src", "lib", "vault", "remote-storage.ts"),
   join("src", "lib", "lint", "client.ts"),
+  join("src", "lib", "chat", "client.ts"),
   join("src", "lib", "server", "ndjson.ts"),
 ]
 
@@ -96,6 +97,10 @@ const NAMED_BANS: Record<string, string[]> = {
   // SESSION_BUDGET) stay allowed.
   "lib/companion/settings": ["loadCompanionSettings", "saveCompanionSettings"],
   "lib/trending/settings": ["loadTrendingSettings", "saveTrendingSettings", "saveDerivedAnchors"],
+  // KB chat's orchestrator runs both skills and reads the vault; client code
+  // goes through `lib/chat/client.ts` (→ /api/skills/chat). Its pure exports
+  // (types, MAX_HISTORY_TURNS) stay allowed.
+  "lib/chat/orchestrator": ["askChat"],
 }
 
 interface Violation {

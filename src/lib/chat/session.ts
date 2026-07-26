@@ -11,6 +11,10 @@ export interface ChatMessage {
   readSourcesOnly?: boolean
   /** Assistant only: set when the answer ran on the deterministic fallback selector. */
   selectionFallback?: boolean
+  /** Assistant only: ids of pages that were selected for this answer but could
+   * not be read, so the answer was written without them (SP5 §5 — say what was
+   * missing rather than answering short and silent). Omitted when none. */
+  skippedPageIds?: string[]
   /** Assistant only: set when the answer failed; carries the real reason. */
   error?: string
 }
