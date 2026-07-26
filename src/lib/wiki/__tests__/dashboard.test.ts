@@ -213,12 +213,27 @@ describe("deriveWikiDashboard — sections", () => {
       { id: "wiki/topics/e", frontmatter: fm("topic", "E") },
       { id: "wiki/ideas/f", frontmatter: fm("idea", "F") },
       { id: "wiki/notes/g", frontmatter: fm("note", "G") },
+      { id: "wiki/queries/q", frontmatter: fm("query", "Q") },
       { id: "wiki/authors/h", frontmatter: fm("author", "H") },
     ])
     const dashboard = deriveWikiDashboard(bundle)
     expect(dashboard.sections.map((s) => s.type)).toEqual([
-      "concept", "method", "finding", "comparison", "topic", "idea", "note", "author",
+      "concept", "method", "finding", "comparison", "topic", "idea", "note", "query", "author",
     ])
+  })
+
+  it("gives the query section (saved chat answers) a sensible label and elides it when no query pages exist", () => {
+    const withQuery = deriveWikiDashboard(
+      bundleFromPages([{ id: "wiki/queries/q", frontmatter: fm("query", "What causes X?") }]),
+    )
+    const querySection = withQuery.sections.find((s) => s.type === "query")
+    expect(querySection).toBeDefined()
+    expect(querySection!.label).toBe("Saved answers")
+
+    const withoutQuery = deriveWikiDashboard(
+      bundleFromPages([{ id: "wiki/concepts/a", frontmatter: fm("concept", "A") }]),
+    )
+    expect(withoutQuery.sections.find((s) => s.type === "query")).toBeUndefined()
   })
 
   it("total is uncapped even though entries are capped at sectionLimit", () => {

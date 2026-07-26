@@ -15,6 +15,7 @@ export const DEFAULT_ROUTING: Record<string, string> = {
   author: "wiki/authors",
   topic: "wiki/topics",
   note: "wiki/notes",
+  query: "wiki/queries",
   idea: "wiki/ideas",
   project: "wiki/projects",
 }

@@ -148,6 +148,13 @@ describe("findBadFrontmatter", () => {
     expect(findBadFrontmatter(b)).toEqual([])
   })
 
+  it("does not flag a well-formed 'query' page as an unknown type (SP5 task 1: reinstated query type)", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/queries/what-causes-x.md", serializeDocument(fm("query", "What causes X?"), "Body."))
+    const b = await loadBundle(s)
+    expect(findBadFrontmatter(b)).toEqual([])
+  })
+
   it("flags an unrecognized type as advisory (no fix)", async () => {
     const s = new MemoryVaultStorage()
     await s.write("wiki/concepts/a.md", serializeDocument(fm("concepts", "A"), "Body."))

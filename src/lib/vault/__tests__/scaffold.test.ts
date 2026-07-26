@@ -8,7 +8,12 @@ describe("createVault", () => {
     await createVault(s, { purpose: "Track TRD neuromodulation research.", today: "2026-07-11" })
     const schema = (await s.read("schema.md")) as string
     expect(schema).toContain("## Page Types")
-    for (const row of ["| paper | wiki/papers |", "| idea | wiki/ideas |", "| project | wiki/projects |"]) {
+    for (const row of [
+      "| paper | wiki/papers |",
+      "| idea | wiki/ideas |",
+      "| query | wiki/queries |",
+      "| project | wiki/projects |",
+    ]) {
       expect(schema).toContain(row)
     }
     expect(await s.read("purpose.md")).toContain("Track TRD neuromodulation research.")

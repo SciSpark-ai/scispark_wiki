@@ -61,6 +61,9 @@ const SECTION_ORDER: Array<{ type: string; label: string }> = [
   { type: "topic", label: "Topics" },
   { type: "idea", label: "Ideas" },
   { type: "note", label: "Notes" },
+  // Saved chat answers (SP5): user-generated like notes, so it sits right
+  // after them rather than among the paper-derived knowledge types above.
+  { type: "query", label: "Saved answers" },
   { type: "author", label: "Authors" },
 ]
 
