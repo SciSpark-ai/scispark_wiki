@@ -6,9 +6,10 @@ import { readNdjson } from "../ndjson"
 import { MockProvider } from "../../llm/mock-provider"
 import type { LLMResult } from "../../llm/types"
 import type { PaperRecord } from "../../papers/types"
-import type { SearchFn } from "../../skills/feed"
-import { loadDashboard, DASHBOARD_CACHE_PATH, type TrendingDashboard } from "../../trending/dashboard"
-import type { CountFn, GroupFn } from "../../trending/weekly-volume"
+import type { TopicGroupFn, TopWorksFn } from "../../papers/node-search"
+import { loadBoard, DASHBOARD_CACHE_PATH, TRENDING_BOARD_VERSION, type TrendingBoard } from "../../trending/dashboard"
+import { completeWindows } from "../../trending/topics"
+import type { CountFn } from "../../trending/counts"
 import * as refreshRoute from "../../../app/api/skills/trending/refresh/route"
 import * as autoRefreshRoute from "../../../app/api/skills/trending/auto-refresh/route"
 
@@ -18,10 +19,44 @@ function paper(o: Partial<PaperRecord> & { title: string }): PaperRecord {
 function structured(output: unknown): LLMResult {
   return { text: JSON.stringify(output), json: output, usage: { inputTokens: 10, outputTokens: 5 }, model: "m", provider: "anthropic", stopReason: "end_turn" }
 }
-const SURVEY = { notablePapers: [{ title: "A", why: "x" }], emergingTopics: [{ topic: "T", why: "y" }], momentum: "up" }
-const fakeSearchFn: SearchFn = async (_source, fieldLabel) => [
-  paper({ title: `Fresh in ${fieldLabel}`, date: "2026-07-10", year: 2026, citationCount: 3, venue: "ACL" }),
+const BRIEFS = { topics: [{ key: "T1", why: "x" }], crossDisciplineNote: "up" }
+/**
+ * A fake entity-scoped works retriever: answers whatever scope it is handed, so
+ * the route tests never touch the network for the board's topic or breakout
+ * papers. The record is dated inside whichever window is asked for.
+ */
+const fakeTopWorksFn: TopWorksFn = async (q) => [
+  paper({ title: `Fresh in ${q.topicId ?? q.fieldId ?? q.query ?? "?"}`, date: q.toDate, year: 2026, citationCount: 3, venue: "ACL" }),
 ]
+
+const NEURO = { id: "https://openalex.org/fields/28", label: "Neuroscience" }
+const fieldGroupFn: TopicGroupFn = async () => [{ key: NEURO.id, label: NEURO.label, count: 500 }]
+
+/**
+ * Only the RECENT window is grouped now (prior counts are looked up through
+ * countFn), so anything else must come back empty.
+ */
+function topicGroupFnFor(now: Date): TopicGroupFn {
+  const windows = completeWindows(now)
+  return async ({ fromDate }) =>
+    fromDate === windows.recent.fromDate ? [{ key: "T1", label: "Auditory Attention Decoding", count: 40 }] : []
+}
+// The routes don't take a `now` override, so the grouper follows the real clock.
+const topicGroupFn: TopicGroupFn = async (q) => topicGroupFnFor(new Date())(q)
+
+/**
+ * The default count fake: a topic-scoped request is a prior-count lookup and
+ * must clear MIN_PRIOR_COUNT (the symmetric volume floor) or the row is dropped
+ * as noise; an unscoped request is the anchor's corpus size, the denominator
+ * every share is scaled by.
+ */
+const countFn: CountFn = async (q) => (q.topicId === undefined ? 1000 : 10)
+
+/** True for a whole-prior-window, topic-scoped request — the leaderboard's prior-count lookup. */
+function isPriorLookup(q: { fromDate: string; toDate: string; topicId?: string }): boolean {
+  const windows = completeWindows(new Date())
+  return q.topicId !== undefined && q.fromDate === windows.prior.fromDate && q.toDate === windows.prior.toDate
+}
 
 describe("trending skill routes", () => {
   let storage: MemoryVaultStorage
@@ -34,12 +69,9 @@ describe("trending skill routes", () => {
     setSkillTestOverrides()
   })
 
-  it("POST /api/skills/trending/refresh streams per-field progress, result parses as a TrendingDashboard, and the cache is written to the test vault", async () => {
-    const provider = new MockProvider([structured(SURVEY), structured(SURVEY)])
-    const countFn: CountFn = async () => 1
-    // Empty groupFn result → falls back to countFn (exercised on its own below); keeps this test off the real network.
-    const groupFn: GroupFn = async () => []
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, groupFn })
+  it("POST /api/skills/trending/refresh streams per-discipline progress, results in a versioned TrendingBoard, and writes the cache to the test vault", async () => {
+    const provider = new MockProvider([structured(BRIEFS)])
+    setSkillTestOverrides({ providerOverride: { strong: provider }, topWorksFn: fakeTopWorksFn, countFn, topicGroupFn, fieldGroupFn })
 
     const fields = [
       { slug: "nlp", label: "NLP" },
@@ -52,48 +84,45 @@ describe("trending skill routes", () => {
     expect(res.headers.get("content-type")).toBe("application/x-ndjson")
 
     const progressEvents: unknown[] = []
-    const result = (await readNdjson(res, (e) => progressEvents.push(e))) as TrendingDashboard
+    const result = (await readNdjson(res, (e) => progressEvents.push(e))) as TrendingBoard
 
-    expect(progressEvents).toEqual([
-      { type: "progress", field: "nlp" },
-      { type: "progress", field: "bio" },
-    ])
+    // Both labels roll up to the one anchor discipline → one progress event.
+    expect(progressEvents).toEqual([{ type: "progress", field: "Neuroscience" }])
 
-    expect(result.panels).toHaveLength(2)
-    expect(result.panels.map((p) => p.field.slug).sort()).toEqual(["bio", "nlp"])
-    expect(result.panels.every((p) => p.survey !== null)).toBe(true)
+    expect(result.version).toBe(TRENDING_BOARD_VERSION)
+    expect(result.anchors).toEqual([NEURO])
+    expect(result.topics.map((t) => t.key)).toEqual(["T1"])
+    expect(result.topics[0].why).toBe("x")
     expect(typeof result.generatedAt).toBe("string")
 
     // The route wrote through to the SAME storage the test injected via
     // setServerVaultForTests — verifies the route actually resolved the
     // server vault, not some other instance.
-    const cached = await loadDashboard(storage)
+    const cached = await loadBoard(storage)
     expect(cached).not.toBeNull()
-    expect(cached!.panels).toHaveLength(2)
+    expect(cached!.topics).toHaveLength(1)
     expect(await storage.read(DASHBOARD_CACHE_PATH)).not.toBeNull()
   })
 
   it("POST /api/skills/trending/refresh: a second refresh rewrites dashboard.json with an ADVANCED generatedAt", async () => {
-    const countFn: CountFn = async () => 1
-    const groupFn: GroupFn = async () => []
     const fields = [{ slug: "nlp", label: "NLP" }]
-    const callRefresh = async (): Promise<TrendingDashboard> => {
+    const callRefresh = async (): Promise<TrendingBoard> => {
       // Fresh provider per call — MockProvider drains its queued responses.
-      setSkillTestOverrides({ providerOverride: { strong: new MockProvider([structured(SURVEY)]) }, searchFn: fakeSearchFn, countFn, groupFn })
+      setSkillTestOverrides({ providerOverride: { strong: new MockProvider([structured(BRIEFS)]) }, topWorksFn: fakeTopWorksFn, countFn, topicGroupFn, fieldGroupFn })
       const res = await refreshRoute.POST(
         new Request("http://x/api/skills/trending/refresh", { method: "POST", body: JSON.stringify({ fields }) }),
       )
-      return (await readNdjson(res, () => undefined)) as TrendingDashboard
+      return (await readNdjson(res, () => undefined)) as TrendingBoard
     }
 
     const first = await callRefresh()
-    const diskAfterFirst = await loadDashboard(storage)
+    const diskAfterFirst = await loadBoard(storage)
     expect(diskAfterFirst!.generatedAt).toBe(first.generatedAt)
 
     // A real clock gap so the second run's generatedAt is strictly later.
     await new Promise((r) => setTimeout(r, 5))
     const second = await callRefresh()
-    const diskAfterSecond = await loadDashboard(storage)
+    const diskAfterSecond = await loadBoard(storage)
 
     // The manual refresh must have rewritten the cache, not silently no-op'd:
     // the persisted generatedAt tracks the second run and is strictly later.
@@ -103,11 +132,9 @@ describe("trending skill routes", () => {
     )
   })
 
-  it("POST /api/skills/trending/refresh: a skill failure still terminates the stream with a usable (degraded) dashboard result, not a terminal error", async () => {
+  it("POST /api/skills/trending/refresh: a skill failure still terminates the stream with a usable (degraded) board, not a terminal error", async () => {
     const provider = new MockProvider([new Error("llm exploded")])
-    const countFn: CountFn = async () => 1
-    const groupFn: GroupFn = async () => []
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, groupFn })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, topWorksFn: fakeTopWorksFn, countFn, topicGroupFn, fieldGroupFn })
 
     const res = await refreshRoute.POST(
       new Request("http://x/api/skills/trending/refresh", {
@@ -115,46 +142,30 @@ describe("trending skill routes", () => {
         body: JSON.stringify({ fields: [{ slug: "nlp", label: "NLP" }] }),
       }),
     )
-    const result = (await readNdjson(res, () => undefined)) as TrendingDashboard
-    expect(result.panels[0].survey).toBeNull()
-    expect(result.panels[0].surveyError).toBeTruthy()
-    // Even a degraded (survey-failed) refresh must persist the dashboard to
-    // disk with a fresh generatedAt — a failed survey never blocks the write.
-    const cached = await loadDashboard(storage)
+    const result = (await readNdjson(res, () => undefined)) as TrendingBoard
+    expect(result.topics[0].why).toBeNull()
+    expect(result.topics[0].recentCount).toBe(40) // numbers survive the LLM failure
+    expect(result.surveyError).toBeTruthy()
+    // Even a degraded (survey-failed) refresh must persist the board to disk
+    // with a fresh generatedAt — a failed survey never blocks the write.
+    const cached = await loadBoard(storage)
     expect(cached).not.toBeNull()
-    expect(cached!.panels[0].survey).toBeNull()
-    expect(cached!.panels[0].surveyError).toBeTruthy()
+    expect(cached!.topics[0].why).toBeNull()
+    expect(cached!.surveyError).toBeTruthy()
     expect(cached!.generatedAt).toBe(result.generatedAt)
   })
 
-  it("POST /api/skills/trending/refresh: setSkillTestOverrides countFn is wired through to a real per-week series in the result", async () => {
-    const provider = new MockProvider([structured(SURVEY)])
-    const countFn: CountFn = async () => 7
-    const groupFn: GroupFn = async () => [] // empty → falls back to countFn, exercising the countFn-only path this test targets
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, groupFn })
-
-    const res = await refreshRoute.POST(
-      new Request("http://x/api/skills/trending/refresh", {
-        method: "POST",
-        body: JSON.stringify({ fields: [{ slug: "nlp", label: "NLP" }] }),
-      }),
-    )
-    const result = (await readNdjson(res, () => undefined)) as TrendingDashboard
-    expect(result.panels[0].metrics.weeklyVolume.length).toBe(8)
-    expect(result.panels[0].metrics.weeklyVolume.every((v) => v.count === 7)).toBe(true)
-  })
-
-  it("POST /api/skills/trending/refresh: setSkillTestOverrides groupFn is wired through and preferred over countFn in the result", async () => {
-    const provider = new MockProvider([structured(SURVEY)])
-    const countFn: CountFn = async () => {
-      throw new Error("countFn must not be called when groupFn is injected and succeeds")
+  it("POST /api/skills/trending/refresh: setSkillTestOverrides countFn is wired through to the board's prior counts", async () => {
+    const provider = new MockProvider([structured(BRIEFS)])
+    // 7 for a prior-count lookup, 1 for the anchor-wide recent total — the only
+    // two things the board counts. There is no per-topic series any more, so a
+    // countFn that answered a third kind of request would mean one crept back.
+    const countFn: CountFn = async (q) => {
+      if (isPriorLookup(q)) return 7
+      if (q.topicId !== undefined) throw new Error("no topic-scoped count other than the prior lookup should be issued")
+      return 1
     }
-    // groupFn echoes back a group keyed on the actual (real, un-mocked-clock)
-    // fromDate it's called with, which is exactly weekStarts[0] for the
-    // window fetchWeeklyVolume requests — so this stays correct regardless
-    // of the real wall-clock date the test happens to run on.
-    const groupFn: GroupFn = async (q) => [{ key: q.fromDate, count: 3 }]
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, groupFn })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, topWorksFn: fakeTopWorksFn, countFn, topicGroupFn, fieldGroupFn })
 
     const res = await refreshRoute.POST(
       new Request("http://x/api/skills/trending/refresh", {
@@ -162,31 +173,33 @@ describe("trending skill routes", () => {
         body: JSON.stringify({ fields: [{ slug: "nlp", label: "NLP" }] }),
       }),
     )
-    const result = (await readNdjson(res, () => undefined)) as TrendingDashboard
-    const weeklyVolume = result.panels[0].metrics.weeklyVolume
-    expect(weeklyVolume.length).toBe(8)
-    expect(weeklyVolume[0].count).toBe(3) // oldest week matches the grouped key
-    expect(weeklyVolume.slice(1).every((v) => v.count === 0)).toBe(true) // rest zero-filled
+    const result = (await readNdjson(res, () => undefined)) as TrendingBoard
+    expect(result.topics[0].priorCount).toBe(7)
+    expect(result.topics[0].recentCount).toBe(40)
+    expect(result.overview.totalRecent).toBe(1)
   })
 
   it("POST /api/skills/trending/auto-refresh returns 'no-fields' on an empty vault (no tracked fields, no interests.md)", async () => {
-    setSkillTestOverrides({ searchFn: fakeSearchFn })
+    setSkillTestOverrides({ topWorksFn: fakeTopWorksFn, topicGroupFn, fieldGroupFn })
     const res = await autoRefreshRoute.POST(
       new Request("http://x/api/skills/trending/auto-refresh", { method: "POST", body: JSON.stringify({}) }),
     )
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body).toEqual({ result: "no-fields" })
-    expect(await loadDashboard(storage)).toBeNull()
+    expect(await loadBoard(storage)).toBeNull()
   })
 
   it("POST /api/skills/trending/auto-refresh: 'refreshed' when fields are tracked and nothing is cached yet, using the injected provider (no network)", async () => {
     const { saveTrendingSettings } = await import("../../trending/settings")
-    await saveTrendingSettings(storage, { fields: [{ slug: "nlp", label: "NLP" }], cadence: "weekly" })
-    const provider = new MockProvider([structured(SURVEY)])
-    const countFn: CountFn = async () => 1
-    const groupFn: GroupFn = async () => []
-    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: fakeSearchFn, countFn, groupFn })
+    await saveTrendingSettings(storage, {
+      fields: [{ slug: "nlp", label: "NLP" }],
+      cadence: "weekly",
+      anchors: [],
+      anchorsOverridden: false,
+    })
+    const provider = new MockProvider([structured(BRIEFS)])
+    setSkillTestOverrides({ providerOverride: { strong: provider }, topWorksFn: fakeTopWorksFn, countFn, topicGroupFn, fieldGroupFn })
 
     const res = await autoRefreshRoute.POST(
       new Request("http://x/api/skills/trending/auto-refresh", { method: "POST", body: JSON.stringify({}) }),
@@ -194,6 +207,6 @@ describe("trending skill routes", () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ result: "refreshed" })
     expect(provider.calls.length).toBeGreaterThan(0)
-    expect(await loadDashboard(storage)).not.toBeNull()
+    expect(await loadBoard(storage)).not.toBeNull()
   })
 })

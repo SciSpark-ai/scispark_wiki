@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest"
-import { countOpenAlexWorks, searchOpenAlex, groupWorksByPublicationDate } from "../openalex"
+import { countOpenAlexWorks, searchOpenAlex, searchTopCitedWorks } from "../openalex"
 import { PaperSourceError } from "../types"
 import fixture from "./fixtures/openalex-works.json"
 
@@ -385,6 +385,51 @@ describe("searchOpenAlex", () => {
   })
 })
 
+describe("countOpenAlexWorks topic scoping (the leaderboard's prior-count lookup)", () => {
+  const capture = () => {
+    const seen = { url: "" }
+    const fetchFn = (async (url: string) => {
+      seen.url = String(url)
+      return new Response(JSON.stringify({ results: [], meta: { count: 16 } }), { status: 200 })
+    }) as unknown as typeof fetch
+    return { seen, fetchFn }
+  }
+
+  it("adds a primary_topic.id filter alongside the dates, keeping the search scope", async () => {
+    const { seen, fetchFn } = capture()
+    const n = await countOpenAlexWorks(
+      { query: "Computer Science", topicId: "T10689", fromDate: "2026-06-22", toDate: "2026-07-05" },
+      { fetchFn },
+    )
+    const url = new URL(seen.url)
+    expect(n).toBe(16)
+    // The search term MUST survive: the recent count this is compared against
+    // is search-scoped too, and an unscoped lookup returns the corpus-wide
+    // figure (live: 149 vs 16) and invents a decline.
+    expect(url.searchParams.get("search")).toBe("Computer Science")
+    expect(url.searchParams.get("per_page")).toBe("1")
+    expect(url.searchParams.get("filter")).toBe(
+      "primary_topic.id:T10689,from_publication_date:2026-06-22,to_publication_date:2026-07-05",
+    )
+  })
+
+  it("normalizes a full entity-URL topic key (what group_by returns) to its bare id", async () => {
+    const { seen, fetchFn } = capture()
+    await countOpenAlexWorks(
+      { query: "x", topicId: "https://openalex.org/T10689", fromDate: "a", toDate: "b" },
+      { fetchFn },
+    )
+    expect(new URL(seen.url).searchParams.get("filter")).toContain("primary_topic.id:T10689")
+  })
+
+  it("omits the topic filter entirely when no topicId is given (v1.1 behaviour unchanged)", async () => {
+    const { seen, fetchFn } = capture()
+    await countOpenAlexWorks({ query: "nlp", fromDate: "a", toDate: "b" }, { fetchFn })
+    expect(new URL(seen.url).searchParams.get("filter")).not.toContain("primary_topic")
+  })
+
+})
+
 describe("countOpenAlexWorks", () => {
   it("returns meta.count and requests per_page=1 with from+to date filter", async () => {
     let calledUrl = ""
@@ -401,8 +446,27 @@ describe("countOpenAlexWorks", () => {
     expect(decodeURIComponent(calledUrl)).toContain("to_publication_date:2026-07-12")
   })
 
-  it("returns 0 when meta/count is missing", async () => {
+  it("THROWS when a 200 response carries no meta.count (never fabricates a zero)", async () => {
+    // A zero here is not harmless: on trending's prior-count path it reads as
+    // "no papers before" → growth null → rendered "new" → sorted first. The
+    // caller treats a throw as "unmeasured" and omits the topic instead.
     const fetchFn = (async () => new Response(JSON.stringify({ results: [] }), { status: 200 })) as unknown as typeof fetch
+    await expect(
+      countOpenAlexWorks({ query: "x", fromDate: "2026-07-06", toDate: "2026-07-12" }, { fetchFn }),
+    ).rejects.toThrow(PaperSourceError)
+  })
+
+  it("THROWS when meta.count is present but not a finite number", async () => {
+    const fetchFn = (async () =>
+      new Response(JSON.stringify({ results: [], meta: { count: null } }), { status: 200 })) as unknown as typeof fetch
+    await expect(
+      countOpenAlexWorks({ query: "x", fromDate: "2026-07-06", toDate: "2026-07-12" }, { fetchFn }),
+    ).rejects.toThrow(PaperSourceError)
+  })
+
+  it("returns a real zero when OpenAlex actually reports one", async () => {
+    const fetchFn = (async () =>
+      new Response(JSON.stringify({ results: [], meta: { count: 0 } }), { status: 200 })) as unknown as typeof fetch
     expect(await countOpenAlexWorks({ query: "x", fromDate: "2026-07-06", toDate: "2026-07-12" }, { fetchFn })).toBe(0)
   })
 
@@ -523,115 +587,73 @@ describe("api_key param", () => {
     expect(new URL(calledUrl).searchParams.get("api_key")).toBe("secret-key")
   })
 
-  it("groupWorksByPublicationDate sets api_key when deps.apiKey is provided", async () => {
-    let calledUrl = ""
-    const fetchFn = (async (url: string) => {
-      calledUrl = String(url)
-      return new Response(JSON.stringify({ group_by: [] }), { status: 200 })
-    }) as unknown as typeof fetch
-
-    await groupWorksByPublicationDate({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn, apiKey: "secret-key" })
-
-    expect(new URL(calledUrl).searchParams.get("api_key")).toBe("secret-key")
-  })
 })
 
-describe("groupWorksByPublicationDate", () => {
-  it("builds the request URL with search, filter, group_by=publication_date, and per_page=200", async () => {
-    let calledUrl = ""
+describe("searchTopCitedWorks (entity-scoped, citation-ranked works)", () => {
+  const capture = (body: unknown = { results: [] }) => {
+    const seen = { url: "" }
     const fetchFn = (async (url: string) => {
-      calledUrl = String(url)
-      return new Response(JSON.stringify({ group_by: [] }), { status: 200 })
+      seen.url = String(url)
+      return new Response(JSON.stringify(body), { status: 200 })
     }) as unknown as typeof fetch
+    return { seen, fetchFn }
+  }
 
-    await groupWorksByPublicationDate(
-      { query: "nlp", fromDate: "2026-06-01", toDate: "2026-07-26" },
-      { fetchFn, mailto: "me@example.com" },
+  it("scopes by primary_topic.id and the date window, ranks by citations, and sends NO search term", async () => {
+    const { seen, fetchFn } = capture()
+    await searchTopCitedWorks({ topicId: "T10533", fromDate: "2026-07-06", toDate: "2026-07-19", limit: 3 }, { fetchFn })
+
+    const url = new URL(seen.url)
+    // A topic's identity is its id. Sending the label as `search` is the bug
+    // this call exists to remove — a topic named with common words ("Teaching
+    // and Learning Programming") matches papers with no connection to it.
+    expect(url.searchParams.has("search")).toBe(false)
+    expect(url.searchParams.get("filter")).toBe(
+      "is_paratext:false,primary_topic.id:T10533,from_publication_date:2026-07-06,to_publication_date:2026-07-19",
     )
+    expect(url.searchParams.get("sort")).toBe("cited_by_count:desc")
+    expect(url.searchParams.get("per_page")).toBe("3")
+  })
 
-    const url = new URL(calledUrl)
-    expect(url.origin + url.pathname).toBe("https://api.openalex.org/works")
-    expect(url.searchParams.get("search")).toBe("nlp")
-    expect(decodeURIComponent(url.searchParams.get("filter") ?? "")).toBe(
-      "from_publication_date:2026-06-01,to_publication_date:2026-07-26",
+  it("scopes by primary_topic.field.id, normalizing the full entity URL group_by returns", async () => {
+    const { seen, fetchFn } = capture()
+    await searchTopCitedWorks(
+      { fieldId: "https://openalex.org/fields/17", fromDate: "2026-04-20", toDate: "2026-07-19" },
+      { fetchFn },
     )
-    expect(url.searchParams.get("group_by")).toBe("publication_date")
-    expect(url.searchParams.get("per_page")).toBe("200")
-    expect(url.searchParams.get("mailto")).toBe("me@example.com")
-    // Regression guard: a group_by request must NEVER carry sort=... — OpenAlex
-    // ignores/rejects sort on grouped queries, which would silently break
-    // trending's per-week volume aggregation. buildUrl's `else if` enforces this.
-    expect(url.searchParams.get("sort")).toBeNull()
+    expect(new URL(seen.url).searchParams.get("filter")).toContain("primary_topic.field.id:17")
   })
 
-  it("parses the group_by response array into {key, count} pairs", async () => {
-    const fetchFn = (async () =>
-      new Response(
-        JSON.stringify({
-          group_by: [
-            { key: "2026-07-06", key_display_name: "2026-07-06", count: 5 },
-            { key: "2026-07-07", key_display_name: "2026-07-07", count: 2 },
-          ],
-        }),
-        { status: 200 },
-      )) as unknown as typeof fetch
-
-    const groups = await groupWorksByPublicationDate({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn })
-
-    expect(groups).toEqual([
-      { key: "2026-07-06", count: 5 },
-      { key: "2026-07-07", count: 2 },
-    ])
+  it("keeps a free-text scope when one is given (the fallback anchor path)", async () => {
+    const { seen, fetchFn } = capture()
+    await searchTopCitedWorks({ query: "auditory attention", fromDate: "a", toDate: "b" }, { fetchFn })
+    expect(new URL(seen.url).searchParams.get("search")).toBe("auditory attention")
   })
 
-  it("returns [] when group_by is missing from the response", async () => {
-    const fetchFn = (async () => new Response(JSON.stringify({}), { status: 200 })) as unknown as typeof fetch
-    const groups = await groupWorksByPublicationDate({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn })
-    expect(groups).toEqual([])
+  it("threads mailto/api_key like every other OpenAlex call", async () => {
+    const { seen, fetchFn } = capture()
+    await searchTopCitedWorks({ topicId: "T1", fromDate: "a", toDate: "b" }, { fetchFn, mailto: "x@y.z", apiKey: "k" })
+    const url = new URL(seen.url)
+    expect(url.searchParams.get("mailto")).toBe("x@y.z")
+    expect(url.searchParams.get("api_key")).toBe("k")
   })
 
-  it("tolerates malformed entries (missing/wrong-typed key or count) by skipping them", async () => {
-    const fetchFn = (async () =>
-      new Response(
-        JSON.stringify({
-          group_by: [
-            { key: "2026-07-06", count: 5 },
-            { key: 123, count: 2 }, // wrong-typed key
-            { key: "2026-07-08" }, // missing count
-            null, // null entry
-            { count: 9 }, // missing key
-          ],
-        }),
-        { status: 200 },
-      )) as unknown as typeof fetch
-
-    const groups = await groupWorksByPublicationDate({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn })
-
-    expect(groups).toEqual([{ key: "2026-07-06", count: 5 }])
+  it("maps results through the same PaperRecord mapping as searchOpenAlex", async () => {
+    const { fetchFn } = capture({ results: [fixture.results[0]] })
+    const records = await searchTopCitedWorks({ topicId: "T1", fromDate: "a", toDate: "b" }, { fetchFn })
+    expect(records).toHaveLength(1)
+    expect(records[0].source).toBe("openalex")
+    expect(records[0].title).toBe(fixture.results[0].display_name)
   })
 
-  it("RETRY: recovers when a 429 is followed by a 200 (reuses the shared retry helper)", async () => {
-    let call = 0
-    const fetchFn = vi.fn(async () => {
-      call++
-      return call === 1
-        ? new Response("", { status: 429, headers: { "retry-after": "0" } })
-        : new Response(JSON.stringify({ group_by: [{ key: "2026-07-06", count: 1 }] }), { status: 200 })
+  it("retries a 429 with backoff like the other OpenAlex calls", async () => {
+    let calls = 0
+    const fetchFn = (async () => {
+      calls += 1
+      if (calls === 1) return new Response("rate limited", { status: 429 })
+      return new Response(JSON.stringify({ results: [] }), { status: 200 })
     }) as unknown as typeof fetch
-
-    const groups = await groupWorksByPublicationDate(
-      { query: "x", fromDate: "a", toDate: "b" },
-      { fetchFn, sleep: noSleep },
-    )
-    expect(groups).toEqual([{ key: "2026-07-06", count: 1 }])
-    expect(fetchFn).toHaveBeenCalledTimes(2)
-  })
-
-  it("throws PaperSourceError with status after exhausting retries on a persistent 500", async () => {
-    const fetchFn = vi.fn(async () => new Response("", { status: 500 })) as unknown as typeof fetch
-    await expect(
-      groupWorksByPublicationDate({ query: "x", fromDate: "a", toDate: "b" }, { fetchFn, sleep: noSleep }),
-    ).rejects.toMatchObject({ name: "PaperSourceError", status: 500 })
-    expect(fetchFn).toHaveBeenCalledTimes(3)
+    await searchTopCitedWorks({ topicId: "T1", fromDate: "a", toDate: "b" }, { fetchFn, sleep: noSleep })
+    expect(calls).toBe(2)
   })
 })

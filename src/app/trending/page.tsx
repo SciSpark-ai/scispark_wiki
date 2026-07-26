@@ -7,22 +7,26 @@ import { readUserModel } from "@/lib/usermodel/pages"
 import { effectiveTrackedFields } from "@/lib/trending/fields"
 import { loadTrendingSettingsRemote } from "@/lib/trending/settings-client"
 import {
-  loadDashboard,
+  loadBoard,
   isStale,
-  fieldsMatchDashboard,
-  type TrendingDashboard,
+  anchorsMatchBoard,
+  type TrendingBoard,
 } from "@/lib/trending/dashboard"
 import { refreshTrendingDashboard } from "@/lib/trending/client"
+import { useUIStore } from "@/stores/ui-store"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
-import { FieldPanelView } from "@/components/trending/FieldPanelView"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Button } from "@/components/ui/Button"
 import { LoadingState } from "@/components/ui/LoadingState"
+import { Chip } from "@/components/ui/Chip"
+import { OverviewStrip } from "@/components/trending/OverviewStrip"
+import { Leaderboard } from "@/components/trending/Leaderboard"
+import { BreakoutPapers } from "@/components/trending/BreakoutPapers"
 
 type State =
   | { status: "loading" }
   | { status: "empty" } // no tracked fields
-  | { status: "ready"; dashboard: TrendingDashboard }
+  | { status: "ready"; dashboard: TrendingBoard }
   | { status: "error"; message: string }
 
 function formatUpdated(iso: string): string {
@@ -41,8 +45,16 @@ export default function TrendingPage() {
   // precedent: refresh errors stay local, old content remains visible with a
   // retry affordance).
   const [refreshError, setRefreshError] = useState<string | null>(null)
-  const [refreshingField, setRefreshingField] = useState<string | null>(null)
+  // Fires with each anchor DISCIPLINE's label (not the user's narrow
+  // interest fields — SP4 scopes retrieval to broad anchor disciplines).
+  const [refreshingDiscipline, setRefreshingDiscipline] = useState<string | null>(null)
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const started = useRef(false)
+  const openSettingsModal = useUIStore((s) => s.openSettingsModal)
+
+  const toggleTopic = useCallback((key: string) => {
+    setExpandedKey((prev) => (prev === key ? null : key))
+  }, [])
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
@@ -58,7 +70,7 @@ export default function TrendingPage() {
         setState({ status: "empty" })
         return
       }
-      const dashboard = await refreshTrendingDashboard(fields, (slug) => setRefreshingField(slug))
+      const dashboard = await refreshTrendingDashboard(fields, (discipline) => setRefreshingDiscipline(discipline))
       setState({ status: "ready", dashboard })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -70,7 +82,7 @@ export default function TrendingPage() {
       setRefreshError(message)
     } finally {
       setRefreshing(false)
-      setRefreshingField(null)
+      setRefreshingDiscipline(null)
     }
   }, [])
 
@@ -83,29 +95,32 @@ export default function TrendingPage() {
         const [tSettings, userModel, cached] = await Promise.all([
           loadTrendingSettingsRemote(),
           readUserModel(vault),
-          loadDashboard(vault),
+          loadBoard(vault),
         ])
         const fields = effectiveTrackedFields(tSettings.fields, userModel.interests)
         if (fields.length === 0) {
           setState({ status: "empty" })
           return
         }
-        if (cached && fieldsMatchDashboard(cached, fields)) {
-          // Stale-while-revalidate: show the cached dashboard immediately —
-          // fresh or stale — so panels never disappear. A stale cache then
-          // triggers a background refresh; the Refresh button's own
+        // An EMPTY stored anchor list means "not derived yet" — there is
+        // nothing to compare against, so scope-staleness doesn't apply.
+        const scopeStale = tSettings.anchors.length > 0 && !anchorsMatchBoard(cached, tSettings.anchors)
+        if (cached && !scopeStale) {
+          // Stale-while-revalidate: show the cached board immediately —
+          // fresh or stale — so the leaderboard never disappears. A stale
+          // cache then triggers a background refresh; the Refresh button's own
           // `refreshing` spinner is the in-progress indicator.
           setState({ status: "ready", dashboard: cached })
           if (isStale(cached, tSettings.cadence, new Date())) {
             await refresh()
           }
         } else {
-          // No cache at all, OR the cached panels are for a different set of
-          // tracked fields (e.g. the user just changed fields on /profile).
-          // Unlike time-staleness, a field-set mismatch means the cached
-          // panels are for the WRONG fields — showing them first would be
-          // actively misleading, so go through the loading path instead of
-          // stale-while-revalidate.
+          // No cache at all (including an old-shaped one, which loadBoard
+          // reports as a cold start), OR the cached board was built for a
+          // different set of anchor disciplines. Unlike time-staleness, a
+          // scope mismatch means the cached rows are for the WRONG scope —
+          // showing them first would be actively misleading, so go through the
+          // loading path instead of stale-while-revalidate.
           await refresh()
         }
       } catch (err) {
@@ -121,8 +136,8 @@ export default function TrendingPage() {
         actions={
           state.status === "ready" ? (
             <>
-              {refreshing && refreshingField && (
-                <span className="text-[12px] text-muted-text">Gathering trends… ({refreshingField})</span>
+              {refreshing && refreshingDiscipline && (
+                <span className="text-[12px] text-muted-text">Gathering trends… ({refreshingDiscipline})</span>
               )}
               <span className="text-[12px] text-muted-text">Updated {formatUpdated(state.dashboard.generatedAt)}</span>
               <Button onClick={refresh} disabled={refreshing}>
@@ -133,13 +148,29 @@ export default function TrendingPage() {
         }
       />
 
+      {state.status === "ready" && state.dashboard.anchors.length > 0 && (
+        <div className="mb-6 -mt-2 flex flex-wrap gap-1.5">
+          {state.dashboard.anchors.map((anchor) => (
+            <button
+              key={anchor.id}
+              type="button"
+              onClick={() => openSettingsModal("trending")}
+              title="Edit your trending disciplines"
+              aria-label="Edit your trending disciplines"
+            >
+              <Chip tone="accent">{anchor.label}</Chip>
+            </button>
+          ))}
+        </div>
+      )}
+
       {state.status === "loading" && (
         <LoadingState
           label={
             refreshing
-              ? refreshingField
-                ? `Gathering your fields’ trends… (${refreshingField})`
-                : "Gathering your fields’ trends…"
+              ? refreshingDiscipline
+                ? `Gathering your disciplines’ trends… (${refreshingDiscipline})`
+                : "Gathering your disciplines’ trends…"
               : "Loading…"
           }
         />
@@ -166,14 +197,25 @@ export default function TrendingPage() {
       {state.status === "ready" && (
         <>
           {refreshError && (
-            <div className="mt-3">
+            <div className="mb-4">
               <LlmErrorMessage message={refreshError} />
             </div>
           )}
-          <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {state.dashboard.panels.map((panel) => (
-              <FieldPanelView key={panel.field.slug} panel={panel} />
-            ))}
+          {state.dashboard.surveyError && (
+            <p className="mb-4 text-[12px] text-muted-text tracking-body">
+              Written summaries unavailable. Reason: {state.dashboard.surveyError}
+            </p>
+          )}
+          {state.dashboard.dataError && (
+            <p className="mb-4 text-[12px] text-muted-text tracking-body">
+              Some activity data couldn’t be measured, so those topics are left off rather than guessed at. Reason:{" "}
+              {state.dashboard.dataError}
+            </p>
+          )}
+          <div className="flex flex-col gap-5">
+            <OverviewStrip overview={state.dashboard.overview} />
+            <Leaderboard board={state.dashboard} expandedKey={expandedKey} onToggle={toggleTopic} />
+            <BreakoutPapers breakouts={state.dashboard.breakouts} />
           </div>
         </>
       )}

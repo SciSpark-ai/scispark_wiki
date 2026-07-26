@@ -1,38 +1,37 @@
 import { describe, it, expect } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { DEFAULT_SETTINGS } from "../../llm/settings"
-import { searchArxiv } from "../../papers/arxiv"
-import { searchOpenAlex } from "../../papers/openalex"
-import { nodeCountFn, nodeGroupFn } from "../../papers/node-search"
+import { nodeCountFn, nodeTopicGroupFn, nodeTopicFieldGroupFn, nodeTopWorksFn } from "../../papers/node-search"
 import { readRecentEvents } from "../../events/log"
-import { runTrendingDashboard } from "../dashboard"
-import { TrendingSurveySchema } from "../../skills/trending"
-import type { SearchFn } from "../../skills/feed"
+import { runTrendingBoard, TRENDING_BOARD_VERSION } from "../dashboard"
+import { TopicBriefsSchema } from "../../skills/trending"
+import { MIN_RECENT_COUNT } from "../topics"
 
 /**
- * LIVE end-to-end gate for M10: a real trending-dashboard refresh for one
- * tracked field ("Natural Language Processing") against real arXiv/OpenAlex
- * search and a real LLM (the persona-free `trendingSkill`, a single
- * strong-tier structured call). Mirrors the M9 live-gate idiom
- * (src/lib/spark/__tests__/live-spark.test.ts): env-gated, node searchFn
- * calling search-core directly, in-memory vault, generous timeout, an
- * always-on "skips cleanly" wiring test. Skipped unless all three env vars
- * are set:
+ * LIVE end-to-end gate for the trending board (M10 → SP4): a real board
+ * refresh seeded from one interest label ("Natural Language Processing")
+ * against real OpenAlex `group_by` ranking, real entity-scoped OpenAlex paper
+ * retrieval, and a real LLM (the persona-free `trendingSkill`, one strong-tier
+ * structured call per anchor discipline). Mirrors the M9 live-gate idiom
+ * (src/lib/spark/__tests__/live-spark.test.ts): env-gated, the PRODUCTION node
+ * dep factories calling search-core directly, in-memory vault, generous
+ * timeout, an always-on "skips cleanly" wiring test. Skipped unless all three
+ * env vars are set:
  *
  *   LIVE_LLM_BASE_URL=https://api.gmi-serving.com/v1 \
  *   LIVE_LLM_MODEL='anthropic/claude-sonnet-5' \
  *   LIVE_LLM_API_KEY=<key> \
  *   npx vitest run src/lib/trending/__tests__/live-trending.test.ts
  *
- * Makes real network calls (arXiv + OpenAlex + the LLM endpoint) and spends
+ * Makes real network calls (OpenAlex + the LLM endpoint) and spends
  * real money — never runs in CI. Far lighter than Deep Spark: retrieval plus
  * exactly one strong-tier call for the single field's survey.
  *
- * v1.1: also wires a real `countFn` (countOpenAlexWorks — keyless, no LLM
- * key needed) so the run exercises real per-week OpenAlex work counts
- * (metrics.ts's realWeeklyVolume) instead of the retrieval-sample-derived
- * weeklyVolume, and asserts the resulting series is non-degenerate (at least
- * two weeks with count > 0).
+ * Wires a real `countFn` (countOpenAlexWorks — keyless, no LLM key needed) so
+ * the run exercises real OpenAlex work counts: one prior-window lookup per
+ * candidate topic (the growth column AND the row's before/after bars) plus the
+ * anchor-wide recent totals. There is no per-week series any more — the
+ * `group_by=publication_date` request it relied on is rejected by OpenAlex.
  */
 const BASE_URL = process.env.LIVE_LLM_BASE_URL
 const API_KEY = process.env.LIVE_LLM_API_KEY
@@ -40,30 +39,6 @@ const MODEL = process.env.LIVE_LLM_MODEL
 
 const live = Boolean(BASE_URL && API_KEY && MODEL)
 const LIVE_TIMEOUT = 120_000
-
-/**
- * Node relay-free SearchFn: calls the M3 search-core adapters (searchArxiv,
- * searchOpenAlex) directly — no HTTP server, no /api/search proxy. A failed
- * query resolves to [] (per the SearchFn contract, and per
- * retrieveFieldCandidates's own per-source try/catch) rather than failing
- * the whole run. Mirrors live-spark.test.ts's nodeSearchFn; trending's own
- * retrieveFieldCandidates only ever calls with source "arxiv" or "openalex"
- * (src/lib/trending/retrieve.ts's SOURCES), so no s2/pubmed remap is needed.
- */
-function nodeSearchFn(): SearchFn {
-  const mailto = process.env.OPENALEX_MAILTO
-  return async (source, query, limit) => {
-    try {
-      if (source === "arxiv") {
-        return await searchArxiv({ query, limit })
-      }
-      return await searchOpenAlex({ query, limit }, { mailto })
-    } catch (err) {
-      console.warn(`[live-trending] search failed for source=${source} query="${query}":`, err)
-      return []
-    }
-  }
-}
 
 function liveSettings() {
   return {
@@ -80,58 +55,119 @@ function liveSettings() {
 
 const FIELD = { slug: "natural-language-processing", label: "Natural Language Processing" }
 
-describe.skipIf(!live)("LIVE trending dashboard gate", () => {
+describe.skipIf(!live)("LIVE trending board gate", () => {
   it(
-    "runTrendingDashboard for one field against real search + a real LLM: real metrics, schema-valid (or gracefully degraded) survey, bounded cost",
+    "runTrendingBoard for one interest label against real OpenAlex group_by + search + a real LLM: real anchors, real growth numbers and prior counts, schema-valid (or gracefully degraded) briefs, bounded cost",
     { timeout: LIVE_TIMEOUT },
     async () => {
       const storage = new MemoryVaultStorage()
 
-      const dash = await runTrendingDashboard(storage, {
+      const board = await runTrendingBoard(storage, {
         fields: [FIELD],
-        searchFn: nodeSearchFn(),
-        // Real per-week OpenAlex work counts (keyless — no LLM key needed),
-        // so even this env-gated live run exercises the v1.1 real-count path
-        // rather than the old retrieval-sample-derived weeklyVolume. Uses the
-        // PRODUCTION nodeCountFn so OPENALEX_MAILTO is threaded (polite pool),
-        // matching the trending routes' wiring exactly. Also wires the
-        // production nodeGroupFn (v1.1 Addendum Task 5) so this live run
-        // exercises the 1-credit group_by fast path exactly like production,
-        // falling back to nodeCountFn only if OpenAlex's group_by ever fails.
+        // Real entity-scoped paper retrieval: every row's papers come back
+        // filtered by that row's primary_topic.id, and the breakout strip by
+        // the anchor's field id (src/lib/papers/openalex.ts).
+        topWorksFn: nodeTopWorksFn(),
+        // The PRODUCTION node groupers/counters, so this run exercises exactly
+        // the wiring the trending routes use: one group_by=primary_topic.id
+        // request per anchor for the leaderboard, one
+        // group_by=primary_topic.field.id per label for anchor derivation, and
+        // one filtered count per candidate for its true prior-window figure.
         countFn: nodeCountFn(),
-        groupFn: nodeGroupFn(),
+        topicGroupFn: nodeTopicGroupFn(),
+        fieldGroupFn: nodeTopicFieldGroupFn(),
         settings: liveSettings(),
         now: () => new Date(),
       })
 
-      expect(dash.panels).toHaveLength(1)
-      const panel = dash.panels[0]
+      expect(board.version).toBe(TRENDING_BOARD_VERSION)
+      expect(board.anchors.length).toBeGreaterThan(0)
+      console.log("[live-trending] anchors:", JSON.stringify(board.anchors))
+      console.log("[live-trending] overview:", JSON.stringify(board.overview))
 
-      // Deterministic metrics, derived from real retrieved papers.
-      expect(panel.metrics.weeklyVolume.length).toBe(8)
-      expect(typeof panel.metrics.paperCountRecent).toBe("number")
+      // Real, deterministic ranking: at least one topic cleared the volume
+      // floor, and every number came from OpenAlex counts.
+      expect(board.topics.length).toBeGreaterThan(0)
+      const top = board.topics[0]
+      console.log(
+        "[live-trending] top topic:",
+        JSON.stringify({ label: top.label, discipline: top.discipline, growth: top.growth, recentCount: top.recentCount }),
+      )
+      expect(top.recentCount).toBeGreaterThanOrEqual(MIN_RECENT_COUNT)
+      expect(board.overview.totalRecent).toBeGreaterThan(0)
 
-      console.log("[live-trending] weeklyVolume:", JSON.stringify(panel.metrics.weeklyVolume))
-      console.log("[live-trending] paperCountRecent:", panel.metrics.paperCountRecent)
+      // The prior figure must be a real, finite number on every row...
+      expect(board.topics.every((t) => Number.isFinite(t.priorCount) && t.priorCount >= 0)).toBe(true)
+      console.log("[live-trending] top prior/recent:", top.priorCount, "→", top.recentCount)
 
-      // Proves real multi-week OpenAlex counts drove weeklyVolume (not the
-      // old degenerate [0..0, N] retrieval-sample series where only the most
-      // recent bucket was ever non-zero).
-      expect(panel.metrics.weeklyVolume.filter((v) => v.count > 0).length).toBeGreaterThanOrEqual(2)
+      // ...and so must the two SHARES the badge AND the bars are both drawn
+      // from. A share is a real fraction of a real corpus: finite, in [0, 1],
+      // and consistent with the growth figure beside it (OpenAlex's recent
+      // window is only partially indexed, so raw counts are NOT).
+      expect(
+        board.topics.every(
+          (t) =>
+            Number.isFinite(t.recentShare) &&
+            Number.isFinite(t.priorShare) &&
+            t.recentShare >= 0 &&
+            t.recentShare <= 1 &&
+            t.priorShare >= 0 &&
+            t.priorShare <= 1,
+        ),
+      ).toBe(true)
+      for (const t of board.topics) {
+        if (t.growth === null) expect(t.priorCount).toBe(0)
+        else expect(t.growth).toBeCloseTo((t.recentShare - t.priorShare) / t.priorShare, 9)
+        // The bars can never contradict the badge: sign agreement is structural.
+        if (t.growth !== null) expect(t.recentShare > t.priorShare).toBe(t.growth > 0)
+      }
+      console.log(
+        "[live-trending] top shares:",
+        `${(top.priorShare * 100).toFixed(3)}% → ${(top.recentShare * 100).toFixed(3)}%`,
+      )
 
-      if (panel.survey) {
-        // Schema-valid survey is the expected happy path.
-        expect(TrendingSurveySchema.safeParse(panel.survey).success).toBe(true)
-        console.log("[live-trending] sample notable title:", panel.survey.notablePapers[0]?.title)
-      } else {
+      if (board.surveyError) {
         // Acceptable for the gate (GMI backend-replica flake etc.) as long as
-        // the failure surfaces an error string rather than silently vanishing.
-        expect(panel.surveyError).toBeTruthy()
-        console.log("[live-trending] survey unavailable, error:", panel.surveyError)
+        // the failure surfaces its real reason rather than silently vanishing.
+        console.log("[live-trending] survey unavailable, error:", board.surveyError)
+        expect(board.topics.every((t) => t.why === null)).toBe(true)
+      } else {
+        // Schema-valid briefs are the expected happy path, joined by key.
+        expect(board.topics.some((t) => t.why !== null)).toBe(true)
+        expect(
+          TopicBriefsSchema.safeParse({
+            topics: board.topics.filter((t) => t.why !== null).map((t) => ({ key: t.key, why: t.why as string })),
+            crossDisciplineNote: board.crossDisciplineNote ?? "n/a",
+          }).success,
+        ).toBe(true)
+        console.log("[live-trending] sample topic brief:", board.topics.find((t) => t.why)?.why)
       }
 
-      // runTrendingDashboard doesn't return cost directly (TrendingDashboard has
-      // no costUsd field) — the accumulated cost is logged onto the
+      // Every representative paper must really carry its row's topic. OpenAlex
+      // returns each work's topics (highest-scoring first, which is the
+      // primary topic the filter matched), so a row's label has to appear
+      // among its papers' fields — the whole point of filtering by topic id.
+      const rowWithPapers = board.topics.find((t) => t.papers.length > 0)
+      if (rowWithPapers) {
+        console.log(
+          `[live-trending] papers for "${rowWithPapers.label}":`,
+          JSON.stringify(rowWithPapers.papers.map((p) => p.record.title)),
+        )
+        for (const p of rowWithPapers.papers) {
+          expect(p.record.fields.map((f) => f.toLowerCase())).toContain(rowWithPapers.label.toLowerCase())
+        }
+      }
+
+      // The breakout strip: real papers, really cited, ranked. It may legitimately
+      // be empty, but it must never contain an uncited record.
+      console.log(
+        "[live-trending] breakouts:",
+        JSON.stringify(board.breakouts.map((b) => [b.record.title, b.citationCount])),
+      )
+      expect(board.breakouts.every((b) => b.citationCount > 0)).toBe(true)
+
+      // runTrendingBoard doesn't return cost directly (TrendingBoard has no
+      // costUsd field) — the accumulated cost is logged onto the
       // trending_refresh event instead (src/lib/trending/dashboard.ts).
       const events = await readRecentEvents(storage)
       const refresh = events.find((e) => e.type === "trending_refresh") as { costUsd?: number } | undefined
@@ -141,11 +177,4 @@ describe.skipIf(!live)("LIVE trending dashboard gate", () => {
       expect(costUsd).toBeLessThan(0.5)
     },
   )
-})
-
-// Always-on guard so the file is never an empty suite when env is unset.
-describe("live trending gate wiring", () => {
-  it("skips cleanly without LIVE_LLM_* env", () => {
-    expect(typeof live).toBe("boolean")
-  })
 })

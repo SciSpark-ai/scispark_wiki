@@ -14,13 +14,23 @@ describe("withSettingsWrite", () => {
     await Promise.all([
       saveSettings(storage, { ...DEFAULT_SETTINGS, dailyBudgetUsd: 9 }),
       saveCompanionSettings(storage, { ...DEFAULT_COMPANION_SETTINGS, chattiness: "high" }),
-      saveTrendingSettings(storage, { fields: [{ slug: "nlp", label: "NLP" }], cadence: "daily" }),
+      saveTrendingSettings(storage, {
+        fields: [{ slug: "nlp", label: "NLP" }],
+        cadence: "daily",
+        anchors: [],
+        anchorsOverridden: false,
+      }),
     ])
     const file = JSON.parse((await storage.read(SETTINGS_PATH))!)
     // All three top-level keys survive — no lost update.
     expect(file.llm.dailyBudgetUsd).toBe(9)
     expect(file.companion.chattiness).toBe("high")
-    expect(file.trending).toEqual({ fields: [{ slug: "nlp", label: "NLP" }], cadence: "daily" })
+    expect(file.trending).toEqual({
+      fields: [{ slug: "nlp", label: "NLP" }],
+      cadence: "daily",
+      anchors: [],
+      anchorsOverridden: false,
+    })
   })
 
   it("withSettingsWrite applies the mutation to the parsed file and preserves siblings", async () => {

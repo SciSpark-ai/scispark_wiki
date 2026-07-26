@@ -4,8 +4,11 @@ import { useEffect, useState } from "react"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { readUserModel } from "@/lib/usermodel/pages"
 import { effectiveTrackedFields, slugify, MAX_TRACKED_FIELDS } from "@/lib/trending/fields"
+import type { AnchorDiscipline } from "@/lib/trending/anchors"
 import type { Cadence } from "@/lib/trending/settings"
 import { loadTrendingSettingsRemote, saveTrendingSettingsRemote } from "@/lib/trending/settings-client"
+import { Chip } from "@/components/ui/Chip"
+import { Button } from "@/components/ui/Button"
 
 /**
  * Moved from `/profile` (Task 5) — same load/save behavior against
@@ -18,6 +21,15 @@ export function TrendingFieldsCard() {
   const [trendingLoading, setTrendingLoading] = useState(true)
   const [fieldLabels, setFieldLabels] = useState<string[]>([])
   const [cadence, setCadence] = useState<Cadence>("weekly")
+  // Anchors are usually derived automatically (the board orchestrator writes
+  // them via saveDerivedAnchors on refresh); this card lets the user remove
+  // one by hand or reset back to auto-derivation. Because a save here
+  // round-trips the WHOLE TrendingSettings object (saveTrendingSettingsRemote
+  // replaces the trending section), every save must carry the current
+  // anchors/anchorsOverridden through, whether or not this session touched
+  // them — dropping either silently wipes it.
+  const [anchors, setAnchors] = useState<AnchorDiscipline[]>([])
+  const [anchorsOverridden, setAnchorsOverridden] = useState(false)
   const [trendingStatus, setTrendingStatus] = useState<string | null>(null)
   const [trendingError, setTrendingError] = useState<string | null>(null)
   const [trendingSaving, setTrendingSaving] = useState(false)
@@ -43,6 +55,8 @@ export function TrendingFieldsCard() {
         const fields = effectiveTrackedFields(settings.fields, interests)
         setFieldLabels(fields.map((f) => f.label))
         setCadence(settings.cadence)
+        setAnchors(settings.anchors)
+        setAnchorsOverridden(settings.anchorsOverridden)
       } catch (e) {
         if (!cancelled) setTrendingError(e instanceof Error ? e.message : String(e))
       } finally {
@@ -66,6 +80,16 @@ export function TrendingFieldsCard() {
     setFieldLabels((prev) => prev.filter((_, i) => i !== index))
   }
 
+  function handleRemoveAnchor(id: string) {
+    setAnchors((prev) => prev.filter((a) => a.id !== id))
+    setAnchorsOverridden(true)
+  }
+
+  function handleResetAnchors() {
+    setAnchors([])
+    setAnchorsOverridden(false)
+  }
+
   async function handleSaveTrendingFields() {
     setTrendingSaving(true)
     setTrendingError(null)
@@ -76,7 +100,7 @@ export function TrendingFieldsCard() {
         .map((label) => ({ slug: slugify(label), label }))
         .filter((f) => f.slug.length > 0)
         .slice(0, MAX_TRACKED_FIELDS)
-      await saveTrendingSettingsRemote({ fields, cadence })
+      await saveTrendingSettingsRemote({ fields, cadence, anchors, anchorsOverridden })
       setFieldLabels(fields.map((f) => f.label))
       setTrendingStatus("Saved")
       setTimeout(() => setTrendingStatus(null), 2000)
@@ -110,8 +134,46 @@ export function TrendingFieldsCard() {
         <div className="space-y-5">
           <div>
             <label className="block text-[13px] text-muted-text font-medium uppercase tracking-[0.06em] mb-1.5">
-              Tracked fields
+              Anchor disciplines
             </label>
+            <p className="text-[13px] text-muted-text mb-2">
+              The broad fields the trending board is scoped to. Derived automatically from your interests below —
+              remove one by hand if it&rsquo;s off, or reset back to auto-derivation.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {anchors.length === 0 ? (
+                <span className="text-[13px] text-muted-text">
+                  None set yet — derived automatically on the next refresh.
+                </span>
+              ) : (
+                anchors.map((anchor) => (
+                  <Chip key={anchor.id} className="inline-flex items-center gap-1.5">
+                    {anchor.label}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveAnchor(anchor.id)}
+                      aria-label={`Remove ${anchor.label}`}
+                      className="text-muted-text hover:text-red-600 leading-none"
+                    >
+                      ×
+                    </button>
+                  </Chip>
+                ))
+              )}
+              <Button type="button" variant="quiet" size="sm" onClick={handleResetAnchors}>
+                Reset to auto
+              </Button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[13px] text-muted-text font-medium uppercase tracking-[0.06em] mb-1.5">
+              Your interests (the lens)
+            </label>
+            <p className="text-[13px] text-muted-text mb-2">
+              These narrow labels don&rsquo;t bound the board — they highlight relevant rows within the anchor disciplines
+              above.
+            </p>
             <div className="space-y-2">
               {fieldLabels.map((label, index) => (
                 <div key={index} className="flex items-center gap-2">
@@ -159,6 +221,11 @@ export function TrendingFieldsCard() {
               </button>
             </div>
           </div>
+
+          <p className="text-[12px] text-muted-text">
+            A refresh costs about 40 OpenAlex credits — comfortable on a free API key (1,000/day), a couple of
+            refreshes a day on the keyless tier (100/day).
+          </p>
         </div>
       )}
     </div>

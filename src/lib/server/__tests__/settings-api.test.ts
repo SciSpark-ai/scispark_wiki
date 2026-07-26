@@ -216,7 +216,7 @@ describe("settings API", () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.companion).toEqual(DEFAULT_COMPANION_SETTINGS)
-    expect(body.trending).toEqual({ fields: [], cadence: "weekly" })
+    expect(body.trending).toEqual({ fields: [], cadence: "weekly", anchors: [], anchorsOverridden: false })
   })
 
   it("GET returns stored companion + trending in full (not redacted)", async () => {
@@ -230,7 +230,12 @@ describe("settings API", () => {
     )
     const body = await (await settingsRoute.GET()).json()
     expect(body.companion).toEqual({ chattiness: "high", companionName: "Blaze" })
-    expect(body.trending).toEqual({ cadence: "daily", fields: [{ slug: "rl", label: "RL" }] })
+    expect(body.trending).toEqual({
+      cadence: "daily",
+      fields: [{ slug: "rl", label: "RL" }],
+      anchors: [],
+      anchorsOverridden: false,
+    })
   })
 
   it("PUT round-trips a companion save without touching llm keys or trending", async () => {
@@ -257,7 +262,12 @@ describe("settings API", () => {
     expect(await loadCompanionSettings(storage)).toEqual({ chattiness: "low", companionName: "Spark" })
     // sibling llm key + trending survive verbatim
     expect((await loadSettings(storage)).keys.anthropic).toBe(SECRET_KEY)
-    expect(await loadTrendingSettings(storage)).toEqual({ cadence: "daily", fields: [{ slug: "rl", label: "RL" }] })
+    expect(await loadTrendingSettings(storage)).toEqual({
+      cadence: "daily",
+      fields: [{ slug: "rl", label: "RL" }],
+      anchors: [],
+      anchorsOverridden: false,
+    })
   })
 
   it("PUT round-trips a trending save and dedupes fields by slug", async () => {
@@ -280,8 +290,18 @@ describe("settings API", () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     // dedupe-by-slug applied server-side (keeps first occurrence)
-    expect(body.trending).toEqual({ cadence: "daily", fields: [{ slug: "nlp", label: "NLP" }] })
-    expect(await loadTrendingSettings(storage)).toEqual({ cadence: "daily", fields: [{ slug: "nlp", label: "NLP" }] })
+    expect(body.trending).toEqual({
+      cadence: "daily",
+      fields: [{ slug: "nlp", label: "NLP" }],
+      anchors: [],
+      anchorsOverridden: false,
+    })
+    expect(await loadTrendingSettings(storage)).toEqual({
+      cadence: "daily",
+      fields: [{ slug: "nlp", label: "NLP" }],
+      anchors: [],
+      anchorsOverridden: false,
+    })
   })
 
   it("PUT sanitizes/validates a companion payload (bad chattiness → default, control chars stripped from name)", async () => {
@@ -336,7 +356,12 @@ describe("settings API", () => {
     )
     expect(res.status).toBe(200)
     expect(await loadCompanionSettings(storage)).toEqual({ chattiness: "off", companionName: "Q" })
-    expect(await loadTrendingSettings(storage)).toEqual({ cadence: "weekly", fields: [{ slug: "cv", label: "CV" }] })
+    expect(await loadTrendingSettings(storage)).toEqual({
+      cadence: "weekly",
+      fields: [{ slug: "cv", label: "CV" }],
+      anchors: [],
+      anchorsOverridden: false,
+    })
   })
 
   it("PUT with a companion that isn't an object → 400", async () => {

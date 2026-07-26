@@ -1,7 +1,8 @@
 import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { SearchFn } from "../skills/feed"
-import type { CountFn, GroupFn } from "../trending/weekly-volume"
+import type { CountFn } from "../trending/counts"
+import type { TopicGroupFn, TopWorksFn } from "../papers/node-search"
 import { getServerVault } from "./vault"
 
 /**
@@ -125,10 +126,14 @@ export interface SkillTestOverrides {
   searchFn?: SearchFn
   /** Injects a fake fetch for `serverRelayFetch`-consuming routes (digest/ingest) so tests never hit the real relay/network. */
   fetchFn?: typeof fetch
-  /** Injects a fake per-week OpenAlex counter for trending routes so tests never hit the real network for weekly-volume aggregation. */
+  /** Injects a fake OpenAlex work counter for trending routes so tests never hit the real network for prior-count lookups or anchor totals. */
   countFn?: CountFn
-  /** Injects a fake OpenAlex group_by counter for trending routes so tests never hit the real network for the group_by weekly-volume fast path. */
-  groupFn?: GroupFn
+  /** Injects a fake `group_by=primary_topic.id` grouper (the SP4 leaderboard's per-topic counts) so trending route tests stay off the network. */
+  topicGroupFn?: TopicGroupFn
+  /** Injects a fake `group_by=primary_topic.field.id` grouper (anchor-discipline derivation) so trending route tests stay off the network. */
+  fieldGroupFn?: TopicGroupFn
+  /** Injects a fake entity-scoped works retriever (the trending board's topic + breakout papers) so trending route tests stay off the network. */
+  topWorksFn?: TopWorksFn
 }
 
 let skillTestOverrides: SkillTestOverrides = {}

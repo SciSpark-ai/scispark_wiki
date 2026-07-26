@@ -14,7 +14,8 @@ vi.mock("../arxiv", () => ({ searchArxiv: mockSearchArxiv }))
 vi.mock("../openalex", () => ({
   searchOpenAlex: mockSearchOpenAlex,
   countOpenAlexWorks: vi.fn(),
-  groupWorksByPublicationDate: vi.fn(),
+  groupWorksByTopic: vi.fn(),
+  groupWorksByTopicField: vi.fn(),
 }))
 
 import { nodeSearchFn } from "../node-search"

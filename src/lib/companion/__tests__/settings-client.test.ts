@@ -16,7 +16,7 @@ const BASE: SettingsResponse = {
     dailyBudgetUsd: 5,
   },
   companion: { chattiness: "medium", companionName: "Ember" },
-  trending: { fields: [], cadence: "weekly" },
+  trending: { fields: [], cadence: "weekly", anchors: [], anchorsOverridden: false },
   ui: { theme: "system" },
 }
 

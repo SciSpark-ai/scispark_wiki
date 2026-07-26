@@ -84,7 +84,7 @@ const WHOLE_MODULE_BANS = new Set([
 const PROVIDERS_PREFIX = "lib/llm/providers"
 
 const NAMED_BANS: Record<string, string[]> = {
-  "lib/trending/dashboard": ["runTrendingDashboard"],
+  "lib/trending/dashboard": ["runTrendingBoard"],
   "lib/skills/feed": ["runFeed"],
   "lib/skills/digest": ["generateDigest"],
   "lib/vault/changesets": ["applyChangeset", "revertChangeset"],
@@ -95,7 +95,7 @@ const NAMED_BANS: Record<string, string[]> = {
   // wrappers (→ /api/settings). Pure exports (types, normalize*, DEFAULT_*,
   // SESSION_BUDGET) stay allowed.
   "lib/companion/settings": ["loadCompanionSettings", "saveCompanionSettings"],
-  "lib/trending/settings": ["loadTrendingSettings", "saveTrendingSettings"],
+  "lib/trending/settings": ["loadTrendingSettings", "saveTrendingSettings", "saveDerivedAnchors"],
 }
 
 interface Violation {

@@ -2,6 +2,8 @@ import type { VaultStorage } from "../vault/storage"
 import { withSettingsWrite } from "../vault/settings-write"
 import type { TrackedField } from "./fields"
 import { MAX_TRACKED_FIELDS } from "./fields"
+import type { AnchorDiscipline } from "./anchors"
+import { MAX_ANCHORS } from "./anchors"
 
 /**
  * Trending settings — stored under a top-level "trending" key in
@@ -17,9 +19,30 @@ export type Cadence = "daily" | "weekly"
 export interface TrendingSettings {
   fields: TrackedField[]
   cadence: Cadence
+  /** Derived (or user-set) broad anchor disciplines the leaderboard scopes
+   * to. `[]` means not yet derived. */
+  anchors: AnchorDiscipline[]
+  /**
+   * True once the user has set anchors by hand. **Recorded intent only — NO
+   * production code branches on it today.** It is written by the settings
+   * editor, normalized, persisted and round-tripped, and that is the whole of
+   * its life: "Reset to auto" and "remove the last anchor chip" are
+   * behaviorally identical, because what actually protects a hand-set list is
+   * the non-empty-list rule in `resolveAnchors` (a non-empty `anchors` is
+   * authoritative and never recomputed; an empty one always derives, flag or
+   * no flag — see that function's comment for why honoring the flag on an
+   * empty list would silently strand the board on the narrow interest labels).
+   * Kept because the semantics may matter later; do not read it as load-bearing.
+   */
+  anchorsOverridden: boolean
 }
 
-export const DEFAULT_TRENDING_SETTINGS: TrendingSettings = { fields: [], cadence: "weekly" }
+export const DEFAULT_TRENDING_SETTINGS: TrendingSettings = {
+  fields: [],
+  cadence: "weekly",
+  anchors: [],
+  anchorsOverridden: false,
+}
 
 const CADENCE_VALUES: readonly Cadence[] = ["daily", "weekly"]
 
@@ -35,6 +58,17 @@ function isTrackedField(v: unknown): v is TrackedField {
     typeof (v as TrackedField).label === "string" &&
     (v as TrackedField).slug.length > 0 &&
     (v as TrackedField).label.length > 0
+  )
+}
+
+function isAnchor(v: unknown): v is AnchorDiscipline {
+  return (
+    v !== null &&
+    typeof v === "object" &&
+    typeof (v as AnchorDiscipline).id === "string" &&
+    typeof (v as AnchorDiscipline).label === "string" &&
+    (v as AnchorDiscipline).id.length > 0 &&
+    (v as AnchorDiscipline).label.length > 0
   )
 }
 
@@ -80,9 +114,14 @@ export function normalizeTrendingSettings(raw: unknown): TrendingSettings {
   const fields = Array.isArray(t.fields)
     ? dedupeFieldsBySlug(t.fields.filter(isTrackedField) as TrackedField[]).slice(0, MAX_TRACKED_FIELDS)
     : DEFAULT_TRENDING_SETTINGS.fields
+  const anchors = Array.isArray(t.anchors)
+    ? (t.anchors.filter(isAnchor) as AnchorDiscipline[]).slice(0, MAX_ANCHORS)
+    : DEFAULT_TRENDING_SETTINGS.anchors
   return {
     fields,
     cadence: isCadence(t.cadence) ? t.cadence : DEFAULT_TRENDING_SETTINGS.cadence,
+    anchors,
+    anchorsOverridden: typeof t.anchorsOverridden === "boolean" ? t.anchorsOverridden : DEFAULT_TRENDING_SETTINGS.anchorsOverridden,
   }
 }
 
@@ -95,5 +134,21 @@ export async function saveTrendingSettings(storage: VaultStorage, settings: Tren
   await withSettingsWrite(storage, (file) => ({
     ...file,
     trending: { ...settings, fields: dedupeFieldsBySlug(settings.fields) },
+  }))
+}
+
+/**
+ * Patches ONLY the `anchors` key, re-reading the current trending section
+ * INSIDE the settings write-lock. The board orchestrator derives anchors from
+ * network calls that take seconds; a snapshot-then-write would silently revert
+ * a cadence/fields edit the user made in that window (the same lost-update
+ * class M12 closed for the `llm` section). Never touches `anchorsOverridden` —
+ * a derived list refreshes the user's scope, it does not un-set their recorded
+ * intent (which nothing branches on; see the field's own doc).
+ */
+export async function saveDerivedAnchors(storage: VaultStorage, anchors: AnchorDiscipline[]): Promise<void> {
+  await withSettingsWrite(storage, (file) => ({
+    ...file,
+    trending: { ...normalizeTrendingSettings(file.trending), anchors: anchors.slice(0, MAX_ANCHORS) },
   }))
 }

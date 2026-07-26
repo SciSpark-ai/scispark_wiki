@@ -74,6 +74,27 @@ export interface OpenAlexQuery {
   sort?: "relevance" | "date"
 }
 
+/**
+ * A works request scoped by OpenAlex ENTITY ids rather than (or in addition to)
+ * free text — see `searchTopCitedWorks`. At least one of `query`/`topicId`/
+ * `fieldId` should be set; a bare date window would return the whole corpus.
+ */
+export interface TopCitedWorksQuery {
+  /** Optional free-text `search=` scope. Omitted → no `search` param at all. */
+  query?: string
+  /** `primary_topic.id:` filter — a topic key as returned by `groupWorksByTopic`. */
+  topicId?: string
+  /** `primary_topic.field.id:` filter — a field key as returned by `groupWorksByTopicField`. */
+  fieldId?: string
+  fromDate: string
+  toDate: string
+  limit?: number
+}
+
+/** Drops OpenAlex's journal-/issue-level records, which are venues rather than papers. */
+const NON_PARATEXT_FILTER = "is_paratext:false"
+const CITED_BY_COUNT_DESC = "cited_by_count:desc"
+
 export interface OpenAlexDeps {
   fetchFn?: typeof fetch
   mailto?: string
@@ -202,11 +223,41 @@ function clampLimit(limit: number | undefined): number {
 interface BuildUrlOpts {
   /** Sets group_by=<value> and forces per_page to GROUP_BY_PER_PAGE (a group_by response has no per-work rows, so the normal limit clamp doesn't apply). */
   groupBy?: string
+  /** Extra `filter=` clauses, joined ahead of the date clauses (e.g. `primary_topic.id:T10689`). */
+  filters?: string[]
+  /** Literal OpenAlex `sort=` value (e.g. "cited_by_count:desc"). Takes precedence over `q.sort`; ignored for a group_by request. */
+  sort?: string
+}
+
+/**
+ * `primary_topic.id:<id>` clause for a topic key. `group_by` returns keys as
+ * full entity URLs ("https://openalex.org/T10689"); OpenAlex accepts either
+ * form in a filter, but the bare id keeps the request URL short and
+ * unambiguous once URLSearchParams percent-encodes the value.
+ */
+function topicFilterClause(topicId: string): string {
+  return `primary_topic.id:${idTail(topicId) ?? topicId}`
+}
+
+/**
+ * `primary_topic.field.id:<id>` clause for a FIELD key (the coarser grouping
+ * topics roll up into — what `group_by=primary_topic.field.id` returns, e.g.
+ * "https://openalex.org/fields/17"). Same id-tail normalization as
+ * `topicFilterClause`; verified live 2026-07-25 that OpenAlex accepts the
+ * bare "17", "fields/17" and the full URL identically.
+ */
+function fieldFilterClause(fieldId: string): string {
+  return `primary_topic.field.id:${idTail(fieldId) ?? fieldId}`
 }
 
 function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps, opts: BuildUrlOpts = {}): string {
   const url = new URL(OPENALEX_WORKS_URL)
-  url.searchParams.set("search", q.query)
+  // An EMPTY query means "no text scope at all" (an entity-filtered request
+  // such as `searchTopCitedWorks({topicId})`), not "search for nothing":
+  // sending `search=` would make OpenAlex reject or mis-rank the request.
+  if (q.query.trim() !== "") {
+    url.searchParams.set("search", q.query)
+  }
   url.searchParams.set("per_page", String(opts.groupBy ? GROUP_BY_PER_PAGE : clampLimit(q.limit)))
   if (deps.mailto) {
     url.searchParams.set("mailto", deps.mailto)
@@ -214,7 +265,7 @@ function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps, opts: BuildUrlOpts = {})
   if (deps.apiKey) {
     url.searchParams.set("api_key", deps.apiKey)
   }
-  const filterClauses: string[] = []
+  const filterClauses: string[] = [...(opts.filters ?? [])]
   if (q.fromDate) {
     filterClauses.push(`from_publication_date:${q.fromDate}`)
   }
@@ -226,6 +277,8 @@ function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps, opts: BuildUrlOpts = {})
   }
   if (opts.groupBy) {
     url.searchParams.set("group_by", opts.groupBy)
+  } else if (opts.sort) {
+    url.searchParams.set("sort", opts.sort)
   } else if (q.sort === "date") {
     // Recency-intent search: newest-first. Relevance ("relevance"/omitted) is
     // OpenAlex's default for a `search` query, so we leave sort unset there.
@@ -290,17 +343,88 @@ export async function searchOpenAlex(q: OpenAlexQuery, deps: OpenAlexDeps = {}):
 }
 
 /**
+ * An ENTITY-SCOPED works request: the papers OpenAlex itself classifies under a
+ * topic (or field), within a date window, most-cited first.
+ *
+ * `topicId`/`fieldId` are the point of this function. A topic's identity is its
+ * `primary_topic.id`, NOT its display name, and the two are not
+ * interchangeable: a free-text `search=Teaching and Learning Programming`
+ * returns "English Language Teaching and Learning Program", "Teaching styles of
+ * Australian tennis coaches" and "Rewiring our teaching practice" — none of
+ * which carry that topic — while `filter=primary_topic.id:T10533` over the same
+ * window returns papers about teaching programming (both verified live against
+ * api.openalex.org, 2026-07-25). Every other number the trending board shows
+ * comes from `primary_topic.id`, so its papers must too.
+ *
+ * `query` is an OPTIONAL additional free-text scope, kept for the callers whose
+ * scope really is a text query (the board's anchor disciplines, whose ids may
+ * be interest slugs rather than OpenAlex field ids). Omit it and the request
+ * carries no `search` at all — pure entity + date filtering.
+ *
+ * Always `is_paratext:false`: without it a citation-sorted recent window is
+ * topped by OpenAlex's journal-level records ("Image Processing On Line",
+ * "IJARCCE", "Sociological Science" — all `is_paratext: true`, all carrying
+ * hundreds of inherited citations), which are venues, not papers. Preprints,
+ * conference papers and dissertations are all kept (a `type:article` filter
+ * would drop half of a CS window's real output).
+ *
+ * Ordering is `cited_by_count:desc` — "the most-noticed work in this window".
+ * Relevance ranking needs a text query (the very thing this call exists to
+ * avoid) and date ranking inside an already date-bounded window is arbitrary
+ * churn. CAVEAT: over a two-week window most papers have 0 citations, so ties
+ * fall back to OpenAlex's own ordering; the guarantee this call makes is
+ * MEMBERSHIP (every result provably carries the topic), not that the top result
+ * is the most important paper of the fortnight.
+ */
+export async function searchTopCitedWorks(q: TopCitedWorksQuery, deps: OpenAlexDeps = {}): Promise<PaperRecord[]> {
+  const filters = [NON_PARATEXT_FILTER]
+  if (q.topicId) filters.push(topicFilterClause(q.topicId))
+  if (q.fieldId) filters.push(fieldFilterClause(q.fieldId))
+  const url = buildUrl({ query: q.query ?? "", fromDate: q.fromDate, toDate: q.toDate, limit: q.limit }, deps, {
+    filters,
+    sort: CITED_BY_COUNT_DESC,
+  })
+  const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexWorksResponse
+  return (body.results ?? []).map(mapWork)
+}
+
+/**
  * Returns the total OpenAlex work count for a query within a date range,
- * without fetching any paper records (per_page is fixed at 1). Used by
- * trending weekly aggregation to get real per-week counts cheaply.
+ * without fetching any paper records (per_page is fixed at 1). This is
+ * trending's counting primitive: it measures each anchor discipline's corpus
+ * size in both windows (the share denominators) and every candidate topic's
+ * prior-window count.
+ *
+ * THROWS when the response carries no `meta.count`. It must never return 0 for
+ * a malformed-but-200 body: on the prior-count path a fabricated zero reads as
+ * `growth: null` → rendered "new" → sorted FIRST, which is precisely the
+ * artifact class SP4 removed by looking prior counts up instead of joining two
+ * grouped lists. Callers already treat a throw as "unmeasured" and omit the
+ * discipline/topic, which is the honest outcome.
+ *
+ * `topicId` additionally scopes the count to one `primary_topic.id`. That is
+ * the leaderboard's PRIOR-count lookup (SP4 §3): a count carries no 200-bucket
+ * horizon, so it reads a topic's true total where `groupWorksByTopic` would
+ * simply omit the topic below its visibility threshold. Pass the SAME `query`
+ * as the grouped call being compared against — the count is scoped by
+ * `search=` too, so an unscoped lookup would return a much larger corpus-wide
+ * figure and manufacture a fake decline (live check, Computer Science /
+ * T10689, 2026-07-25: 16 scoped vs 149 unscoped for the same prior window,
+ * against a scoped recent count of 27).
  */
 export async function countOpenAlexWorks(
-  q: { query: string; fromDate: string; toDate: string },
+  q: { query: string; fromDate: string; toDate: string; topicId?: string },
   deps: OpenAlexDeps = {},
 ): Promise<number> {
-  const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate, limit: 1 }, deps)
+  const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate, limit: 1 }, deps, {
+    filters: q.topicId ? [topicFilterClause(q.topicId)] : undefined,
+  })
   const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexWorksResponse
-  return body.meta?.count ?? 0
+  const count = body.meta?.count
+  if (typeof count !== "number" || !Number.isFinite(count)) {
+    throw new PaperSourceError("OpenAlex count response carried no meta.count")
+  }
+  return count
 }
 
 interface OpenAlexGroupByEntry {
@@ -314,33 +438,75 @@ interface OpenAlexGroupByResponse {
 }
 
 /**
- * Fetches per-day work counts for a query within a date range via a SINGLE
- * `group_by=publication_date` request — 1 OpenAlex credit, vs. 10 credits for
- * a per_page-limited search and vs. issuing one countOpenAlexWorks call per
- * week (8 requests x 10 credits = 80 credits for trending's 8-week window).
- * Used by trending's weekly-volume aggregation (fetchWeeklyVolume) to derive
- * real per-ISO-week counts from the daily buckets in one shot; falls back to
- * countOpenAlexWorks per-week when this throws or returns nothing usable.
- * Tolerates missing/malformed entries in the response (skips them rather than
- * throwing) since group_by's shape isn't validated by OpenAlex the way
- * `results[]` is.
+ * NOTE (2026-07-25): there is deliberately NO `group_by=publication_date`
+ * helper here. Trending once used one to buy a whole weekly series for 1
+ * credit, but OpenAlex now rejects that grouping outright — HTTP 400 "Invalid
+ * query parameters error" in every form tried (plain, with date filters, with
+ * and without an API key), while `group_by=publication_year` and
+ * `group_by=primary_topic.id` on the same endpoint return 200. The helper was
+ * therefore permanently falling back to the per-week count ladder, and it is
+ * removed rather than left as a path that can never succeed. Don't reintroduce
+ * it without re-verifying against the live API first.
  */
-export async function groupWorksByPublicationDate(
-  q: { query: string; fromDate: string; toDate: string },
-  deps: OpenAlexDeps = {},
-): Promise<Array<{ key: string; count: number }>> {
-  const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate }, deps, {
-    groupBy: "publication_date",
-  })
-  const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexGroupByResponse
-  const groups = body.group_by ?? []
-  const result: Array<{ key: string; count: number }> = []
+
+export interface GroupEntry {
+  key: string
+  label: string
+  count: number
+}
+
+/**
+ * Shared body-parsing/mapping for the labeled group_by variants used by
+ * trending's "heating topics" leaderboard (SP4): each bucket carries a
+ * key_display_name that becomes the human-readable label. Drops entries with
+ * no display name and OpenAlex's literal "unknown" bucket (its catch-all for
+ * unclassified works — never a real topic/field).
+ */
+function mapGroupByEntries(groups: OpenAlexGroupByEntry[]): GroupEntry[] {
+  const result: GroupEntry[] = []
   for (const g of groups) {
     if (g == null) continue
     const key = typeof g.key === "string" ? g.key : undefined
+    const label = typeof g.key_display_name === "string" ? g.key_display_name : undefined
     const count = typeof g.count === "number" ? g.count : undefined
-    if (key === undefined || count === undefined) continue
-    result.push({ key, count })
+    if (key === undefined || label === undefined || count === undefined) continue
+    if (key === "unknown") continue
+    result.push({ key, label, count })
   }
   return result
+}
+
+/**
+ * Fetches per-topic work counts for a query within a date range via a SINGLE
+ * `group_by=primary_topic.id` request (1 OpenAlex credit). Used by trending's
+ * "heating topics" leaderboard (SP4) to find which fine-grained topics are
+ * trending within a field. Same retry/backoff/timeout contract as the other
+ * OpenAlex calls; tolerates missing/malformed entries by skipping them.
+ */
+export async function groupWorksByTopic(
+  q: { query: string; fromDate: string; toDate: string },
+  deps: OpenAlexDeps = {},
+): Promise<GroupEntry[]> {
+  const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate }, deps, {
+    groupBy: "primary_topic.id",
+  })
+  const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexGroupByResponse
+  return mapGroupByEntries(body.group_by ?? [])
+}
+
+/**
+ * Fetches per-field work counts for a query within a date range via a SINGLE
+ * `group_by=primary_topic.field.id` request (1 OpenAlex credit). Same shape
+ * as groupWorksByTopic, one level up OpenAlex's topic hierarchy (field is the
+ * coarser grouping topics roll up into).
+ */
+export async function groupWorksByTopicField(
+  q: { query: string; fromDate: string; toDate: string },
+  deps: OpenAlexDeps = {},
+): Promise<GroupEntry[]> {
+  const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate }, deps, {
+    groupBy: "primary_topic.field.id",
+  })
+  const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexGroupByResponse
+  return mapGroupByEntries(body.group_by ?? [])
 }
