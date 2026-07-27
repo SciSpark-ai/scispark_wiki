@@ -25,6 +25,20 @@ export interface SaveAnswerAsQueryResult {
 }
 
 /**
+ * Collapses free text to a single line before it's embedded as a `sources[]`
+ * list entry. `sources` is a flat list of short reference strings — unlike
+ * `title`/`body`, which the YAML/Markdown layers can carry as legitimate
+ * multi-line values, a raw newline embedded in a list entry would read back
+ * (after a `serializeDocument`/`parseDocument` round trip) as if it were
+ * extra content glued onto that one entry rather than the single reference
+ * it's meant to be. Any run of whitespace (including newlines) collapses to
+ * one space; leading/trailing whitespace is trimmed.
+ */
+function singleLine(text: string): string {
+  return text.trim().replace(/\s+/g, " ")
+}
+
+/**
  * "Save to Wiki" (llm_wiki's naming) for the chat surface: writes a chat
  * answer worth keeping as a `query` wiki page. Deterministic and LLM-free —
  * this only assembles and applies a changeset, it never calls a model.
@@ -45,6 +59,15 @@ export interface SaveAnswerAsQueryResult {
  * twice must never clobber the first save, so a collision at the routed path
  * is resolved by appending -2, -3, ... (the same suffixing convention
  * `buildAuthorSkeletons` uses) until a free path is found.
+ *
+ * `sources[]`: the SP5 design doc requires it record BOTH the session id and
+ * the question (not just one), so two independent entries are written —
+ * `chat:<sessionId>` and `question:<the question, collapsed to one line>` —
+ * using the `prefix:value` shape the repo's own structured-id keys already
+ * use (`doi:`/`arxiv:`/`pmid:` in `paperKey`, `src/lib/papers/types.ts`). The
+ * question is collapsed via `singleLine` before embedding so a newline (or
+ * any run of whitespace) in a user-typed question can't smear across what's
+ * meant to be one `sources[]` entry.
  *
  * Applied as a single atomic changeset via `applyChangeset` (undoable through
  * the existing revert path), then `index.md` is rebuilt and a `log.md` line is
@@ -78,7 +101,7 @@ export async function saveAnswerAsQuery(
     updated: today,
     tags: [],
     related: sanitizeSlugList(opts.citedPageIds),
-    sources: [`chat:${opts.sessionId}`],
+    sources: [`chat:${opts.sessionId}`, `question:${singleLine(opts.question)}`],
   }
   const body = `## ${opts.question}\n\n${opts.answer.trim()}\n`
   const content = serializeDocument(frontmatter, body)

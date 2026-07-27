@@ -3,6 +3,7 @@ import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { loadBundle } from "../../vault/bundle"
 import { loadChangeset } from "../../vault/changesets"
 import { loadRouting } from "../../wiki/schema-routing"
+import { parseDocument, serializeDocument } from "../../vault/frontmatter"
 import { saveAnswerAsQuery } from "../save-query"
 
 const BASE_OPTS = {
@@ -29,7 +30,7 @@ describe("saveAnswerAsQuery", () => {
     expect(page!.frontmatter.created).toBe("2026-07-26")
     expect(page!.frontmatter.updated).toBe("2026-07-26")
     expect(page!.frontmatter.tags).toEqual([])
-    expect(page!.frontmatter.sources).toEqual(["chat:chat_123"])
+    expect(page!.frontmatter.sources).toEqual([`chat:chat_123`, `question:${BASE_OPTS.question}`])
 
     expect(page!.body).toContain(BASE_OPTS.question)
     expect(page!.body).toContain(BASE_OPTS.answer)
@@ -127,5 +128,29 @@ describe("saveAnswerAsQuery", () => {
     const { pageId } = await saveAnswerAsQuery(storage, { ...BASE_OPTS, citedPageIds: [] })
     const bundle = await loadBundle(storage)
     expect(bundle.pages.get(pageId)!.frontmatter.related).toEqual([])
+  })
+
+  // A question is free text, so it can carry the two characters most likely to
+  // corrupt a `sources[]` entry: a newline (which would read back as extra
+  // content glued onto the entry) and a colon (which YAML can read as a
+  // key/value separator). `singleLine` collapses the newline; this pins that
+  // the entry survives a real serialize -> parse round trip either way.
+  it("keeps a newline-and-colon question intact through a serialize/parse round trip", async () => {
+    const storage = new MemoryVaultStorage()
+    const question = "What is attention:\nand why does it matter?"
+    const { pageId } = await saveAnswerAsQuery(storage, { ...BASE_OPTS, question })
+
+    const raw = await storage.read(`${pageId}.md`)
+    expect(raw).not.toBeNull()
+
+    // Round-trip through the real frontmatter layer, not the bundle loader.
+    const reparsed = parseDocument(serializeDocument(parseDocument(raw!).frontmatter, parseDocument(raw!).body))
+
+    const sources = reparsed.frontmatter.sources as string[]
+    expect(sources).toHaveLength(2)
+    expect(sources[0]).toBe("chat:chat_123")
+    // Collapsed to one line, colon preserved, and still exactly one entry.
+    expect(sources[1]).toBe("question:What is attention: and why does it matter?")
+    expect(sources[1]).not.toContain("\n")
   })
 })
