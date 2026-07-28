@@ -19,6 +19,25 @@ const REQUIRED_FRONTMATTER_KEYS = [
 const ARRAY_FRONTMATTER_KEYS = ["tags", "related", "sources"] as const
 
 /**
+ * Page types the orphan check never reports — LEAF-BY-DESIGN: nothing in the
+ * product ever writes a body wikilink pointing AT them, so "no inbound links"
+ * is their normal, permanent state rather than a defect the user could act on.
+ *
+ * - `paper`/`author`: created by save/ingest as the endpoints of the graph.
+ * - `query`: a saved chat answer (`saveAnswerAsQuery`). Its body is
+ *   `## <question>\n\n<answer>` and its provenance rides in `related[]` —
+ *   and `bundle.links` is built from BODY wikilinks only, so `related[]`
+ *   contributes no edges. Without this exemption every "Save to knowledge
+ *   base" would add one unactionable finding to the review inbox and bump the
+ *   sidebar badge forever.
+ * - `note`: capture-idea (`src/lib/reader/capture-idea.ts`) composes the same
+ *   shape — a thought plus a blockquote, with the source page in `related[]`
+ *   and no wikilinks — so it has the identical latent problem and is exempted
+ *   for the identical reason.
+ */
+const ORPHAN_EXEMPT_TYPES: readonly string[] = ["paper", "author", "query", "note"]
+
+/**
  * Frontmatter keys the duplicate-author merge logic below already understands
  * structurally: the seven required keys plus `openalex` (the structured id
  * `buildAuthorSkeletons` — src/lib/wiki/authoring.ts — writes onto id-keyed
@@ -77,8 +96,7 @@ function basename(path: string): string {
  * A page with zero inbound links, that isn't a reserved file (index.md/log.md/
  * purpose.md/schema.md — those are never in `bundle.pages` since `loadBundle`
  * only lists `wiki/`, but the guard is kept for defensiveness against future
- * bundle-construction paths) and isn't a `paper`/`author` type (those are
- * legitimately leaf-linked — inbound-only, nothing points back at them).
+ * bundle-construction paths) and isn't one of the LEAF-BY-DESIGN types below.
  * Advisory only: there's no safe mechanical fix for "nothing links here".
  */
 export function findOrphans(bundle: Bundle): LintFinding[] {
@@ -87,7 +105,7 @@ export function findOrphans(bundle: Bundle): LintFinding[] {
 
   for (const page of bundle.pages.values()) {
     if (reserved.includes(basename(page.path))) continue
-    if (page.frontmatter.type === "paper" || page.frontmatter.type === "author") continue
+    if (ORPHAN_EXEMPT_TYPES.includes(page.frontmatter.type)) continue
 
     const hasInbound = bundle.links.some((l) => l.to === page.id)
     if (hasInbound) continue

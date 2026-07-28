@@ -58,7 +58,36 @@ export function makeSessionId(now: Date): string {
   return `chat_${now.getTime()}`
 }
 
+/**
+ * The ONLY id shape that may become a path. `makeSessionId` mints
+ * `chat_<epochMs>` and `mintSessionId` may append `-2`, `-3`, … — both fit.
+ */
+const SESSION_ID_RE = /^[A-Za-z0-9_-]+$/
+
+/** Is `id` safe to interpolate into a vault path? */
+export function isValidSessionId(id: string): boolean {
+  return SESSION_ID_RE.test(id)
+}
+
+/**
+ * The single place a session id becomes a path — and therefore the single
+ * place the id is validated.
+ *
+ * A session id arrives RAW from the request body (`/api/skills/chat` parses
+ * `AskChatInput` with a bare `req.json()`), so an unvalidated id would be a
+ * path-traversal write primitive: `NodeFsVaultStorage` only rejects paths that
+ * escape the vault ROOT, and `.scispark/chats/../settings.json` resolves to
+ * `<root>/.scispark/settings.json` — inside the root, hence allowed. That is
+ * the BYOK key file, which `/api/vault/file` deliberately 403s; routing around
+ * that protection through a session id would overwrite the user's API keys,
+ * companion name, trending anchors, theme and budget with session JSON, and
+ * since it isn't a changeset there is nothing to revert.
+ *
+ * Guarding here (not at the route) covers every caller: the ask path, the
+ * sidebar/`/history` listing and `/chat/[id]`'s read.
+ */
 function sessionPath(id: string): string {
+  if (!isValidSessionId(id)) throw new Error(`invalid session id: ${id}`)
   return `${CHATS_DIR}/${id}.json`
 }
 
@@ -94,7 +123,9 @@ export async function saveSession(storage: VaultStorage, session: ChatSession): 
 
 /**
  * Lists every session under CHATS_DIR, newest first (by `updatedAt`).
- * Corrupt files are skipped rather than failing the whole list.
+ * Corrupt files are skipped rather than failing the whole list — and so is a
+ * file whose name doesn't fit `SESSION_ID_RE`, which `sessionPath` would
+ * (rightly) refuse to build a path for.
  */
 export async function listSessions(storage: VaultStorage): Promise<ChatSession[]> {
   const paths = await storage.list(`${CHATS_DIR}/`)
@@ -102,6 +133,7 @@ export async function listSessions(storage: VaultStorage): Promise<ChatSession[]
   for (const path of paths) {
     if (!path.endsWith(".json")) continue
     const id = path.slice(CHATS_DIR.length + 1, -".json".length)
+    if (!isValidSessionId(id)) continue
     const session = await loadSession(storage, id)
     if (session != null) sessions.push(session)
   }

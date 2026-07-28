@@ -1,5 +1,9 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, beforeEach, afterEach } from "vitest"
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
+import { NodeFsVaultStorage } from "../../vault/node-fs-storage"
 import { CHATS_DIR, deriveTitle, makeSessionId, loadSession, saveSession, listSessions } from "../session"
 import type { ChatSession } from "../session"
 
@@ -27,6 +31,81 @@ describe("makeSessionId", () => {
     expect(makeSessionId(new Date("2026-07-20T00:00:00.000Z"))).not.toBe(
       makeSessionId(new Date("2026-07-21T00:00:00.000Z")),
     )
+  })
+
+  it("mints ids that are accepted as paths", async () => {
+    const storage = new MemoryVaultStorage()
+    const id = makeSessionId(new Date("2026-07-20T00:00:00.000Z"))
+    // The suffixing `mintSessionId` applies on collision must survive too.
+    for (const candidate of [id, `${id}-2`, `${id}-10`]) {
+      await expect(saveSession(storage, makeSession({ id: candidate }))).resolves.toBeUndefined()
+    }
+  })
+})
+
+/**
+ * A session id reaches `sessionPath` straight from a request body, so an
+ * unvalidated one is a path-traversal WRITE primitive: `NodeFsVaultStorage`
+ * only rejects paths escaping the vault ROOT, and `.scispark/chats/../settings.json`
+ * lands INSIDE the root — on the BYOK key file `/api/vault/file` deliberately
+ * 403s. These run against the REAL storage class, not the in-memory one, since
+ * that resolution behaviour is exactly what's under test.
+ */
+describe("session id path validation", () => {
+  let dir: string
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "scispark-chat-"))
+  })
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  const SETTINGS_JSON = JSON.stringify({ llm: { keys: { anthropic: "sk-secret" } }, ui: { theme: "dark" } }, null, 2)
+
+  function seedSettings(): string {
+    mkdirSync(join(dir, ".scispark"), { recursive: true })
+    const path = join(dir, ".scispark", "settings.json")
+    writeFileSync(path, SETTINGS_JSON, "utf8")
+    return path
+  }
+
+  it("saveSession rejects a traversing id and leaves settings.json byte-identical", async () => {
+    const settingsPath = seedSettings()
+    const storage = new NodeFsVaultStorage(dir)
+
+    await expect(
+      saveSession(storage, {
+        id: "../settings",
+        title: "t",
+        createdAt: "2026-07-20T00:00:00.000Z",
+        updatedAt: "2026-07-20T00:00:00.000Z",
+        messages: [],
+      }),
+    ).rejects.toThrow(/invalid session id/)
+
+    expect(readFileSync(settingsPath, "utf8")).toBe(SETTINGS_JSON)
+  })
+
+  it("loadSession rejects a traversing id rather than reading an arbitrary vault file", async () => {
+    seedSettings()
+    const storage = new NodeFsVaultStorage(dir)
+    await expect(loadSession(storage, "../settings")).rejects.toThrow(/invalid session id/)
+  })
+
+  it("rejects every other id shape that isn't [A-Za-z0-9_-]+", async () => {
+    const storage = new MemoryVaultStorage()
+    for (const bad of ["", "a/b", "..", "./x", "a b", "x.json", "..%2Fsettings"]) {
+      await expect(loadSession(storage, bad)).rejects.toThrow(/invalid session id/)
+    }
+  })
+
+  it("listSessions skips a file whose name isn't a valid id instead of throwing", async () => {
+    const storage = new MemoryVaultStorage()
+    await saveSession(storage, makeSession({ id: "chat_1" }))
+    await storage.write(`${CHATS_DIR}/weird name.json`, JSON.stringify(makeSession({ id: "weird name" })))
+
+    const sessions = await listSessions(storage)
+    expect(sessions.map((s) => s.id)).toEqual(["chat_1"])
   })
 })
 

@@ -64,10 +64,12 @@ function singleLine(text: string): string {
  * the question (not just one), so two independent entries are written —
  * `chat:<sessionId>` and `question:<the question, collapsed to one line>` —
  * using the `prefix:value` shape the repo's own structured-id keys already
- * use (`doi:`/`arxiv:`/`pmid:` in `paperKey`, `src/lib/papers/types.ts`). The
- * question is collapsed via `singleLine` before embedding so a newline (or
- * any run of whitespace) in a user-typed question can't smear across what's
- * meant to be one `sources[]` entry.
+ * use (`doi:`/`arxiv:`/`pmid:` in `paperKey`, `src/lib/papers/types.ts`). BOTH
+ * values are collapsed via `singleLine` before embedding so a newline (or any
+ * run of whitespace) can't smear across what's meant to be one `sources[]`
+ * entry — the question because a user types it, and the session id because it
+ * reaches this function straight from a request body, exactly the untrusted
+ * shape `singleLine` exists to defuse.
  *
  * Applied as a single atomic changeset via `applyChangeset` (undoable through
  * the existing revert path), then `index.md` is rebuilt and a `log.md` line is
@@ -101,7 +103,7 @@ export async function saveAnswerAsQuery(
     updated: today,
     tags: [],
     related: sanitizeSlugList(opts.citedPageIds),
-    sources: [`chat:${opts.sessionId}`, `question:${singleLine(opts.question)}`],
+    sources: [`chat:${singleLine(opts.sessionId)}`, `question:${singleLine(opts.question)}`],
   }
   const body = `## ${opts.question}\n\n${opts.answer.trim()}\n`
   const content = serializeDocument(frontmatter, body)

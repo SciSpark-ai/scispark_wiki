@@ -153,4 +153,21 @@ describe("saveAnswerAsQuery", () => {
     expect(sources[1]).toBe("question:What is attention: and why does it matter?")
     expect(sources[1]).not.toContain("\n")
   })
+
+  // The session id reaches this function straight from a request body, so it is
+  // no more trustworthy than the question and gets the same `singleLine`
+  // treatment — otherwise a newline in it smears the frontmatter list entry,
+  // the exact failure `singleLine` exists to prevent.
+  it("collapses a whitespace-carrying session id into one sources[] entry", async () => {
+    const storage = new MemoryVaultStorage()
+    const { pageId } = await saveAnswerAsQuery(storage, { ...BASE_OPTS, sessionId: " chat_1\nevil: true " })
+
+    const raw = await storage.read(`${pageId}.md`)
+    const reparsed = parseDocument(serializeDocument(parseDocument(raw!).frontmatter, parseDocument(raw!).body))
+
+    const sources = reparsed.frontmatter.sources as string[]
+    expect(sources).toHaveLength(2)
+    expect(sources[0]).toBe("chat:chat_1 evil: true")
+    expect(sources[0]).not.toContain("\n")
+  })
 })

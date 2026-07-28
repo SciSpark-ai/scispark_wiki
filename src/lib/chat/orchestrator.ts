@@ -74,7 +74,16 @@ export async function askChat(storage: VaultStorage, opts: AskChatOpts): Promise
 
   // The history the skills see: prior turns only (the current question travels
   // in its own field), oldest→newest, trimmed to the last MAX_HISTORY_TURNS.
+  //
+  // Turns carrying `error` are dropped FIRST, before the slice: their content
+  // is our own degradation boilerplate ("I couldn't answer that just now…"),
+  // never anything the model said. Feeding it back is worse than useless —
+  // MAX_HISTORY_TURNS counts MESSAGES (three exchanges), so two failed turns
+  // would leave the model looking mostly at apology text and can pull it
+  // toward refusing a question it could otherwise answer. Dropping before the
+  // slice also means a failed turn doesn't evict a real one from the window.
   const history = session.messages
+    .filter((m) => m.error === undefined)
     .slice(-MAX_HISTORY_TURNS)
     .map((m) => ({ role: m.role, content: m.content }))
 

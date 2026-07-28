@@ -515,6 +515,52 @@ describe("askChat — candidate scoping and context shape", () => {
     }
     expect(MAX_HISTORY_TURNS).toBe(6)
   })
+
+  it("drops degraded turns from history — before the slice, so they don't evict real ones", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedVault(storage)
+    await saveSession(storage, {
+      id: "chat_1",
+      title: "Chat with failures",
+      createdAt: "2026-07-20T00:00:00.000Z",
+      updatedAt: "2026-07-20T00:00:00.000Z",
+      messages: [
+        { role: "user", content: "real-question-01" },
+        { role: "assistant", content: "real-answer-01" },
+        { role: "user", content: "failed-question-01" },
+        {
+          role: "assistant",
+          content: "BOILERPLATE-MARKER: I couldn't answer that just now — the answer step failed.",
+          error: "provider exploded",
+        },
+        { role: "user", content: "failed-question-02" },
+        {
+          role: "assistant",
+          content: "BOILERPLATE-MARKER: I couldn't answer that just now — the answer step failed.",
+          error: "provider exploded again",
+        },
+      ],
+    })
+    const { fastProvider, strongProvider, override } = providers(
+      [structured({ pageIds: [] })],
+      [structured({ answer: "ok", citedPageIds: [] })],
+    )
+
+    await askChat(storage, {
+      input: { sessionId: "chat_1", question: "latest question", readSourcesOnly: false },
+      settings: SETTINGS,
+      providerOverride: override,
+      now: NOW,
+    })
+
+    for (const prompt of [promptOf(fastProvider, 0), promptOf(strongProvider, 0)]) {
+      expect(prompt).not.toContain("BOILERPLATE-MARKER")
+      // Filtering BEFORE the slice keeps the oldest real exchange in the window
+      // even though six messages precede the current question.
+      expect(prompt).toContain("real-question-01")
+      expect(prompt).toContain("real-answer-01")
+    }
+  })
 })
 
 describe("askChat — session id minting", () => {
