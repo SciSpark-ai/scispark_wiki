@@ -20,7 +20,13 @@ import { useUserStore } from "@/stores/user-store";
 import { useUIStore } from "@/stores/ui-store";
 import { getOpenVault } from "@/lib/vault/get-vault";
 import { reviewCount } from "@/lib/wiki/review-queue";
+import { listSessions } from "@/lib/chat/session";
+import type { ChatSession } from "@/lib/chat/session";
 import { Chip } from "@/components/ui/Chip";
+
+/** A nav aid, not a second inbox — just enough recent conversations to jump
+ * back into one, no badges/counts. */
+const RECENT_CHATS_LIMIT = 5;
 
 function UserAvatar() {
   const user = useUserStore((s) => s.user);
@@ -122,6 +128,28 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
     };
   }, [pathname]);
 
+  // Recent chat sessions for the quiet nav-aid list under Tools. Reloaded on
+  // pathname change so starting/continuing a conversation is reflected on
+  // return, same rationale as the inbox count above. Failures resolve to an
+  // empty list silently — the nav must never break on a vault hiccup.
+  const [recentSessions, setRecentSessions] = useState<ChatSession[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const vault = await getOpenVault();
+        const sessions = await listSessions(vault);
+        if (!cancelled) setRecentSessions(sessions.slice(0, RECENT_CHATS_LIMIT));
+      } catch {
+        if (!cancelled) setRecentSessions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
   const fadeLabel = `whitespace-nowrap transition-opacity duration-150 ${
     collapsed ? "opacity-0" : "opacity-100"
   }`;
@@ -185,6 +213,19 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
               {group.heading}
             </div>
             {group.items.map(renderItem)}
+            {group.heading === "Tools" && !collapsed && recentSessions.length > 0 && (
+              <div>
+                {recentSessions.map((session) => (
+                  <Link
+                    key={session.id}
+                    href={`/chat/${session.id}`}
+                    className="block truncate rounded-[10px] py-1.5 pl-[42px] pr-3 text-[13px] text-muted-text tracking-body transition-colors hover:bg-card-surface/50 hover:text-espresso"
+                  >
+                    {session.title}
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
         ))}
         <hr className="border-border-warm mx-[10px] my-[14px]" />
