@@ -31,6 +31,10 @@ function labelFor(id: string, pageTitleById: Record<string, string>): string {
  * is a normal successful response, not a transport failure — `error`,
  * `selectionFallback`, and `skippedPageIds` all live on the message itself
  * and are rendered from it here, never inferred from a request having failed.
+ * All assistant-only affordances (citations, the skipped/fallback notes, the
+ * Save control) are gated on `isAssistant`, so an odd caller-supplied shape
+ * (e.g. a `role: "user"` message that somehow carries `citedPageIds`) can't
+ * make them render.
  *
  * `error` never yields an empty bubble: when there's no real `content` to
  * show (the answer step itself failed), the error text becomes the body;
@@ -43,6 +47,12 @@ export function MessageBubble({ message, pageTitleById, onSave, saving }: Messag
   const hasContent = message.content.trim() !== ""
   const citedPageIds = message.citedPageIds ?? []
   const skippedPageIds = message.skippedPageIds ?? []
+  // A degraded-but-answered turn (selectionFallback/skippedPageIds set, but
+  // real content present) is still a legitimate answer worth saving — only
+  // an error-only turn (nothing was actually answered) is not saveable, so
+  // writing it as a `query` page would put an empty/failed answer into the
+  // knowledge base permanently.
+  const canSave = isAssistant && hasContent && !message.error
 
   return (
     <div
@@ -59,19 +69,19 @@ export function MessageBubble({ message, pageTitleById, onSave, saving }: Messag
         </p>
       )}
 
-      {message.error && (
+      {isAssistant && message.error && (
         <div className="mt-2">
           <LlmErrorMessage message={hasContent ? `Reason: ${message.error}` : message.error} />
         </div>
       )}
 
-      {message.selectionFallback && (
+      {isAssistant && message.selectionFallback && (
         <p className="mt-2 text-[12px] text-muted-text tracking-body">
           Context was chosen by keyword match, not the AI page selector.
         </p>
       )}
 
-      {skippedPageIds.length > 0 && (
+      {isAssistant && skippedPageIds.length > 0 && (
         <p className="mt-2 text-[12px] text-muted-text tracking-body">
           Couldn&apos;t read: {skippedPageIds.map((id) => labelFor(id, pageTitleById)).join(", ")}
         </p>
@@ -81,7 +91,7 @@ export function MessageBubble({ message, pageTitleById, onSave, saving }: Messag
         <CitationChips pageIds={citedPageIds} pageTitleById={pageTitleById} />
       )}
 
-      {isAssistant && (
+      {canSave && (
         <div className="mt-3">
           <Button variant="secondary" size="sm" onClick={onSave} disabled={saving}>
             {saving ? "Saving…" : "Save to knowledge base"}

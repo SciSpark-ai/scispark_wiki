@@ -17,12 +17,23 @@ export interface ComposerProps {
  * specific to that popover). Both the textarea and the submit button are
  * disabled while `busy`; the button is additionally disabled on
  * empty/whitespace-only input so there's nothing to submit.
+ *
+ * IME composition guard: while an IME candidate is being composed (Chinese/
+ * Japanese/Korean input, among others), the Enter that commits the candidate
+ * fires as a normal "Enter" keydown — without this guard it would also
+ * submit a half-typed question. `isComposing` on the native event is the
+ * correct signal (`keyCode === 229` is the same signal on browsers/IMEs that
+ * don't set `isComposing`, kept as a fallback). This same gap exists
+ * elsewhere in the repo wherever Enter-submits a textarea (e.g.
+ * CaptureIdeaCard's implicit form submit) — fixed here only; worth a
+ * dedicated pass to close it everywhere.
  */
 export function Composer({ value, onChange, onSubmit, busy }: ComposerProps) {
   const canSubmit = !busy && value.trim() !== ""
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key !== "Enter" || e.shiftKey) return
+    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return
     e.preventDefault()
     if (canSubmit) onSubmit()
   }

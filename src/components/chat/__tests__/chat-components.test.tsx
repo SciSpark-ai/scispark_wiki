@@ -150,6 +150,47 @@ describe("MessageBubble", () => {
     expect(html).toContain("Save to knowledge base")
   })
 
+  it("hides the Save control on an error-only message (nothing was actually answered)", () => {
+    const message = assistantMessage({ content: "", error: "the answer step failed: 500 from provider" })
+    const html = renderToStaticMarkup(
+      <MessageBubble message={message} pageTitleById={PAGE_TITLES} onSave={() => {}} saving={false} />,
+    )
+    expect(html).not.toContain("Save to knowledge base")
+  })
+
+  it("hides the Save control when content is only a generic apology alongside a real error", () => {
+    // Mirrors the orchestrator's actual failure shape (SP5 Task 6): a
+    // non-empty but non-saveable apology string paired with `error` — the
+    // presence check alone (hasContent) must not be enough to offer Save.
+    const message = assistantMessage({
+      content: "I couldn't answer that just now — the answer step failed. Your question is saved; try again.",
+      error: "GMI 500",
+    })
+    const html = renderToStaticMarkup(
+      <MessageBubble message={message} pageTitleById={PAGE_TITLES} onSave={() => {}} saving={false} />,
+    )
+    expect(html).not.toContain("Save to knowledge base")
+  })
+
+  it("still offers Save on a degraded-but-answered turn (selectionFallback set, real content, no error)", () => {
+    const message = assistantMessage({ content: "Here is a real answer.", selectionFallback: true })
+    const html = renderToStaticMarkup(
+      <MessageBubble message={message} pageTitleById={PAGE_TITLES} onSave={() => {}} saving={false} />,
+    )
+    expect(html).toContain("Save to knowledge base")
+  })
+
+  it("still offers Save on a degraded-but-answered turn (skippedPageIds set, real content, no error)", () => {
+    const message = assistantMessage({
+      content: "Here is a real answer, minus one page.",
+      skippedPageIds: ["wiki/concepts/attention"],
+    })
+    const html = renderToStaticMarkup(
+      <MessageBubble message={message} pageTitleById={PAGE_TITLES} onSave={() => {}} saving={false} />,
+    )
+    expect(html).toContain("Save to knowledge base")
+  })
+
   it("shows a Saving… state and disables the control while saving", () => {
     const message = assistantMessage()
     const html = renderToStaticMarkup(
@@ -171,6 +212,28 @@ describe("MessageBubble", () => {
     )
     expect(html).not.toContain("Save to knowledge base")
     expect(html).not.toMatch(/<a[^>]+href="\/(paper|wiki)\//)
+  })
+
+  it("ignores assistant-only fields on a user message even if a caller passes an odd shape", () => {
+    // ChatMessage's type doesn't forbid a "user" message from carrying
+    // citedPageIds/error/selectionFallback/skippedPageIds — defensive
+    // isAssistant gating means none of these render regardless.
+    const message: ChatMessage = {
+      role: "user",
+      content: "What is a TRF?",
+      citedPageIds: ["wiki/papers/diffusion-model"],
+      error: "should never surface",
+      selectionFallback: true,
+      skippedPageIds: ["wiki/concepts/attention"],
+    }
+    const html = renderToStaticMarkup(
+      <MessageBubble message={message} pageTitleById={PAGE_TITLES} onSave={() => {}} saving={false} />,
+    )
+    expect(html).not.toContain("Save to knowledge base")
+    expect(html).not.toMatch(/<a[^>]+href="\/(paper|wiki)\//)
+    expect(html).not.toContain("should never surface")
+    expect(html).not.toMatch(/keyword/i)
+    expect(html).not.toMatch(/Couldn.t read/)
   })
 
   it("calls onSave when the Save control is clicked", () => {
@@ -267,6 +330,45 @@ describe("Composer", () => {
       textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }))
     })
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it("does not submit on the Enter that commits an IME composition (isComposing)", () => {
+    const onSubmit = vi.fn()
+    const { host } = mount(<Composer value="你好" onChange={() => {}} onSubmit={onSubmit} busy={false} />)
+    const textarea = host.querySelector("textarea")!
+    act(() => {
+      // `isComposing` is a real KeyboardEventInit field (fired by a real IME
+      // as the compose-committing Enter) — this is the same signal React
+      // exposes as e.nativeEvent.isComposing.
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, isComposing: true }),
+      )
+    })
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it("does not submit on the Enter that commits an IME composition (keyCode 229 fallback)", () => {
+    const onSubmit = vi.fn()
+    const { host } = mount(<Composer value="你好" onChange={() => {}} onSubmit={onSubmit} busy={false} />)
+    const textarea = host.querySelector("textarea")!
+    act(() => {
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, keyCode: 229 }),
+      )
+    })
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it("still submits a plain Enter once composition has ended", () => {
+    const onSubmit = vi.fn()
+    const { host } = mount(<Composer value="What is a TRF?" onChange={() => {}} onSubmit={onSubmit} busy={false} />)
+    const textarea = host.querySelector("textarea")!
+    act(() => {
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, isComposing: false }),
+      )
+    })
+    expect(onSubmit).toHaveBeenCalledTimes(1)
   })
 })
 
