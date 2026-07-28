@@ -1,7 +1,7 @@
 # SP5 — Knowledge-Base Chat (UI/UX redesign, part 5 of 6)
 
 **Date:** 2026-07-25
-**Status:** Designed — approved by Tong 2026-07-25 (sections 1–3 approved in conversation)
+**Status:** Built — 2026-07-28, branch `uiux/sp5-kb-chat`, 11 tasks via subagent-driven development, 1968 tests green, live-verified end to end against a real vault + GMI `anthropic/claude-sonnet-5` at ~$0.031/turn.
 **Origin:** The six-SP redesign brainstormed 2026-07-16 (see `2026-07-16-sp1-shell-and-system-design.md`, whose roadmap row reads "SP5 | KB Chat (real, replacing mock)"). SP1–SP4 have shipped.
 
 ## Context
@@ -53,7 +53,7 @@ A corrupt or unreadable session file is treated as absent rather than crashing t
 
 `/chat` becomes a real entry point (the four clinical suggestion chips are deleted outright). `/chat/[id]` is the conversation. The sidebar's "Recent Chats" section returns — SP1 removed it because it was mock data; now there is real data behind it.
 
-Messages render with SP1 tokens. Citations render as clickable chips: wiki pages through `wikiHref`, papers to `/paper/<slug>`. The answer streams over **SSE**, the mechanism `/api/skills/*` already uses for long runs (feed refresh, ingest, Deep Spark) — not a new transport.
+Messages render with SP1 tokens. Citations render as clickable chips: wiki pages through `wikiHref`, papers to `/paper/<slug>`. The answer streams over the mechanism `/api/skills/*` already uses for long runs (feed refresh, ingest, Deep Spark) — not a new transport. **Correction (implementation):** that mechanism is `ndjsonSkillRoute`, newline-delimited JSON, not SSE; this paragraph originally said SSE and the plan records the correction.
 
 Per standing project doctrine every conversational surface is the companion, so chat is Ember's voice — but the persona **wraps tone only and never touches the grounding rules**, exactly as it does for `reading-companion`.
 
@@ -94,3 +94,14 @@ Each layer degrades independently, and none of them pretends success:
 - **New:** `src/lib/chat/select-pages.ts` (step 1 skill), `src/lib/chat/answer.ts` (step 2 skill), `src/lib/chat/session.ts` (storage), `src/lib/chat/save-query.ts` (the `query`-page changeset), `src/app/api/skills/chat/route.ts`, `src/components/chat/*` (message stream, citation chips, composer, sources toggle).
 - **Reworked:** `src/app/chat/page.tsx`, `src/app/chat/[id]/page.tsx` (both currently fork mocks), the sidebar's Recent Chats section, `PAGE_TYPES` and the surfaces listed in §4.
 - **Retired:** `src/stores/chat-store.ts` (the localStorage mock store) and the clinical suggestion chips.
+
+### Live-gate results (2026-07-28)
+
+Verified against the real `eeg-auditory-vault` with a real provider, not a fixture:
+
+- "What do I know about decoding models for EEG?" returned a grounded answer citing **six** pages, with no fallback, no error, and nothing skipped. **All six cited ids were confirmed to exist as files on disk** — the anti-hallucination filter holding on real data, which is the one property no unit test can establish.
+- Citation chips routed correctly by type: wiki pages to `/wiki/concepts|methods/…`, papers to `/paper/<slug>`.
+- Save wrote `wiki/queries/what-do-i-know-about-decoding-models-for-eeg.md` with `type: query`, `related` holding **bare slugs** (mapped down from the full bundle ids `citedPageIds` carries), and `sources` carrying both `chat:<sessionId>` and `question:<question>`. The page then appeared on `/wiki` under "Saved answers", confirming the `query` type reached every enumeration surface.
+- Cost: `select-pages` $0.005–0.008 + `chat-answer` $0.012–0.036 ≈ **$0.031 per turn**. Both steps are metered.
+
+**Known follow-up, deliberately not built:** chat writes no Tier-1 `.scispark/events/` entry, so a conversation contributes nothing to the two-tier user model even though that model names "agent chats" as a Tier-1 signal. The SP5 spec never covered it and inventing a chat event schema is a product decision, so it was left out rather than smuggled in.
