@@ -68,9 +68,22 @@ export default function ChatSessionPage() {
     }
   }, [sessionId])
 
+  // `reload()` can REJECT, not just resolve with a null session: `loadSession`
+  // rejects outright for an id that isn't a legal path segment (see
+  // `sessionPath` in src/lib/chat/session.ts — the guard that stops a crafted
+  // id from being written outside `.scispark/chats/`), and `sessionId` comes
+  // straight off the URL. Without this catch the rejection is unhandled and
+  // `state` stays "loading" forever, so a stale or hand-typed `/chat/<id>`
+  // renders a permanent spinner instead of the not-found card. An unusable id
+  // and a missing session are the same thing to the reader, so both land on
+  // "not-found"; the real reason is logged rather than swallowed.
   useEffect(() => {
     setState("loading")
-    reload()
+    reload().catch((err: unknown) => {
+      console.warn("[chat] could not load session:", err)
+      setSession(null)
+      setState("not-found")
+    })
   }, [reload])
 
   async function handleSubmit() {

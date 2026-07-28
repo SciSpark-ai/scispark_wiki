@@ -204,6 +204,26 @@ describe("ChatSessionPage (/chat/[id])", () => {
     cleanup()
   })
 
+  // The case above mocks a RESOLVED null with a valid-shaped id, so it passes
+  // whether or not the load is error-handled. This one covers the other exit:
+  // `loadSession` REJECTS for an id that isn't a legal path segment (the
+  // `sessionPath` guard), and `sessionId` comes straight off the URL — so a
+  // stale or hand-typed `/chat/<id>` must still land on the not-found card
+  // rather than spinning on "Loading conversation…" forever.
+  it("renders not-found (never a permanent spinner) when loading the session rejects", async () => {
+    paramsValue = { id: "bad id" }
+    loadSessionMock.mockRejectedValue(new Error("invalid session id: bad id"))
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const { container, cleanup } = await renderPage(<ChatSessionPage />)
+
+    expect(container.textContent).toMatch(/not found|doesn.t exist|couldn.t find/i)
+    expect(container.textContent).not.toMatch(/Loading conversation/i)
+
+    warn.mockRestore()
+    cleanup()
+  })
+
   it("appends the new turn returned by the orchestrator client after a follow-up submit", async () => {
     paramsValue = { id: "chat_1" }
     loadSessionMock.mockResolvedValueOnce(session())
