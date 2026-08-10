@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
-import { listReviews, dismissReview, reviewCount, listIngests, type ReviewItem, type IngestRecord } from "../review-queue"
+import { listReviews, dismissReview, reviewCount, listIngests, type ReviewItem } from "../review-queue"
 import type { Changeset } from "../../vault/types"
 
 describe("review-queue", () => {

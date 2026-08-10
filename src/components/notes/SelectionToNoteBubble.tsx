@@ -19,21 +19,17 @@ interface BubbleState {
 }
 
 export function SelectionToNoteBubble() {
-  const [state, setState] = useState<BubbleState | null>(null);
-  const [expanded, setExpanded] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [chosenProject, setChosenProject] = useState<string>("");
-  const bubbleRef = useRef<HTMLDivElement>(null);
-
   const addNote = useNotesStore((s) => s.addNote);
   const lastProjectId = useNotesStore((s) => s.lastProjectId);
   const setLastProjectId = useNotesStore((s) => s.setLastProjectId);
 
-  useEffect(() => {
-    if (!chosenProject) {
-      setChosenProject(lastProjectId ?? mockProjects[0].id);
-    }
-  }, [lastProjectId, chosenProject]);
+  const [state, setState] = useState<BubbleState | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [chosenProject, setChosenProject] = useState(
+    () => lastProjectId ?? mockProjects[0]?.id ?? ""
+  );
+  const bubbleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onMouseUp = () => {
