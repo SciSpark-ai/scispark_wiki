@@ -25,19 +25,28 @@
 
 # Current Release/Session State
 
-- Baseline inspected at commit `96b52995bfb5ef2df28a6b649fc2277670b7a431`
-  on branch `uiux/sp5-kb-chat`; the worktree was clean before memory scaffolding.
-- SP5 knowledge-base chat is present and documented as built/live-verified.
-- The documented remaining UI/UX milestone is SP6: real Projects and History plus
-  a general changeset-undo surface. Chat event integration into the Tier-1 user
-  model is also recorded as a future product decision.
+- SP5 PR #18 is merged into `main` at merge commit
+  `5e729f8c22aff0a38450fe16f635ca9b78dd98f5`.
+- SP6 implementation is active on `codex/sp6-foundation`, created from that
+  updated `main` commit. The approved delivery is four sequential reviewable
+  PRs ending in a GitHub developer preview, not a desktop or npm release.
+- The SP6 design and implementation plan are recorded under
+  `docs/superpowers/specs/2026-08-10-sp6-projects-history-design.md` and
+  `docs/superpowers/plans/2026-08-10-sp6-projects-history.md`.
 - This session generated and validated an Understand Anything knowledge graph for
   all 599 scanned files. The graph contains 1,357 nodes, 2,997 edges, 9 exhaustive
   architecture layers, and a 15-step guided tour; no application behavior changed.
-- Phase 0 stabilization is complete on `uiux/sp5-kb-chat`: the eight existing
-  ESLint findings were removed, full-root lint now ignores `.claude/**`, and the
-  README/roadmap were updated from the fork-era mock architecture to the current
-  local-runtime model. The branch is published in draft PR #18.
+- PR 1 foundation work now strictly validates changesets and persisted records,
+  derives applied/reverted/diverged state from live contents, serializes vault
+  changesets and log appends, returns warnings for post-commit derived refresh
+  failures, and exposes content-free History plus persisted-ID-only undo APIs.
+- The SP6 foundation deterministic gate passed on 2026-08-10: 2,008 tests
+  passed with 15 environment-gated skips, `npx tsc --noEmit` passed,
+  `npm run lint` passed, and the Next.js production build generated all 51
+  pages successfully.
+- SP6 foundation commit `5915084` is published in draft PR #19 from
+  `codex/sp6-foundation` to `main`. PR 2 must start from updated `main` only
+  after PR #19 is reviewed and merged.
 - The pre-merge audit hardened full chat-session shape validation and serialized
   same-session turns in the local runtime so concurrent tabs cannot lose transcript
   updates.
@@ -62,6 +71,9 @@
   `.scispark/settings.json` through generic vault routes.
 - Do not bypass changesets for agent-authored vault mutations, and do not leave
   partial writes after validation failure.
+- Never accept client-supplied paths or file contents for undo. Resolve a strict
+  persisted audit record by safe `changesetId`, and do not add a force-revert
+  API or UI.
 - Do not give an inline `dangerouslySetInnerHTML={{ __html: ... }}` object a new
   identity on each render; React 19.2 can recreate the DOM and break selection.
 - Do not perform incrementing or other side effects inside JSX expressions; key

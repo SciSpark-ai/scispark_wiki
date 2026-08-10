@@ -1,9 +1,9 @@
 import type { VaultStorage } from "../vault/storage"
 import type { Changeset, Frontmatter } from "../vault/types"
-import { applyChangeset, makeChangesetId } from "../vault/changesets"
+import { makeChangesetId } from "../vault/changesets"
 import { loadBundle } from "../vault/bundle"
 import { serializeDocument } from "../vault/frontmatter"
-import { appendLog, writeIndex } from "../vault/index-builder"
+import { commitChangeset, type MutationWarning } from "../vault/mutations"
 import { loadRouting } from "../wiki/schema-routing"
 import { slugifyTitle } from "../wiki/authoring"
 import { sanitizeSlugList } from "../skills/ingest"
@@ -22,6 +22,7 @@ export interface SaveAnswerAsQueryOpts {
 export interface SaveAnswerAsQueryResult {
   changesetId: string
   pageId: string
+  warnings?: MutationWarning[]
 }
 
 /**
@@ -116,9 +117,15 @@ export async function saveAnswerAsQuery(
     changes: [{ path, before: null, after: content }],
   }
 
-  await applyChangeset(storage, changeset)
-  await writeIndex(storage, await loadBundle(storage))
-  await appendLog(storage, { date: today, op: "save", summary: pageId })
+  const mutation = await commitChangeset(storage, changeset, {
+    timestamp: changeset.timestamp,
+    op: "save",
+    summary: pageId,
+  })
 
-  return { changesetId: changeset.id, pageId }
+  return {
+    changesetId: changeset.id,
+    pageId,
+    ...(mutation.warnings.length > 0 ? { warnings: mutation.warnings } : {}),
+  }
 }

@@ -33,29 +33,17 @@ The six-part refresh turns the foundation into one coherent product.
 | SP2.1 | Feed and paper-page follow-ups | Built |
 | SP3 | Knowledge-base dashboard and visualization workspace | Built |
 | SP4 | Academia Right Now trending redesign | Built |
-| SP5 | Real grounded knowledge-base chat and saved query pages | Built on `uiux/sp5-kb-chat`; integration pending |
-| SP6 | Real Projects plus conversation/change History and global undo | Next |
+| SP5 | Real grounded knowledge-base chat and saved query pages | Built and merged in PR #18 |
+| SP6 | Real Projects plus conversation/change History and global undo | Foundation in progress |
 
 ## Immediate execution order
 
-### 0. Integrate SP5
+### 1. Establish the SP6 foundation
 
-1. Preserve the project-memory and architecture-graph scaffolding.
-2. Remove the ESLint baseline and exclude generated nested worktrees.
-3. Make README and roadmap describe the current runtime truthfully.
-4. Run unit tests, type-checking, lint, production build, and a real-vault chat
-   smoke test.
-5. Push, review, and merge `uiux/sp5-kb-chat` into `main`.
-
-### 1. Specify SP6
-
-- Project pages under `wiki/projects/` are the project source of truth.
-- Member pages keep canonical `projects: [...]` frontmatter.
-- Project create/update/rename/delete and membership mutations are changesets.
-- Chat sessions may carry an optional project scope.
-- History has separate Conversations and Changes views.
-- Changeset state is derived by comparing current files with stored `before` and
-  `after` content; diverged files are never overwritten silently.
+- Validate changesets and persisted audit records strictly.
+- Serialize mutations, rebuild derived data, and report post-commit warnings.
+- Derive applied/reverted/diverged state from current contents.
+- Expose content-free History summaries and persisted-ID-only undo.
 
 ### 2. Implement real Projects
 
@@ -64,12 +52,13 @@ The six-part refresh turns the foundation into one coherent product.
 - Add honest loading, empty, error, conflict, and deletion states.
 - Remove the legacy mock/localStorage project persistence path.
 
-### 3. Implement global History and undo
+### 3. Implement project chat and History UI
 
-- List changeset summaries and affected files.
-- Classify records as applied, reverted, or diverged.
-- Preview and safely revert applicable changesets.
-- Keep force-revert out of the ordinary UI.
+- Scope chat to direct project members with deterministic context caps.
+- Preserve deleted-project transcripts without global fallback.
+- Add URL-addressable Conversations and Changes tabs.
+- Preview and safely undo only currently applied changesets; there is no force
+  API or UI.
 
 ### 4. Release hardening
 
@@ -79,8 +68,8 @@ The six-part refresh turns the foundation into one coherent product.
   traversal protection, corrupted-file behavior, and backup recovery.
 - Re-run cost-bearing provider gates with explicit approval against the exact
   release commit.
-- Decide whether the first release is an npm-based developer preview or a
-  packaged desktop beta.
+- Publish an npm-installed source checkout as a GitHub developer prerelease.
+  Desktop packaging and npm-registry publication remain deferred.
 
 ## Release definition
 

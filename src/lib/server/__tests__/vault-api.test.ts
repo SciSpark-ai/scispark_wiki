@@ -28,6 +28,32 @@ class ThrowingReadStorage implements VaultStorage {
   }
 }
 
+class ThrowDerivedStorage implements VaultStorage {
+  private inner = new MemoryVaultStorage()
+
+  read(path: string): Promise<string | null> {
+    return this.inner.read(path)
+  }
+  async write(path: string, content: string): Promise<void> {
+    if (path === "index.md" || path === "log.md") {
+      throw new Error(`simulated derived failure: ${path}`)
+    }
+    await this.inner.write(path, content)
+  }
+  readBinary(path: string): Promise<Uint8Array | null> {
+    return this.inner.readBinary(path)
+  }
+  writeBinary(path: string, data: Uint8Array): Promise<void> {
+    return this.inner.writeBinary(path, data)
+  }
+  delete(path: string): Promise<void> {
+    return this.inner.delete(path)
+  }
+  list(prefix?: string): Promise<string[]> {
+    return this.inner.list(prefix)
+  }
+}
+
 describe("vault API", () => {
   let storage: MemoryVaultStorage
   beforeEach(() => {
@@ -222,7 +248,11 @@ describe("vault API", () => {
       method: "POST", body: JSON.stringify({ action: "apply", changeset: cs }),
     }))
     expect(ok.status).toBe(200)
-    expect(await ok.json()).toEqual({ ok: true })
+    expect(await ok.json()).toEqual({
+      ok: true,
+      changesetId: "cs-1",
+      warnings: [],
+    })
     expect(await storage.read("wiki/new.md")).toBe("content")
 
     // A second changeset targeting the same path with a stale `before` now
@@ -244,6 +274,37 @@ describe("vault API", () => {
     const dupBody = await dup.json()
     expect(dupBody.error).toBeTruthy()
     expect(await storage.read("wiki/new.md")).toBe("content")
+  })
+
+  it("POST /api/vault/changeset reports post-commit derived failures as warnings", async () => {
+    const warningStorage = new ThrowDerivedStorage()
+    setServerVaultForTests(warningStorage)
+    const response = await changesetRoute.POST(
+      new Request("http://x/api/vault/changeset", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "apply",
+          changeset: {
+            id: "cs-api-warning",
+            skill: "project-create",
+            model: "none",
+            timestamp: "2026-08-10T12:00:00.000Z",
+            changes: [{ path: "wiki/projects/warning.md", before: null, after: "project" }],
+          },
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      ok: true,
+      changesetId: "cs-api-warning",
+      warnings: [
+        expect.objectContaining({ code: "index-refresh-failed" }),
+        expect.objectContaining({ code: "log-append-failed" }),
+      ],
+    })
+    expect(await warningStorage.read("wiki/projects/warning.md")).toBe("project")
   })
 
   it("POST /api/vault/changeset: reusing a changeset id (record collision, a ChangesetInvalidError) → 400", async () => {
@@ -268,7 +329,7 @@ describe("vault API", () => {
     expect((await dup.json()).error).toMatch(/collision/i)
   })
 
-  it("POST /api/vault/changeset reverts", async () => {
+  it("POST /api/vault/changeset reverts only the persisted record named by changesetId", async () => {
     const cs = {
       id: "cs-2",
       skill: "test-skill",
@@ -280,10 +341,75 @@ describe("vault API", () => {
       method: "POST", body: JSON.stringify({ action: "apply", changeset: cs }),
     }))
     const revert = await changesetRoute.POST(new Request("http://x/api/vault/changeset", {
-      method: "POST", body: JSON.stringify({ action: "revert", changeset: cs }),
+      method: "POST", body: JSON.stringify({ action: "revert", changesetId: cs.id }),
     }))
     expect(revert.status).toBe(200)
     expect(await storage.read("wiki/rev.md")).toBeNull()
+  })
+
+  it("POST /api/vault/changeset rejects a client-forged revert payload", async () => {
+    await storage.write(".scispark/settings.json", "secret-settings")
+    const forged = {
+      id: "cs-forged",
+      skill: "attacker",
+      model: "none",
+      timestamp: "2026-07-14T00:00:00Z",
+      changes: [{ path: ".scispark/settings.json", before: "forged-settings", after: "secret-settings" }],
+    }
+
+    const response = await changesetRoute.POST(
+      new Request("http://x/api/vault/changeset", {
+        method: "POST",
+        body: JSON.stringify({ action: "revert", changeset: forged }),
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    expect(await storage.read(".scispark/settings.json")).toBe("secret-settings")
+  })
+
+  it("POST /api/vault/changeset rejects client file contents even when a changesetId is present", async () => {
+    const changeset = {
+      id: "cs-no-forged-content",
+      skill: "test-skill",
+      model: "none",
+      timestamp: "2026-07-14T00:00:00Z",
+      changes: [{ path: "wiki/safe.md", before: null, after: "safe" }],
+    }
+    await changesetRoute.POST(
+      new Request("http://x/api/vault/changeset", {
+        method: "POST",
+        body: JSON.stringify({ action: "apply", changeset }),
+      }),
+    )
+
+    const response = await changesetRoute.POST(
+      new Request("http://x/api/vault/changeset", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "revert",
+          changesetId: changeset.id,
+          changeset: {
+            ...changeset,
+            changes: [{ path: ".scispark/settings.json", before: "bad", after: "secret" }],
+          },
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    expect(await storage.read("wiki/safe.md")).toBe("safe")
+  })
+
+  it("POST /api/vault/changeset has no force-revert request shape", async () => {
+    const response = await changesetRoute.POST(
+      new Request("http://x/api/vault/changeset", {
+        method: "POST",
+        body: JSON.stringify({ action: "revert", changesetId: "cs-any", force: true }),
+      }),
+    )
+
+    expect(response.status).toBe(400)
   })
 
   it("POST /api/vault/changeset malformed body → 400", async () => {

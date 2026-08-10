@@ -3,7 +3,8 @@ import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
 import type { Changeset, FileChange } from "../vault/types"
-import { applyChangeset, makeChangesetId } from "../vault/changesets"
+import { makeChangesetId } from "../vault/changesets"
+import { commitChangeset, type MutationWarning } from "../vault/mutations"
 import { USER_MODEL_PATHS, readUserModel } from "../usermodel/pages"
 import { buildUserContext } from "../usermodel/context"
 import { countEventsSince, readRecentEvents, logEvent } from "../events/log"
@@ -131,7 +132,13 @@ export async function runConsolidation(
     providerOverride?: Partial<Record<Tier, LLMProvider>>
     now?: () => Date
   } = {},
-): Promise<{ status: "skipped" | "unchanged" | "applied"; changesetId?: string; costUsd?: number; runId?: string }> {
+): Promise<{
+  status: "skipped" | "unchanged" | "applied"
+  changesetId?: string
+  costUsd?: number
+  runId?: string
+  warnings?: MutationWarning[]
+}> {
   const now = opts.now ?? (() => new Date())
 
   if (!opts.force && !(await consolidationDue(storage))) {
@@ -179,9 +186,18 @@ export async function runConsolidation(
     timestamp: now().toISOString(),
     changes,
   }
-  await applyChangeset(storage, changeset)
+  const mutation = await commitChangeset(storage, changeset, {
+    op: "consolidation",
+    summary: run.runId,
+  })
   await writeMarker(storage, { lastTs, runId: run.runId })
   await logEvent(storage, { type: "consolidation", changesetId: changeset.id }, now)
 
-  return { status: "applied", changesetId: changeset.id, costUsd: run.costUsd, runId: run.runId }
+  return {
+    status: "applied",
+    changesetId: changeset.id,
+    costUsd: run.costUsd,
+    runId: run.runId,
+    ...(mutation.warnings.length > 0 ? { warnings: mutation.warnings } : {}),
+  }
 }

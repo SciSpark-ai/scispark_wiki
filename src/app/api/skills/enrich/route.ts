@@ -4,8 +4,7 @@ import { loadSettings } from "@/lib/llm/settings"
 import { runSkill } from "@/lib/skills/runner"
 import { enrichSkill } from "@/lib/skills/enrich"
 import { loadBundle } from "@/lib/vault/bundle"
-import { applyChangeset } from "@/lib/vault/changesets"
-import { writeIndex } from "@/lib/vault/index-builder"
+import { commitChangeset, type MutationWarning } from "@/lib/vault/mutations"
 import { paperRecordFromFrontmatter, extractAbstractFromBody } from "@/lib/papers/resolve"
 import { buildEnrichMergeChangeset } from "@/lib/papers/enrich-apply"
 // findPaperPage (routing-tolerant paper-page lookup by slug) is shared with
@@ -18,6 +17,7 @@ export interface EnrichRouteResult {
   costUsd: number
   tldr?: string
   tags?: string[]
+  warnings?: MutationWarning[]
 }
 
 /**
@@ -100,8 +100,16 @@ async function runEnrichForSlug(slug: string, vault: VaultStorage): Promise<Enri
     ...run.output,
     relatedPageIds,
   })
-  await applyChangeset(vault, changeset)
-  await writeIndex(vault, await loadBundle(vault))
+  const mutation = await commitChangeset(vault, changeset, {
+    op: "enrich",
+    summary: paperPage.id,
+  })
 
-  return { applied: true, costUsd: run.costUsd, tldr: run.output.tldr, tags: run.output.tags }
+  return {
+    applied: true,
+    costUsd: run.costUsd,
+    tldr: run.output.tldr,
+    tags: run.output.tags,
+    ...(mutation.warnings.length > 0 ? { warnings: mutation.warnings } : {}),
+  }
 }
