@@ -44,6 +44,9 @@
   passed with 15 environment-gated skips, `npx tsc --noEmit` passed,
   `npm run lint` passed, and the Next.js production build generated all 51
   pages successfully.
+- SP6 foundation commit `5915084` is published in draft PR #19 from
+  `codex/sp6-foundation` to `main`. PR 2 must start from updated `main` only
+  after PR #19 is reviewed and merged.
 - The pre-merge audit hardened full chat-session shape validation and serialized
   same-session turns in the local runtime so concurrent tabs cannot lose transcript
   updates.

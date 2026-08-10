@@ -21,7 +21,7 @@ Branch: `codex/sp6-foundation`
 - [x] Make undo accept persisted `changesetId` only; remove the force path.
 - [x] Add content-free History summaries and a History changes API.
 - [x] Run the full deterministic gate.
-- [ ] Publish the PR for review.
+- [x] Publish draft PR #19 for review.
 
 Acceptance: traversal IDs, private targets, forged undo contents, duplicate
 paths, corrupt records, mid-apply failure, mid-revert failure, concurrent
