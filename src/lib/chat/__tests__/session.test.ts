@@ -149,6 +149,24 @@ describe("saveSession / loadSession round-trip", () => {
     await storage.write(`${CHATS_DIR}/noid.json`, JSON.stringify({ messages: [] }))
     expect(await loadSession(storage, "noid")).toBeNull()
   })
+
+  it("returns null for parseable JSON with malformed renderer-consumed fields", async () => {
+    const storage = new MemoryVaultStorage()
+    const malformed = [
+      makeSession({ id: "wrong-file-id" }),
+      { ...makeSession({ id: "bad-title" }), title: null },
+      { ...makeSession({ id: "bad-date" }), updatedAt: "not-a-date" },
+      { ...makeSession({ id: "bad-role" }), messages: [{ role: "tool", content: "x" }] },
+      { ...makeSession({ id: "bad-content" }), messages: [{ role: "user", content: null }] },
+      { ...makeSession({ id: "bad-citations" }), messages: [{ role: "assistant", content: "x", citedPageIds: [7] }] },
+    ]
+    const ids = ["id-mismatch", "bad-title", "bad-date", "bad-role", "bad-content", "bad-citations"]
+
+    for (let i = 0; i < ids.length; i += 1) {
+      await storage.write(`${CHATS_DIR}/${ids[i]}.json`, JSON.stringify(malformed[i]))
+      expect(await loadSession(storage, ids[i])).toBeNull()
+    }
+  })
 })
 
 describe("listSessions", () => {
@@ -167,6 +185,21 @@ describe("listSessions", () => {
   it("returns an empty list when there are no sessions", async () => {
     const storage = new MemoryVaultStorage()
     expect(await listSessions(storage)).toEqual([])
+  })
+
+  it("skips parseable sessions whose timestamps or messages would crash consumers", async () => {
+    const storage = new MemoryVaultStorage()
+    await saveSession(storage, makeSession({ id: "healthy" }))
+    await storage.write(
+      `${CHATS_DIR}/bad-date.json`,
+      JSON.stringify({ ...makeSession({ id: "bad-date" }), updatedAt: null }),
+    )
+    await storage.write(
+      `${CHATS_DIR}/bad-message.json`,
+      JSON.stringify({ ...makeSession({ id: "bad-message" }), messages: [{ role: "user", content: null }] }),
+    )
+
+    await expect(listSessions(storage)).resolves.toEqual([makeSession({ id: "healthy" })])
   })
 })
 

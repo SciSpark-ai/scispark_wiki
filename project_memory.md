@@ -18,9 +18,8 @@
   feed, progressive paper pages, ingest/wiki/review flows, reader/highlights,
   research companion, visualization workspace, Spark ideation, personalized
   trending, lint/spend tooling, and grounded knowledge-base chat.
-- `README.md` still describes the older prototype as entirely mocked and
-  localStorage-backed. `CLAUDE.md`, current source, and milestone status blocks
-  are more accurate for the implemented architecture.
+- `README.md` now describes the implemented local-runtime architecture and
+  labels Projects and the legacy Library route as remaining prototype surfaces.
 - The filesystem is case-insensitive: `agents.md` and `AGENTS.md` resolve to the
   same file/inode.
 
@@ -35,13 +34,18 @@
 - This session generated and validated an Understand Anything knowledge graph for
   all 599 scanned files. The graph contains 1,357 nodes, 2,997 edges, 9 exhaustive
   architecture layers, and a 15-step guided tour; no application behavior changed.
-- Phase 0 stabilization is in progress on `uiux/sp5-kb-chat`: the eight existing
+- Phase 0 stabilization is complete on `uiux/sp5-kb-chat`: the eight existing
   ESLint findings were removed, full-root lint now ignores `.claude/**`, and the
   README/roadmap were updated from the fork-era mock architecture to the current
-  local-runtime model.
-- The deterministic verification gate passed on 2026-08-09: 1,979 tests passed
+  local-runtime model. The branch is published in draft PR #18.
+- The pre-merge audit hardened full chat-session shape validation and serialized
+  same-session turns in the local runtime so concurrent tabs cannot lose transcript
+  updates.
+- The deterministic verification gate passed on 2026-08-09: 1,982 tests passed
   with 15 environment-gated skips, `npx tsc --noEmit` passed, `npm run lint`
   passed, and the Next.js production build generated all 50 pages successfully.
+- The July 28 real-provider SP5 acceptance was not rerun during Phase 0; current
+  verification is deterministic and does not make a new live-LLM claim.
 - The final `.understand-anything` graph, metadata, fingerprints, and ignore
   configuration are intentional project artifacts; intermediate and temporary
   analysis output should not be committed.
@@ -64,3 +68,9 @@
   evaluation order can create duplicate sibling keys.
 - Treat live LLM tests as explicit, cost-bearing gates. Ordinary verification
   should use deterministic unit tests, lint, type-checking, and builds.
+- Chat selected-page count is capped, but selected non-paper page bodies are not
+  yet character/token capped. Measure real vault sizes before setting a truncation
+  policy; do not silently introduce one that can remove answer-bearing context.
+- Chat transcript serialization is process-local and keyed by the shared
+  `VaultStorage` instance. A future multi-process/sync backend needs its own
+  cross-process concurrency control.

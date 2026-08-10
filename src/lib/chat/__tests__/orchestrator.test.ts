@@ -615,3 +615,26 @@ describe("askChat — session id minting", () => {
     }
   })
 })
+
+describe("askChat — same-session concurrency", () => {
+  it("serializes concurrent turns so neither transcript update is overwritten", async () => {
+    const storage = new MemoryVaultStorage()
+    const ask = (question: string) =>
+      askChat(storage, {
+        input: { sessionId: "chat_shared", question, readSourcesOnly: false },
+        settings: SETTINGS,
+        now: NOW,
+      })
+
+    await Promise.all([ask("First concurrent question"), ask("Second concurrent question")])
+
+    const session = await loadSession(storage, "chat_shared")
+    expect(session?.messages).toHaveLength(4)
+    expect(session?.messages.map((message) => message.content)).toEqual([
+      "First concurrent question",
+      expect.stringContaining("knowledge base is empty"),
+      "Second concurrent question",
+      expect.stringContaining("knowledge base is empty"),
+    ])
+  })
+})

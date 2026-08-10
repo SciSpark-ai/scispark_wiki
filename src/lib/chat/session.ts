@@ -91,25 +91,61 @@ function sessionPath(id: string): string {
   return `${CHATS_DIR}/${id}.json`
 }
 
-/** Type guard: does a parsed JSON payload look like a ChatSession? A missing
- * `id` or `messages` (or a non-array `messages`) reads as corrupt. */
-function isChatSessionShape(value: unknown): value is ChatSession {
-  if (typeof value !== "object" || value === null) return false
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string"
+}
+
+function isOptionalBoolean(value: unknown): value is boolean | undefined {
+  return value === undefined || typeof value === "boolean"
+}
+
+function isChatMessageShape(value: unknown): value is ChatMessage {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false
   const v = value as Record<string, unknown>
-  return typeof v.id === "string" && Array.isArray(v.messages)
+  return (
+    (v.role === "user" || v.role === "assistant") &&
+    typeof v.content === "string" &&
+    (v.citedPageIds === undefined || isStringArray(v.citedPageIds)) &&
+    isOptionalBoolean(v.readSourcesOnly) &&
+    isOptionalBoolean(v.selectionFallback) &&
+    (v.skippedPageIds === undefined || isStringArray(v.skippedPageIds)) &&
+    isOptionalString(v.error)
+  )
+}
+
+/** Type guard for every field consumed by the history and chat renderers.
+ * Parseable-but-malformed JSON is corrupt too: a missing `updatedAt` crashes
+ * list sorting, while a non-string message `content` crashes rendering. */
+function isChatSessionShape(value: unknown, expectedId: string): value is ChatSession {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false
+  const v = value as Record<string, unknown>
+  return (
+    v.id === expectedId &&
+    typeof v.title === "string" &&
+    typeof v.createdAt === "string" &&
+    Number.isFinite(Date.parse(v.createdAt)) &&
+    typeof v.updatedAt === "string" &&
+    Number.isFinite(Date.parse(v.updatedAt)) &&
+    Array.isArray(v.messages) &&
+    v.messages.every(isChatMessageShape)
+  )
 }
 
 /**
  * Loads one session by id. Returns null for a missing file, unparseable
- * JSON, or a payload lacking `id`/`messages` — corruption reads as absent,
- * never as a thrown error.
+ * JSON, or a payload that does not fully match `ChatSession` — corruption
+ * reads as absent, never as a thrown error.
  */
 export async function loadSession(storage: VaultStorage, id: string): Promise<ChatSession | null> {
   const raw = await storage.read(sessionPath(id))
   if (raw == null) return null
   try {
     const parsed: unknown = JSON.parse(raw)
-    if (!isChatSessionShape(parsed)) return null
+    if (!isChatSessionShape(parsed, id)) return null
     return parsed
   } catch {
     return null

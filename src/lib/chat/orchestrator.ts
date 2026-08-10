@@ -67,6 +67,18 @@ export interface AskChatOpts {
  * calling the LLM at all.
  */
 export async function askChat(storage: VaultStorage, opts: AskChatOpts): Promise<AskChatResult> {
+  // A client normally disables its own composer while a turn is running, but
+  // the same vault/session can still be open in two tabs. Serialize the whole
+  // read-modify-answer-write cycle for a supplied session id so one turn can
+  // never overwrite the other. New sessions already receive unique ids from
+  // `mintSessionId`, so they do not share a transcript and need no queue.
+  if (opts.input.sessionId !== null) {
+    return withSessionTurnQueue(storage, opts.input.sessionId, () => askChatTurn(storage, opts))
+  }
+  return askChatTurn(storage, opts)
+}
+
+async function askChatTurn(storage: VaultStorage, opts: AskChatOpts): Promise<AskChatResult> {
   const now = opts.now ?? (() => new Date())
   const { input } = opts
 
@@ -100,6 +112,33 @@ export async function askChat(storage: VaultStorage, opts: AskChatOpts): Promise
   await saveSession(storage, session)
 
   return { sessionId: session.id, message }
+}
+
+// One queue per storage/session pair. This protects the local single-process
+// runtime; cross-process coordination remains a sync-backend concern, matching
+// the write queues used by highlights, metering, events, and settings.
+const sessionTurnQueues = new WeakMap<VaultStorage, Map<string, Promise<void>>>()
+
+function withSessionTurnQueue<T>(storage: VaultStorage, sessionId: string, work: () => Promise<T>): Promise<T> {
+  let queues = sessionTurnQueues.get(storage)
+  if (queues === undefined) {
+    queues = new Map<string, Promise<void>>()
+    sessionTurnQueues.set(storage, queues)
+  }
+
+  const previous = queues.get(sessionId) ?? Promise.resolve()
+  const result = previous.then(work)
+  // A failed turn must not wedge later turns. Remove idle entries so a client
+  // supplying many distinct ids cannot grow the per-storage map forever.
+  const tail = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  queues.set(sessionId, tail)
+  void tail.then(() => {
+    if (queues?.get(sessionId) === tail) queues.delete(sessionId)
+  })
+  return result
 }
 
 /**
