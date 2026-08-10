@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 
 describe("getOpenVault", () => {
   it("resolves storage and bootstraps the vault exactly once, memoizing the promise", async () => {

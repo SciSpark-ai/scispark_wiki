@@ -9,7 +9,6 @@ import {
   StickyNote,
   Plus,
   ExternalLink,
-  Trash2,
   MoreHorizontal,
   FolderOpen,
   Sparkles,

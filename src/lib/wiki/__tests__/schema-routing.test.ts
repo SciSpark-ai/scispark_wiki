@@ -15,6 +15,10 @@ describe("DEFAULT_ROUTING", () => {
     const schema = (await s.read("schema.md")) as string
     expect(parseSchemaRouting(schema)).toEqual(DEFAULT_ROUTING)
   })
+
+  it("routes 'query' to wiki/queries — reinstated saved-answer page type (SP5 task 1)", () => {
+    expect(DEFAULT_ROUTING.query).toBe("wiki/queries")
+  })
 })
 
 describe("parseSchemaRouting", () => {

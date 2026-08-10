@@ -7,7 +7,8 @@ export class VaultExistsError extends Error {}
 const TYPE_DIRS: Record<string, string> = {
   paper: "wiki/papers", concept: "wiki/concepts", method: "wiki/methods",
   finding: "wiki/findings", comparison: "wiki/comparisons", author: "wiki/authors",
-  topic: "wiki/topics", note: "wiki/notes", idea: "wiki/ideas", project: "wiki/projects",
+  topic: "wiki/topics", note: "wiki/notes", query: "wiki/queries",
+  idea: "wiki/ideas", project: "wiki/projects",
 }
 
 export async function createVault(

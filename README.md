@@ -1,108 +1,142 @@
-# SciSpark Frontend
+# SciSpark Paper Manager
 
-AI-powered clinical evidence assistant. SciSpark helps researchers and clinicians browse curated literature, dig into AI-generated digests, chat with an evidence-aware agent, and organize findings into project notebooks.
+SciSpark is a local-first, AI-assisted research radar and personal knowledge
+base. It helps researchers discover papers, read and annotate source material,
+turn evidence into a Markdown wiki, ask grounded questions, and develop research
+ideas while keeping the vault and API keys on the user's machine.
 
-This repo is a **prototype frontend** — all data is mocked, there is no backend integration yet. State that *would* live in a database is persisted to `localStorage` via Zustand.
+## Current status
+
+SciSpark is an internal alpha moving toward a local beta. The core research
+workflows are real and vault-backed; the remaining SP6 milestone replaces the
+prototype Projects surfaces and adds a global changeset history/undo UI.
+
+| Surface | Status |
+|---|---|
+| Search, paper pages, digest, ingest, wiki, review inbox | Vault-backed |
+| Personalized feed, profile, companion, trending | Vault-backed |
+| Reader, highlights, select-to-ask | Vault-backed |
+| Knowledge-base chat and saved answers | Vault-backed |
+| Visualization, Spark, lint, spend tracking | Vault-backed |
+| Conversation history | Vault-backed |
+| Projects, project notes, legacy Library route | Prototype; SP6 scope |
+
+See [project_memory.md](./project_memory.md) for the verified repository baseline
+and [docs/design/06-roadmap.md](./docs/design/06-roadmap.md) for the execution
+roadmap.
+
+## Runtime model
+
+The browser is the UI. A local Next.js server owns the runtime:
+
+```text
+Browser UI
+   │ same-origin API calls
+   ▼
+Local Next.js runtime
+   ├── filesystem Markdown vault
+   ├── LLM skill orchestration and usage metering
+   ├── server-held BYOK settings
+   └── paper search, resolve, fetch, and citation relays
+```
+
+The default vault is `~/SciSpark/vault`. Set `SCISPARK_VAULT` to use another
+folder. Agent-authored vault mutations use validated, conflict-checked
+changesets with persisted undo records. Derived wiki, trend, timeline, and graph
+views are rebuilt from the vault instead of becoming separate sources of truth.
+
+Stored LLM keys are never returned to the browser. The settings API exposes only
+presence flags, and the generic vault-file API blocks access to
+`.scispark/settings.json`.
 
 ## Stack
 
-- **Next.js 16.2** (App Router, React 19) — every interactive page uses `"use client"`
-- **Tailwind CSS v4** via `@tailwindcss/postcss`, theme defined inline in `src/app/globals.css`
-- **Zustand** (with `persist` middleware) for global state
-- **framer-motion** for transitions and the streaming chat UI
-- **lucide-react** for iconography
-- **Halant** (serif headings) + **Geist Sans** (body)
+- Next.js 16.2 App Router, React 19.2, and strict TypeScript 5
+- Tailwind CSS 4 with semantic theme tokens
+- Zustand for remaining client-only UI state
+- Vitest 4 and jsdom for unit/component tests
+- Zod schemas and Anthropic/OpenAI-compatible LLM providers
+- Sigma.js, Graphology, and D3 for research visualizations
+- pdf.js and DOMPurify for the reader
 
-> ⚠️ This Next.js version has breaking changes from older training data. Before writing code, see [`AGENTS.md`](./AGENTS.md) and read the relevant guide in `node_modules/next/dist/docs/`.
+This Next.js version includes breaking API and file-layout changes. Read
+[AGENTS.md](./AGENTS.md) and the relevant installed guide under
+`node_modules/next/dist/docs/` before changing Next.js code.
 
 ## Getting started
 
+Requirements: a current Node.js runtime and npm.
+
 ```bash
 npm install
-npm run dev          # http://localhost:3000
+cp .env.example .env.local   # optional public-data credentials
+npm run dev
 ```
 
-Other commands:
+Open <http://localhost:3000>. Configure an LLM provider through Settings in the
+app. Normal use does not require placing an LLM key in `.env.local`.
+
+For a production-mode local run:
 
 ```bash
-npm run build        # production build
-npm run lint         # ESLint
+npm run build
+npm run start
 ```
 
-## Feature highlights
+The v1 trust model assumes a loopback-only local server. There is currently no
+local auth token, so do not bind the app to a public or shared network interface.
 
-- **Home feed** (`/`) — topic-colored paper cards with For You / Trending / By Specialty tabs, plus inline "Your Week", "Trending Topics", and "Reading Streak" widgets.
-- **Paper detail** (`/paper/[id]`) — AI summary (lay vs. abstract toggle), figure digest, breakpoints, related papers, code/data links. Like, Save, and Read-Later actions persist across the app.
-- **YouTube-style Save menu** — clicking *Save* on a paper opens a "Save to…" popover with a top **Library** row (project-less stash) and one row per project, each with independent membership toggles.
-- **Chat thread** (`/chat/[id]`) — multi-step "Thinking" agent bubble (search → screen → extract → synthesize → done), then a word-by-word streaming answer with clickable `[N]` citations that open the right-side Sources panel highlighted to the right source. The reasoning trace stays in the conversation as a collapsible bubble.
-- **Highlight to note** — selecting text in any paper body or chat assistant message surfaces a floating "Save to note" bubble with a project picker. Notes also seed from a manual "+ Add Note" action on the project page.
-- **Editable notes** — every note opens in a centered modal for full editing (autosave on blur). Cards in the grid show clamped previews with footers aligned along a common baseline.
-- **Projects** (`/projects`, `/projects/[id]`) — Claude-Projects-style organization with Chats / Notes / Papers tabs, project instructions, and quick actions.
-- **Library / History / Profile** — saved / liked / read-later buckets, chat history, and user preferences.
-- **Page transitions** — framer-motion `AnimatePresence` cross-fade between routes, keyed on the top-level segment so dynamic param changes don't blink.
+## Verification commands
 
-## Project layout
-
-```
-src/
-├── app/                    # App Router pages
-│   ├── page.tsx            # Home feed
-│   ├── chat/               # /chat, /chat/[id]
-│   ├── paper/[id]/         # Paper detail
-│   ├── projects/           # /projects, /projects/[id]
-│   ├── library/            # Saved / Liked / Read Later
-│   ├── history/            # Chat history
-│   ├── profile/            # Profile + preferences
-│   ├── onboarding/         # First-run questionnaire
-│   ├── layout.tsx          # Root layout
-│   └── globals.css         # Tailwind v4 theme + base styles
-├── components/
-│   ├── layout/             # AppShell, Sidebar, MobileNav, RightPanel
-│   ├── feed/               # FeedCard, FeedTabs, widgets
-│   ├── chat/               # ReasoningAnimation, SourcesPanel
-│   ├── papers/             # SaveToProjectMenu
-│   ├── notes/              # SelectionToNoteBubble, NoteCard, NoteEditorModal
-│   ├── onboarding/         # OnboardingChat, AIMessage, etc.
-│   └── shared/             # ShareButton, StarsRating, GrainOverlay, …
-├── stores/                 # Zustand stores (see CLAUDE.md for full list)
-├── hooks/                  # useFeed, useChat, useOnboarding
-└── lib/
-    ├── fonts.ts
-    ├── onboarding-questions.ts
-    └── mock-data/          # papers.ts, projects.ts, chat-responses.ts, seed-chat.ts
+```bash
+npm test
+npx tsc --noEmit
+npm run lint
+npm run build
 ```
 
-## Environment variables
+Live LLM tests use real credentials, network services, and money. They are
+environment-gated and must be run as explicit release gates, not as ordinary
+unit tests. The relevant milestone plan documents the required variables and
+acceptance assertions.
 
-Server-only proxy backend for the paper search/resolve/fetch relay (`/api/search/[source]`, `/api/resolve`, `/api/fetch`). Copy `.env.example` to `.env.local` and fill in what you need — none are exposed to the client bundle.
+## Optional public-data credentials
 
-| Variable          | Required?                       | Purpose                                                              |
-| ------------------ | -------------------------------- | --------------------------------------------------------------------- |
-| `OPENALEX_MAILTO`  | Recommended                      | OpenAlex "polite pool" contact email — faster/more reliable rate limits |
-| `UNPAYWALL_EMAIL`  | Required for `/api/resolve`      | Unpaywall requires a contact email on every request; missing it returns 503 |
-| `S2_API_KEY`       | Optional                         | Semantic Scholar API key — better rate limits on `/api/search/s2`   |
-| `NCBI_API_KEY`     | Optional                         | NCBI/PubMed API key — better rate limits on `/api/search/pubmed`    |
+| Variable | Required? | Purpose |
+|---|---|---|
+| `SCISPARK_VAULT` | No | Override the default `~/SciSpark/vault` location |
+| `OPENALEX_MAILTO` | Recommended | OpenAlex polite-pool contact |
+| `OPENALEX_API_KEY` | No | Higher OpenAlex credit allowance |
+| `UNPAYWALL_EMAIL` | Required for Unpaywall resolution | Contact required by Unpaywall |
+| `S2_API_KEY` | No | Higher Semantic Scholar limits and citation lookup |
+| `NCBI_API_KEY` | No | Higher PubMed limits |
 
-## Persistence
+## Repository layout
 
-The following data is mirrored to `localStorage` and survives reloads:
+```text
+src/app/          App Router pages and local API routes
+src/components/   Product UI and interaction components
+src/lib/chat/     Grounded KB chat and session persistence
+src/lib/llm/      Provider abstraction, settings, budgets, metering
+src/lib/skills/   Pure skill definitions and shared runner
+src/lib/vault/    Storage adapters, schemas, bundles, changesets
+src/lib/wiki/     Ingest, authoring, review, lint, derived dashboards
+src/lib/papers/   Search providers, normalization, resolution
+src/lib/spark/    Quick and Deep research-idea workflows
+src/lib/trending/ Deterministic trend metrics and qualitative surveys
+docs/design/      Product and architecture decisions
+docs/superpowers/ Milestone specifications and implementation plans
+```
 
-| Store                  | Key                          | Holds                                              |
-| ---------------------- | ---------------------------- | -------------------------------------------------- |
-| `paper-actions-store`  | `scispark-paper-actions`     | per-paper `liked / saved / readLater` flags        |
-| `notes-store`          | `scispark-notes`             | project notes (highlight-captured + manual)        |
-| `project-papers-store` | `scispark-project-papers`    | paper ↔ project membership                         |
+## Engineering rules
 
-Clear the keys in DevTools → Application → Local Storage to reset.
+- Preserve the browser/server boundary. Client modules must not import
+  filesystem, secret, or server-only code.
+- Keep skills storage-free. Orchestrators own persistence, filtering,
+  degradation, metering, and atomic changesets.
+- Make vault mutations schema-validated, atomic, and undoable.
+- Use semantic CSS tokens rather than raw component colors.
+- Add focused regression tests for behavior changes.
 
-## Design system
-
-- **Palette**: espresso `#2b180a`, orange `#f97316`, page-bg `#fefaf5`, page-warm `#f6f0e9`, warm-tan accents
-- **Type**: Halant serif headings, Geist Sans body, Geist Mono for code
-- **Shape**: cards 28 px, badges 8 px, pills 50 px
-- Feed card headers are colored by **research topic** (not specialty) via `TOPIC_COLORS` in `FeedCard.tsx`
-
-## Contributing notes
-
-- See [`CLAUDE.md`](./CLAUDE.md) for conventions and architectural notes that govern how new features should be wired (highlight zones, citation parsing, streaming, page transitions).
-- See [`AGENTS.md`](./AGENTS.md) for caveats about working with this Next.js version.
+See [CLAUDE.md](./CLAUDE.md) for the detailed decision ledger and
+[AGENTS.md](./AGENTS.md) for the concise working contract.

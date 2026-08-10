@@ -1,21 +1,103 @@
-# v1 Build Roadmap (Layer 6 — execution order)
+# SciSpark execution roadmap
 
-*Each milestone is an independent implementation plan (in `docs/superpowers/plans/`) that ends with working, testable software. Order chosen so every milestone builds on tested foundations and the app is demoable early.*
+This file is the short current roadmap. Detailed decisions live in the linked
+specifications and implementation plans under `docs/superpowers/`.
 
-| # | Milestone | Delivers | Depends on |
-|---|---|---|---|
-| M1 | **Bootstrap + Vault core** | forked app running in this repo; vault library (frontmatter, bundle, changesets, index/log, OPFS+memory storage, zip export) fully tested | — |
-| M2 | **LLM harness** | LLMProvider (Anthropic/OpenAI/Google/OpenRouter), tier mapping, structured output, metering + daily budget, skill-runner primitives | M1 |
-| M3 | **Proxy backend** | `/api/search/*` (4 sources, unified schema), `/api/resolve`, `/api/fetch`; caching + rate limits | — (parallel with M2) |
-| M4 | **Ingest + wiki UI** | Digest Skill, Ingest Skill end-to-end (paper → wiki changeset), wiki browse/edit (Milkdown), review queue, undo | M1–M3 |
-| M5 | **Feed + user model** | events log, Memory-Consolidation Skill, Feed Skill (agentic funnel), generalized onboarding → personalized home | M1–M4 |
-| M6 | **Reader** | pdf.js + HTML reader, persistent highlights, select-to-ask (Reading-Companion Skill) | M1–M4 |
-| M7 | **Companion** | persona layer wrapping all chat surfaces, proactivity engine, mascot UI | M2, M5 |
-| M8 | **Visualization dashboard** | graph (Sigma), timeline, citation flow, author network (D3) | M4 |
-| M9 | **Spark** | Quick Spark + Deep Spark (ResearchStudio adaptation), idea pages/gallery | M2–M4 |
-| M10 | **Trending dashboard** | personalized fixed-field trends (deterministic metrics + charts + LLM survey), staleness-refreshed, client-side/BYOK | M2, M3 |
-| M11 | **Lint + hardening** | Lint Skill, FSA folder storage polish, export/import round-trip QA, budget UX polish | all |
+## Foundation milestones
 
-Clinical mock content from the fork is *kept as placeholder* through M1–M4 and replaced organically when real data arrives (M5); copy/branding generalization happens in M1 only where user-visible.
+The original local-first product foundation is implemented.
 
-**M10 reframe (Tong, 2026-07-14):** the original M10 concept — a public/anonymous trending page produced by a server-side Vercel cron + Vercel Blob, with `/api/register`+Supabase marketing capture — is dropped for v1 and moved to a documented **v2 path** (see `docs/design/03-backend.md` and `docs/superpowers/specs/2026-07-14-m10-trending-dashboard-design.md`). M10 as built is a personalized, fixed-field "what's big in your field" dashboard, local-first/BYOK, with a staleness-triggered refresh standing in for the v1 "cron."
+| Milestone | Delivered | Status |
+|---|---|---|
+| M1 | Markdown vault, schemas, bundles, changesets, export/import | Built |
+| M2 | LLM providers, tier mapping, structured output, metering, budgets | Built |
+| M3 | Paper search, resolve, fetch, and citation relays | Built |
+| M4 | Digest, ingest, wiki, review queue, and undo | Built |
+| M5 | Event log, user model, personalized feed, consolidation | Built |
+| M6 | HTML/PDF reader, highlights, select-to-ask | Built; PDF acceptance remains a release gate |
+| M7 | Research companion and deterministic proactivity | Built |
+| M8 | Graph, timeline, citation-flow, and author visualizations | Built |
+| M9 | Quick and Deep Spark research-idea generation | Built |
+| M10 | Personalized Academia Right Now dashboard | Built |
+| M11 | Local Next.js runtime, filesystem vault, server-held BYOK settings | Built |
+| M12 | Vault lint, spend panel, export/import QA, runtime hardening | Built |
+
+## Product-system refresh
+
+The six-part refresh turns the foundation into one coherent product.
+
+| Milestone | Delivered | Status |
+|---|---|---|
+| SP1 | Shell, navigation, design tokens, settings system | Built |
+| SP2 | Coherent discover → paper → read → digest → save loop | Built |
+| SP2.1 | Feed and paper-page follow-ups | Built |
+| SP3 | Knowledge-base dashboard and visualization workspace | Built |
+| SP4 | Academia Right Now trending redesign | Built |
+| SP5 | Real grounded knowledge-base chat and saved query pages | Built on `uiux/sp5-kb-chat`; integration pending |
+| SP6 | Real Projects plus conversation/change History and global undo | Next |
+
+## Immediate execution order
+
+### 0. Integrate SP5
+
+1. Preserve the project-memory and architecture-graph scaffolding.
+2. Remove the ESLint baseline and exclude generated nested worktrees.
+3. Make README and roadmap describe the current runtime truthfully.
+4. Run unit tests, type-checking, lint, production build, and a real-vault chat
+   smoke test.
+5. Push, review, and merge `uiux/sp5-kb-chat` into `main`.
+
+### 1. Specify SP6
+
+- Project pages under `wiki/projects/` are the project source of truth.
+- Member pages keep canonical `projects: [...]` frontmatter.
+- Project create/update/rename/delete and membership mutations are changesets.
+- Chat sessions may carry an optional project scope.
+- History has separate Conversations and Changes views.
+- Changeset state is derived by comparing current files with stored `before` and
+  `after` content; diverged files are never overwritten silently.
+
+### 2. Implement real Projects
+
+- Add the vault-backed project domain and focused tests.
+- Replace `/projects`, `/projects/[id]`, Save-to-Project, and project notes.
+- Add honest loading, empty, error, conflict, and deletion states.
+- Remove the legacy mock/localStorage project persistence path.
+
+### 3. Implement global History and undo
+
+- List changeset summaries and affected files.
+- Classify records as applied, reverted, or diverged.
+- Preview and safely revert applicable changesets.
+- Keep force-revert out of the ordinary UI.
+
+### 4. Release hardening
+
+- Remove or redirect the legacy mock Library route.
+- Add browser E2E coverage for the primary research and recovery loops.
+- Verify loopback binding, host/origin handling, settings redaction, path
+  traversal protection, corrupted-file behavior, and backup recovery.
+- Re-run cost-bearing provider gates with explicit approval against the exact
+  release commit.
+- Decide whether the first release is an npm-based developer preview or a
+  packaged desktop beta.
+
+## Release definition
+
+The local beta is ready only when:
+
+- no primary navigation route is mock-backed;
+- every agent-authored vault mutation is recoverable through the UI;
+- tests, type-checking, lint, build, and browser acceptance pass;
+- a real disposable vault completes the full discover → read → retain → chat →
+  project → undo journey;
+- secret handling and backup recovery are verified against the release commit.
+
+## Explicitly deferred
+
+- Auto-ingesting saved chat answers
+- Embeddings and vector search
+- Chat-driven personalization events
+- Cloud sync, accounts, collaboration, and hosted multi-user infrastructure
+- Public trending infrastructure
+- New Spark modes and non-blocking reader polish

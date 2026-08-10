@@ -113,4 +113,12 @@ describe("FilterBar", () => {
     expect(html).toContain("Paper")
     expect(html).toContain("Concept")
   })
+
+  it("offers a 'query' type chip labeled 'Saved answer' (SP5 task 1: reinstated query type)", () => {
+    const bundle = bundleOf([page("wiki/queries/q1", fm("query", "What causes X?"))])
+    const options = filterOptions(bundle)
+    const html = renderToStaticMarkup(<FilterBar options={options} filters={EMPTY_FILTERS} onChange={NOOP} />)
+    expect(options.types).toContain("query")
+    expect(html).toContain("Saved answer")
+  })
 })

@@ -25,6 +25,14 @@ describe("index + log", () => {
     expect(await s.read("index.md")).toBe(idx)
   })
 
+  it("gives 'query' pages a 'Saved answers' heading, not a raw 'query' fallback", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/queries/q1.md", serializeDocument(fm("query", "What causes X?"), "x"))
+    const idx = buildIndexMarkdown(await loadBundle(s))
+    expect(idx).toContain("## Saved answers")
+    expect(idx).not.toContain("## query")
+  })
+
   it("appends log entries, creating log.md on first use", async () => {
     const s = new MemoryVaultStorage()
     await appendLog(s, { date: "2026-07-11", op: "ingest", summary: "Paper One" })

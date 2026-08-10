@@ -1,107 +1,117 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Search, ArrowUp, Sparkles, GitCompare, FileText, Scale } from "lucide-react";
-import { useChatStore } from "@/stores/chat-store";
+import { useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { getOpenVault } from "@/lib/vault/get-vault"
+import { listSessions } from "@/lib/chat/session"
+import { askChatRemote, type ChatStage } from "@/lib/chat/client"
+import type { ChatSession } from "@/lib/chat/session"
+import { PageHeader } from "@/components/ui/PageHeader"
+import { LoadingState } from "@/components/ui/LoadingState"
+import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
+import { Composer } from "@/components/chat/Composer"
+import { SourcesToggle } from "@/components/chat/SourcesToggle"
 
-const suggestions = [
-  { label: "Compare treatments", icon: GitCompare },
-  { label: "Summarize RCT", icon: FileText },
-  { label: "Find guidelines", icon: Search },
-  { label: "Risk vs benefit", icon: Scale },
-];
+const RECENT_LIMIT = 8
 
-export default function NewChatPage() {
-  const router = useRouter();
-  const createSession = useChatStore((s) => s.createSession);
-  const addMessage = useChatStore((s) => s.addMessage);
-  const [query, setQuery] = useState("");
+function stageLabel(stage: ChatStage | null): string {
+  if (stage === "selecting") return "Reading your knowledge base…"
+  if (stage === "answering") return "Answering…"
+  return "Thinking…"
+}
 
-  function handleSubmit(text?: string) {
-    const q = (text ?? query).trim();
-    if (!q) return;
-    const sessionId = createSession(q);
-    addMessage(sessionId, { role: "user", content: q });
-    router.push(`/chat/${sessionId}`);
+/**
+ * `/chat` — the real KB-chat entry point (SP5 Task 9), replacing the fork's
+ * clinical-suggestion-chip mock. A first question is sent straight through
+ * `askChatRemote` with `sessionId: null`; the orchestrator mints and persists
+ * the session server-side, so this page only has to route to whatever
+ * `sessionId` comes back — `/chat/[id]` then loads the transcript FROM the
+ * vault rather than this page passing state along.
+ *
+ * No suggestion chips: the fork's ("Compare treatments", "Summarize RCT",
+ * "Find guidelines", "Risk vs benefit") were clinical-product leftovers,
+ * actively wrong for a general-research audience, and are deleted outright
+ * rather than replaced with another hardcoded list.
+ */
+export default function ChatEntryPage() {
+  const router = useRouter()
+  const [question, setQuestion] = useState("")
+  const [readSourcesOnly, setReadSourcesOnly] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [stage, setStage] = useState<ChatStage | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const [recentSessions, setRecentSessions] = useState<ChatSession[]>([])
+  const [loadingRecent, setLoadingRecent] = useState(true)
+  const started = useRef(false)
+
+  useEffect(() => {
+    if (started.current) return
+    started.current = true
+    ;(async () => {
+      try {
+        const vault = await getOpenVault()
+        const sessions = await listSessions(vault)
+        setRecentSessions(sessions.slice(0, RECENT_LIMIT))
+      } catch {
+        // Recent sessions are a nice-to-have; a failure to load them must
+        // never block the composer itself.
+      } finally {
+        setLoadingRecent(false)
+      }
+    })()
+  }, [])
+
+  async function handleSubmit() {
+    const q = question.trim()
+    if (!q || submitting) return
+    setSubmitting(true)
+    setError(null)
+    setStage(null)
+    try {
+      const result = await askChatRemote({ sessionId: null, question: q, readSourcesOnly }, setStage)
+      router.push(`/chat/${result.sessionId}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setSubmitting(false)
+      setStage(null)
+    }
   }
 
   return (
-    <div className="flex items-center justify-center h-full">
-      <div className="w-full max-w-[720px] px-6 text-center">
-        {/* Logo */}
-        <h1 className="font-heading text-[56px] text-espresso tracking-heading-tight">
-          SciSpark
-        </h1>
-        <p className="text-[14px] text-muted-text tracking-body mt-1">
-          AI-powered research assistant
-        </p>
+    <div className="p-7 mx-auto max-w-2xl">
+      <PageHeader title="Chat with your knowledge base" description="Ask a question grounded in your saved papers and wiki pages." />
 
-        {/* Search box */}
-        <div className="mt-8">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSubmit();
-            }}
-          >
-            <div className="bg-light-surface border border-border-warm rounded-[16px] px-5 pt-4 pb-3">
-              <div className="flex items-start gap-3">
-                <Search size={18} className="text-muted-text flex-shrink-0 mt-1" />
-                <textarea
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSubmit();
-                    }
-                  }}
-                  placeholder="Ask about papers, methods, or your research questions"
-                  rows={2}
-                  className="flex-1 text-[16px] text-espresso tracking-body placeholder:text-muted-text bg-transparent focus:outline-none resize-none"
-                />
-              </div>
-              <div className="flex items-center justify-between mt-3">
-                <div className="flex items-center gap-3 text-muted-text">
-                  <button type="button" className="hover:text-espresso transition">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
-                  </button>
-                </div>
-                <button
-                  type="submit"
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition flex-shrink-0 ${
-                    query.trim()
-                      ? "bg-orange text-white hover:bg-orange/90"
-                      : "bg-card-surface text-muted-text"
-                  }`}
-                >
-                  <ArrowUp size={18} />
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
+      <div className="flex flex-col gap-3">
+        <Composer value={question} onChange={setQuestion} onSubmit={handleSubmit} busy={submitting} />
+        <SourcesToggle value={readSourcesOnly} onChange={setReadSourcesOnly} />
 
-        {/* Suggestion chips */}
-        <div className="flex justify-center gap-2 mt-5">
-          {suggestions.map((s) => {
-            const Icon = s.icon;
-            return (
-              <button
-                key={s.label}
-                onClick={() => handleSubmit(s.label)}
-                className="bg-card-surface border border-border-warm rounded-pill px-3 py-1.5 text-[13px] text-espresso hover:bg-border-warm transition-colors flex items-center gap-1.5 whitespace-nowrap"
-              >
-                <Icon size={14} className="text-orange" />
-                {s.label}
-              </button>
-            );
-          })}
-        </div>
+        {submitting && <p className="text-[12px] text-muted-text tracking-body">{stageLabel(stage)}</p>}
+        {error && <LlmErrorMessage message={error} />}
       </div>
+
+      <section className="mt-10">
+        <h2 className="text-[13px] uppercase tracking-wide text-muted-text mb-3">Recent conversations</h2>
+        {loadingRecent ? (
+          <LoadingState label="Loading…" />
+        ) : recentSessions.length === 0 ? (
+          <p className="text-[13px] text-muted-text tracking-body">No conversations yet — ask a question to start one.</p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {recentSessions.map((s) => (
+              <li key={s.id}>
+                <Link
+                  href={`/chat/${s.id}`}
+                  className="block truncate rounded-card px-3 py-2 text-[14px] text-espresso tracking-body hover:bg-light-surface"
+                >
+                  {s.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
-  );
+  )
 }

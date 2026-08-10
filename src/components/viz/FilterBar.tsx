@@ -18,6 +18,7 @@ const TYPE_LABELS: Record<PageType, string> = {
   author: "Author",
   topic: "Topic",
   note: "Note",
+  query: "Saved answer",
   idea: "Idea",
   project: "Project",
 }

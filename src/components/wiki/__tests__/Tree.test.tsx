@@ -42,3 +42,14 @@ describe("Tree paper routing (SP3 task 3)", () => {
     expect(html).toMatch(/href="\/wiki\/concepts\/attention"/)
   })
 })
+
+describe("Tree type headings (SP5 task 1: reinstated 'query' type)", () => {
+  it("labels a 'query' section 'Saved answers', not the raw type", () => {
+    const bundle = bundleFromPages([
+      { id: "wiki/queries/what-causes-x", frontmatter: fm("query", "What causes X?") },
+    ])
+    const html = renderToStaticMarkup(<Tree bundle={bundle} />)
+    expect(html).toContain("Saved answers")
+    expect(html).not.toMatch(/>query</)
+  })
+})

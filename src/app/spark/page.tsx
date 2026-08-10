@@ -9,6 +9,11 @@ import { IdeaGallery } from "@/components/spark/IdeaGallery"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { LoadingState } from "@/components/ui/LoadingState"
 
+async function readOpenBundle(): Promise<Bundle> {
+  const vault = await getOpenVault()
+  return loadBundle(vault)
+}
+
 function SparkPageContent() {
   const searchParams = useSearchParams()
 
@@ -30,14 +35,29 @@ function SparkPageContent() {
   const [bundleError, setBundleError] = useState<string | null>(null)
 
   const refreshBundle = useCallback(async () => {
-    const vault = await getOpenVault()
-    setBundle(await loadBundle(vault))
+    setBundle(await readOpenBundle())
     setBundleError(null)
   }, [])
 
   useEffect(() => {
-    refreshBundle().catch((e) => setBundleError(e instanceof Error ? e.message : String(e)))
-  }, [refreshBundle])
+    let cancelled = false
+
+    readOpenBundle().then(
+      (loaded) => {
+        if (cancelled) return
+        setBundle(loaded)
+        setBundleError(null)
+      },
+      (error: unknown) => {
+        if (cancelled) return
+        setBundleError(error instanceof Error ? error.message : String(error))
+      },
+    )
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <div className="p-7">

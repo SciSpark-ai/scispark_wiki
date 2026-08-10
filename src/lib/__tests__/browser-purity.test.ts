@@ -70,6 +70,8 @@ const CLIENT_LIB_FILES = [
   join("src", "lib", "vault", "changeset-client.ts"),
   join("src", "lib", "vault", "remote-storage.ts"),
   join("src", "lib", "lint", "client.ts"),
+  join("src", "lib", "chat", "client.ts"),
+  join("src", "lib", "chat", "save-query-client.ts"),
   join("src", "lib", "server", "ndjson.ts"),
 ]
 
@@ -96,6 +98,16 @@ const NAMED_BANS: Record<string, string[]> = {
   // SESSION_BUDGET) stay allowed.
   "lib/companion/settings": ["loadCompanionSettings", "saveCompanionSettings"],
   "lib/trending/settings": ["loadTrendingSettings", "saveTrendingSettings", "saveDerivedAnchors"],
+  // KB chat's orchestrator runs both skills and reads the vault; client code
+  // goes through `lib/chat/client.ts` (→ /api/skills/chat). Its pure exports
+  // (types, MAX_HISTORY_TURNS) stay allowed.
+  "lib/chat/orchestrator": ["askChat"],
+  // "Save to knowledge base" applies a changeset (+ index/log writes) directly
+  // against a VaultStorage — multiple non-atomic network round-trips over a
+  // RemoteVaultStorage, same hazard `applyChangeset`/`revertChangeset` guard
+  // against. Client code goes through `lib/chat/save-query-client.ts` (→
+  // /api/skills/chat/save), which applies it atomically server-side.
+  "lib/chat/save-query": ["saveAnswerAsQuery"],
 }
 
 interface Violation {

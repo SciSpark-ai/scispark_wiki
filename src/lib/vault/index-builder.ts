@@ -4,7 +4,7 @@ import type { Bundle } from "./bundle"
 const TYPE_HEADINGS: Record<string, string> = {
   paper: "Papers", concept: "Concepts", method: "Methods", finding: "Findings",
   comparison: "Comparisons", author: "Authors", topic: "Topics", note: "Notes",
-  idea: "Ideas", project: "Projects",
+  query: "Saved answers", idea: "Ideas", project: "Projects",
 }
 
 export function buildIndexMarkdown(bundle: Bundle): string {

@@ -13,6 +13,7 @@ import {
   findDuplicateAuthors,
   runDeterministicChecks,
 } from "../checks"
+import { saveAnswerAsQuery } from "../../chat/save-query"
 
 const fm = (type: string, title: string, extra: Partial<Frontmatter> = {}): Frontmatter => ({
   type,
@@ -72,7 +73,36 @@ describe("findOrphans", () => {
   })
 
   it("does not flag reserved files even if present in bundle.pages by some other construction path", () => {
-    const b = bundleFromPages([{ id: "log", path: "log.md", frontmatter: fm("note", "Log"), body: "" }])
+    // Deliberately NOT an orphan-exempt type, so this asserts the reserved-file
+    // guard rather than passing for free via ORPHAN_EXEMPT_TYPES.
+    const b = bundleFromPages([{ id: "log", path: "log.md", frontmatter: fm("concept", "Log"), body: "" }])
+    expect(findOrphans(b)).toEqual([])
+  })
+
+  it("does not flag query/note pages (leaf-by-design: nothing ever links at them)", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/queries/q1.md", serializeDocument(fm("query", "Q One"), "## Q One\n\nAn answer."))
+    await s.write("wiki/notes/n1.md", serializeDocument(fm("note", "N One"), "A thought.\n\n> quoted."))
+    const b = await loadBundle(s)
+    expect(findOrphans(b)).toEqual([])
+  })
+
+  it("a page saved by saveAnswerAsQuery produces no orphan finding", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/papers/p1.md", serializeDocument(fm("paper", "Paper One"), "Abstract."))
+    const { pageId } = await saveAnswerAsQuery(s, {
+      question: "What is a diffusion model?",
+      answer: "It is a generative model.",
+      sessionId: "chat_1",
+      citedPageIds: ["wiki/papers/p1"],
+      today: "2026-07-28",
+    })
+
+    const b = await loadBundle(s)
+    expect(b.pages.has(pageId)).toBe(true)
+    // `related[]` contributes no edges (bundle.links is body-wikilinks only),
+    // so without the exemption every saved answer would be a permanent finding.
+    expect(b.links.some((l) => l.to === pageId)).toBe(false)
     expect(findOrphans(b)).toEqual([])
   })
 })
@@ -144,6 +174,13 @@ describe("findBadFrontmatter", () => {
   it("clean bundle: well-formed frontmatter has no findings", async () => {
     const s = new MemoryVaultStorage()
     await s.write("wiki/concepts/a.md", serializeDocument(fm("concept", "A"), "Body."))
+    const b = await loadBundle(s)
+    expect(findBadFrontmatter(b)).toEqual([])
+  })
+
+  it("does not flag a well-formed 'query' page as an unknown type (SP5 task 1: reinstated query type)", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/queries/what-causes-x.md", serializeDocument(fm("query", "What causes X?"), "Body."))
     const b = await loadBundle(s)
     expect(findBadFrontmatter(b)).toEqual([])
   })
