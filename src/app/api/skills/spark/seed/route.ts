@@ -1,5 +1,6 @@
 import { jsonSkillRoute } from "@/lib/server/skill-route"
 import { saveSeed, type Seed } from "@/lib/spark/quick"
+import type { MutationWarning } from "@/lib/vault/mutations"
 
 export interface SeedRouteInput {
   seed: Seed
@@ -8,6 +9,7 @@ export interface SeedRouteInput {
 export interface SeedRouteResult {
   changesetId: string
   path: string
+  warnings?: MutationWarning[]
 }
 
 /**

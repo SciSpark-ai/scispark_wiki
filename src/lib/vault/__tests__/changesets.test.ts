@@ -9,6 +9,9 @@ import {
   ChangesetConflictError,
   ChangesetInvalidError,
   ChangesetApplyError,
+  ChangesetRevertError,
+  classifyChangeset,
+  parseChangeset,
 } from "../changesets"
 import type { Changeset } from "../types"
 
@@ -87,7 +90,54 @@ class ThrowOnChangesetPathStorage implements VaultStorage {
   }
 }
 
+/** Simulates a storage backend reporting an audit write failure after the file
+ * became visible, so apply rollback must explicitly remove the record too. */
+class WriteThenThrowOnChangesetPathStorage implements VaultStorage {
+  private inner = new MemoryVaultStorage()
+
+  read(path: string): Promise<string | null> {
+    return this.inner.read(path)
+  }
+  async write(path: string, content: string): Promise<void> {
+    await this.inner.write(path, content)
+    if (path.startsWith(".scispark/changesets/")) {
+      throw new Error("simulated post-write audit failure")
+    }
+  }
+  readBinary(path: string): Promise<Uint8Array | null> {
+    return this.inner.readBinary(path)
+  }
+  writeBinary(path: string, data: Uint8Array): Promise<void> {
+    return this.inner.writeBinary(path, data)
+  }
+  delete(path: string): Promise<void> {
+    return this.inner.delete(path)
+  }
+  list(prefix?: string): Promise<string[]> {
+    return this.inner.list(prefix)
+  }
+  seed(path: string, content: string): Promise<void> {
+    return this.inner.write(path, content)
+  }
+}
+
 describe("applyChangeset", () => {
+  it("serializes concurrent changesets against the same vault instance", async () => {
+    const storage = new MemoryVaultStorage()
+    const first = cs(
+      [{ path: "wiki/concepts/a.md", before: null, after: "first" }],
+      "cs-concurrent-first",
+    )
+    const second = cs(
+      [{ path: "wiki/concepts/a.md", before: "first", after: "second" }],
+      "cs-concurrent-second",
+    )
+
+    await expect(Promise.all([applyChangeset(storage, first), applyChangeset(storage, second)]))
+      .resolves.toEqual([undefined, undefined])
+    expect(await storage.read("wiki/concepts/a.md")).toBe("second")
+  })
+
   it("applies create + modify atomically and persists the record", async () => {
     const s = new MemoryVaultStorage()
     await s.write("wiki/concepts/a.md", "old")
@@ -137,6 +187,33 @@ describe("applyChangeset", () => {
       { path: ".scispark/changesets/cs-x.json", before: null, after: "{}" },
     ]))).rejects.toThrow(ChangesetInvalidError)
     expect(await s.read(".scispark/changesets/cs-x.json")).toBeNull()
+  })
+
+  it("rejects every private .scispark path, including the settings file", async () => {
+    const storage = new MemoryVaultStorage()
+    await storage.write(".scispark/settings.json", "original-secret-settings")
+
+    await expect(
+      applyChangeset(
+        storage,
+        cs([{ path: ".scispark/settings.json", before: "original-secret-settings", after: "attacker-content" }]),
+      ),
+    ).rejects.toThrow(ChangesetInvalidError)
+    expect(await storage.read(".scispark/settings.json")).toBe("original-secret-settings")
+  })
+
+  it("rejects absolute, parent-traversing, and backslash-separated paths", async () => {
+    const storage = new MemoryVaultStorage()
+    for (const path of [
+      "/tmp/escape.md",
+      "wiki/../purpose.md",
+      "wiki\\..\\purpose.md",
+      "wiki\\concepts\\odd.md",
+    ]) {
+      await expect(applyChangeset(storage, cs([{ path, before: null, after: "bad" }]))).rejects.toThrow(
+        ChangesetInvalidError,
+      )
+    }
   })
 
   it("rejects applying a changeset whose id already has a persisted record, before applying any changes", async () => {
@@ -216,6 +293,18 @@ describe("applyChangeset", () => {
     // No audit record should exist
     expect(await loadChangeset(s, c.id)).toBeNull()
   })
+
+  it("removes an audit record that became visible before its write reported failure", async () => {
+    const storage = new WriteThenThrowOnChangesetPathStorage()
+    await storage.seed("wiki/concepts/a.md", "old")
+    const changeset = cs([
+      { path: "wiki/concepts/a.md", before: "old", after: "new" },
+    ])
+
+    await expect(applyChangeset(storage, changeset)).rejects.toThrow(ChangesetApplyError)
+    expect(await storage.read("wiki/concepts/a.md")).toBe("old")
+    expect(await storage.read(`.scispark/changesets/${changeset.id}.json`)).toBeNull()
+  })
 })
 
 describe("revertChangeset", () => {
@@ -242,13 +331,18 @@ describe("revertChangeset", () => {
     expect(await s.read("wiki/concepts/a.md")).toBe("someone-elses-work")
   })
 
-  it("force:true skips the guard and reverts anyway", async () => {
-    const s = new MemoryVaultStorage()
-    const c = cs([{ path: "wiki/concepts/a.md", before: "original", after: "would-be-new" }])
-    await s.write("wiki/concepts/a.md", "someone-elses-work")
+  it("rolls back already-reverted files when a later revert write fails", async () => {
+    const storage = new ThrowingWriteStorage(2)
+    await storage.seed("wiki/concepts/a.md", "a-new")
+    await storage.seed("wiki/concepts/b.md", "b-new")
+    const changeset = cs([
+      { path: "wiki/concepts/a.md", before: "a-old", after: "a-new" },
+      { path: "wiki/concepts/b.md", before: "b-old", after: "b-new" },
+    ])
 
-    await revertChangeset(s, c, { force: true })
-    expect(await s.read("wiki/concepts/a.md")).toBe("original")
+    await expect(revertChangeset(storage, changeset)).rejects.toThrow(ChangesetRevertError)
+    expect(await storage.read("wiki/concepts/a.md")).toBe("a-new")
+    expect(await storage.read("wiki/concepts/b.md")).toBe("b-new")
   })
 })
 
@@ -256,5 +350,119 @@ describe("makeChangesetId", () => {
   it("generates an id with an 8 hex char suffix", () => {
     const id = makeChangesetId()
     expect(id).toMatch(/^cs-\d+-[0-9a-f]{8}$/)
+  })
+})
+
+describe("classifyChangeset", () => {
+  it("reports applied when every current file matches the persisted after-state", async () => {
+    const storage = new MemoryVaultStorage()
+    const changeset = cs([
+      { path: "wiki/concepts/a.md", before: "old", after: "new" },
+      { path: "wiki/concepts/b.md", before: null, after: "created" },
+    ])
+    await storage.write("wiki/concepts/a.md", "new")
+    await storage.write("wiki/concepts/b.md", "created")
+
+    await expect(classifyChangeset(storage, changeset)).resolves.toEqual({
+      status: "applied",
+      divergedPaths: [],
+    })
+  })
+
+  it("reports reverted when every current file matches the persisted before-state", async () => {
+    const storage = new MemoryVaultStorage()
+    const changeset = cs([
+      { path: "wiki/concepts/a.md", before: "old", after: "new" },
+      { path: "wiki/concepts/b.md", before: null, after: "created" },
+    ])
+    await storage.write("wiki/concepts/a.md", "old")
+
+    await expect(classifyChangeset(storage, changeset)).resolves.toEqual({
+      status: "reverted",
+      divergedPaths: [],
+    })
+  })
+
+  it("reports diverged and names every path that blocks a safe undo", async () => {
+    const storage = new MemoryVaultStorage()
+    const changeset = cs([
+      { path: "wiki/concepts/a.md", before: "a-old", after: "a-new" },
+      { path: "wiki/concepts/b.md", before: "b-old", after: "b-new" },
+      { path: "wiki/concepts/c.md", before: null, after: "c-new" },
+    ])
+    await storage.write("wiki/concepts/a.md", "a-new")
+    await storage.write("wiki/concepts/b.md", "independent edit")
+    // c.md is already back at its before-state, creating a mixed state.
+
+    await expect(classifyChangeset(storage, changeset)).resolves.toEqual({
+      status: "diverged",
+      divergedPaths: ["wiki/concepts/b.md", "wiki/concepts/c.md"],
+    })
+  })
+})
+
+describe("loadChangeset", () => {
+  it("rejects an id that could traverse outside the changeset audit directory", async () => {
+    const storage = new MemoryVaultStorage()
+    await storage.write(".scispark/settings.json", "secret")
+
+    await expect(loadChangeset(storage, "../settings")).rejects.toThrow(ChangesetInvalidError)
+  })
+
+  it("treats malformed or structurally incomplete audit records as corrupt", async () => {
+    const storage = new MemoryVaultStorage()
+    await storage.write(".scispark/changesets/broken-json.json", "{ nope")
+    await storage.write(
+      ".scispark/changesets/broken-shape.json",
+      JSON.stringify({ id: "broken-shape", changes: [{ path: 7 }] }),
+    )
+
+    await expect(loadChangeset(storage, "broken-json")).resolves.toBeNull()
+    await expect(loadChangeset(storage, "broken-shape")).resolves.toBeNull()
+  })
+
+  it("treats persisted records targeting private settings as corrupt", async () => {
+    const storage = new MemoryVaultStorage()
+    await storage.write(
+      ".scispark/changesets/forged-settings.json",
+      JSON.stringify({
+        id: "forged-settings",
+        skill: "forged",
+        model: "none",
+        timestamp: "2026-08-10T12:00:00.000Z",
+        changes: [
+          {
+            path: ".scispark/settings.json",
+            before: "attacker replacement",
+            after: "current secret",
+          },
+        ],
+      }),
+    )
+
+    await expect(loadChangeset(storage, "forged-settings")).resolves.toBeNull()
+  })
+
+  it("rejects unknown root and file-change fields at the runtime boundary", () => {
+    const base = cs([{ path: "wiki/concepts/a.md", before: null, after: "a" }])
+
+    expect(() => parseChangeset({ ...base, force: true })).toThrow(ChangesetInvalidError)
+    expect(() =>
+      parseChangeset({
+        ...base,
+        changes: [{ ...base.changes[0], sourcePath: ".scispark/settings.json" }],
+      }),
+    ).toThrow(ChangesetInvalidError)
+  })
+
+  it("requires a bounded id and a complete ISO-8601 timestamp", () => {
+    const base = cs([{ path: "wiki/concepts/a.md", before: null, after: "a" }])
+
+    expect(() => parseChangeset({ ...base, id: "x".repeat(129) })).toThrow(
+      ChangesetInvalidError,
+    )
+    expect(() => parseChangeset({ ...base, timestamp: "2026-08-10" })).toThrow(
+      ChangesetInvalidError,
+    )
   })
 })

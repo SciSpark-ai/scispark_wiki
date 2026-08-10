@@ -1,6 +1,7 @@
 import { jsonSkillRoute } from "@/lib/server/skill-route"
 import { applyLintFix } from "@/lib/lint/run"
 import type { LintFixOutcome } from "@/lib/lint/types"
+import type { MutationWarning } from "@/lib/vault/mutations"
 
 export interface LintFixRouteInput {
   reviewId: string
@@ -9,6 +10,7 @@ export interface LintFixRouteInput {
 export interface LintFixRouteResult {
   changesetId: string
   outcome: LintFixOutcome
+  warnings?: MutationWarning[]
 }
 
 /**

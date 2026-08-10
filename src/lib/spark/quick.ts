@@ -3,7 +3,8 @@ import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
 import type { Changeset, FileChange } from "../vault/types"
-import { applyChangeset, makeChangesetId } from "../vault/changesets"
+import { makeChangesetId } from "../vault/changesets"
+import { commitChangeset, type MutationWarning } from "../vault/mutations"
 import { loadBundle, type Bundle } from "../vault/bundle"
 import { defineSkill, type SkillDefinition } from "../skills/types"
 import { runSkill } from "../skills/runner"
@@ -260,7 +261,7 @@ export async function saveSeed(
   storage: VaultStorage,
   seed: Seed,
   opts: { today: string; now?: () => Date },
-): Promise<{ changesetId: string; path: string }> {
+): Promise<{ changesetId: string; path: string; warnings?: MutationWarning[] }> {
   const now = opts.now ?? (() => new Date())
 
   const draft = buildIdeaPage({
@@ -282,12 +283,19 @@ export async function saveSeed(
     changes: [change],
   }
 
-  await applyChangeset(storage, changeset)
+  const mutation = await commitChangeset(storage, changeset, {
+    op: "spark-save",
+    summary: draft.path.slice(0, -3),
+  })
   await logEvent(
     storage,
     { type: "spark_run", mode: "quick", outcome: "saved", ideaPageId: draft.path.slice(0, -3) },
     now,
   )
 
-  return { changesetId: changeset.id, path: draft.path }
+  return {
+    changesetId: changeset.id,
+    path: draft.path,
+    ...(mutation.warnings.length > 0 ? { warnings: mutation.warnings } : {}),
+  }
 }

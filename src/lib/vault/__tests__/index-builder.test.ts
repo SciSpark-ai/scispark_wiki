@@ -42,4 +42,17 @@ describe("index + log", () => {
     expect(log).toContain("## [2026-07-11] ingest | Paper One")
     expect(log.indexOf("2026-07-11")).toBeLessThan(log.indexOf("2026-07-12"))
   })
+
+  it("serializes concurrent log appends without losing either entry", async () => {
+    const storage = new MemoryVaultStorage()
+
+    await Promise.all([
+      appendLog(storage, { date: "2026-07-11", op: "create", summary: "first" }),
+      appendLog(storage, { date: "2026-07-12", op: "update", summary: "second" }),
+    ])
+
+    const log = (await storage.read("log.md")) as string
+    expect(log).toContain("create | first")
+    expect(log).toContain("update | second")
+  })
 })

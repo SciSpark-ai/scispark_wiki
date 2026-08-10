@@ -14,8 +14,13 @@ import { loadRouting, validateFilesAgainstRouting } from "../wiki/schema-routing
 import { loadBundle } from "../vault/bundle"
 import { parseDocument } from "../vault/frontmatter"
 import { RESERVED_FILES, type Changeset, type FileChange, type Frontmatter } from "../vault/types"
-import { applyChangeset, loadChangeset, makeChangesetId, revertChangeset } from "../vault/changesets"
-import { appendLog, writeIndex } from "../vault/index-builder"
+import { makeChangesetId } from "../vault/changesets"
+import {
+  commitChangeset,
+  undoChangeset,
+  type ChangesetMutationResult,
+  type MutationWarning,
+} from "../vault/mutations"
 import {
   buildAnalysisContext,
   indexSection,
@@ -80,6 +85,7 @@ export type IngestOutput =
       changesetId: string
       pages: { created: string[]; updated: string[] }
       reviews: number
+      warnings?: MutationWarning[]
       /** Not set by the skill itself (the harness owns run ids); callers may copy runSkill's runId here. */
       runId?: string
     }
@@ -547,10 +553,11 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
       timestamp: nowIso,
       changes,
     }
-    await applyChangeset(storage, changeset)
-
-    await writeIndex(storage, await loadBundle(storage))
-    await appendLog(storage, { date: today, op: "ingest", summary: paper.title })
+    const mutation = await commitChangeset(storage, changeset, {
+      timestamp: nowIso,
+      op: "ingest",
+      summary: paper.title,
+    })
 
     for (let i = 0; i < generation.reviews.length; i++) {
       const review = generation.reviews[i]
@@ -573,6 +580,7 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
       changesetId: changeset.id,
       pages: { created, updated },
       reviews: generation.reviews.length,
+      ...(mutation.warnings.length > 0 ? { warnings: mutation.warnings } : {}),
     }
   },
 })
@@ -588,15 +596,11 @@ export async function undoIngest(
   storage: VaultStorage,
   changesetId: string,
   opts: { now?: () => Date } = {},
-): Promise<void> {
-  const changeset = await loadChangeset(storage, changesetId)
-  if (changeset === null) throw new Error(`changeset not found: ${changesetId}`)
-
-  await revertChangeset(storage, changeset)
-  await writeIndex(storage, await loadBundle(storage))
-
+): Promise<ChangesetMutationResult> {
   const now = opts.now ?? (() => new Date())
-  await appendLog(storage, { date: now().toISOString().slice(0, 10), op: "undo", summary: changesetId })
+  const mutation = await undoChangeset(storage, changesetId, {
+    timestamp: now().toISOString(),
+  })
 
   const reviewPrefix = ".scispark/review/"
   const archivedPrefix = `${reviewPrefix}archived/`
@@ -609,4 +613,6 @@ export async function undoIngest(
     await storage.write(`${archivedPrefix}${name}`, content)
     await storage.delete(path)
   }
+
+  return mutation
 }

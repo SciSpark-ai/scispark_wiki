@@ -2,7 +2,8 @@ import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
 import type { Changeset, FileChange } from "../vault/types"
-import { applyChangeset, makeChangesetId } from "../vault/changesets"
+import { makeChangesetId } from "../vault/changesets"
+import { commitChangeset, type MutationWarning } from "../vault/mutations"
 import { runSkill } from "../skills/runner"
 import { logEvent } from "../events/log"
 import { PRICES } from "../llm/pricing"
@@ -32,6 +33,7 @@ export interface DeepSparkResult {
   outcome: DeepSparkOutcome
   costUsd: number
   phaseCosts: Record<string, number>
+  warnings?: MutationWarning[]
 }
 
 export interface DeepSparkArgs {
@@ -357,11 +359,19 @@ async function runDeepSparkUncached(args: DeepSparkArgs): Promise<DeepSparkResul
     changes: [change],
   }
 
-  await applyChangeset(args.storage, changeset)
+  const mutation = await commitChangeset(args.storage, changeset, {
+    op: "spark-save",
+    summary: path.slice(0, -3),
+  })
 
   const ideaPageId = path.slice(0, -3)
   const outcome: DeepSparkOutcome = { kind: "idea", ideaPageId, changesetId: changeset.id, status: assembled.status }
   await logOutcome("idea", ideaPageId)
 
-  return { outcome, costUsd, phaseCosts }
+  return {
+    outcome,
+    costUsd,
+    phaseCosts,
+    ...(mutation.warnings.length > 0 ? { warnings: mutation.warnings } : {}),
+  }
 }

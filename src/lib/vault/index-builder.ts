@@ -7,6 +7,8 @@ const TYPE_HEADINGS: Record<string, string> = {
   query: "Saved answers", idea: "Ideas", project: "Projects",
 }
 
+const logWriteQueues = new WeakMap<VaultStorage, Promise<void>>()
+
 export function buildIndexMarkdown(bundle: Bundle): string {
   const byType = new Map<string, Array<{ slug: string; title: string }>>()
   for (const page of bundle.pages.values()) {
@@ -33,7 +35,15 @@ export async function appendLog(
   storage: VaultStorage,
   entry: { date: string; op: string; summary: string },
 ): Promise<void> {
-  const existing = (await storage.read("log.md")) ?? "# Log\n"
-  const line = `\n## [${entry.date}] ${entry.op} | ${entry.summary}\n`
-  await storage.write("log.md", existing.trimEnd() + "\n" + line.trimStart())
+  const previous = logWriteQueues.get(storage) ?? Promise.resolve()
+  const current = previous.then(async () => {
+    const existing = (await storage.read("log.md")) ?? "# Log\n"
+    const line = `\n## [${entry.date}] ${entry.op} | ${entry.summary}\n`
+    await storage.write("log.md", existing.trimEnd() + "\n" + line.trimStart())
+  })
+  logWriteQueues.set(
+    storage,
+    current.then(() => undefined, () => undefined),
+  )
+  await current
 }

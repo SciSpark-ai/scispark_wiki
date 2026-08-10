@@ -1,7 +1,8 @@
 import type { VaultStorage } from "../vault/storage"
 import { loadBundle, type Bundle } from "../vault/bundle"
-import { applyChangeset, loadChangeset, makeChangesetId } from "../vault/changesets"
+import { loadChangeset, makeChangesetId } from "../vault/changesets"
 import { writeIndex } from "../vault/index-builder"
+import { commitChangeset, type MutationWarning } from "../vault/mutations"
 import type { Changeset } from "../vault/types"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
@@ -315,7 +316,7 @@ function matchFreshFindingByIdentity(findings: LintFinding[], item: ReviewItem):
 export async function applyLintFix(
   storage: VaultStorage,
   reviewId: string,
-): Promise<{ changesetId: string; outcome: LintFixOutcome }> {
+): Promise<{ changesetId: string; outcome: LintFixOutcome; warnings?: MutationWarning[] }> {
   const item = await findReviewItem(storage, reviewId)
   if (!item) throw new Error(`review item not found: ${reviewId}`)
   if (!item.fix && !item.fixes) throw new Error(`review item ${reviewId} has no fix to apply`)
@@ -345,11 +346,18 @@ export async function applyLintFix(
       timestamp: new Date().toISOString(),
       changes: match.fixes,
     }
-    await applyChangeset(storage, changeset)
+    const mutation = await commitChangeset(storage, changeset, {
+      op: "lint-fix",
+      summary: reviewId,
+    })
     if ((await loadChangeset(storage, changeset.id)) === null) {
       throw new Error(`applyChangeset for ${changeset.id} did not persist a changeset record`)
     }
-    return { changesetId: changeset.id, outcome: "applied" }
+    return {
+      changesetId: changeset.id,
+      outcome: "applied",
+      ...(mutation.warnings.length > 0 ? { warnings: mutation.warnings } : {}),
+    }
   }
 
   // Every OTHER lintKind's mechanical fix is single-file (index-drift and
@@ -403,12 +411,19 @@ export async function applyLintFix(
     timestamp: new Date().toISOString(),
     changes: [change],
   }
-  await applyChangeset(storage, changeset)
+  const mutation = await commitChangeset(storage, changeset, {
+    op: "lint-fix",
+    summary: reviewId,
+  })
   // Confirm the record really landed (applyChangeset writes it as part of the
   // same atomic apply) — surfaces a clearer error than a later loadChangeset(null).
   if ((await loadChangeset(storage, changeset.id)) === null) {
     throw new Error(`applyChangeset for ${changeset.id} did not persist a changeset record`)
   }
 
-  return { changesetId: changeset.id, outcome: "applied" }
+  return {
+    changesetId: changeset.id,
+    outcome: "applied",
+    ...(mutation.warnings.length > 0 ? { warnings: mutation.warnings } : {}),
+  }
 }
