@@ -41,6 +41,7 @@ Branch: `codex/sp6-projects`, created from merged PR 1 on updated `main`.
    real API clients and honest loading/error/conflict states.
 6. [x] Warn once about the three prototype localStorage keys; clear only after
    confirmation and do not migrate them.
+7. [x] Run the deterministic gate and publish draft PR #20 for review.
 
 Acceptance: stable slugs survive rename, collisions suffix safely, custom schema
 routing works, stale revisions return `409`, delete-and-unlink is one recoverable

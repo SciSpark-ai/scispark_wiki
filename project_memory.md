@@ -55,6 +55,9 @@
 - The PR 2 deterministic gate passed on 2026-08-11: 2,018 tests passed with 15
   environment-gated skips, `npx tsc --noEmit` passed, `npm run lint` passed,
   and the Next.js production build generated all 52 pages successfully.
+- SP6 Projects implementation commit `1c3fe2f` is published in draft PR #20
+  from `codex/sp6-projects` to `main`. PR 3 must start from updated `main` only
+  after PR #20 is reviewed and merged.
 - The pre-merge audit hardened full chat-session shape validation and serialized
   same-session turns in the local runtime so concurrent tabs cannot lose transcript
   updates.
