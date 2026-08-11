@@ -27,7 +27,7 @@ interface InspectorProps {
  * that's a defensive fallback, not the primary contract.
  *
  * Esc + click-away both call `onClose`, mirroring the listener hygiene
- * pattern in src/components/papers/SaveToProjectMenu.tsx (paired
+ * popover pattern (paired
  * add/remove on every mount — this panel has no separate `open` prop of
  * its own since VizWorkspace only ever mounts it while selected).
  *
