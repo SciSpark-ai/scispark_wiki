@@ -1,5 +1,6 @@
 import type { VaultStorage } from "./storage"
 import type { Changeset, FileChange } from "./types"
+import { isSafeVaultRelativePath } from "./safe-path"
 import { RESERVED_FILES } from "./types"
 
 const CHANGESET_AUDIT_PREFIX = ".scispark/changesets/"
@@ -94,21 +95,6 @@ function isNullableString(value: unknown): value is string | null {
 function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
   const keys = Object.keys(value)
   return keys.length === expected.length && expected.every((key) => keys.includes(key))
-}
-
-function isSafeVaultRelativePath(path: string): boolean {
-  if (
-    path.length > 1024 ||
-    path.trim() !== path ||
-    path.startsWith("/") ||
-    path.includes("\\") ||
-    /^[A-Za-z]:[\\/]/.test(path) ||
-    /[\u0000-\u001F\u007F]/.test(path)
-  ) {
-    return false
-  }
-  const segments = path.split("/")
-  return segments.length > 0 && segments.every((segment) => segment !== "" && segment !== "." && segment !== "..")
 }
 
 /** Runtime boundary for client-submitted and persisted changesets. */

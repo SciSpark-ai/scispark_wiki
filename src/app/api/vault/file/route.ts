@@ -1,5 +1,6 @@
 import { resolve } from "node:path"
 import { getServerVault } from "@/lib/server/vault"
+import { isSafeVaultRelativePath } from "@/lib/vault/safe-path"
 
 /**
  * LLM settings (API keys) must be unreachable through the generic vault file
@@ -10,8 +11,10 @@ import { getServerVault } from "@/lib/server/vault"
  * redaction (or wipe the keys outright) by reading/writing/deleting the file
  * directly (M11 Task 10 carry-forward; DELETE guard added in final review —
  * it had been overlooked even though this comment always claimed the route
- * "rejects" the path). Every other `.scispark/*` file (events, usage, run
- * records, etc.) is unaffected.
+ * "rejects" the path). Changeset audit records remain readable for backup and
+ * review compatibility, but generic clients cannot write or delete them; the
+ * server mutation coordinator is their only writer. Other `.scispark/*` app
+ * data (events, usage, run records, etc.) is unaffected.
  *
  * The guard must agree with how storage actually resolves a path, not with a
  * second independent normalizer. A prior version used `posix.normalize()`,
@@ -37,9 +40,15 @@ import { getServerVault } from "@/lib/server/vault"
  */
 const SENTINEL_ROOT = resolve("/__vault_root__")
 const PROTECTED_ABS = resolve(SENTINEL_ROOT, ".scispark/settings.json").toLowerCase()
+const CHANGESETS_ABS = resolve(SENTINEL_ROOT, ".scispark/changesets").toLowerCase()
 
 function isProtectedPath(path: string): boolean {
   return resolve(SENTINEL_ROOT, path).toLowerCase() === PROTECTED_ABS
+}
+
+function isChangesetAuditPath(path: string): boolean {
+  const resolved = resolve(SENTINEL_ROOT, path).toLowerCase()
+  return resolved === CHANGESETS_ABS || resolved.startsWith(`${CHANGESETS_ABS}/`)
 }
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -54,12 +63,17 @@ function requirePath(req: Request): string | null {
   return path && path.length > 0 ? path : null
 }
 
+function invalidPathResponse(): Response {
+  return jsonResponse(400, { error: "path must be a safe vault-relative path" })
+}
+
 export async function GET(req: Request): Promise<Response> {
   const path = requirePath(req)
   if (!path) return jsonResponse(400, { error: "path is required" })
   if (isProtectedPath(path)) {
     return jsonResponse(403, { error: "settings are managed via /api/settings" })
   }
+  if (!isSafeVaultRelativePath(path)) return invalidPathResponse()
 
   try {
     const storage = await getServerVault()
@@ -81,6 +95,10 @@ export async function PUT(req: Request): Promise<Response> {
   if (!path) return jsonResponse(400, { error: "path is required" })
   if (isProtectedPath(path)) {
     return jsonResponse(403, { error: "settings are managed via /api/settings" })
+  }
+  if (!isSafeVaultRelativePath(path)) return invalidPathResponse()
+  if (isChangesetAuditPath(path)) {
+    return jsonResponse(403, { error: "changeset audit records are server-managed" })
   }
 
   try {
@@ -105,6 +123,10 @@ export async function DELETE(req: Request): Promise<Response> {
   if (!path) return jsonResponse(400, { error: "path is required" })
   if (isProtectedPath(path)) {
     return jsonResponse(403, { error: "settings are managed via /api/settings" })
+  }
+  if (!isSafeVaultRelativePath(path)) return invalidPathResponse()
+  if (isChangesetAuditPath(path)) {
+    return jsonResponse(403, { error: "changeset audit records are server-managed" })
   }
 
   try {

@@ -76,4 +76,27 @@ describe("vault zip round-trip", () => {
     expect(await dst.read(".scispark/settings.json")).toBe(destinationSettings)
     expect(await dst.read("purpose.md")).toBe("# Shared\n")
   })
+
+  it("rejects every unsafe archive path before writing any entry", async () => {
+    const dst = new MemoryVaultStorage()
+    const crafted = zipSync({
+      "wiki/safe.md": strToU8("safe"),
+      "../outside.md": strToU8("unsafe"),
+    })
+
+    await expect(importVaultZip(dst, crafted)).rejects.toThrow(/unsafe vault archive path/)
+    expect(await dst.list()).toEqual([])
+  })
+
+  it("skips case-variant settings paths on import", async () => {
+    const dst = new MemoryVaultStorage()
+    const crafted = zipSync({
+      ".scispark/SETTINGS.json": strToU8("attacker settings"),
+      "wiki/safe.md": strToU8("safe"),
+    })
+
+    await expect(importVaultZip(dst, crafted)).resolves.toEqual({ files: 1 })
+    expect(await dst.read(".scispark/SETTINGS.json")).toBeNull()
+    expect(await dst.read("wiki/safe.md")).toBe("safe")
+  })
 })

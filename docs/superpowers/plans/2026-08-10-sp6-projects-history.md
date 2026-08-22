@@ -76,17 +76,20 @@ lists, and no primary navigation route is mock-backed.
 
 Branch: create from updated `main` only after PR 3 merges.
 
-1. Add Playwright and a disposable-vault fixture.
-2. Bind preview scripts to loopback and enforce Host/Origin checks for mutations.
-3. Cover create project → add paper → create/edit note → scoped chat → History →
+1. [x] Add Playwright and a disposable-vault fixture.
+2. [x] Bind preview scripts to loopback and enforce Host/Origin checks for mutations.
+3. [x] Cover create project → add paper → create/edit note → scoped chat → History →
    undo, plus conflicts, corruption, deletion, and legacy-data dismissal.
-4. Verify export → empty-vault import restores project/chat/wiki state.
-5. Run unit/component tests, TypeScript, ESLint, production build, and E2E.
-6. Prepare clone/install/run, vault location, backup, security, and known-limit
+4. [x] Verify export → empty-vault import restores project/chat/wiki state.
+5. [x] Run the deterministic gate: 2,057 tests passed with 15
+   environment-gated skips, TypeScript and ESLint passed, the production build
+   generated all 52 routes, and all 4 disposable-vault Playwright scenarios
+   passed.
+6. [x] Prepare clone/install/run, vault location, backup, security, and known-limit
    documentation.
-7. With explicit approval, run paid-provider project-chat and PDF-reader gates
+7. [ ] With explicit approval, run paid-provider project-chat and PDF-reader gates
    against the exact release commit.
-8. With explicit approval, tag and publish GitHub prerelease
+8. [ ] With explicit approval, tag and publish GitHub prerelease
    `v0.1.0-preview.1`.
 
 Desktop packaging and npm-registry publication remain deferred.
