@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/Button"
 import { Card } from "@/components/ui/Card"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { LoadingState } from "@/components/ui/LoadingState"
+import { ProjectMembershipControl } from "@/components/projects/ProjectMembershipControl"
 
 type LoadState =
   | { status: "loading" }
@@ -396,6 +397,9 @@ function PaperPageContent() {
           <>
             <div
               ref={contentRef}
+              data-note-source="paper"
+              data-note-source-id={sourcePageId}
+              data-note-source-label={load.paper.title}
               onMouseUp={handleSelection}
               onKeyUp={handleSelection}
               className={`mx-auto max-w-3xl p-7 ${COMPANION_CLEARANCE}`}
@@ -417,6 +421,8 @@ function PaperPageContent() {
                 onUndo={handleUndo}
                 onReadFullText={handleReadFullText}
               />
+
+              {page && <ProjectMembershipControl pageId={page.id} />}
 
               {load.pageState.state === "saved" && (
                 <>

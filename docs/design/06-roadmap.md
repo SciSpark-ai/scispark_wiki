@@ -34,18 +34,18 @@ The six-part refresh turns the foundation into one coherent product.
 | SP3 | Knowledge-base dashboard and visualization workspace | Built |
 | SP4 | Academia Right Now trending redesign | Built |
 | SP5 | Real grounded knowledge-base chat and saved query pages | Built and merged in PR #18 |
-| SP6 | Real Projects plus conversation/change History and global undo | Foundation in progress |
+| SP6 | Real Projects plus conversation/change History and global undo | Foundation merged; Projects implemented in PR 2 |
 
 ## Immediate execution order
 
-### 1. Establish the SP6 foundation
+### 1. Establish the SP6 foundation — complete
 
 - Validate changesets and persisted audit records strictly.
 - Serialize mutations, rebuild derived data, and report post-commit warnings.
 - Derive applied/reverted/diverged state from current contents.
 - Expose content-free History summaries and persisted-ID-only undo.
 
-### 2. Implement real Projects
+### 2. Implement real Projects — implemented, awaiting review
 
 - Add the vault-backed project domain and focused tests.
 - Replace `/projects`, `/projects/[id]`, Save-to-Project, and project notes.
@@ -68,7 +68,7 @@ The six-part refresh turns the foundation into one coherent product.
   traversal protection, corrupted-file behavior, and backup recovery.
 - Re-run cost-bearing provider gates with explicit approval against the exact
   release commit.
-- Publish an npm-installed source checkout as a GitHub developer prerelease.
+- Publish the source checkout as a GitHub developer prerelease.
   Desktop packaging and npm-registry publication remain deferred.
 
 ## Release definition

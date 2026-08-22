@@ -1,159 +1,202 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  Plus,
-  FolderOpen,
-  FileText,
-  MessageSquare,
-  MoreHorizontal,
-  Search,
-} from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { FileText, FolderOpen, MessageSquare, Plus, Search, X } from "lucide-react"
+import { createProjectRemote, listProjectsRemote } from "@/lib/projects/client"
+import type { MutationWarning } from "@/lib/vault/mutations"
+import type { ProjectSummary } from "@/lib/projects/types"
 
-interface Project {
-  id: string;
-  name: string;
-  description: string;
-  papersCount: number;
-  chatsCount: number;
-  updatedAt: string;
-  color: string;
-}
+type LoadState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; projects: ProjectSummary[] }
 
-const mockProjects: Project[] = [
-  {
-    id: "proj-1",
-    name: "Psilocybin for Treatment-Resistant Depression",
-    description:
-      "Collecting evidence on psilocybin-assisted therapy efficacy, safety profiles, and neuroimaging findings.",
-    papersCount: 8,
-    chatsCount: 3,
-    updatedAt: "2 hours ago",
-    color: "#e87b35",
-  },
-  {
-    id: "proj-2",
-    name: "DBS Targets in OCD",
-    description:
-      "Reviewing deep brain stimulation target sites, outcomes, and emerging protocol optimizations for OCD.",
-    papersCount: 5,
-    chatsCount: 2,
-    updatedAt: "1 day ago",
-    color: "#6366f1",
-  },
-  {
-    id: "proj-3",
-    name: "Gut-Brain Axis & Probiotics",
-    description:
-      "Exploring microbiome interventions and their effects on mood disorders and cognitive function.",
-    papersCount: 12,
-    chatsCount: 4,
-    updatedAt: "3 days ago",
-    color: "#10b981",
-  },
-];
+const EMPTY_FORM = { title: "", description: "", instructions: "", overview: "" }
 
 export default function ProjectsPage() {
-  const router = useRouter();
-  const [search, setSearch] = useState("");
+  const router = useRouter()
+  const [load, setLoad] = useState<LoadState>({ status: "loading" })
+  const [search, setSearch] = useState("")
+  const [creating, setCreating] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [warnings, setWarnings] = useState<MutationWarning[]>([])
 
-  const filtered = mockProjects.filter(
-    (p) =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.description.toLowerCase().includes(search.toLowerCase())
-  );
+  const reload = useCallback(async () => {
+    setLoad({ status: "loading" })
+    try {
+      setLoad({ status: "ready", projects: await listProjectsRemote() })
+    } catch (error) {
+      setLoad({ status: "error", message: error instanceof Error ? error.message : String(error) })
+    }
+  }, [])
+
+  useEffect(() => {
+    void reload()
+  }, [reload])
+
+  const filtered = useMemo(() => {
+    if (load.status !== "ready") return []
+    const query = search.trim().toLowerCase()
+    if (!query) return load.projects
+    return load.projects.filter(
+      (project) =>
+        project.title.toLowerCase().includes(query) ||
+        project.description.toLowerCase().includes(query),
+    )
+  }, [load, search])
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setSubmitting(true)
+    setFormError(null)
+    try {
+      const created = await createProjectRemote(form)
+      setWarnings(created.warnings)
+      setCreating(false)
+      setForm(EMPTY_FORM)
+      router.push(`/projects/${created.result.id}`)
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <div className="p-7">
-      <div className="flex items-center justify-between">
-        <h1 className="font-heading text-[28px] text-espresso tracking-heading">
-          Projects
-        </h1>
-        <button className="flex items-center gap-2 px-4 py-2.5 bg-orange text-white rounded-[10px] text-[14px] font-medium hover:bg-orange/90 transition-colors">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="font-heading text-[28px] tracking-heading text-espresso">Projects</h1>
+          <p className="mt-1 text-[14px] tracking-body text-muted-text">
+            Organize vault papers, conversations, and notes by research question.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setCreating(true)
+            setFormError(null)
+          }}
+          className="flex items-center gap-2 rounded-[10px] bg-orange px-4 py-2.5 text-[14px] font-medium text-white hover:bg-orange/90"
+        >
           <Plus size={16} />
-          New Project
+          New project
         </button>
       </div>
-      <p className="text-[14px] text-muted-text tracking-body mt-1">
-        Organize papers, chats, and notes into research projects.
-      </p>
 
-      {/* Search */}
-      <div className="mt-5">
-        <div className="flex items-center gap-2 bg-light-surface border border-border-warm rounded-[10px] px-3 py-2.5">
-          <Search size={16} className="text-muted-text flex-shrink-0" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search projects..."
-            className="flex-1 text-[14px] text-espresso placeholder:text-muted-text bg-transparent focus:outline-none"
-          />
+      {warnings.length > 0 && (
+        <div className="mt-4 rounded-card border border-border-warm bg-card-surface p-3 text-[13px] text-espresso">
+          The project was saved, but derived vault data needs attention: {warnings.map((item) => item.message).join(" ")}
         </div>
+      )}
+
+      <div className="mt-5 flex items-center gap-2 rounded-[10px] border border-border-warm bg-light-surface px-3 py-2.5">
+        <Search size={16} className="shrink-0 text-muted-text" />
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search projects…"
+          className="flex-1 bg-transparent text-[14px] text-espresso placeholder:text-muted-text focus:outline-none"
+        />
       </div>
 
-      {/* Project cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-6">
-        {filtered.map((project) => (
-          <div
-            key={project.id}
-            onClick={() => router.push(`/projects/${project.id}`)}
-            className="bg-light-surface border border-border-warm/30 rounded-[14px] p-5 cursor-pointer hover:shadow-sm transition-all group"
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-9 h-9 rounded-[8px] flex items-center justify-center flex-shrink-0"
-                  style={{ backgroundColor: project.color + "18" }}
-                >
-                  <FolderOpen
-                    size={18}
-                    style={{ color: project.color }}
-                  />
-                </div>
-                <h3 className="font-heading text-[16px] text-espresso tracking-heading-card leading-[1.35] line-clamp-2">
-                  {project.name}
-                </h3>
+      {load.status === "loading" && (
+        <p className="mt-8 text-[14px] text-muted-text">Loading projects…</p>
+      )}
+
+      {load.status === "error" && (
+        <div className="mt-8 rounded-card border border-border-warm bg-light-surface p-5">
+          <p className="text-[14px] text-espresso">Projects could not be loaded: {load.message}</p>
+          <button type="button" onClick={() => void reload()} className="mt-3 text-[13px] text-orange hover:text-orange-light">
+            Try again
+          </button>
+        </div>
+      )}
+
+      {load.status === "ready" && filtered.length === 0 && (
+        <div className="mt-8 rounded-card border border-dashed border-border-warm p-8 text-center">
+          <FolderOpen className="mx-auto text-muted-text" size={28} />
+          <p className="mt-3 text-[15px] text-espresso">
+            {load.projects.length === 0 ? "No projects yet" : "No projects match that search"}
+          </p>
+          <p className="mt-1 text-[13px] text-muted-text">
+            {load.projects.length === 0
+              ? "Create a project to group saved papers and notes in your vault."
+              : "Try a different title or description."}
+          </p>
+        </div>
+      )}
+
+      {load.status === "ready" && filtered.length > 0 && (
+        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((project) => (
+            <button
+              key={project.id}
+              type="button"
+              onClick={() => router.push(`/projects/${project.id}`)}
+              className="group rounded-[14px] border border-border-warm/30 bg-light-surface p-5 text-left transition-all hover:border-orange/40 hover:shadow-sm"
+            >
+              <div className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-orange/10 text-orange">
+                  <FolderOpen size={18} />
+                </span>
+                <h2 className="line-clamp-2 font-heading text-[16px] leading-[1.35] tracking-heading-card text-espresso">
+                  {project.title}
+                </h2>
               </div>
-              <button
-                onClick={(e) => e.stopPropagation()}
-                className="p-1 text-muted-text hover:text-espresso opacity-0 group-hover:opacity-100 transition-all"
-              >
-                <MoreHorizontal size={16} />
+              <p className="mt-3 line-clamp-2 min-h-[39px] text-[13px] leading-[1.5] text-muted-text">
+                {project.description || "No description yet."}
+              </p>
+              <div className="mt-4 flex items-center gap-4 border-t border-border-warm/30 pt-3 text-[12px] text-muted-text">
+                <span className="flex items-center gap-1.5"><FileText size={13} />{project.counts.papers} papers</span>
+                <span className="flex items-center gap-1.5"><MessageSquare size={13} />{project.counts.conversations} chats</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {creating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-espresso/30 p-4 backdrop-blur-sm">
+          <form onSubmit={submit} className="w-full max-w-2xl rounded-[18px] border border-border-warm bg-page-bg shadow-xl">
+            <div className="flex items-center justify-between border-b border-border-warm/30 px-6 py-4">
+              <h2 className="font-heading text-[20px] text-espresso">Create project</h2>
+              <button type="button" aria-label="Cancel project creation" onClick={() => setCreating(false)} className="rounded-[6px] p-1.5 text-muted-text hover:bg-page-warm hover:text-espresso">
+                <X size={17} />
               </button>
             </div>
-
-            <p className="text-[13px] text-muted-text leading-[1.5] mt-3 line-clamp-2">
-              {project.description}
-            </p>
-
-            <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border-warm/30">
-              <span className="flex items-center gap-1.5 text-[12px] text-muted-text">
-                <FileText size={13} />
-                {project.papersCount} papers
-              </span>
-              <span className="flex items-center gap-1.5 text-[12px] text-muted-text">
-                <MessageSquare size={13} />
-                {project.chatsCount} chats
-              </span>
-              <span className="text-[12px] text-muted-text/60 ml-auto">
-                {project.updatedAt}
-              </span>
+            <div className="space-y-4 px-6 py-5">
+              <label className="block text-[13px] font-medium text-espresso">
+                Title
+                <input autoFocus required value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} className="mt-1.5 w-full rounded-[9px] border border-border-warm bg-light-surface px-3 py-2.5 text-[14px] font-normal focus:outline-none focus:ring-2 focus:ring-orange/20" />
+              </label>
+              <label className="block text-[13px] font-medium text-espresso">
+                Description
+                <textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} rows={2} className="mt-1.5 w-full resize-y rounded-[9px] border border-border-warm bg-light-surface px-3 py-2.5 text-[14px] font-normal focus:outline-none focus:ring-2 focus:ring-orange/20" />
+              </label>
+              <label className="block text-[13px] font-medium text-espresso">
+                AI instructions
+                <textarea value={form.instructions} onChange={(event) => setForm((current) => ({ ...current, instructions: event.target.value }))} rows={3} className="mt-1.5 w-full resize-y rounded-[9px] border border-border-warm bg-light-surface px-3 py-2.5 text-[14px] font-normal focus:outline-none focus:ring-2 focus:ring-orange/20" />
+              </label>
+              <label className="block text-[13px] font-medium text-espresso">
+                Overview
+                <textarea value={form.overview} onChange={(event) => setForm((current) => ({ ...current, overview: event.target.value }))} rows={5} className="mt-1.5 w-full resize-y rounded-[9px] border border-border-warm bg-light-surface px-3 py-2.5 text-[14px] font-normal focus:outline-none focus:ring-2 focus:ring-orange/20" />
+              </label>
+              {formError && <p className="text-[13px] text-red-700">{formError}</p>}
             </div>
-          </div>
-        ))}
-
-        {/* New project card */}
-        <button className="border-2 border-dashed border-border-warm/50 rounded-[14px] p-5 flex flex-col items-center justify-center gap-2 min-h-[180px] hover:border-orange/40 hover:bg-orange/[0.02] transition-colors group">
-          <div className="w-10 h-10 rounded-full bg-card-surface flex items-center justify-center group-hover:bg-orange/10 transition-colors">
-            <Plus size={20} className="text-muted-text group-hover:text-orange transition-colors" />
-          </div>
-          <span className="text-[14px] text-muted-text group-hover:text-espresso transition-colors">
-            Create new project
-          </span>
-        </button>
-      </div>
+            <div className="flex justify-end gap-2 border-t border-border-warm/30 px-6 py-4">
+              <button type="button" onClick={() => setCreating(false)} className="rounded-pill border border-border-warm px-4 py-2 text-[13px] text-espresso hover:bg-page-warm">Cancel</button>
+              <button type="submit" disabled={submitting} className="rounded-pill bg-orange px-4 py-2 text-[13px] font-medium text-white hover:bg-orange/90 disabled:opacity-50">
+                {submitting ? "Creating…" : "Create project"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
-  );
+  )
 }

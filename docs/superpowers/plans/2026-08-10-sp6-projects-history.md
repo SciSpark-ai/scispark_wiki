@@ -29,18 +29,19 @@ mutations, and derived-refresh warnings have regression coverage.
 
 ## PR 2 — Real vault-backed Projects
 
-Branch: create from updated `main` only after PR 1 merges.
+Branch: `codex/sp6-projects`, created from merged PR 1 on updated `main`.
 
-1. Add project schemas/types, revision hashing, routed lookup, collision-safe
+1. [x] Add project schemas/types, revision hashing, routed lookup, collision-safe
    creation, strict parsers, and corrupt-record isolation.
-2. Implement project list/detail/create/update and delete preview/commit APIs.
-3. Implement atomic membership add/remove while preserving unrelated
+2. [x] Implement project list/detail/create/update and delete preview/commit APIs.
+3. [x] Implement atomic membership add/remove while preserving unrelated
    frontmatter.
-4. Implement project-note CRUD as routed `note` pages with provenance.
-5. Replace project list/detail, paper membership, and note prototype UI with
+4. [x] Implement project-note CRUD as routed `note` pages with provenance.
+5. [x] Replace project list/detail, paper membership, and note prototype UI with
    real API clients and honest loading/error/conflict states.
-6. Warn once about the three prototype localStorage keys; clear only after
+6. [x] Warn once about the three prototype localStorage keys; clear only after
    confirmation and do not migrate them.
+7. [x] Run the deterministic gate and publish draft PR #20 for review.
 
 Acceptance: stable slugs survive rename, collisions suffix safely, custom schema
 routing works, stale revisions return `409`, delete-and-unlink is one recoverable

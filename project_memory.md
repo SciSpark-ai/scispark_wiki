@@ -18,8 +18,9 @@
   feed, progressive paper pages, ingest/wiki/review flows, reader/highlights,
   research companion, visualization workspace, Spark ideation, personalized
   trending, lint/spend tooling, and grounded knowledge-base chat.
-- `README.md` now describes the implemented local-runtime architecture and
-  labels Projects and the legacy Library route as remaining prototype surfaces.
+- `README.md` describes the implemented local-runtime architecture. Projects,
+  membership, and project notes are vault-backed; scoped chat, the Changes
+  History UI, and the legacy Library redirect remain in later SP6 PRs.
 - The filesystem is case-insensitive: `agents.md` and `AGENTS.md` resolve to the
   same file/inode.
 
@@ -27,16 +28,19 @@
 
 - SP5 PR #18 is merged into `main` at merge commit
   `5e729f8c22aff0a38450fe16f635ca9b78dd98f5`.
-- SP6 implementation is active on `codex/sp6-foundation`, created from that
-  updated `main` commit. The approved delivery is four sequential reviewable
-  PRs ending in a GitHub developer preview, not a desktop or npm release.
+- SP6 foundation PR #19 is merged into `main` at merge commit
+  `f45e61b9e88db973811b7d69e08073133ed17e13`.
+- SP6 PR 2 implementation is active on `codex/sp6-projects`, created from that
+  updated `main` commit. The approved delivery remains four sequential
+  reviewable PRs ending in a GitHub developer preview, not a desktop or npm
+  release.
 - The SP6 design and implementation plan are recorded under
   `docs/superpowers/specs/2026-08-10-sp6-projects-history-design.md` and
   `docs/superpowers/plans/2026-08-10-sp6-projects-history.md`.
 - This session generated and validated an Understand Anything knowledge graph for
   all 599 scanned files. The graph contains 1,357 nodes, 2,997 edges, 9 exhaustive
   architecture layers, and a 15-step guided tour; no application behavior changed.
-- PR 1 foundation work now strictly validates changesets and persisted records,
+- PR 1 foundation work strictly validates changesets and persisted records,
   derives applied/reverted/diverged state from live contents, serializes vault
   changesets and log appends, returns warnings for post-commit derived refresh
   failures, and exposes content-free History plus persisted-ID-only undo APIs.
@@ -44,9 +48,16 @@
   passed with 15 environment-gated skips, `npx tsc --noEmit` passed,
   `npm run lint` passed, and the Next.js production build generated all 51
   pages successfully.
-- SP6 foundation commit `5915084` is published in draft PR #19 from
-  `codex/sp6-foundation` to `main`. PR 2 must start from updated `main` only
-  after PR #19 is reviewed and merged.
+- PR 2 adds schema-routed stable project pages, full-page SHA-256 revisions,
+  strict project APIs, page-authoritative membership, routed project-note CRUD,
+  atomic delete-and-unlink previews, real project/paper/note UI, and explicit
+  legacy-prototype-data dismissal without migration.
+- The PR 2 deterministic gate passed on 2026-08-11: 2,018 tests passed with 15
+  environment-gated skips, `npx tsc --noEmit` passed, `npm run lint` passed,
+  and the Next.js production build generated all 52 pages successfully.
+- SP6 Projects implementation commit `1c3fe2f` is published in draft PR #20
+  from `codex/sp6-projects` to `main`. PR 3 must start from updated `main` only
+  after PR #20 is reviewed and merged.
 - The pre-merge audit hardened full chat-session shape validation and serialized
   same-session turns in the local runtime so concurrent tabs cannot lose transcript
   updates.
@@ -74,6 +85,10 @@
 - Never accept client-supplied paths or file contents for undo. Resolve a strict
   persisted audit record by safe `changesetId`, and do not add a force-revert
   API or UI.
+- Project membership mutations accept a validated wiki page ID plus its current
+  content revision, never client-supplied page contents. Project deletion must
+  confirm both the project revision and the composite deletion-preview revision
+  before the one atomic delete-and-unlink changeset is committed.
 - Do not give an inline `dangerouslySetInnerHTML={{ __html: ... }}` object a new
   identity on each render; React 19.2 can recreate the DOM and break selection.
 - Do not perform incrementing or other side effects inside JSX expressions; key

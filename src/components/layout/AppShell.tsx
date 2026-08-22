@@ -11,6 +11,7 @@ import { CompanionMascot } from "@/components/companion/CompanionMascot";
 import SettingsModal from "@/components/settings/SettingsModal";
 import ThemeApplier from "./ThemeApplier";
 import NavHistoryTracker from "./NavHistoryTracker";
+import { LegacyPrototypeWarning } from "@/components/projects/LegacyPrototypeWarning";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -64,6 +65,7 @@ export function AppShell({ children }: AppShellProps) {
       <SettingsModal />
       <ThemeApplier />
       <NavHistoryTracker />
+      <LegacyPrototypeWarning />
     </div>
   );
 }

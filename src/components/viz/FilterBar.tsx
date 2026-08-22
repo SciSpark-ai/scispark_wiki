@@ -39,7 +39,7 @@ export function FilterBar({ options, filters, onChange }: FilterBarProps) {
   const [tagQuery, setTagQuery] = useState("")
   const tagsRef = useRef<HTMLDivElement>(null)
 
-  // Click outside / ESC to close — mirrors src/components/papers/SaveToProjectMenu.tsx.
+  // Click outside / ESC to close the popover.
   useEffect(() => {
     if (!tagsOpen) return
     const onDown = (e: MouseEvent) => {
