@@ -118,6 +118,40 @@ describe("saveSession / loadSession round-trip", () => {
     expect(loaded).toEqual(session)
   })
 
+  it("round-trips optional project snapshots and truncated context ids", async () => {
+    const storage = new MemoryVaultStorage()
+    const session = makeSession({
+      projectId: "auditory-biomarkers",
+      projectTitle: "Auditory Biomarkers",
+      messages: [
+        { role: "user", content: "Summarize the project." },
+        {
+          role: "assistant",
+          content: "Summary.",
+          truncatedPageIds: ["wiki/notes/long-note"],
+        },
+      ],
+    })
+    await saveSession(storage, session)
+    await expect(loadSession(storage, session.id)).resolves.toEqual(session)
+  })
+
+  it("rejects partial project snapshots and malformed truncation metadata", async () => {
+    const storage = new MemoryVaultStorage()
+    const malformed = [
+      { ...makeSession({ id: "project-without-title" }), projectId: "auditory" },
+      { ...makeSession({ id: "title-without-project" }), projectTitle: "Auditory" },
+      {
+        ...makeSession({ id: "bad-truncation" }),
+        messages: [{ role: "assistant", content: "x", truncatedPageIds: [7] }],
+      },
+    ]
+    for (const value of malformed) {
+      await storage.write(`${CHATS_DIR}/${value.id}.json`, JSON.stringify(value))
+      await expect(loadSession(storage, value.id)).resolves.toBeNull()
+    }
+  })
+
   it("writes under CHATS_DIR", async () => {
     const storage = new MemoryVaultStorage()
     const session = makeSession()

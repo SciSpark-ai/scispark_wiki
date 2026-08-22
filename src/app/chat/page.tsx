@@ -105,7 +105,12 @@ export default function ChatEntryPage() {
                   href={`/chat/${s.id}`}
                   className="block truncate rounded-card px-3 py-2 text-[14px] text-espresso tracking-body hover:bg-light-surface"
                 >
-                  {s.title}
+                  <span className="block truncate">{s.title}</span>
+                  {s.projectId && (
+                    <span className="block truncate text-[11px] text-muted-text">
+                      Project · {s.projectTitle ?? s.projectId}
+                    </span>
+                  )}
                 </Link>
               </li>
             ))}

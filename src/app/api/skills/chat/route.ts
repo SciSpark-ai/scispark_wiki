@@ -1,10 +1,14 @@
 import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
-import { askChat, type AskChatInput, type AskChatResult } from "@/lib/chat/orchestrator"
+import {
+  askChat,
+  parseAskChatInput,
+  type AskChatResult,
+} from "@/lib/chat/orchestrator"
 
 /**
  * POST /api/skills/chat — body `AskChatInput` (`{sessionId, question,
- * readSourcesOnly}`), NDJSON progress (`{type:"progress", stage}` with stage
+ * readSourcesOnly, projectId?}`), NDJSON progress (`{type:"progress", stage}` with stage
  * "selecting" then "answering") and terminal result `AskChatResult`
  * (`{sessionId, message}`).
  *
@@ -22,7 +26,8 @@ import { askChat, type AskChatInput, type AskChatResult } from "@/lib/chat/orche
  * it. Only a failure that prevents producing a message at all (malformed body,
  * vault failure) becomes the terminal error line.
  */
-export const POST = ndjsonSkillRoute<AskChatInput>(async (input, vault, emit) => {
+export const POST = ndjsonSkillRoute<unknown>(async (rawInput, vault, emit) => {
+  const input = parseAskChatInput(rawInput)
   const settings = await loadSettings(vault)
   const overrides = getSkillTestOverrides()
 

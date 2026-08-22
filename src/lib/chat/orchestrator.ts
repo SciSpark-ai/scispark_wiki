@@ -8,20 +8,40 @@ import { buildIndexMarkdown } from "../vault/index-builder"
 import { parseDocument } from "../vault/frontmatter"
 import { runSkill } from "../skills/runner"
 import { loadCompanionSettings } from "../companion/settings"
-import { deriveTitle, loadSession, makeSessionId, saveSession, type ChatMessage, type ChatSession } from "./session"
+import {
+  deriveTitle,
+  isValidSessionId,
+  loadSession,
+  makeSessionId,
+  saveSession,
+  type ChatMessage,
+  type ChatSession,
+} from "./session"
 import { selectPagesSkill, MAX_SELECTED_PAGES } from "./select-pages"
 import { fallbackSelectPages } from "./fallback-select"
 import { chatAnswerSkill } from "./answer"
+import {
+  getProject,
+  ProjectNotFoundError,
+  ProjectValidationError,
+} from "../projects/repository"
+import type { ProjectDetail } from "../projects/types"
 
 /** How many prior turns travel verbatim with each question (SP5 §1). Earlier
  * turns are dropped, never summarized. */
 export const MAX_HISTORY_TURNS = 6
+export const MAX_CONTEXT_CHARS_PER_PAGE = 16_000
+export const MAX_CONTEXT_CHARS_TOTAL = 64_000
+
+export class ChatScopeError extends Error {}
 
 export interface AskChatInput {
   /** null → start a new session. */
   sessionId: string | null
   question: string
   readSourcesOnly: boolean
+  /** Stable project slug for a new scoped session. Existing sessions own their scope. */
+  projectId?: string
 }
 
 export interface AskChatResult {
@@ -38,6 +58,45 @@ export interface AskChatOpts {
   onProgress?: (stage: "selecting" | "answering") => void
 }
 
+/** Strict runtime parser for the public chat request. The API route receives
+ * untyped JSON, so compile-time `AskChatInput` cannot protect session paths or
+ * scope fields from malformed/extra values. */
+export function parseAskChatInput(value: unknown): AskChatInput {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("chat input must be an object")
+  }
+  const record = value as Record<string, unknown>
+  const allowed = new Set(["sessionId", "question", "readSourcesOnly", "projectId"])
+  if (Object.keys(record).some((key) => !allowed.has(key))) {
+    throw new Error("chat input contains unsupported fields")
+  }
+  if (
+    record.sessionId !== null &&
+    (typeof record.sessionId !== "string" || !isValidSessionId(record.sessionId))
+  ) {
+    throw new Error("sessionId must be null or a safe session id")
+  }
+  if (typeof record.question !== "string" || record.question.trim().length === 0) {
+    throw new Error("question must not be empty")
+  }
+  if (record.question.length > 20_000) throw new Error("question is too long")
+  if (typeof record.readSourcesOnly !== "boolean") {
+    throw new Error("readSourcesOnly must be a boolean")
+  }
+  if (
+    record.projectId !== undefined &&
+    (typeof record.projectId !== "string" || record.projectId.length === 0)
+  ) {
+    throw new Error("projectId must be a non-empty string")
+  }
+  return {
+    sessionId: record.sessionId,
+    question: record.question,
+    readSourcesOnly: record.readSourcesOnly,
+    ...(typeof record.projectId === "string" ? { projectId: record.projectId } : {}),
+  }
+}
+
 /**
  * KB chat's orchestrator (SP5 Task 6) — the blessed pattern: this module owns
  * storage, retrieval, validation and degradation so `selectPagesSkill` and
@@ -45,7 +104,8 @@ export interface AskChatOpts {
  *
  * Per question: load or create the session → append the user turn and PERSIST
  * IT IMMEDIATELY (a failed answer must never lose the question) → load the
- * bundle and narrow it to `type: paper` pages when Read-Sources-Only is on →
+ * bundle and narrow it to the scoped project's current direct members (when
+ * present), then to `type: paper` pages when Read-Sources-Only is on →
  * `buildIndexMarkdown` over that narrowed set → `fast` selection call →
  * validate the returned ids against the real candidates → read each surviving
  * page and assemble its context block → `strong` answer call → drop any
@@ -67,22 +127,24 @@ export interface AskChatOpts {
  * calling the LLM at all.
  */
 export async function askChat(storage: VaultStorage, opts: AskChatOpts): Promise<AskChatResult> {
+  const input = parseAskChatInput(opts.input)
+  const validatedOpts: AskChatOpts = { ...opts, input }
   // A client normally disables its own composer while a turn is running, but
   // the same vault/session can still be open in two tabs. Serialize the whole
   // read-modify-answer-write cycle for a supplied session id so one turn can
   // never overwrite the other. New sessions already receive unique ids from
   // `mintSessionId`, so they do not share a transcript and need no queue.
-  if (opts.input.sessionId !== null) {
-    return withSessionTurnQueue(storage, opts.input.sessionId, () => askChatTurn(storage, opts))
+  if (input.sessionId !== null) {
+    return withSessionTurnQueue(storage, input.sessionId, () => askChatTurn(storage, validatedOpts))
   }
-  return askChatTurn(storage, opts)
+  return askChatTurn(storage, validatedOpts)
 }
 
 async function askChatTurn(storage: VaultStorage, opts: AskChatOpts): Promise<AskChatResult> {
   const now = opts.now ?? (() => new Date())
   const { input } = opts
 
-  const session = await loadOrCreateSession(storage, input, now)
+  const { session, project } = await loadOrCreateSession(storage, input, now)
 
   // The history the skills see: prior turns only (the current question travels
   // in its own field), oldest→newest, trimmed to the last MAX_HISTORY_TURNS.
@@ -105,7 +167,7 @@ async function askChatTurn(storage: VaultStorage, opts: AskChatOpts): Promise<As
   // the user must still find their question in the transcript.
   await saveSession(storage, session)
 
-  const message = await answerQuestion(storage, opts, history)
+  const message = await answerQuestion(storage, opts, history, project)
 
   session.messages.push(message)
   session.updatedAt = now().toISOString()
@@ -180,30 +242,64 @@ async function loadOrCreateSession(
   storage: VaultStorage,
   input: AskChatInput,
   now: () => Date,
-): Promise<ChatSession> {
+): Promise<{ session: ChatSession; project?: ProjectDetail }> {
   if (input.sessionId != null) {
     const existing = await loadSession(storage, input.sessionId)
     // A missing/corrupt file reads as absent (Task 2's contract), so rather
     // than failing the turn we start a session AT THAT id — the caller is
     // holding a link to it, and the alternative is losing the question.
-    if (existing != null) return existing
+    if (existing != null) {
+      if (input.projectId !== undefined && input.projectId !== existing.projectId) {
+        throw new ChatScopeError("this conversation's project scope cannot be changed")
+      }
+      if (existing.projectId === undefined) return { session: existing }
+      return { session: existing, project: await requireProject(storage, existing.projectId) }
+    }
+
+    const project = input.projectId === undefined
+      ? undefined
+      : await requireProject(storage, input.projectId)
     const timestamp = now().toISOString()
     return {
-      id: input.sessionId,
+      session: {
+        id: input.sessionId,
+        title: deriveTitle(input.question),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        messages: [],
+        ...(project ? { projectId: project.id, projectTitle: project.title } : {}),
+      },
+      project,
+    }
+  }
+
+  const project = input.projectId === undefined
+    ? undefined
+    : await requireProject(storage, input.projectId)
+  const timestamp = now().toISOString()
+  return {
+    session: {
+      id: await mintSessionId(storage, now),
       title: deriveTitle(input.question),
       createdAt: timestamp,
       updatedAt: timestamp,
       messages: [],
-    }
+      ...(project ? { projectId: project.id, projectTitle: project.title } : {}),
+    },
+    project,
   }
+}
 
-  const timestamp = now().toISOString()
-  return {
-    id: await mintSessionId(storage, now),
-    title: deriveTitle(input.question),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    messages: [],
+async function requireProject(storage: VaultStorage, projectId: string): Promise<ProjectDetail> {
+  try {
+    return await getProject(storage, projectId)
+  } catch (error) {
+    if (error instanceof ProjectNotFoundError || error instanceof ProjectValidationError) {
+      throw new ChatScopeError(
+        `Project “${projectId}” is unavailable. This scoped conversation remains readable but cannot continue.`,
+      )
+    }
+    throw error
   }
 }
 
@@ -212,6 +308,7 @@ async function answerQuestion(
   storage: VaultStorage,
   opts: AskChatOpts,
   history: Array<{ role: "user" | "assistant"; content: string }>,
+  project?: ProjectDetail,
 ): Promise<ChatMessage> {
   const { input } = opts
 
@@ -232,9 +329,11 @@ async function answerQuestion(
     }
   }
 
-  const candidates = candidatePages(bundle, input.readSourcesOnly)
+  const candidates = candidatePages(bundle, input.readSourcesOnly, project?.id)
 
-  if (candidates.length === 0) return noCandidatesMessage(bundle, input.readSourcesOnly)
+  if (candidates.length === 0) {
+    return noCandidatesMessage(bundle, input.readSourcesOnly, project)
+  }
 
   const candidateBundle: Bundle = {
     pages: new Map(candidates.map((page) => [page.id, page])),
@@ -245,7 +344,11 @@ async function answerQuestion(
   opts.onProgress?.("selecting")
   const { pageIds, selectionFallback } = await selectPages(storage, opts, candidateBundle, history)
 
-  const { context, includedBundle, skippedPageIds } = await assembleContext(storage, candidateBundle, pageIds)
+  const { context, includedBundle, skippedPageIds, truncatedPageIds } = await assembleContext(
+    storage,
+    candidateBundle,
+    pageIds,
+  )
 
   opts.onProgress?.("answering")
   const companionName = await resolveCompanionName(storage)
@@ -256,6 +359,9 @@ async function answerQuestion(
       context,
       history,
       readSourcesOnly: input.readSourcesOnly,
+      ...(project?.instructions.trim()
+        ? { projectInstructions: project.instructions }
+        : {}),
       ...(companionName !== undefined ? { companionName } : {}),
     },
     storage,
@@ -271,6 +377,7 @@ async function answerQuestion(
     readSourcesOnly: input.readSourcesOnly,
     ...(selectionFallback ? { selectionFallback: true } : {}),
     ...(skippedPageIds.length > 0 ? { skippedPageIds } : {}),
+    ...(truncatedPageIds.length > 0 ? { truncatedPageIds } : {}),
   }
 
   if (run.status !== "ok" || run.output === undefined) {
@@ -294,9 +401,21 @@ async function answerQuestion(
 
 /** Read-Sources-Only narrows the candidate pool to `paper` pages — the switch
  * changes the candidate set, not the pipeline (SP5 §1). */
-function candidatePages(bundle: Bundle, readSourcesOnly: boolean): WikiPage[] {
-  const pages = [...bundle.pages.values()]
-  return readSourcesOnly ? pages.filter((page) => page.frontmatter.type === "paper") : pages
+function candidatePages(
+  bundle: Bundle,
+  readSourcesOnly: boolean,
+  projectId?: string,
+): WikiPage[] {
+  let pages = [...bundle.pages.values()]
+  if (projectId !== undefined) {
+    pages = pages.filter((page) =>
+      Array.isArray(page.frontmatter.projects) &&
+      page.frontmatter.projects.every((value) => typeof value === "string") &&
+      page.frontmatter.projects.includes(projectId),
+    )
+  }
+  if (readSourcesOnly) pages = pages.filter((page) => page.frontmatter.type === "paper")
+  return pages.sort((a, b) => a.id.localeCompare(b.id))
 }
 
 /** The `fast` selection call, degrading to the deterministic term-overlap selector. */
@@ -368,6 +487,8 @@ interface AssembledContext {
   includedBundle: Bundle
   /** Selected pages dropped because reading them failed. */
   skippedPageIds: string[]
+  /** Selected pages shortened/omitted by deterministic context budgets. */
+  truncatedPageIds: string[]
 }
 
 /**
@@ -384,6 +505,8 @@ async function assembleContext(
   const blocks: string[] = []
   const included = new Map<string, WikiPage>()
   const skippedPageIds: string[] = []
+  const truncatedPageIds: string[] = []
+  let usedChars = 0
 
   for (const id of pageIds) {
     const page = candidateBundle.pages.get(id)
@@ -396,7 +519,17 @@ async function assembleContext(
       }
       const { frontmatter, body } = parseDocument(raw)
       const fresh: WikiPage = { ...page, frontmatter, body }
-      blocks.push(renderContextBlock(fresh))
+      const separator = blocks.length === 0 ? "" : "\n\n---\n\n"
+      const rendered = renderContextBlock(fresh)
+      const perPage = rendered.slice(0, MAX_CONTEXT_CHARS_PER_PAGE)
+      const remaining = Math.max(0, MAX_CONTEXT_CHARS_TOTAL - usedChars - separator.length)
+      const block = perPage.slice(0, remaining)
+      if (rendered.length > block.length && !truncatedPageIds.includes(id)) {
+        truncatedPageIds.push(id)
+      }
+      if (block.length === 0) continue
+      blocks.push(block)
+      usedChars += separator.length + block.length
       included.set(id, fresh)
     } catch (err) {
       console.warn(`[chat] context read failed for "${id}"; skipping it:`, err)
@@ -406,7 +539,12 @@ async function assembleContext(
 
   const context =
     blocks.length > 0 ? blocks.join("\n\n---\n\n") : "(no pages in the knowledge base matched this question)"
-  return { context, includedBundle: { pages: included, links: [], errors: [] }, skippedPageIds }
+  return {
+    context,
+    includedBundle: { pages: included, links: [], errors: [] },
+    skippedPageIds,
+    truncatedPageIds,
+  }
 }
 
 /**
@@ -448,7 +586,11 @@ function extractSection(body: string, name: string): string | null {
  * disk, they just didn't load, and the user can fix that. The real parse errors
  * ride along in `error`.
  */
-function noCandidatesMessage(bundle: Bundle, readSourcesOnly: boolean): ChatMessage {
+function noCandidatesMessage(
+  bundle: Bundle,
+  readSourcesOnly: boolean,
+  project?: ProjectDetail,
+): ChatMessage {
   if (bundle.pages.size === 0 && bundle.errors.length > 0) {
     return {
       role: "assistant",
@@ -460,7 +602,11 @@ function noCandidatesMessage(bundle: Bundle, readSourcesOnly: boolean): ChatMess
     }
   }
 
-  const content = readSourcesOnly
+  const content = project
+    ? readSourcesOnly
+      ? `“${project.title}” has no paper members yet, so there are no project sources to read from.`
+      : `“${project.title}” has no members yet, so there is no project context to answer from.`
+    : readSourcesOnly
     ? "You have no saved papers yet, so there are no sources for me to read from. Search for papers on /papers and save one — then ask me again."
     : "Your knowledge base is empty, so there is nothing for me to answer from yet. Search for papers on /papers and save one — then ask me again."
   return { role: "assistant", content, citedPageIds: [], readSourcesOnly }

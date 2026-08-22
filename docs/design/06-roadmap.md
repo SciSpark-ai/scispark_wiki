@@ -34,7 +34,7 @@ The six-part refresh turns the foundation into one coherent product.
 | SP3 | Knowledge-base dashboard and visualization workspace | Built |
 | SP4 | Academia Right Now trending redesign | Built |
 | SP5 | Real grounded knowledge-base chat and saved query pages | Built and merged in PR #18 |
-| SP6 | Real Projects plus conversation/change History and global undo | Foundation merged; Projects implemented in PR 2 |
+| SP6 | Real Projects plus conversation/change History and global undo | PR 1-2 merged; PR 3 implemented and validated |
 
 ## Immediate execution order
 
@@ -45,14 +45,14 @@ The six-part refresh turns the foundation into one coherent product.
 - Derive applied/reverted/diverged state from current contents.
 - Expose content-free History summaries and persisted-ID-only undo.
 
-### 2. Implement real Projects — implemented, awaiting review
+### 2. Implement real Projects — complete
 
 - Add the vault-backed project domain and focused tests.
 - Replace `/projects`, `/projects/[id]`, Save-to-Project, and project notes.
 - Add honest loading, empty, error, conflict, and deletion states.
 - Remove the legacy mock/localStorage project persistence path.
 
-### 3. Implement project chat and History UI
+### 3. Implement project chat and History UI — implemented, awaiting review
 
 - Scope chat to direct project members with deterministic context caps.
 - Preserve deleted-project transcripts without global fallback.
@@ -62,7 +62,6 @@ The six-part refresh turns the foundation into one coherent product.
 
 ### 4. Release hardening
 
-- Remove or redirect the legacy mock Library route.
 - Add browser E2E coverage for the primary research and recovery loops.
 - Verify loopback binding, host/origin handling, settings redaction, path
   traversal protection, corrupted-file behavior, and backup recovery.

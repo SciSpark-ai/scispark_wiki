@@ -49,19 +49,23 @@ changeset, and malformed members cause no partial writes.
 
 ## PR 3 — Project chat and History UI
 
-Branch: create from updated `main` only after PR 2 merges.
+Branch: `codex/sp6-project-chat-history`, created from merged PR 2 on updated
+`main`.
 
-1. Extend strict chat-session parsing with optional `projectId` and title
+1. [x] Extend strict chat-session parsing with optional `projectId` and title
    snapshot fields while retaining old global sessions.
-2. Scope retrieval to current direct members; make Read Sources Only a paper
+2. [x] Scope retrieval to current direct members; make Read Sources Only a paper
    subset and prevent deleted-project fallback.
-3. Enforce deterministic 16k-per-page and 64k-total context limits; persist and
+3. [x] Enforce deterministic 16k-per-page and 64k-total context limits; persist and
    render truncated page IDs.
-4. Add scoped chat creation/listing to project detail.
-5. Make `/history` URL-addressable with Conversations and Changes tabs.
-6. Add change preview, applied-only Undo, and diverged-path explanations.
-7. Redirect `/library` to the real saved-paper Wiki shelf and delete orphaned
+4. [x] Add scoped chat creation/listing to project detail.
+5. [x] Make `/history` URL-addressable with Conversations and Changes tabs.
+6. [x] Add change preview, applied-only Undo, and diverged-path explanations.
+7. [x] Redirect `/library` to the real saved-paper Wiki shelf and delete orphaned
    library/project mock state and unsupported actions.
+8. [x] Run the deterministic gate: 2,032 tests passed with 15 environment-gated
+   skips, TypeScript and ESLint passed, and the production build generated all
+   52 routes.
 
 Acceptance: an unassigned page is never retrieved, deleted-project transcripts
 remain readable but cannot continue globally, corrupt sessions do not crash

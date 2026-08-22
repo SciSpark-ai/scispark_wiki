@@ -29,6 +29,10 @@ import {
 import type { ProjectDeletePreview, ProjectDetail, ProjectNote } from "@/lib/projects/types"
 import type { MutationWarning } from "@/lib/vault/mutations"
 import { wikiHref } from "@/lib/wiki/href"
+import { askChatRemote, type ChatStage } from "@/lib/chat/client"
+import { Composer } from "@/components/chat/Composer"
+import { SourcesToggle } from "@/components/chat/SourcesToggle"
+import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 
 type Tab = "papers" | "notes" | "chats"
 type LoadState =
@@ -44,6 +48,12 @@ interface NoteDraft {
   content: string
   originalTitle: string
   originalContent: string
+}
+
+function chatStageLabel(stage: ChatStage | null): string {
+  if (stage === "selecting") return "Reading this project's members…"
+  if (stage === "answering") return "Answering…"
+  return "Thinking…"
 }
 
 export default function ProjectDetailPage() {
@@ -62,6 +72,11 @@ export default function ProjectDetailPage() {
   const [deletePreview, setDeletePreview] = useState<ProjectDeletePreview | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [chatQuestion, setChatQuestion] = useState("")
+  const [chatReadSourcesOnly, setChatReadSourcesOnly] = useState(false)
+  const [chatBusy, setChatBusy] = useState(false)
+  const [chatStage, setChatStage] = useState<ChatStage | null>(null)
+  const [chatError, setChatError] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
     if (!id) {
@@ -217,6 +232,27 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function startProjectChat() {
+    const question = chatQuestion.trim()
+    if (!question || chatBusy || load.status !== "ready") return
+    setChatBusy(true)
+    setChatStage(null)
+    setChatError(null)
+    try {
+      const result = await askChatRemote({
+        sessionId: null,
+        question,
+        readSourcesOnly: chatReadSourcesOnly,
+        projectId: load.project.id,
+      }, setChatStage)
+      router.push(`/chat/${result.sessionId}`)
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : String(error))
+      setChatBusy(false)
+      setChatStage(null)
+    }
+  }
+
   if (load.status === "loading") return <div className="p-7 text-[14px] text-muted-text">Loading project…</div>
 
   if (load.status === "not-found") {
@@ -311,7 +347,40 @@ export default function ProjectDetailPage() {
             </article>
           ))}</div>
         ))}
-        {activeTab === "chats" && <div className="rounded-card border border-dashed border-border-warm px-6 py-10 text-center"><p className="text-[14px] text-espresso">No scoped conversations yet</p><p className="mt-1 text-[12px] text-muted-text">Project-scoped chat is the next SP6 delivery slice. Global chat remains available from Chat.</p></div>}
+        {activeTab === "chats" && (
+          <div className="space-y-4">
+            <div className="rounded-card border border-border-warm bg-light-surface p-4">
+              <p className="mb-3 text-[13px] text-muted-text">
+                Answers are limited to current members of this project. Project instructions guide the response without weakening source grounding.
+              </p>
+              <div className="flex flex-col gap-3">
+                <Composer value={chatQuestion} onChange={setChatQuestion} onSubmit={startProjectChat} busy={chatBusy} />
+                <SourcesToggle value={chatReadSourcesOnly} onChange={setChatReadSourcesOnly} />
+                {chatBusy && <p className="text-[12px] text-muted-text">{chatStageLabel(chatStage)}</p>}
+                {chatError && <LlmErrorMessage message={chatError} />}
+              </div>
+            </div>
+            {project.conversations.length === 0 ? (
+              <div className="rounded-card border border-dashed border-border-warm px-6 py-8 text-center">
+                <p className="text-[14px] text-espresso">No scoped conversations yet</p>
+                <p className="mt-1 text-[12px] text-muted-text">Ask the first question above to start one.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {project.conversations.map((conversation) => (
+                  <Link
+                    key={conversation.id}
+                    href={`/chat/${conversation.id}`}
+                    className="flex items-center justify-between gap-4 rounded-card border border-border-warm bg-light-surface px-4 py-3 hover:border-orange/40"
+                  >
+                    <span className="min-w-0 truncate text-[14px] text-espresso">{conversation.title}</span>
+                    <span className="shrink-0 text-[11px] text-muted-text">{conversation.messageCount} messages</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {projectEditor && (

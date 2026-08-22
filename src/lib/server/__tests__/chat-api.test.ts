@@ -87,4 +87,19 @@ describe("POST /api/skills/chat", () => {
     const session = await loadSession(storage, result.sessionId)
     expect(session?.messages[0]).toEqual({ role: "user", content: "What is attention?" })
   })
+
+  it("strictly rejects extra fields, unsafe session ids, and traversal project ids", async () => {
+    const cases = [
+      { sessionId: null, question: "Question", readSourcesOnly: false, forgedContext: "secret" },
+      { sessionId: "../settings", question: "Question", readSourcesOnly: false },
+      { sessionId: null, question: "Question", readSourcesOnly: false, projectId: "../../settings" },
+    ]
+
+    for (const body of cases) {
+      const response = await chatRoute.POST(req(body))
+      await expect(readNdjson(response, () => {})).rejects.toThrow()
+    }
+    expect(await storage.read(".scispark/settings.json")).toContain("sk-test")
+    expect(await storage.list(".scispark/chats/")).toEqual([])
+  })
 })

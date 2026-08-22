@@ -66,13 +66,16 @@ function WikiIndexPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const view = searchParams.get("view") === "all" ? "all" : "dashboard"
+  const requestedShelf = SHELF_ORDER.includes(searchParams.get("shelf") as PaperShelfStatus)
+    ? searchParams.get("shelf") as PaperShelfStatus
+    : null
 
   const [storage, setStorage] = useState<VaultStorage | null>(null)
   const [bundle, setBundle] = useState<Bundle | null>(null)
   const [inboxCount, setInboxCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [viewAllShelf, setViewAllShelf] = useState<PaperShelfStatus | null>(null)
+  const [viewAllShelf, setViewAllShelf] = useState<PaperShelfStatus | null>(requestedShelf)
 
   const refresh = useCallback(async () => {
     const vault = await getOpenVault()
@@ -135,6 +138,11 @@ function WikiIndexPageContent() {
   if (view !== prevView) {
     setPrevView(view)
     setViewAllShelf(null)
+  }
+  const [prevRequestedShelf, setPrevRequestedShelf] = useState(requestedShelf)
+  if (requestedShelf !== prevRequestedShelf) {
+    setPrevRequestedShelf(requestedShelf)
+    setViewAllShelf(requestedShelf)
   }
 
   const dashboard = useMemo(() => (bundle ? deriveWikiDashboard(bundle) : null), [bundle])

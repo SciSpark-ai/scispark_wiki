@@ -47,6 +47,7 @@ export function MessageBubble({ message, pageTitleById, onSave, saving }: Messag
   const hasContent = message.content.trim() !== ""
   const citedPageIds = message.citedPageIds ?? []
   const skippedPageIds = message.skippedPageIds ?? []
+  const truncatedPageIds = message.truncatedPageIds ?? []
   // A degraded-but-answered turn (selectionFallback/skippedPageIds set, but
   // real content present) is still a legitimate answer worth saving — only
   // an error-only turn (nothing was actually answered) is not saveable, so
@@ -84,6 +85,12 @@ export function MessageBubble({ message, pageTitleById, onSave, saving }: Messag
       {isAssistant && skippedPageIds.length > 0 && (
         <p className="mt-2 text-[12px] text-muted-text tracking-body">
           Couldn&apos;t read: {skippedPageIds.map((id) => labelFor(id, pageTitleById)).join(", ")}
+        </p>
+      )}
+
+      {isAssistant && truncatedPageIds.length > 0 && (
+        <p className="mt-2 text-[12px] text-muted-text tracking-body">
+          Context limit reached for: {truncatedPageIds.map((id) => labelFor(id, pageTitleById)).join(", ")}
         </p>
       )}
 
