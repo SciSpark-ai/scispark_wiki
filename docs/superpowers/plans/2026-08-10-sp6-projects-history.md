@@ -66,6 +66,7 @@ Branch: `codex/sp6-project-chat-history`, created from merged PR 2 on updated
 8. [x] Run the deterministic gate: 2,032 tests passed with 15 environment-gated
    skips, TypeScript and ESLint passed, and the production build generated all
    52 routes.
+9. [x] Publish draft PR #21 for review.
 
 Acceptance: an unassigned page is never retrieved, deleted-project transcripts
 remain readable but cannot continue globally, corrupt sessions do not crash

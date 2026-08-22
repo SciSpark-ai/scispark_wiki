@@ -65,6 +65,9 @@
 - The PR 3 deterministic gate passed on 2026-08-21: 2,032 tests passed with 15
   environment-gated skips, `npx tsc --noEmit` passed, `npm run lint -- --quiet`
   passed, and the Next.js production build generated all 52 pages successfully.
+- PR 3 implementation commit `ab4aae2` is published in draft PR #21 from
+  `codex/sp6-project-chat-history` to `main`. GitHub reports the PR mergeable;
+  no repository status checks were attached when the draft was opened.
 - The pre-merge audit hardened full chat-session shape validation and serialized
   same-session turns in the local runtime so concurrent tabs cannot lose transcript
   updates.
