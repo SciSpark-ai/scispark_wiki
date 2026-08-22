@@ -14,6 +14,7 @@ const loadSessionMock = vi.fn()
 const loadBundleMock = vi.fn()
 const askChatRemoteMock = vi.fn()
 const saveAnswerAsQueryRemoteMock = vi.fn()
+const getProjectRemoteMock = vi.fn()
 const routerPushMock = vi.fn()
 let paramsValue: { id?: string } = {}
 
@@ -34,6 +35,14 @@ vi.mock("@/lib/chat/client", () => ({
 }))
 vi.mock("@/lib/chat/save-query-client", () => ({
   saveAnswerAsQueryRemote: (...args: unknown[]) => saveAnswerAsQueryRemoteMock(...args),
+}))
+vi.mock("@/lib/projects/client", () => ({
+  getProjectRemote: (...args: unknown[]) => getProjectRemoteMock(...args),
+  ProjectApiError: class ProjectApiError extends Error {
+    constructor(public status: number, message: string) {
+      super(message)
+    }
+  },
 }))
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: routerPushMock }),
@@ -93,6 +102,7 @@ beforeEach(() => {
   listSessionsMock.mockResolvedValue([])
   loadSessionMock.mockResolvedValue(null)
   loadBundleMock.mockResolvedValue(emptyBundle())
+  getProjectRemoteMock.mockResolvedValue({ id: "auditory-biomarkers" })
 })
 
 describe("ChatEntryPage (/chat)", () => {
@@ -190,6 +200,40 @@ describe("ChatSessionPage (/chat/[id])", () => {
     expect(container.textContent).toContain("What is a TRF?")
     expect(container.textContent).toContain("A TRF is a temporal response function.")
 
+    cleanup()
+  })
+
+  it("labels a project-scoped transcript and verifies its live scope", async () => {
+    paramsValue = { id: "chat_project" }
+    loadSessionMock.mockResolvedValue(session({
+      id: "chat_project",
+      projectId: "auditory-biomarkers",
+      projectTitle: "Auditory Biomarkers",
+    }))
+
+    const { container, cleanup } = await renderPage(<ChatSessionPage />)
+
+    expect(container.textContent).toContain("Project conversation · Auditory Biomarkers")
+    expect(container.textContent).toContain("Scoped to current members")
+    expect(getProjectRemoteMock).toHaveBeenCalledWith("auditory-biomarkers")
+    cleanup()
+  })
+
+  it("keeps a deleted-project transcript readable and disables continuation", async () => {
+    paramsValue = { id: "chat_deleted" }
+    loadSessionMock.mockResolvedValue(session({
+      id: "chat_deleted",
+      projectId: "deleted-project",
+      projectTitle: "Deleted Project",
+    }))
+    const { ProjectApiError } = await import("@/lib/projects/client")
+    getProjectRemoteMock.mockRejectedValue(new ProjectApiError(404, "not found"))
+
+    const { container, cleanup } = await renderPage(<ChatSessionPage />)
+
+    expect(container.textContent).toContain("The transcript is preserved")
+    expect(container.textContent).toContain("A TRF is a temporal response function")
+    expect((container.querySelector("textarea") as HTMLTextAreaElement).disabled).toBe(true)
     cleanup()
   })
 

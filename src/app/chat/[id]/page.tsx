@@ -16,8 +16,13 @@ import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { MessageList } from "@/components/chat/MessageList"
 import { Composer } from "@/components/chat/Composer"
 import { SourcesToggle } from "@/components/chat/SourcesToggle"
+import { getProjectRemote, ProjectApiError } from "@/lib/projects/client"
 
 type LoadState = "loading" | "ready" | "not-found"
+type ProjectScopeState =
+  | { status: "global" }
+  | { status: "ready" }
+  | { status: "unavailable"; message: string }
 
 function stageLabel(stage: ChatStage | null): string {
   if (stage === "selecting") return "Reading your knowledge base…"
@@ -42,6 +47,7 @@ export default function ChatSessionPage() {
   const [state, setState] = useState<LoadState>("loading")
   const [session, setSession] = useState<ChatSession | null>(null)
   const [pageTitleById, setPageTitleById] = useState<Record<string, string>>({})
+  const [projectScope, setProjectScope] = useState<ProjectScopeState>({ status: "global" })
 
   const [question, setQuestion] = useState("")
   const [readSourcesOnly, setReadSourcesOnly] = useState(false)
@@ -63,6 +69,22 @@ export default function ChatSessionPage() {
       setSession(null)
       setState("not-found")
     } else {
+      if (loaded.projectId !== undefined) {
+        try {
+          await getProjectRemote(loaded.projectId)
+          setProjectScope({ status: "ready" })
+        } catch (error) {
+          const deleted = error instanceof ProjectApiError && error.status === 404
+          setProjectScope({
+            status: "unavailable",
+            message: deleted
+              ? "This project was deleted. The transcript is preserved, but it cannot continue without its original scope."
+              : `Project scope could not be verified: ${error instanceof Error ? error.message : String(error)}`,
+          })
+        }
+      } else {
+        setProjectScope({ status: "global" })
+      }
       setSession(loaded)
       setState("ready")
     }
@@ -93,7 +115,12 @@ export default function ChatSessionPage() {
     setSubmitError(null)
     setStage(null)
     try {
-      await askChatRemote({ sessionId, question: q, readSourcesOnly }, setStage)
+      await askChatRemote({
+        sessionId,
+        question: q,
+        readSourcesOnly,
+        ...(session?.projectId ? { projectId: session.projectId } : {}),
+      }, setStage)
       setQuestion("")
       await reload()
     } catch (err) {
@@ -147,7 +174,26 @@ export default function ChatSessionPage() {
 
   return (
     <div className="p-7 mx-auto max-w-2xl">
-      <PageHeader title={session.title} />
+      <PageHeader
+        title={session.title}
+        description={session.projectId
+          ? `Project conversation · ${session.projectTitle ?? session.projectId}`
+          : undefined}
+      />
+
+      {session.projectId && projectScope.status === "ready" && (
+        <p className="mb-4 text-[13px] text-muted-text">
+          Scoped to current members of{" "}
+          <Link href={`/projects/${encodeURIComponent(session.projectId)}`} className="text-orange hover:text-orange-light">
+            {session.projectTitle ?? session.projectId}
+          </Link>.
+        </p>
+      )}
+      {projectScope.status === "unavailable" && (
+        <div role="alert" className="mb-4 rounded-card border border-border-warm bg-card-surface p-3 text-[13px] text-espresso">
+          {projectScope.message}
+        </div>
+      )}
 
       <MessageList
         messages={session.messages}
@@ -166,7 +212,12 @@ export default function ChatSessionPage() {
       )}
 
       <div className="mt-6 flex flex-col gap-3">
-        <Composer value={question} onChange={setQuestion} onSubmit={handleSubmit} busy={submitting} />
+        <Composer
+          value={question}
+          onChange={setQuestion}
+          onSubmit={handleSubmit}
+          busy={submitting || projectScope.status === "unavailable"}
+        />
         <SourcesToggle value={readSourcesOnly} onChange={setReadSourcesOnly} />
         {submitting && <p className="text-[12px] text-muted-text tracking-body">{stageLabel(stage)}</p>}
         {submitError && <LlmErrorMessage message={submitError} />}

@@ -142,6 +142,18 @@ describe("MessageBubble", () => {
     expect(html).toContain("unknown-method")
   })
 
+  it("names pages affected by deterministic context truncation", () => {
+    const message = assistantMessage({
+      truncatedPageIds: ["wiki/concepts/attention", "wiki/methods/unknown-method"],
+    })
+    const html = renderToStaticMarkup(
+      <MessageBubble message={message} pageTitleById={PAGE_TITLES} onSave={() => {}} saving={false} />,
+    )
+    expect(html).toContain("Context limit reached")
+    expect(html).toContain("Attention Mechanism")
+    expect(html).toContain("unknown-method")
+  })
+
   it("renders the Save to knowledge base control on an assistant message", () => {
     const message = assistantMessage()
     const html = renderToStaticMarkup(

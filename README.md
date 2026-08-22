@@ -8,8 +8,8 @@ ideas while keeping the vault and API keys on the user's machine.
 ## Current status
 
 SciSpark is an internal alpha moving toward a local beta. The core research
-workflows and Projects are real and vault-backed. The remaining SP6 work adds
-project-scoped chat, the global History UI, and developer-preview hardening.
+workflows, Projects, scoped chat, and recoverable History are real and
+vault-backed. The remaining SP6 work is developer-preview hardening.
 
 | Surface | Status |
 |---|---|
@@ -20,8 +20,8 @@ project-scoped chat, the global History UI, and developer-preview hardening.
 | Projects, membership, and project notes | Vault-backed |
 | Visualization, Spark, lint, spend tracking | Vault-backed |
 | Conversation history | Vault-backed |
-| Project-scoped chat and Changes History UI | SP6 follow-up |
-| Legacy Library route | Prototype; redirect scheduled in SP6 |
+| Project-scoped chat and Changes History UI | Vault-backed |
+| Legacy Library route | Redirects to the saved-paper Wiki shelf |
 
 See [project_memory.md](./project_memory.md) for the verified repository baseline
 and [docs/design/06-roadmap.md](./docs/design/06-roadmap.md) for the execution

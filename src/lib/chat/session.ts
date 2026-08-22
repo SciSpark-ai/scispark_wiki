@@ -19,6 +19,9 @@ export interface ChatMessage {
    * not be read, so the answer was written without them (SP5 §5 — say what was
    * missing rather than answering short and silent). Omitted when none. */
   skippedPageIds?: string[]
+  /** Assistant only: selected pages whose context was shortened or omitted by
+   * the deterministic per-page/total context budgets. */
+  truncatedPageIds?: string[]
   /** Assistant only: set when the answer failed; carries the real reason. */
   error?: string
 }
@@ -29,6 +32,10 @@ export interface ChatSession {
   createdAt: string // ISO 8601
   updatedAt: string // ISO 8601
   messages: ChatMessage[]
+  /** Stable project slug for scoped conversations. Omitted for global chats. */
+  projectId?: string
+  /** Title at conversation creation time, retained if the project is renamed/deleted. */
+  projectTitle?: string
 }
 
 const TITLE_MAX_LENGTH = 60
@@ -113,6 +120,7 @@ function isChatMessageShape(value: unknown): value is ChatMessage {
     isOptionalBoolean(v.readSourcesOnly) &&
     isOptionalBoolean(v.selectionFallback) &&
     (v.skippedPageIds === undefined || isStringArray(v.skippedPageIds)) &&
+    (v.truncatedPageIds === undefined || isStringArray(v.truncatedPageIds)) &&
     isOptionalString(v.error)
   )
 }
@@ -123,6 +131,13 @@ function isChatMessageShape(value: unknown): value is ChatMessage {
 function isChatSessionShape(value: unknown, expectedId: string): value is ChatSession {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false
   const v = value as Record<string, unknown>
+  const projectFieldsValid =
+    (v.projectId === undefined && v.projectTitle === undefined) ||
+    (typeof v.projectId === "string" &&
+      v.projectId.length > 0 &&
+      typeof v.projectTitle === "string" &&
+      v.projectTitle.length > 0)
+
   return (
     v.id === expectedId &&
     typeof v.title === "string" &&
@@ -131,7 +146,8 @@ function isChatSessionShape(value: unknown, expectedId: string): value is ChatSe
     typeof v.updatedAt === "string" &&
     Number.isFinite(Date.parse(v.updatedAt)) &&
     Array.isArray(v.messages) &&
-    v.messages.every(isChatMessageShape)
+    v.messages.every(isChatMessageShape) &&
+    projectFieldsValid
   )
 }
 

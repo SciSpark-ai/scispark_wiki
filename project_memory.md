@@ -19,8 +19,8 @@
   research companion, visualization workspace, Spark ideation, personalized
   trending, lint/spend tooling, and grounded knowledge-base chat.
 - `README.md` describes the implemented local-runtime architecture. Projects,
-  membership, and project notes are vault-backed; scoped chat, the Changes
-  History UI, and the legacy Library redirect remain in later SP6 PRs.
+  membership, project notes, scoped chat, and recoverable Changes History are
+  vault-backed; `/library` redirects to the saved-paper Wiki shelf.
 - The filesystem is case-insensitive: `agents.md` and `AGENTS.md` resolve to the
   same file/inode.
 
@@ -30,10 +30,11 @@
   `5e729f8c22aff0a38450fe16f635ca9b78dd98f5`.
 - SP6 foundation PR #19 is merged into `main` at merge commit
   `f45e61b9e88db973811b7d69e08073133ed17e13`.
-- SP6 PR 2 implementation is active on `codex/sp6-projects`, created from that
-  updated `main` commit. The approved delivery remains four sequential
-  reviewable PRs ending in a GitHub developer preview, not a desktop or npm
-  release.
+- SP6 Projects PR #20 is merged into `main` at merge commit
+  `d4b5e8c`. SP6 PR 3 implementation is active on
+  `codex/sp6-project-chat-history`, created from that updated `main`. The
+  approved delivery remains four sequential reviewable PRs ending in a GitHub
+  developer preview, not a desktop or npm release.
 - The SP6 design and implementation plan are recorded under
   `docs/superpowers/specs/2026-08-10-sp6-projects-history-design.md` and
   `docs/superpowers/plans/2026-08-10-sp6-projects-history.md`.
@@ -55,9 +56,18 @@
 - The PR 2 deterministic gate passed on 2026-08-11: 2,018 tests passed with 15
   environment-gated skips, `npx tsc --noEmit` passed, `npm run lint` passed,
   and the Next.js production build generated all 52 pages successfully.
-- SP6 Projects implementation commit `1c3fe2f` is published in draft PR #20
-  from `codex/sp6-projects` to `main`. PR 3 must start from updated `main` only
-  after PR #20 is reviewed and merged.
+- PR 3 adds persisted stable project chat scope/title snapshots, current-member
+  retrieval with a paper-only subset, project guidance subordinate to grounding,
+  deterministic 16k-per-page/64k-total context limits with visible truncation,
+  deleted-project fail-closed behavior, project conversation UI, URL-addressable
+  Conversations/Changes History, safe applied-only Undo, and the real Library
+  redirect.
+- The PR 3 deterministic gate passed on 2026-08-21: 2,032 tests passed with 15
+  environment-gated skips, `npx tsc --noEmit` passed, `npm run lint -- --quiet`
+  passed, and the Next.js production build generated all 52 pages successfully.
+- PR 3 implementation commit `ab4aae2` is published in draft PR #21 from
+  `codex/sp6-project-chat-history` to `main`. GitHub reports the PR mergeable;
+  no repository status checks were attached when the draft was opened.
 - The pre-merge audit hardened full chat-session shape validation and serialized
   same-session turns in the local runtime so concurrent tabs cannot lose transcript
   updates.
@@ -95,9 +105,9 @@
   evaluation order can create duplicate sibling keys.
 - Treat live LLM tests as explicit, cost-bearing gates. Ordinary verification
   should use deterministic unit tests, lint, type-checking, and builds.
-- Chat selected-page count is capped, but selected non-paper page bodies are not
-  yet character/token capped. Measure real vault sizes before setting a truncation
-  policy; do not silently introduce one that can remove answer-bearing context.
+- Chat context is capped at 16,000 characters per selected page and 64,000
+  characters total. Any affected page IDs must remain persisted and visible to
+  the user; do not silently remove this disclosure.
 - Chat transcript serialization is process-local and keyed by the shared
   `VaultStorage` instance. A future multi-process/sync backend needs its own
   cross-process concurrency control.

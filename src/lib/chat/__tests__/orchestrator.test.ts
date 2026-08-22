@@ -5,7 +5,13 @@ import type { LLMProvider, LLMResult } from "../../llm/types"
 import type { Frontmatter } from "../../vault/types"
 import { serializeDocument } from "../../vault/frontmatter"
 import { loadSession, saveSession, type ChatSession } from "../session"
-import { askChat, MAX_HISTORY_TURNS } from "../orchestrator"
+import {
+  askChat,
+  ChatScopeError,
+  MAX_CONTEXT_CHARS_PER_PAGE,
+  MAX_CONTEXT_CHARS_TOTAL,
+  MAX_HISTORY_TURNS,
+} from "../orchestrator"
 
 const NOW = () => new Date("2026-07-26T10:00:00.000Z")
 
@@ -81,6 +87,20 @@ async function seedVault(storage: MemoryVaultStorage): Promise<void> {
 
 const CONCEPT_ID = "wiki/concepts/temporal-response-function"
 const PAPER_ID = "wiki/papers/ohara2024-decoding"
+
+async function writeProject(storage: MemoryVaultStorage, id = "auditory-biomarkers"): Promise<void> {
+  await writePage(
+    storage,
+    `wiki/projects/${id}.md`,
+    {
+      type: "project",
+      title: "Auditory Biomarkers",
+      description: "Auditory project",
+      instructions: "Prefer reliability evidence and call out uncertainty.",
+    },
+    "Project overview.",
+  )
+}
 
 /** Storage whose reads of one path throw from the second read onwards. */
 class FlakyReadStorage extends MemoryVaultStorage {
@@ -205,6 +225,201 @@ describe("askChat — happy path", () => {
     expect(session?.messages).toHaveLength(4)
     expect(session?.messages[2]).toEqual({ role: "user", content: "And what about ear-EEG?" })
     expect(session?.updatedAt).toBe(NOW().toISOString())
+  })
+})
+
+describe("askChat — project scope", () => {
+  it("persists a stable project snapshot and never retrieves an unassigned page", async () => {
+    const storage = new MemoryVaultStorage()
+    await writeProject(storage)
+    await writePage(
+      storage,
+      "wiki/notes/member-note.md",
+      { type: "note", title: "Member note", projects: ["auditory-biomarkers"] },
+      "ASSIGNED-MARKER: reliability evidence.",
+    )
+    await writePage(
+      storage,
+      "wiki/notes/private-note.md",
+      { type: "note", title: "Private note", projects: [] },
+      "UNASSIGNED-MARKER: must never enter project context.",
+    )
+    const { strongProvider, override } = providers(
+      [structured({ pageIds: ["private-note", "member-note"] })],
+      [structured({ answer: "Scoped answer.", citedPageIds: ["wiki/notes/member-note", "wiki/notes/private-note"] })],
+    )
+
+    const result = await askChat(storage, {
+      input: {
+        sessionId: null,
+        question: "What does this project say?",
+        readSourcesOnly: false,
+        projectId: "auditory-biomarkers",
+      },
+      settings: SETTINGS,
+      providerOverride: override,
+      now: NOW,
+    })
+
+    const prompt = promptOf(strongProvider)
+    expect(prompt).toContain("ASSIGNED-MARKER")
+    expect(prompt).not.toContain("UNASSIGNED-MARKER")
+    expect(prompt).toContain("Prefer reliability evidence and call out uncertainty.")
+    expect(result.message.citedPageIds).toEqual(["wiki/notes/member-note"])
+    await expect(loadSession(storage, result.sessionId)).resolves.toMatchObject({
+      projectId: "auditory-biomarkers",
+      projectTitle: "Auditory Biomarkers",
+    })
+  })
+
+  it("makes Read Sources Only a paper subset of current project members", async () => {
+    const storage = new MemoryVaultStorage()
+    await writeProject(storage)
+    await writePage(
+      storage,
+      "wiki/notes/member-note.md",
+      { type: "note", title: "Member note", projects: ["auditory-biomarkers"] },
+      "NOTE-MARKER",
+    )
+    await writePage(
+      storage,
+      "wiki/papers/member-paper.md",
+      {
+        type: "paper",
+        title: "Member paper",
+        projects: ["auditory-biomarkers"],
+        tldr: "PAPER-MARKER",
+      },
+      "## Abstract\n\nPROJECT-PAPER-ABSTRACT",
+    )
+    await writePage(
+      storage,
+      "wiki/papers/unassigned-paper.md",
+      { type: "paper", title: "Unassigned paper", projects: [], tldr: "UNASSIGNED-PAPER" },
+      "## Abstract\n\nUNASSIGNED-PAPER-ABSTRACT",
+    )
+    const { fastProvider, strongProvider, override } = providers(
+      [structured({ pageIds: ["member-note", "member-paper", "unassigned-paper"] })],
+      [structured({ answer: "Paper answer.", citedPageIds: ["wiki/papers/member-paper"] })],
+    )
+
+    await askChat(storage, {
+      input: {
+        sessionId: null,
+        question: "What is the evidence?",
+        readSourcesOnly: true,
+        projectId: "auditory-biomarkers",
+      },
+      settings: SETTINGS,
+      providerOverride: override,
+      now: NOW,
+    })
+
+    expect(promptOf(fastProvider)).toContain("member-paper")
+    expect(promptOf(fastProvider)).not.toContain("member-note")
+    expect(promptOf(fastProvider)).not.toContain("unassigned-paper")
+    expect(promptOf(strongProvider)).toContain("PROJECT-PAPER-ABSTRACT")
+    expect(promptOf(strongProvider)).not.toContain("NOTE-MARKER")
+    expect(promptOf(strongProvider)).not.toContain("UNASSIGNED-PAPER")
+  })
+
+  it("keeps a deleted-project transcript readable but rejects continuation before appending", async () => {
+    const storage = new MemoryVaultStorage()
+    await writeProject(storage)
+    await writePage(
+      storage,
+      "wiki/notes/member.md",
+      { type: "note", title: "Member", projects: ["auditory-biomarkers"] },
+      "Member context.",
+    )
+    const first = await askChat(storage, {
+      input: {
+        sessionId: null,
+        question: "First question",
+        readSourcesOnly: false,
+        projectId: "auditory-biomarkers",
+      },
+      settings: SETTINGS,
+      providerOverride: providers(
+        [structured({ pageIds: [] })],
+        [structured({ answer: "First answer", citedPageIds: [] })],
+      ).override,
+      now: NOW,
+    })
+    const before = await loadSession(storage, first.sessionId)
+    await storage.delete("wiki/projects/auditory-biomarkers.md")
+
+    await expect(askChat(storage, {
+      input: {
+        sessionId: first.sessionId,
+        question: "Should not append",
+        readSourcesOnly: false,
+        projectId: "auditory-biomarkers",
+      },
+      settings: SETTINGS,
+      providerOverride: {},
+      now: NOW,
+    })).rejects.toBeInstanceOf(ChatScopeError)
+    await expect(loadSession(storage, first.sessionId)).resolves.toEqual(before)
+  })
+
+  it("rejects attempts to switch an existing conversation's project scope", async () => {
+    const storage = new MemoryVaultStorage()
+    await writeProject(storage)
+    await saveSession(storage, {
+      id: "global-chat",
+      title: "Global",
+      createdAt: NOW().toISOString(),
+      updatedAt: NOW().toISOString(),
+      messages: [],
+    })
+
+    await expect(askChat(storage, {
+      input: {
+        sessionId: "global-chat",
+        question: "Upgrade scope",
+        readSourcesOnly: false,
+        projectId: "auditory-biomarkers",
+      },
+      settings: SETTINGS,
+      providerOverride: {},
+      now: NOW,
+    })).rejects.toBeInstanceOf(ChatScopeError)
+  })
+})
+
+describe("askChat — deterministic context budgets", () => {
+  it("caps each page at 16k and total context at 64k while recording affected ids", async () => {
+    const storage = new MemoryVaultStorage()
+    const ids: string[] = []
+    for (let index = 0; index < 5; index += 1) {
+      const slug = `long-${index}`
+      ids.push(`wiki/notes/${slug}`)
+      await writePage(
+        storage,
+        `wiki/notes/${slug}.md`,
+        { type: "note", title: `Long ${index}` },
+        `${index}`.repeat(MAX_CONTEXT_CHARS_PER_PAGE + 4_000),
+      )
+    }
+    const { strongProvider, override } = providers(
+      [structured({ pageIds: ids })],
+      [structured({ answer: "Budgeted answer.", citedPageIds: ids })],
+    )
+
+    const result = await askChat(storage, {
+      input: { sessionId: null, question: "Read long pages", readSourcesOnly: false },
+      settings: SETTINGS,
+      providerOverride: override,
+      now: NOW,
+    })
+
+    const userPrompt = strongProvider.calls[0].req.messages.find((message) => message.role === "user")?.content ?? ""
+    const context = userPrompt.match(/<<<CONTEXT>>>\n([\s\S]*?)\n<<<END-CONTEXT>>>/)?.[1] ?? ""
+    expect(context.length).toBeLessThanOrEqual(MAX_CONTEXT_CHARS_TOTAL)
+    expect(context.split("\n\n---\n\n")[0].length).toBe(MAX_CONTEXT_CHARS_PER_PAGE)
+    expect(result.message.truncatedPageIds).toEqual(ids)
+    expect(result.message.citedPageIds).toEqual(ids.slice(0, 4))
   })
 })
 
