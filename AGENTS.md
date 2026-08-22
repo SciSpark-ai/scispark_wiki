@@ -7,10 +7,11 @@ and derives wiki, trend, and graph views from that vault.
 
 # Tech Stack
 
-- Next.js 16.2 App Router, React 19.2, and TypeScript 5 in strict mode.
+- Next.js 16.3 App Router, React 19.2, and TypeScript 5 in strict mode.
 - Tailwind CSS 4 with semantic theme tokens in `src/app/globals.css`.
 - Zustand for the remaining client-side UI state.
-- Vitest 4 and jsdom for unit/component tests; ESLint 9 with Next.js rules.
+- Vitest 4 and jsdom for unit/component tests, Playwright for disposable-vault
+  E2E, and ESLint 9 with Next.js rules.
 - Zod for runtime schemas; Anthropic and OpenAI-compatible LLM providers.
 - A server-owned, filesystem-backed Markdown vault exposed to the browser through
   local Next.js API routes.
@@ -20,9 +21,10 @@ and derives wiki, trend, and graph views from that vault.
 # Essential Commands
 
 - `npm install` — install dependencies.
-- `npm run dev` — run the local Next.js development server.
+- `npm run dev` — run the local Next.js development server on loopback.
 - `npm run build` — create a production build.
 - `npm run start` — serve the production build.
+- `npm run e2e` — run Playwright against a disposable temporary vault.
 - `npm test` — run the full Vitest suite once.
 - `npm run test:watch` — run Vitest in watch mode.
 - `npm run lint` — run ESLint.
@@ -50,7 +52,11 @@ CI/unit tests. See `CLAUDE.md` and the relevant milestone plan for the exact gat
   and the generic vault-file API must keep `.scispark/settings.json` inaccessible.
 
 <!-- BEGIN:nextjs-agent-rules -->
+
 # This is NOT the Next.js you know
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
 <!-- END:nextjs-agent-rules -->

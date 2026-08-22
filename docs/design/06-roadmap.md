@@ -34,7 +34,7 @@ The six-part refresh turns the foundation into one coherent product.
 | SP3 | Knowledge-base dashboard and visualization workspace | Built |
 | SP4 | Academia Right Now trending redesign | Built |
 | SP5 | Real grounded knowledge-base chat and saved query pages | Built and merged in PR #18 |
-| SP6 | Real Projects plus conversation/change History and global undo | PR 1-2 merged; PR 3 implemented and validated |
+| SP6 | Real Projects plus conversation/change History and global undo | PR 1-3 merged; PR 4 implemented and deterministically validated |
 
 ## Immediate execution order
 
@@ -52,7 +52,7 @@ The six-part refresh turns the foundation into one coherent product.
 - Add honest loading, empty, error, conflict, and deletion states.
 - Remove the legacy mock/localStorage project persistence path.
 
-### 3. Implement project chat and History UI — implemented, awaiting review
+### 3. Implement project chat and History UI — complete
 
 - Scope chat to direct project members with deterministic context caps.
 - Preserve deleted-project transcripts without global fallback.
@@ -62,12 +62,12 @@ The six-part refresh turns the foundation into one coherent product.
 
 ### 4. Release hardening
 
-- Add browser E2E coverage for the primary research and recovery loops.
-- Verify loopback binding, host/origin handling, settings redaction, path
+- [x] Add browser E2E coverage for the primary research and recovery loops.
+- [x] Verify loopback binding, host/origin handling, settings redaction, path
   traversal protection, corrupted-file behavior, and backup recovery.
-- Re-run cost-bearing provider gates with explicit approval against the exact
+- [ ] Re-run cost-bearing provider gates with explicit approval against the exact
   release commit.
-- Publish the source checkout as a GitHub developer prerelease.
+- [ ] Publish the source checkout as a GitHub developer prerelease.
   Desktop packaging and npm-registry publication remain deferred.
 
 ## Release definition

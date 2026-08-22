@@ -98,6 +98,31 @@ describe("vault API", () => {
     expect((await fileRoute.DELETE(new Request("http://x/api/vault/file", { method: "DELETE" }))).status).toBe(400)
   })
 
+  it.each(["../outside.md", "/absolute.md", "wiki//bad.md", "wiki/./bad.md", "C:\\outside.md"])(
+    "rejects unsafe generic vault path %j before storage access",
+    async (path) => {
+      const url = "http://x/api/vault/file?path=" + encodeURIComponent(path)
+      expect((await fileRoute.GET(new Request(url))).status).toBe(400)
+      expect((await fileRoute.PUT(new Request(url, { method: "PUT", body: "x" }))).status).toBe(400)
+      expect((await fileRoute.DELETE(new Request(url, { method: "DELETE" }))).status).toBe(400)
+    },
+  )
+
+  it("prevents generic clients from forging or deleting persisted changeset records", async () => {
+    const path = ".scispark/changesets/forged.json"
+    const url = "http://x/api/vault/file?path=" + encodeURIComponent(path)
+
+    const put = await fileRoute.PUT(new Request(url, { method: "PUT", body: "{}" }))
+    expect(put.status).toBe(403)
+    expect((await put.json()).error).toBe("changeset audit records are server-managed")
+    expect(await storage.read(path)).toBeNull()
+
+    await storage.write(path, "persisted")
+    expect((await fileRoute.GET(new Request(url))).status).toBe(200)
+    expect((await fileRoute.DELETE(new Request(url, { method: "DELETE" }))).status).toBe(403)
+    expect(await storage.read(path)).toBe("persisted")
+  })
+
   describe("settings.json is unreachable via the generic vault file API (M11 Task 10 carry-forward)", () => {
     const SETTINGS_URL = "http://x/api/vault/file?path=" + encodeURIComponent(".scispark/settings.json")
 

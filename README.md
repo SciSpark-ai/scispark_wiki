@@ -9,7 +9,8 @@ ideas while keeping the vault and API keys on the user's machine.
 
 SciSpark is an internal alpha moving toward a local beta. The core research
 workflows, Projects, scoped chat, and recoverable History are real and
-vault-backed. The remaining SP6 work is developer-preview hardening.
+vault-backed. SP6 developer-preview hardening is implemented; paid-provider,
+PDF-reader, tag, and prerelease-publication gates remain separate approvals.
 
 | Surface | Status |
 |---|---|
@@ -25,7 +26,8 @@ vault-backed. The remaining SP6 work is developer-preview hardening.
 
 See [project_memory.md](./project_memory.md) for the verified repository baseline
 and [docs/design/06-roadmap.md](./docs/design/06-roadmap.md) for the execution
-roadmap.
+roadmap. Source-preview installation, backup, security, and known limits are in
+[docs/DEVELOPER_PREVIEW.md](./docs/DEVELOPER_PREVIEW.md).
 
 ## Runtime model
 
@@ -48,15 +50,17 @@ changesets with persisted undo records. Derived wiki, trend, timeline, and graph
 views are rebuilt from the vault instead of becoming separate sources of truth.
 
 Stored LLM keys are never returned to the browser. The settings API exposes only
-presence flags, and the generic vault-file API blocks access to
-`.scispark/settings.json`.
+presence flags, the generic vault-file API blocks access to
+`.scispark/settings.json`, and persisted changeset records cannot be forged or
+deleted through generic file mutations.
 
 ## Stack
 
-- Next.js 16.2 App Router, React 19.2, and strict TypeScript 5
+- Next.js 16.3 App Router, React 19.2, and strict TypeScript 5
 - Tailwind CSS 4 with semantic theme tokens
 - Zustand for remaining client-only UI state
-- Vitest 4 and jsdom for unit/component tests
+- Vitest 4 and jsdom for unit/component tests; Playwright for disposable-vault
+  browser acceptance
 - Zod schemas and Anthropic/OpenAI-compatible LLM providers
 - Sigma.js, Graphology, and D3 for research visualizations
 - pdf.js and DOMPurify for the reader
@@ -67,7 +71,7 @@ This Next.js version includes breaking API and file-layout changes. Read
 
 ## Getting started
 
-Requirements: a current Node.js runtime and npm.
+Requirements: Node.js 20 or newer and npm.
 
 ```bash
 npm install
@@ -75,14 +79,14 @@ cp .env.example .env.local   # optional public-data credentials
 npm run dev
 ```
 
-Open <http://localhost:3000>. Configure an LLM provider through Settings in the
+Open <http://127.0.0.1:3000>. Configure an LLM provider through Settings in the
 app. Normal use does not require placing an LLM key in `.env.local`.
 
 For a production-mode local run:
 
 ```bash
 npm run build
-npm run start
+npm run preview
 ```
 
 The v1 trust model assumes a loopback-only local server. There is currently no
@@ -95,7 +99,12 @@ npm test
 npx tsc --noEmit
 npm run lint
 npm run build
+npm run e2e
 ```
+
+Install the browser runtime once with `npx playwright install chromium`. E2E
+uses a temporary disposable vault and local no-cost fake provider; it never
+opens the normal user vault.
 
 Live LLM tests use real credentials, network services, and money. They are
 environment-gated and must be run as explicit release gates, not as ordinary

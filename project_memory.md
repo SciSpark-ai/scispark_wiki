@@ -1,6 +1,6 @@
 # Verified Facts
 
-- The repository is `scispark-app-frontend`, a private Next.js 16.2.1 / React
+- The repository is `scispark-app-frontend`, a private Next.js 16.3.2 / React
   19.2.4 / TypeScript application using the App Router.
 - The checked source footprint on 2026-08-09 is 551 files under `src/`, including
   60 app files, 125 component files, 359 library files, 7 store files, and 190
@@ -30,11 +30,12 @@
   `5e729f8c22aff0a38450fe16f635ca9b78dd98f5`.
 - SP6 foundation PR #19 is merged into `main` at merge commit
   `f45e61b9e88db973811b7d69e08073133ed17e13`.
-- SP6 Projects PR #20 is merged into `main` at merge commit
-  `d4b5e8c`. SP6 PR 3 implementation is active on
-  `codex/sp6-project-chat-history`, created from that updated `main`. The
-  approved delivery remains four sequential reviewable PRs ending in a GitHub
-  developer preview, not a desktop or npm release.
+- SP6 Projects PR #20 is merged into `main` at merge commit `d4b5e8c`. SP6
+  project-chat/History PR #21 is merged into `main` at merge commit `aed6f07`.
+  SP6 PR 4 developer-preview hardening is implemented on
+  `codex/sp6-developer-preview`, created from that updated `main`. The approved
+  delivery remains four sequential reviewable PRs ending in a GitHub developer
+  preview, not a desktop or npm release.
 - The SP6 design and implementation plan are recorded under
   `docs/superpowers/specs/2026-08-10-sp6-projects-history-design.md` and
   `docs/superpowers/plans/2026-08-10-sp6-projects-history.md`.
@@ -65,12 +66,38 @@
 - The PR 3 deterministic gate passed on 2026-08-21: 2,032 tests passed with 15
   environment-gated skips, `npx tsc --noEmit` passed, `npm run lint -- --quiet`
   passed, and the Next.js production build generated all 52 pages successfully.
-- PR 3 implementation commit `ab4aae2` is published in draft PR #21 from
-  `codex/sp6-project-chat-history` to `main`. GitHub reports the PR mergeable;
-  no repository status checks were attached when the draft was opened.
+- PR 3 implementation commit `ab4aae2` and documentation follow-up `9fd503c`
+  were merged through PR #21 at `aed6f07`.
 - The pre-merge audit hardened full chat-session shape validation and serialized
   same-session turns in the local runtime so concurrent tabs cannot lose transcript
   updates.
+- PR 4 adds Playwright 1.62 with a fresh temporary vault, isolated Next build,
+  dynamic loopback ports, and a local no-cost OpenAI-compatible fake. Its browser
+  gate covers request security, project creation, paper membership, note
+  create/edit, project-scoped chat, conversation/change History, deletion/undo,
+  stale revisions, corrupt project/chat/changeset isolation, explicit legacy-data
+  deletion, and export/import restoration of project/chat/wiki/History state.
+- Development and production-preview scripts bind to `127.0.0.1`. A Next.js 16
+  proxy rejects mutating API requests with non-loopback Host or unsafe
+  Origin/fetch-site signals. Generic vault paths are strict relative paths,
+  generic clients cannot write/delete changeset audit records, and ZIP imports
+  validate every entry before writing while excluding settings case-insensitively.
+- The PR 4 deterministic gate passed on 2026-08-21: 2,057 tests passed with 15
+  environment-gated skips, `npx tsc --noEmit` passed, `npm run lint -- --quiet`
+  passed, the production build generated all 52 routes, and all 4 Playwright
+  scenarios passed against a disposable on-disk vault.
+- Developer-preview hardening upgraded the vulnerable runtime dependency set to
+  Next.js and eslint-config-next 16.3.2, pdfjs-dist 6.2.108,
+  fast-xml-parser 5.10.1, and the current patched DOMPurify release. A final
+  `npm audit` reported zero production or development vulnerabilities before
+  the exact-tree gate was rerun.
+- An optimized `npm run preview` smoke on 2026-08-21 confirmed Next.js 16.3.2
+  bound only to `127.0.0.1`, scaffolded a disposable vault with HTTP 200, and
+  returned HTTP 403 for an unsafe Host/Origin mutation. The temporary server
+  and vault were removed afterward.
+- Developer-preview clone/install/run, vault location, backup, security, and
+  known-limit guidance is recorded in `docs/DEVELOPER_PREVIEW.md`. No GitHub
+  prerelease or tag has been published.
 - The deterministic verification gate passed on 2026-08-09: 1,982 tests passed
   with 15 environment-gated skips, `npx tsc --noEmit` passed, `npm run lint`
   passed, and the Next.js production build generated all 50 pages successfully.
@@ -105,6 +132,11 @@
   evaluation order can create duplicate sibling keys.
 - Treat live LLM tests as explicit, cost-bearing gates. Ordinary verification
   should use deterministic unit tests, lint, type-checking, and builds.
+- Do not run Playwright directly with `npx playwright test`; use `npm run e2e`
+  so the runner provisions and cleans a disposable vault, isolated build, and
+  dynamic loopback ports.
+- Do not expose the preview on a LAN/public interface. It has no local auth
+  token; mutation security assumes the supplied loopback binding.
 - Chat context is capped at 16,000 characters per selected page and 64,000
   characters total. Any affected page IDs must remain persisted and visible to
   the user; do not silently remove this disclosure.
