@@ -32,10 +32,18 @@
   `f45e61b9e88db973811b7d69e08073133ed17e13`.
 - SP6 Projects PR #20 is merged into `main` at merge commit `d4b5e8c`. SP6
   project-chat/History PR #21 is merged into `main` at merge commit `aed6f07`.
-  SP6 PR 4 developer-preview hardening is implemented on
-  `codex/sp6-developer-preview`, created from that updated `main`. The approved
-  delivery remains four sequential reviewable PRs ending in a GitHub developer
-  preview, not a desktop or npm release.
+  SP6 PR 4 developer-preview hardening is merged through PR #22 at merge commit
+  `baa1708b790823b6c80b2a6e835ff0b7f82c6a8a`. All four approved SP6
+  implementation PRs are now merged. The next gate is a complete local human
+  product walkthrough against one exact commit, followed by separately approved
+  provider/PDF gates and a GitHub developer preview, not a desktop or npm
+  release.
+- PR #15 (`loop/loop-engineering-hardening`) was triaged on 2026-08-29 and
+  converted to draft. Its run-ledger, scheduler, backoff, acceptance-metric,
+  post-ingest-lint, and projective-budget ideas were not merged elsewhere, but
+  the 44-file branch is 88 commits behind `main` and conflicts with the current
+  runtime. Preserve it as a post-preview reference; do not merge or rebase it
+  into the human-test candidate.
 - The SP6 design and implementation plan are recorded under
   `docs/superpowers/specs/2026-08-10-sp6-projects-history-design.md` and
   `docs/superpowers/plans/2026-08-10-sp6-projects-history.md`.
@@ -98,6 +106,10 @@
 - Developer-preview clone/install/run, vault location, backup, security, and
   known-limit guidance is recorded in `docs/DEVELOPER_PREVIEW.md`. No GitHub
   prerelease or tag has been published.
+- Human acceptance uses an exact commit SHA. Any source, dependency, or
+  configuration change after the candidate is designated invalidates that
+  candidate and requires a fresh deterministic gate plus another affected-flow
+  walkthrough. The local full-product walkthrough has not yet been completed.
 - The deterministic verification gate passed on 2026-08-09: 1,982 tests passed
   with 15 environment-gated skips, `npx tsc --noEmit` passed, `npm run lint`
   passed, and the Next.js production build generated all 50 pages successfully.

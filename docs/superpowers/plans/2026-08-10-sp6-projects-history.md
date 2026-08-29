@@ -87,9 +87,13 @@ Branch: create from updated `main` only after PR 3 merges.
    passed.
 6. [x] Prepare clone/install/run, vault location, backup, security, and known-limit
    documentation.
-7. [ ] With explicit approval, run paid-provider project-chat and PDF-reader gates
+7. [x] Establish the freeze rule: the human walkthrough targets one exact Git
+   SHA; any source, dependency, or configuration change creates a new candidate.
+8. [ ] Complete the full local human product walkthrough against the designated
+   candidate.
+9. [ ] With explicit approval, run paid-provider project-chat and PDF-reader gates
    against the exact release commit.
-8. [ ] With explicit approval, tag and publish GitHub prerelease
+10. [ ] With explicit approval, tag and publish GitHub prerelease
    `v0.1.0-preview.1`.
 
 Desktop packaging and npm-registry publication remain deferred.

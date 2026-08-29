@@ -100,6 +100,9 @@ dismissal, and export/import restoration without touching the normal vault.
 ## Known limits and release gates
 
 - This is a source checkout, not a signed desktop application or npm package.
+- The complete local human product walkthrough has not yet been accepted. Human
+  testing must target one exact Git SHA; any source, dependency, or
+  configuration change creates a new candidate.
 - There are no accounts, cloud sync, collaboration, hosted multi-user runtime,
   or local auth token.
 - LLM features are BYOK and can incur provider charges. The E2E fake does not
