@@ -34,7 +34,7 @@ The six-part refresh turns the foundation into one coherent product.
 | SP3 | Knowledge-base dashboard and visualization workspace | Built |
 | SP4 | Academia Right Now trending redesign | Built |
 | SP5 | Real grounded knowledge-base chat and saved query pages | Built and merged in PR #18 |
-| SP6 | Real Projects plus conversation/change History and global undo | PR 1-3 merged; PR 4 implemented and deterministically validated |
+| SP6 | Real Projects plus conversation/change History and global undo | Built and merged through PR #22; local human acceptance pending |
 
 ## Immediate execution order
 
@@ -65,6 +65,10 @@ The six-part refresh turns the foundation into one coherent product.
 - [x] Add browser E2E coverage for the primary research and recovery loops.
 - [x] Verify loopback binding, host/origin handling, settings redaction, path
   traversal protection, corrupted-file behavior, and backup recovery.
+- [x] Establish the candidate-freeze rule: test one exact Git SHA, and invalidate
+  it after any source, dependency, or configuration change.
+- [ ] Complete a full local human product walkthrough against the frozen
+  candidate before any prerelease publication.
 - [ ] Re-run cost-bearing provider gates with explicit approval against the exact
   release commit.
 - [ ] Publish the source checkout as a GitHub developer prerelease.
@@ -77,6 +81,8 @@ The local beta is ready only when:
 - no primary navigation route is mock-backed;
 - every agent-authored vault mutation is recoverable through the UI;
 - tests, type-checking, lint, build, and browser acceptance pass;
+- the complete product is exercised locally by a human against the exact
+  candidate commit;
 - a real disposable vault completes the full discover → read → retain → chat →
   project → undo journey;
 - secret handling and backup recovery are verified against the release commit.
