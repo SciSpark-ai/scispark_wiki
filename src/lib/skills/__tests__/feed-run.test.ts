@@ -4,7 +4,7 @@ import { readRecentEvents } from "../../events/log"
 import type { PaperRecord } from "../../papers/types"
 import { MockProvider } from "../../llm/mock-provider"
 import { DEFAULT_SETTINGS, type LLMSettings } from "../../llm/settings"
-import type { LLMResult } from "../../llm/types"
+import type { LLMProvider, LLMResult } from "../../llm/types"
 import { runFeed, loadFeed, FEED_CACHE_PATH, type FeedStrategy } from "../feed"
 
 const NOW = () => new Date("2026-07-12T10:00:00.000Z")
@@ -116,6 +116,13 @@ describe("runFeed", () => {
     // costUsd summed across >=3 runs (strategy + 1 rank batch + rerank), all nonzero-priced models.
     expect(strategyProvider.calls).toHaveLength(2)
     expect(rankProvider.calls).toHaveLength(1)
+    expect(strategyProvider.calls[0].req.messages[1].content).toMatch(/\/no_think\s*$/)
+    expect(rankProvider.calls[0].req.messages[1].content).toMatch(/\/no_think\s*$/)
+    expect(strategyProvider.calls[1].req.messages[1].content).toMatch(/\/no_think\s*$/)
+    expect(strategyProvider.calls[0].req.thinking).toBe("disabled")
+    expect(rankProvider.calls[0].req.thinking).toBe("disabled")
+    expect(strategyProvider.calls[1].req.thinking).toBe("disabled")
+    expect(strategyProvider.calls[1].req.maxTokens).toBe(4096)
     expect(result.costUsd).toBeGreaterThan(0)
 
     const cached = await storage.read(FEED_CACHE_PATH)
@@ -126,6 +133,51 @@ describe("runFeed", () => {
     const refreshEvents = events.filter((e) => e.type === "feed_refresh")
     expect(refreshEvents).toHaveLength(1)
     expect(refreshEvents[0]).toMatchObject({ type: "feed_refresh", itemCount: 2 })
+  })
+
+  it("accepts bare list arrays from OpenAI-compatible providers at every feed stage", async () => {
+    const storage = new MemoryVaultStorage()
+    const candidates = [paper({ title: "Paper A", ids: { arxiv: "1" } })]
+    const searchFn = async () => candidates
+    const bareScores = [{ index: 0, score: 92 }]
+
+    const bareItems = [
+      {
+        index: 0,
+        whyThis: "strong result",
+        whyYou: "matches your interests",
+        whyNow: "new this week",
+        tldr: "A useful paper.",
+        tags: ["methods"],
+      },
+    ]
+    const strongCalls: string[] = []
+    const strategyProvider: LLMProvider = {
+      id: "openai",
+      async complete(_model, request) {
+        const systemPrompt = request.messages[0]?.content ?? ""
+        strongCalls.push(systemPrompt)
+        return systemPrompt.includes("formulating literature-search")
+          ? llmResult(ONE_QUERY_STRATEGY.queries, "Qwen/Qwen3.8-27B")
+          : llmResult(bareItems, "Qwen/Qwen3.8-27B")
+      },
+    }
+    const rankProvider = new MockProvider([
+      llmResult(bareScores, "Qwen/Qwen3.8-27B"),
+    ])
+
+    const result = await runFeed(storage, {
+      searchFn,
+      settings: settingsWithKeys(),
+      providerOverride: { strong: strategyProvider, fast: rankProvider },
+      now: NOW,
+    })
+
+    expect(strongCalls).toHaveLength(2)
+    expect(rankProvider.calls).toHaveLength(1)
+    expect(result.stats.ranked).toBe(1)
+    expect(result.items[0].paper.title).toBe("Paper A")
+    expect(result.items[0].score).toBe(92)
   })
 
   it("windows retrieval to the last 14 days, topping up from an unwindowed pass when the window is thin", async () => {

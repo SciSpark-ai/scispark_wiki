@@ -9,6 +9,7 @@ import { logEvent } from "../../events/log"
 import { buildUserContext } from "../context"
 
 const answers: OnboardingAnswers = {
+  name: "Ada",
   role: "PhD student in computational biology",
   fields: "genomics, machine learning",
   topics: "protein folding\nsingle-cell RNA-seq",

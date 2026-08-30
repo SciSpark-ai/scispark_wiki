@@ -12,6 +12,7 @@ import SettingsModal from "@/components/settings/SettingsModal";
 import ThemeApplier from "./ThemeApplier";
 import NavHistoryTracker from "./NavHistoryTracker";
 import { LegacyPrototypeWarning } from "@/components/projects/LegacyPrototypeWarning";
+import { UserIdentityHydrator } from "./UserIdentityHydrator";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -66,6 +67,7 @@ export function AppShell({ children }: AppShellProps) {
       <ThemeApplier />
       <NavHistoryTracker />
       <LegacyPrototypeWarning />
+      <UserIdentityHydrator />
     </div>
   );
 }

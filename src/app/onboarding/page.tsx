@@ -4,10 +4,11 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { getOpenVault } from "@/lib/vault/get-vault"
-import { isOnboarded, seedUserModel, type OnboardingAnswers } from "@/lib/usermodel/pages"
-import { logEvent } from "@/lib/events/log"
+import { isOnboarded, type OnboardingAnswers } from "@/lib/usermodel/pages"
+import { createUserProfileRemote } from "@/lib/usermodel/profile-client"
 import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow"
 import type { VaultStorage } from "@/lib/vault/storage"
+import { useUserStore } from "@/stores/user-store"
 
 type PageState =
   | { status: "checking" }
@@ -48,12 +49,13 @@ export default function OnboardingPage() {
     setSubmitting(true)
     setSubmitError(null)
     try {
-      await seedUserModel(storage, answers)
-      await logEvent(storage, { type: "onboarding_completed" })
+      await createUserProfileRemote(answers)
+      useUserStore.getState().setUser({ name: answers.name })
+      useUserStore.getState().setOnboardingComplete(true)
       router.push("/")
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      if (message === "user model already seeded") {
+      if (message.includes("already") && message.includes("profile")) {
         setState({ status: "already-onboarded" })
         setSubmitting(false)
       } else {
@@ -64,7 +66,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-7">
+    <div className="min-h-full bg-page-warm px-4 py-8 sm:px-8 sm:py-12">
       {state.status === "checking" && <p className="text-[14px] text-muted-text">Loading…</p>}
 
       {state.status === "error" && <p className="text-[13px] text-red-600">Error: {state.message}</p>}
@@ -80,10 +82,11 @@ export default function OnboardingPage() {
 
       {state.status === "ready" && (
         <div className="w-full">
-          <div className="text-center mb-8">
-            <h2 className="font-heading text-[15px] text-muted-text tracking-heading-card">
-              Let&apos;s set up your research profile
-            </h2>
+          <div className="mx-auto mb-7 max-w-[720px]">
+            <p className="mb-2 text-[12px] font-medium uppercase tracking-[0.14em] text-orange">Welcome to SciSpark</p>
+            <h1 className="max-w-xl font-heading text-[30px] leading-tight tracking-heading text-espresso sm:text-[38px]">
+              Start with a conversation, not a configuration screen.
+            </h1>
           </div>
           <OnboardingFlow onSubmit={handleSubmit} submitting={submitting} />
           {submitError && <p className="mt-4 text-center text-[13px] text-red-600">Error: {submitError}</p>}

@@ -27,6 +27,7 @@ export async function isOnboarded(storage: VaultStorage): Promise<boolean> {
 }
 
 export interface OnboardingAnswers {
+  name: string
   role: string
   fields: string
   topics: string
@@ -46,6 +47,10 @@ function buildProfile(answers: OnboardingAnswers, now: Date): string {
     "# Profile",
     "",
     `_Seeded by onboarding on ${formatDate(now)}. Edit freely — agents read this before every feed run._`,
+    "",
+    "## Name",
+    "",
+    answers.name,
     "",
     "## Who I am",
     "",
@@ -97,6 +102,17 @@ function buildFeedback(): string {
   ].join("\n")
 }
 
+export function buildUserModelContents(
+  answers: OnboardingAnswers,
+  now: Date,
+): { profile: string; interests: string; feedback: string } {
+  return {
+    profile: buildProfile(answers, now),
+    interests: buildInterests(answers),
+    feedback: buildFeedback(),
+  }
+}
+
 export async function seedUserModel(
   storage: VaultStorage,
   answers: OnboardingAnswers,
@@ -107,9 +123,10 @@ export async function seedUserModel(
   }
 
   const nowDate = now()
+  const contents = buildUserModelContents(answers, nowDate)
   await Promise.all([
-    storage.write(USER_MODEL_PATHS.profile, buildProfile(answers, nowDate)),
-    storage.write(USER_MODEL_PATHS.interests, buildInterests(answers)),
-    storage.write(USER_MODEL_PATHS.feedback, buildFeedback()),
+    storage.write(USER_MODEL_PATHS.profile, contents.profile),
+    storage.write(USER_MODEL_PATHS.interests, contents.interests),
+    storage.write(USER_MODEL_PATHS.feedback, contents.feedback),
   ])
 }

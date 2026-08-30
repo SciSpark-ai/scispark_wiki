@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type { VaultStorage } from "@/lib/vault/storage"
 import type { FeedResult, FeedStage } from "@/lib/skills/feed"
 import { refreshFeed, consolidate } from "@/lib/skills/feed-client"
@@ -15,9 +15,11 @@ const STAGE_LABELS = [
   "Writing explanations…",
 ]
 
+type RefreshPhase = "memory" | FeedStage
+
 type RefreshState =
   | { status: "idle" }
-  | { status: "running"; stageIndex: number }
+  | { status: "running"; phase: RefreshPhase; startedAt: number }
   | { status: "done"; costUsd: number }
   | { status: "error"; message: string }
 
@@ -36,9 +38,20 @@ export function FeedRefreshBar({
   onUpdated: (feed: FeedResult) => void
 }) {
   const [state, setState] = useState<RefreshState>({ status: "idle" })
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+
+  useEffect(() => {
+    if (state.status !== "running") return
+    const updateElapsed = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000)))
+    updateElapsed()
+    const interval = window.setInterval(updateElapsed, 1_000)
+    return () => window.clearInterval(interval)
+  }, [state])
 
   async function handleRefresh() {
-    setState({ status: "running", stageIndex: 0 })
+    const startedAt = Date.now()
+    setElapsedSeconds(0)
+    setState({ status: "running", phase: "memory", startedAt })
 
     try {
       let costUsd = 0
@@ -47,8 +60,7 @@ export function FeedRefreshBar({
       costUsd += consolidation.costUsd ?? 0
 
       const feed = await refreshFeed((stage) => {
-        const stageIndex = STAGE_ORDER.indexOf(stage)
-        if (stageIndex >= 0) setState({ status: "running", stageIndex })
+        if (STAGE_ORDER.includes(stage)) setState({ status: "running", phase: stage, startedAt })
       })
       costUsd += feed.costUsd
 
@@ -60,6 +72,11 @@ export function FeedRefreshBar({
   }
 
   const running = state.status === "running"
+  const progressLabel = state.status === "running"
+    ? state.phase === "memory"
+      ? "Checking research memory…"
+      : STAGE_LABELS[STAGE_ORDER.indexOf(state.phase)]
+    : null
 
   return (
     <div className="flex flex-col gap-2">
@@ -72,13 +89,22 @@ export function FeedRefreshBar({
         >
           {running ? "Refreshing…" : "Refresh feed"}
         </button>
-        {running && <span className="text-[13px] text-muted-text tracking-body">{STAGE_LABELS[state.stageIndex]}</span>}
+        {running && (
+          <span className="text-[13px] text-muted-text tracking-body" role="status" aria-live="polite">
+            {progressLabel} · {elapsedSeconds}s
+          </span>
+        )}
         {state.status === "done" && (
           <span className="text-[13px] text-muted-text tracking-body">
             This refresh cost ≈ ${state.costUsd.toFixed(2)}
           </span>
         )}
       </div>
+      {running && elapsedSeconds >= 20 && (
+        <p className="text-[12px] text-muted-text">
+          Your provider is still working. You can keep browsing; another refresh will join this one.
+        </p>
+      )}
       {state.status === "error" && <LlmErrorMessage message={state.message} />}
     </div>
   )

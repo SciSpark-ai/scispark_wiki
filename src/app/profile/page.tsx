@@ -1,164 +1,337 @@
-"use client";
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useUserStore } from "@/stores/user-store";
-import { getOpenVault } from "@/lib/vault/get-vault";
-import { readUserModel } from "@/lib/usermodel/pages";
-import { PageHeader } from "@/components/ui/PageHeader";
+"use client"
 
-/**
- * Parses a user-model markdown page (e.g. profile.md) into its `## ` sections
- * for read-only display, skipping the top-level `# ` title and any preamble
- * note before the first section. Only sections with body text are returned.
- */
-function parseProfileSections(md: string): { heading: string; body: string }[] {
-  const sections: { heading: string; body: string }[] = [];
-  let current: { heading: string; body: string[] } | null = null;
-  for (const line of md.split("\n")) {
-    const h = line.match(/^##\s+(.*\S)\s*$/);
-    if (h) {
-      if (current)
-        sections.push({ heading: current.heading, body: current.body.join("\n").trim() });
-      current = { heading: h[1].trim(), body: [] };
-    } else if (current) {
-      current.body.push(line);
-    }
+import Link from "next/link"
+import { useEffect, useRef, useState, type ChangeEvent } from "react"
+import { Camera, Pencil, RotateCcw, UserRound, X } from "lucide-react"
+import { PageHeader } from "@/components/ui/PageHeader"
+import { loadUserProfile, updateUserProfileRemote } from "@/lib/usermodel/profile-client"
+import type { EditableUserProfile, UserProfileDetail } from "@/lib/usermodel/profile"
+import { useUserStore } from "@/stores/user-store"
+
+const MAX_AVATAR_FILE_BYTES = 1_000_000
+
+const FIELD_CONFIG: Array<{
+  key: keyof Pick<EditableUserProfile, "role" | "fields" | "topics" | "feedPrefs">
+  label: string
+  description: string
+  placeholder: string
+}> = [
+  {
+    key: "role",
+    label: "Role",
+    description: "How Ember should understand your research perspective.",
+    placeholder: "For example: PhD student studying pediatric language and neuroimaging",
+  },
+  {
+    key: "fields",
+    label: "Research fields",
+    description: "The broader research worlds you work in or follow.",
+    placeholder: "Fields you work in or actively follow",
+  },
+  {
+    key: "topics",
+    label: "Active topics",
+    description: "Current questions, methods, or topics. Add one per line.",
+    placeholder: "One topic per line",
+  },
+  {
+    key: "feedPrefs",
+    label: "Feed preferences",
+    description: "What makes recommendations useful to you.",
+    placeholder: "For example: prioritize methods and include adjacent ideas",
+  },
+]
+
+function editable(profile: UserProfileDetail): EditableUserProfile {
+  return {
+    name: profile.name,
+    role: profile.role,
+    fields: profile.fields,
+    topics: profile.topics,
+    feedPrefs: profile.feedPrefs,
+    avatarDataUrl: profile.avatarDataUrl,
   }
-  if (current)
-    sections.push({ heading: current.heading, body: current.body.join("\n").trim() });
-  return sections.filter((s) => s.body.length > 0);
+}
+
+function sameProfile(profile: UserProfileDetail, draft: EditableUserProfile): boolean {
+  return JSON.stringify(editable(profile)) === JSON.stringify(draft)
+}
+
+function avatarInitial(name: string): string {
+  return name.trim().charAt(0).toUpperCase() || "?"
+}
+
+function Avatar({ profile, size = "large" }: { profile: EditableUserProfile; size?: "large" | "small" }) {
+  const dimensions = size === "large" ? "h-24 w-24 text-[30px]" : "h-11 w-11 text-[16px]"
+  return profile.avatarDataUrl ? (
+    // The source is a locally validated image data URL stored in the user's vault.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={profile.avatarDataUrl}
+      alt={`${profile.name || "User"} profile`}
+      className={`${dimensions} rounded-full object-cover ring-4 ring-white`}
+    />
+  ) : (
+    <span className={`${dimensions} flex items-center justify-center rounded-full bg-orange font-medium text-white ring-4 ring-white`}>
+      {avatarInitial(profile.name)}
+    </span>
+  )
 }
 
 export default function ProfilePage() {
-  const { user } = useUserStore();
+  const setUser = useUserStore((state) => state.setUser)
+  const [profile, setProfile] = useState<UserProfileDetail | null>(null)
+  const [draft, setDraft] = useState<EditableUserProfile | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const [language, setLanguage] = useState<"EN" | "ZH">("EN");
-
-  // The real profile.md content (seeded by onboarding, agent-maintained),
-  // shown read-only in place of the old fork-mock clinical preferences card.
-  const [profileText, setProfileText] = useState<string | null>(null);
-  const [profileLoading, setProfileLoading] = useState(true);
-  const [profileError, setProfileError] = useState<string | null>(null);
+  async function reloadProfile() {
+    setLoading(true)
+    setError(null)
+    try {
+      const next = await loadUserProfile()
+      setProfile(next)
+      setDraft(next ? editable(next) : null)
+      if (next) setUser({ name: next.name, avatar: next.avatarDataUrl ?? undefined })
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const vault = await getOpenVault();
-        const userModel = await readUserModel(vault);
-        if (!cancelled) setProfileText(userModel.profile);
-      } catch (e) {
-        if (!cancelled) setProfileError(e instanceof Error ? e.message : String(e));
-      } finally {
-        if (!cancelled) setProfileLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void reloadProfile()
+    // This is an initial vault hydration; reloadProfile is stable for the page lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const avatarInitial = user?.name?.charAt(0)?.toUpperCase() ?? "?";
-  const profileSections = profileText ? parseProfileSections(profileText) : [];
+  function beginEditing() {
+    if (!profile) return
+    setDraft(editable(profile))
+    setError(null)
+    setNotice(null)
+    setEditing(true)
+  }
+
+  function cancelEditing() {
+    if (!profile || saving) return
+    setDraft(editable(profile))
+    setError(null)
+    setEditing(false)
+  }
+
+  function changeField(key: keyof EditableUserProfile, value: string | null) {
+    setDraft((current) => current ? { ...current, [key]: value } : current)
+  }
+
+  function handleAvatar(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file) return
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setError("Choose a PNG, JPEG, or WebP image.")
+      return
+    }
+    if (file.size > MAX_AVATAR_FILE_BYTES) {
+      setError("Choose an image smaller than 1 MB.")
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        changeField("avatarDataUrl", reader.result)
+        setError(null)
+      }
+    }
+    reader.onerror = () => setError("SciSpark could not read that image.")
+    reader.readAsDataURL(file)
+  }
+
+  async function saveProfile() {
+    if (!profile || !draft || saving || sameProfile(profile, draft)) return
+    setSaving(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const mutation = await updateUserProfileRemote({ ...draft, revision: profile.revision })
+      setProfile(mutation.result)
+      setDraft(editable(mutation.result))
+      setUser({ name: mutation.result.name, avatar: mutation.result.avatarDataUrl ?? undefined })
+      setEditing(false)
+      setNotice(
+        mutation.warnings.length > 0
+          ? `Profile saved. ${mutation.warnings.map((warning) => warning.message).join(" ")}`
+          : "Profile saved.",
+      )
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught)
+      setError(
+        message.includes("changed since")
+          ? "Your profile changed after this page loaded. Reload it before saving again."
+          : message,
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-7">
+        <PageHeader title="Profile" />
+        <div className="mt-6 rounded-[18px] border border-border-warm/40 bg-light-surface p-8 text-[14px] text-muted-text">
+          Opening your local profile…
+        </div>
+      </div>
+    )
+  }
+
+  if (!profile || !draft) {
+    const failedToLoad = error !== null
+    return (
+      <div className="p-7">
+        <PageHeader title="Profile" />
+        <div className="mt-6 rounded-[18px] border border-border-warm/40 bg-light-surface p-8">
+          {failedToLoad ? (
+            <RotateCcw className="mb-4 text-orange" aria-hidden="true" />
+          ) : (
+            <UserRound className="mb-4 text-orange" aria-hidden="true" />
+          )}
+          <h2 className="font-heading text-[22px] text-espresso">
+            {failedToLoad ? "SciSpark could not open your profile" : "Ember has not met you yet"}
+          </h2>
+          <p className="mt-2 max-w-[560px] text-[14px] leading-relaxed text-muted-text">
+            {failedToLoad
+              ? error
+              : "Start a short conversation so SciSpark can personalize your research feed and companion."}
+          </p>
+          {failedToLoad ? (
+            <button type="button" onClick={() => void reloadProfile()} className="mt-5 inline-flex items-center gap-2 rounded-pill bg-orange px-5 py-2.5 text-[14px] font-medium text-white hover:bg-orange/90">
+              <RotateCcw size={14} aria-hidden="true" /> Retry
+            </button>
+          ) : (
+            <Link href="/onboarding" className="mt-5 inline-flex rounded-pill bg-orange px-5 py-2.5 text-[14px] font-medium text-white hover:bg-orange/90">
+              Meet Ember
+            </Link>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const hasChanges = !sameProfile(profile, draft)
 
   return (
-    <div className="p-7">
+    <div className="p-7 pb-12">
       <PageHeader title="Profile" />
 
-      {/* Section 1: User Info */}
-      <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6 mt-6">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-orange text-white text-[20px] font-medium rounded-full flex items-center justify-center shrink-0">
-            {avatarInitial}
-          </div>
-          <div>
-            <p className="text-[16px] text-espresso font-medium">
-              {user?.name ?? "—"}
-            </p>
-            <p className="text-[14px] text-muted-text">{user?.email ?? "—"}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Section 2: Research profile (real user-model page, read-only) */}
-      <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6 mt-4">
-        <h2 className="font-heading text-[18px] text-espresso mb-1">
-          Research profile
-        </h2>
-        <p className="text-[13px] text-muted-text mb-4">
-          Seeded from onboarding and maintained by SciSpark&rsquo;s agents from
-          your activity.
-        </p>
-        {profileLoading ? (
-          <p className="text-[14px] text-muted-text">Loading…</p>
-        ) : profileSections.length === 0 ? (
-          <p className="text-[14px] text-muted-text">
-            {profileError
-              ? profileError
-              : (
-                <>
-                  No profile yet.{" "}
-                  <Link href="/onboarding" className="text-orange hover:underline">
-                    Complete onboarding
-                  </Link>{" "}
-                  to build one.
-                </>
-              )}
-          </p>
-        ) : (
-          <div className="space-y-5">
-            {profileSections.map((section) => (
-              <div key={section.heading}>
-                <label className="block text-[13px] text-muted-text font-medium uppercase tracking-[0.06em] mb-1.5">
-                  {section.heading}
-                </label>
-                <p className="text-[14px] text-espresso whitespace-pre-line leading-[1.55]">
-                  {section.body}
-                </p>
+      <section className="relative mt-6 overflow-hidden rounded-[20px] border border-border-warm/40 bg-light-surface">
+        <div className="h-24 bg-[linear-gradient(115deg,var(--color-card-surface),var(--color-page-warm))]" />
+        <div className="flex flex-col gap-5 px-6 pb-6 sm:flex-row sm:items-end sm:px-8">
+          <div className="-mt-12"><Avatar profile={draft} /></div>
+          <div className="min-w-0 flex-1 sm:pb-1">
+            {editing ? (
+              <div>
+                <label htmlFor="profile-name" className="mb-1.5 block text-[12px] font-medium uppercase tracking-[0.08em] text-muted-text">Name</label>
+                <input
+                  id="profile-name"
+                  value={draft.name}
+                  onChange={(event) => changeField("name", event.target.value)}
+                  maxLength={100}
+                  className="w-full max-w-[420px] rounded-[10px] border border-border-warm bg-white px-3 py-2 text-[16px] text-espresso outline-none focus:border-orange"
+                />
               </div>
-            ))}
+            ) : (
+              <>
+                <h2 className="truncate font-heading text-[26px] text-espresso">{profile.name}</h2>
+                <p className="mt-0.5 truncate text-[14px] text-muted-text">{profile.role}</p>
+              </>
+            )}
           </div>
-        )}
-      </div>
+          {!editing && (
+            <button type="button" onClick={beginEditing} className="inline-flex items-center justify-center gap-2 rounded-pill border border-espresso/15 px-4 py-2 text-[13px] font-medium text-espresso transition-colors hover:bg-card-surface">
+              <Pencil size={14} aria-hidden="true" /> Edit profile
+            </button>
+          )}
+        </div>
+      </section>
 
-      {/* Section 3: Settings */}
-      <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6 mt-4">
-        <h2 className="font-heading text-[18px] text-espresso mb-4">
-          Settings
-        </h2>
-        <div className="flex items-center justify-between py-2">
-          <span className="text-[14px] text-espresso">Language</span>
-          <div className="flex">
-            <button
-              onClick={() => setLanguage("EN")}
-              className={`px-3 py-1.5 text-[13px] font-medium first:rounded-l-[8px] last:rounded-r-[8px] ${
-                language === "EN"
-                  ? "bg-orange text-white"
-                  : "bg-card-surface text-muted-text"
-              }`}
-            >
-              EN
+      {editing && (
+        <section className="mt-4 rounded-[18px] border border-border-warm/40 bg-light-surface p-6 sm:p-8">
+          <div className="flex flex-wrap items-center gap-3">
+            <Avatar profile={draft} size="small" />
+            <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleAvatar} className="sr-only" />
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-pill border border-espresso/15 px-4 py-2 text-[13px] text-espresso hover:bg-card-surface">
+              <Camera size={14} aria-hidden="true" /> {draft.avatarDataUrl ? "Change photo" : "Add photo"}
             </button>
-            <button
-              onClick={() => setLanguage("ZH")}
-              className={`px-3 py-1.5 text-[13px] font-medium first:rounded-l-[8px] last:rounded-r-[8px] ${
-                language === "ZH"
-                  ? "bg-orange text-white"
-                  : "bg-card-surface text-muted-text"
-              }`}
-            >
-              ZH
-            </button>
+            {draft.avatarDataUrl && (
+              <button type="button" onClick={() => changeField("avatarDataUrl", null)} className="inline-flex items-center gap-1.5 px-2 py-2 text-[13px] text-muted-text hover:text-espresso">
+                <X size={14} aria-hidden="true" /> Remove
+              </button>
+            )}
+            <span className="text-[12px] text-muted-text">PNG, JPEG, or WebP · up to 1 MB</span>
+          </div>
+        </section>
+      )}
+
+      <section className="mt-4 rounded-[18px] border border-border-warm/40 bg-light-surface p-6 sm:p-8">
+        <div className="mb-6">
+          <h2 className="font-heading text-[20px] text-espresso">Research context</h2>
+          <p className="mt-1 text-[13px] text-muted-text">These are the answers Ember uses to personalize your feed and conversations.</p>
+        </div>
+
+        <div className="divide-y divide-border-warm/50">
+          {FIELD_CONFIG.map((field) => (
+            <div key={field.key} className="grid gap-3 py-5 first:pt-0 last:pb-0 sm:grid-cols-[180px_1fr] sm:gap-8">
+              <div>
+                <label htmlFor={`profile-${field.key}`} className="text-[13px] font-medium text-espresso">{field.label}</label>
+                <p className="mt-1 text-[12px] leading-relaxed text-muted-text">{field.description}</p>
+              </div>
+              {editing ? (
+                <textarea
+                  id={`profile-${field.key}`}
+                  value={draft[field.key]}
+                  onChange={(event) => changeField(field.key, event.target.value)}
+                  placeholder={field.placeholder}
+                  rows={field.key === "topics" ? 4 : 3}
+                  className="w-full resize-y rounded-[12px] border border-border-warm bg-white px-3.5 py-3 text-[14px] leading-relaxed text-espresso outline-none placeholder:text-muted-text focus:border-orange"
+                />
+              ) : (
+                <p className="whitespace-pre-line text-[14px] leading-relaxed text-espresso">
+                  {profile[field.key] || <span className="text-muted-text">Not answered yet</span>}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {(error || notice) && (
+        <div className={`mt-4 rounded-[12px] border px-4 py-3 text-[13px] ${error ? "border-red-200 bg-red-50 text-red-800" : "border-border-warm bg-card-surface text-espresso"}`} role={error ? "alert" : "status"}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span>{error ?? notice}</span>
+            {error?.includes("Reload") && (
+              <button type="button" onClick={() => void reloadProfile()} className="inline-flex items-center gap-1.5 font-medium underline underline-offset-2">
+                <RotateCcw size={13} aria-hidden="true" /> Reload profile
+              </button>
+            )}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Section 4: Sign Out */}
-      <div className="mt-6 mb-8">
-        <button className="px-6 py-2.5 border border-espresso/20 rounded-pill text-[14px] text-espresso hover:bg-card-surface transition-colors">
-          Sign Out
-        </button>
-      </div>
+      {editing && (
+        <div className="sticky bottom-4 mt-5 flex justify-end gap-3 rounded-[16px] border border-border-warm bg-light-surface/95 p-3 shadow-sm backdrop-blur">
+          <button type="button" onClick={cancelEditing} disabled={saving} className="rounded-pill px-5 py-2.5 text-[14px] font-medium text-espresso hover:bg-card-surface disabled:opacity-50">Cancel</button>
+          <button type="button" onClick={() => void saveProfile()} disabled={saving || !hasChanges || !draft.name.trim() || !draft.role.trim() || !draft.fields.trim()} className="rounded-pill bg-orange px-5 py-2.5 text-[14px] font-medium text-white hover:bg-orange/90 disabled:opacity-45">
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      )}
     </div>
-  );
+  )
 }

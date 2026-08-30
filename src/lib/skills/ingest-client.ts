@@ -1,5 +1,6 @@
 import { readNdjson } from "../server/ndjson"
 import type { PaperRecord } from "../papers/types"
+import { paperSlug } from "../wiki/authoring"
 import type { DigestResult } from "./digest"
 import type { IngestOutput } from "./ingest"
 
@@ -26,6 +27,10 @@ export interface DigestRemoteResult {
   costUsd?: number
 }
 
+interface CachedDigestRemoteResult {
+  digest: DigestResult | null
+}
+
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
   try {
     const body = (await res.json()) as { error?: string }
@@ -50,6 +55,24 @@ export async function generateDigestRemote(
   }
   const body = (await res.json()) as { result: DigestRemoteResult }
   return body.result
+}
+
+/**
+ * GET the durable digest cache for `paper`. A null result is a normal cache
+ * miss. This endpoint is intentionally separate from POST generation so
+ * page navigation can never spend tokens or trigger provider work.
+ */
+export async function loadCachedDigestRemote(
+  paper: PaperRecord,
+  fetchFn: typeof fetch = fetch,
+): Promise<DigestResult | null> {
+  const slug = encodeURIComponent(paperSlug(paper))
+  const res = await fetchFn(`/api/skills/digest?slug=${slug}`, { method: "GET" })
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, `saved digest lookup failed (${res.status})`))
+  }
+  const body = (await res.json()) as { result: CachedDigestRemoteResult }
+  return body.result.digest
 }
 
 export type IngestPhase = "acquiring" | "snapshotting" | "digesting" | "ingesting"

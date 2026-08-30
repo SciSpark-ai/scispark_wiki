@@ -101,4 +101,28 @@ describe("completeStructured", () => {
     expect(value).toEqual({ name: "widget", count: 3 })
     expect(p.calls).toHaveLength(1)
   })
+
+  it("normalizes a known provider wire shape before validation without changing the advertised schema", async () => {
+    const listSchema = z.object({
+      items: z.array(z.object({ id: z.number().int() })),
+    })
+    const p = new MockProvider([
+      result({ text: JSON.stringify([{ id: 7 }]), json: [{ id: 7 }] }),
+    ])
+
+    const { value } = await completeStructured(
+      p,
+      "m",
+      { messages: [{ role: "user", content: "go" }] },
+      listSchema,
+      {
+        normalizeCandidate: (candidate) => Array.isArray(candidate) ? { items: candidate } : candidate,
+      },
+    )
+
+    expect(value).toEqual({ items: [{ id: 7 }] })
+    expect(p.calls).toHaveLength(1)
+    expect(p.calls[0].req.jsonSchema).toMatchObject({ type: "object" })
+    expect(p.calls[0].req.jsonSchema).not.toHaveProperty("anyOf")
+  })
 })

@@ -7,7 +7,7 @@ import type { LLMResult, LLMProvider, LLMRequest } from "../../llm/types"
 import type { PaperRecord } from "../../papers/types"
 import type { VaultStorage } from "../../vault/storage"
 import { paperSlug } from "../../wiki/authoring"
-import { DigestSchema, generateDigest } from "../digest"
+import { DigestSchema, generateDigest, loadCachedDigest } from "../digest"
 
 const NOW = () => new Date("2026-07-12T10:00:00.000Z")
 
@@ -81,6 +81,9 @@ describe("generateDigest", () => {
     expect(result.runId).toBeDefined()
     expect(result.costUsd).toBeGreaterThan(0)
     expect(provider.calls).toHaveLength(1)
+    expect(provider.calls[0].req.thinking).toBe("enabled")
+    expect(provider.calls[0].req.reasoningEffort).toBe("medium")
+    expect(provider.calls[0].req.maxTokens).toBe(8192)
 
     const cachePath = `.scispark/digests/${paperSlug(PAPER)}.json`
     const cached = await storage.read(cachePath)
@@ -91,6 +94,61 @@ describe("generateDigest", () => {
     const records = await meter.recordsForDay("2026-07-12")
     expect(records).toHaveLength(1)
     expect(records[0].skill).toBe("digest")
+  })
+
+  it("accepts a Qwen-compatible singleton array around an otherwise valid digest object", async () => {
+    const storage = new MemoryVaultStorage()
+    const provider = new MockProvider([
+      structuredResult({
+        text: JSON.stringify([SAMPLE_DIGEST]),
+        json: [SAMPLE_DIGEST],
+        model: "Qwen/Qwen3.8-27B",
+        provider: "openai",
+      }),
+      structuredResult({
+        text: JSON.stringify([SAMPLE_DIGEST]),
+        json: [SAMPLE_DIGEST],
+        model: "Qwen/Qwen3.8-27B",
+        provider: "openai",
+      }),
+    ])
+
+    const result = await generateDigest(storage, PAPER, {
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+
+    expect(result.digest).toEqual(SAMPLE_DIGEST)
+    expect(provider.calls).toHaveLength(1)
+  })
+
+  it("accepts Qwen-compatible digest fields split across a root array", async () => {
+    const storage = new MemoryVaultStorage()
+    const splitDigest = Object.entries(SAMPLE_DIGEST).map(([key, value]) => ({ [key]: value }))
+    const provider = new MockProvider([
+      structuredResult({
+        text: JSON.stringify(splitDigest),
+        json: splitDigest,
+        model: "Qwen/Qwen3.8-27B",
+        provider: "openai",
+      }),
+      structuredResult({
+        text: JSON.stringify(splitDigest),
+        json: splitDigest,
+        model: "Qwen/Qwen3.8-27B",
+        provider: "openai",
+      }),
+    ])
+
+    const result = await generateDigest(storage, PAPER, {
+      settings: settingsWithKeys(),
+      providerOverride: { strong: provider },
+      now: NOW,
+    })
+
+    expect(result.digest).toEqual(SAMPLE_DIGEST)
+    expect(provider.calls).toHaveLength(1)
   })
 
   it("second call hits the cache: returns cached digest with zero provider calls", async () => {
@@ -116,6 +174,24 @@ describe("generateDigest", () => {
     expect(second.runId).toBeUndefined()
     // No new provider call was made for the cache hit.
     expect(provider.calls).toHaveLength(1)
+  })
+
+  it("loads an existing valid digest through the read-only cache path", async () => {
+    const storage = new MemoryVaultStorage()
+    await storage.write(`.scispark/digests/${paperSlug(PAPER)}.json`, JSON.stringify(SAMPLE_DIGEST))
+
+    await expect(loadCachedDigest(storage, PAPER)).resolves.toEqual(SAMPLE_DIGEST)
+  })
+
+  it("treats missing, corrupt, and schema-invalid digest cache records as a read-only miss", async () => {
+    const storage = new MemoryVaultStorage()
+    const cachePath = `.scispark/digests/${paperSlug(PAPER)}.json`
+
+    await expect(loadCachedDigest(storage, PAPER)).resolves.toBeNull()
+    await storage.write(cachePath, "{bad json")
+    await expect(loadCachedDigest(storage, PAPER)).resolves.toBeNull()
+    await storage.write(cachePath, JSON.stringify({ summary: "incomplete" }))
+    await expect(loadCachedDigest(storage, PAPER)).resolves.toBeNull()
   })
 
   it("corrupt cache JSON is regenerated: provider is called and the cache file is overwritten", async () => {

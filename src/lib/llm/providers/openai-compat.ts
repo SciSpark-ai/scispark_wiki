@@ -76,6 +76,7 @@ export class OpenAICompatProvider implements LLMProvider {
       model,
       messages,
       ...(req.maxTokens ? { max_completion_tokens: req.maxTokens } : {}),
+      ...qwenGenerationControls(model, req),
       ...(schemaMode === "native" && req.jsonSchema
         ? {
             response_format: {
@@ -170,6 +171,39 @@ export class OpenAICompatProvider implements LLMProvider {
       clearTimeout(timer)
     }
   }
+}
+
+/**
+ * Qwen3 hybrid-thinking models default to xhigh thinking. Qwen documents both
+ * a chat-template switch and mode-specific sampling values, plus
+ * `reasoning_effort` for bounded thinking. Only explicit Qwen requests receive
+ * these extra fields so other OpenAI-compatible payloads remain unchanged.
+ */
+function qwenGenerationControls(model: string, req: LLMRequest): Record<string, unknown> {
+  if (!model.toLowerCase().includes("qwen")) return {}
+
+  if (req.thinking === "disabled") {
+    return {
+      temperature: 0.7,
+      top_p: 0.8,
+      top_k: 20,
+      presence_penalty: 1.5,
+      chat_template_kwargs: { enable_thinking: false },
+    }
+  }
+
+  if (req.thinking === "enabled") {
+    return {
+      temperature: 1,
+      top_p: 0.95,
+      top_k: 20,
+      presence_penalty: 0,
+      chat_template_kwargs: { enable_thinking: true },
+      ...(req.reasoningEffort ? { reasoning_effort: req.reasoningEffort } : {}),
+    }
+  }
+
+  return {}
 }
 
 // Matches the GMI Bedrock-passthrough rejection of the whole structured-output

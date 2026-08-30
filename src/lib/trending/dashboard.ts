@@ -210,17 +210,17 @@ export interface RunTrendingBoardOpts {
  * carried on the board as `dataError` so an emptied leaderboard never reads as
  * "nothing is trending".
  *
- * Concurrency: home's fire-and-forget auto-refresh (`maybeAutoRefreshTrending`)
- * and /trending's own mount-time refresh can both observe a stale/missing
- * cache and fire at once for the same vault. Concurrent calls for the SAME
+ * Concurrency: a scheduler/automation (`maybeAutoRefreshTrending`) and a
+ * manual /trending refresh can both observe a stale/missing cache and fire at
+ * once for the same vault. Concurrent calls for the SAME
  * `storage` share one in-flight run — every caller gets the same
  * `TrendingBoard` promise/object, and the strong-tier skill runs (and the
  * `trending_refresh` event logs) only once, not once per caller. A call made
  * AFTER the shared run has settled starts a fresh run (so the manual Refresh
  * button still works). Note: the shared run uses only the FIRST caller's
  * `opts` — a second concurrent caller's opts are ignored. This is safe today
- * because both call sites (home auto-refresh, /trending mount) derive
- * identical effective fields from the same trending settings; if a future
+ * because current call sites derive identical effective fields from the same
+ * trending settings; if a future
  * caller needs guaranteed-distinct opts honored concurrently, it must key the
  * in-flight map on more than just `storage`.
  */

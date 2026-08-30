@@ -9,6 +9,14 @@ export interface LLMMessage {
 export interface LLMRequest {
   messages: LLMMessage[]
   maxTokens?: number
+  /**
+   * Request a provider-supported reasoning mode. Providers that do not expose
+   * such a control may ignore it; callers must not rely on prompt text alone
+   * when a provider does support an explicit switch.
+  */
+  thinking?: "disabled" | "enabled"
+  /** Provider-supported reasoning depth for requests with thinking enabled. */
+  reasoningEffort?: "low" | "medium" | "xhigh"
   /** JSON Schema — when set, the provider must use its native structured-output mechanism. */
   jsonSchema?: Record<string, unknown>
   schemaName?: string

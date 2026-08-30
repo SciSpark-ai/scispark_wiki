@@ -80,6 +80,7 @@ describe.skipIf(!live)("LIVE feed funnel + consolidation gate", () => {
 
       // ── Seed a realistic computational-biology user model ────────────────
       await seedUserModel(storage, {
+        name: "Ada",
         role: "PhD student in computational biology, working on protein structure prediction and single-cell genomics.",
         fields: "Computational biology, structural bioinformatics, machine learning for genomics.",
         topics:

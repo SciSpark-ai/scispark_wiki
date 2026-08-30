@@ -32,8 +32,12 @@ function UserAvatar() {
   const user = useUserStore((s) => s.user);
   const initial = user?.name?.charAt(0).toUpperCase() ?? "U";
   return (
-    <div className="w-9 h-9 rounded-full bg-orange text-white flex items-center justify-center text-[14px] font-medium flex-shrink-0">
-      {initial}
+    <div className="w-9 h-9 rounded-full bg-orange text-white flex items-center justify-center text-[14px] font-medium flex-shrink-0 overflow-hidden">
+      {user?.avatar ? (
+        // The image is a validated local data URL loaded from the user's vault.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={user.avatar} alt="" className="h-full w-full object-cover" />
+      ) : initial}
     </div>
   );
 }
@@ -88,6 +92,7 @@ function isItemActive(pathname: string, href: string): boolean {
 
 export function Sidebar({ collapsed = false }: SidebarProps) {
   const pathname = usePathname();
+  const user = useUserStore((s) => s.user);
   const onboardingComplete = useUserStore((s) => s.onboardingComplete);
   const toggleDesktopSidebar = useUIStore((s) => s.toggleDesktopSidebar);
   const openSettingsModal = useUIStore((s) => s.openSettingsModal);
@@ -265,10 +270,10 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
             <UserAvatar />
             <div className="flex-1 min-w-0">
               <p className="text-[14px] text-espresso font-medium truncate tracking-body">
-                {useUserStore.getState().user?.name ?? "User"}
+                {user?.name ?? "Set up profile"}
               </p>
               <p className="text-[12px] text-muted-text truncate tracking-body">
-                {useUserStore.getState().user?.email ?? ""}
+                {user ? "Local profile" : ""}
               </p>
             </div>
           </button>

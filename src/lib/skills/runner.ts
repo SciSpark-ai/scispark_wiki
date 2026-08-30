@@ -91,6 +91,7 @@ export async function runSkill<I, O>(opts: {
       tier: Tier,
       req: Parameters<SkillContext["llm"]>[1],
       schema: z.ZodType<T>,
+      structuredOpts?: Parameters<SkillContext["llmStructured"]>[3],
     ) {
       await checkBudget(meter, settings)
       // NOTE: budget is checked once here, not inside completeStructured's internal
@@ -107,7 +108,7 @@ export async function runSkill<I, O>(opts: {
         complete: (m, r) => withRetry(() => provider.complete(m, r), opts.retryOpts),
       }
       try {
-        const { value, usage } = await completeStructured(retryingProvider, model, req, schema)
+        const { value, usage } = await completeStructured(retryingProvider, model, req, schema, structuredOpts)
         await meterAndContinue({ provider: provider.id, model, usage })
         return value
       } catch (e) {

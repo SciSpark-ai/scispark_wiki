@@ -4,6 +4,7 @@ import { USER_MODEL_PATHS, readUserModel, isOnboarded, seedUserModel } from "../
 import type { OnboardingAnswers } from "../pages"
 
 const answers: OnboardingAnswers = {
+  name: "Ada",
   role: "PhD student in computational biology",
   fields: "genomics, machine learning",
   topics: "protein folding\nsingle-cell RNA-seq",
@@ -35,6 +36,8 @@ describe("seedUserModel", () => {
     expect(profile).not.toBeNull()
     expect(profile).toContain("# Profile")
     expect(profile).toContain("Seeded by onboarding on 2026-07-12")
+    expect(profile).toContain("## Name")
+    expect(profile).toContain(answers.name)
     expect(profile).toContain("## Who I am")
     expect(profile).toContain(answers.role)
     expect(profile).toContain("## Research fields")
@@ -62,6 +65,7 @@ describe("seedUserModel", () => {
     await seedUserModel(
       storage,
       {
+        name: "Ada",
         role: "postdoc",
         fields: "auditory neuroscience",
         topics: "cortical tracking of speech, the FFR; auditory attention decoding",

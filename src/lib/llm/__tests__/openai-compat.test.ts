@@ -65,12 +65,75 @@ describe("OpenAICompatProvider", () => {
       { role: "system", content: "be brief" },
       { role: "user", content: "hi" },
     ]) // system stays in-array for this API
+    expect(sent).not.toHaveProperty("chat_template_kwargs")
 
     expect(result.text).toBe("hello")
     expect(result.usage).toEqual({ inputTokens: 10, outputTokens: 5 })
     expect(result.provider).toBe("openai")
     expect(result.model).toBe("gpt-4o")
     expect(result.stopReason).toBe("stop")
+  })
+
+  it("sends Qwen3.8's documented hard non-thinking controls when the request disables thinking", async () => {
+    const { fn, captured } = fakeFetch(200, OK_RESPONSE)
+    const p = new OpenAICompatProvider("openai", "sk-test", "https://api.gmi-serving.com/v1", fn)
+
+    await p.complete("Qwen/Qwen3.8-27B", {
+      messages: [{ role: "user", content: "return JSON" }],
+      thinking: "disabled",
+      jsonSchema: {
+        type: "object",
+        properties: { answer: { type: "string" } },
+        required: ["answer"],
+        additionalProperties: false,
+      },
+    })
+
+    const sent = JSON.parse(String(captured.init?.body))
+    expect(sent).toMatchObject({
+      temperature: 0.7,
+      top_p: 0.8,
+      top_k: 20,
+      presence_penalty: 1.5,
+      chat_template_kwargs: { enable_thinking: false },
+    })
+    expect(sent.response_format.type).toBe("json_schema")
+  })
+
+  it("does not send Qwen-only controls to other models even when thinking is disabled", async () => {
+    const { fn, captured } = fakeFetch(200, OK_RESPONSE)
+    const p = new OpenAICompatProvider("openai", "sk-test", "https://api.openai.com/v1", fn)
+
+    await p.complete("gpt-4o", {
+      messages: [{ role: "user", content: "return JSON" }],
+      thinking: "disabled",
+    })
+
+    const sent = JSON.parse(String(captured.init?.body))
+    expect(sent).not.toHaveProperty("chat_template_kwargs")
+    expect(sent).not.toHaveProperty("top_k")
+    expect(sent).not.toHaveProperty("presence_penalty")
+  })
+
+  it("sends Qwen's documented medium thinking controls when requested", async () => {
+    const { fn, captured } = fakeFetch(200, OK_RESPONSE)
+    const p = new OpenAICompatProvider("openai", "sk-test", "https://api.gmi-serving.com/v1", fn)
+
+    await p.complete("Qwen/Qwen3.8-27B", {
+      messages: [{ role: "user", content: "analyze this paper" }],
+      thinking: "enabled",
+      reasoningEffort: "medium",
+    })
+
+    const sent = JSON.parse(String(captured.init?.body))
+    expect(sent).toMatchObject({
+      temperature: 1,
+      top_p: 0.95,
+      top_k: 20,
+      presence_penalty: 0,
+      reasoning_effort: "medium",
+      chat_template_kwargs: { enable_thinking: true },
+    })
   })
 
   it("aborts and throws a transient 'timed out' error when the request exceeds timeoutMs (a hung provider never blocks forever)", async () => {

@@ -3,7 +3,7 @@ import type { VaultStorage } from "../vault/storage"
 import type { PaperRecord } from "../papers/types"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
-import { paperSlug } from "../wiki/authoring"
+import { paperSlug, slugifyTitle } from "../wiki/authoring"
 import { defineSkill } from "./types"
 import { runSkill } from "./runner"
 
@@ -62,6 +62,36 @@ export const DigestSchema = z.object({
 
 export type DigestResult = z.infer<typeof DigestSchema>
 
+const DIGEST_KEYS = new Set<keyof DigestResult>([
+  "summary",
+  "laySummary",
+  "keyPoints",
+  "methods",
+  "limitations",
+  "fieldContext",
+])
+
+/**
+ * Some OpenAI-compatible structured-output backends wrap a root object in an
+ * array, or split that object's fields into an array of small objects. Recover
+ * only those unambiguous forms; the original strict DigestSchema still decides
+ * whether the reconstructed candidate is valid.
+ */
+function normalizeDigestCandidate(candidate: unknown): unknown {
+  if (!Array.isArray(candidate) || candidate.length === 0) return candidate
+  if (candidate.length === 1) return candidate[0]
+
+  const merged: Partial<Record<keyof DigestResult, unknown>> = {}
+  for (const part of candidate) {
+    if (part === null || typeof part !== "object" || Array.isArray(part)) return candidate
+    for (const [key, value] of Object.entries(part)) {
+      if (!DIGEST_KEYS.has(key as keyof DigestResult) || Object.hasOwn(merged, key)) return candidate
+      merged[key as keyof DigestResult] = value
+    }
+  }
+  return merged
+}
+
 export interface DigestSkillInput {
   paper: PaperRecord
   fullText?: string
@@ -105,6 +135,7 @@ function buildPrompt(input: DigestSkillInput): { system: string; user: string } 
     "methods: how the work was done, concretely.",
     "limitations: honest limitations and caveats of the work.",
     "fieldContext: where this work sits within its broader field.",
+    'Return exactly one JSON object at the root with the keys "summary", "laySummary", "keyPoints", "methods", "limitations", and "fieldContext". Never return a root array.',
   ].join("\n")
 
   const user = sections.join("\n\n")
@@ -130,16 +161,58 @@ export const digestSkill = defineSkill<DigestSkillInput, DigestResult>({
           { role: "system", content: system },
           { role: "user", content: user },
         ],
-        // Explicit output budget (endpoint defaults can truncate JSON).
-        maxTokens: 4096,
+        // Digest quality benefits from reasoning, but Qwen's xhigh default is
+        // unnecessarily slow and can starve the final JSON. Medium keeps the
+        // judgment pass while bounding latency/cost; 8k leaves room for both.
+        maxTokens: 8192,
+        thinking: "enabled",
+        reasoningEffort: "medium",
       },
       DigestSchema,
+      { normalizeCandidate: normalizeDigestCandidate },
     )
   },
 })
 
 function digestCachePath(paper: PaperRecord): string {
   return `.scispark/digests/${paperSlug(paper)}.json`
+}
+
+function digestCachePathFromSlug(slug: string): string {
+  return `.scispark/digests/${slug}.json`
+}
+
+/**
+ * True only for the canonical slug form produced by `paperSlug`/
+ * `slugifyTitle`. This keeps a read-only cache lookup from becoming an
+ * arbitrary vault-file reader when the slug comes from a URL query.
+ */
+export function isDigestCacheSlug(slug: string): boolean {
+  return slug.length > 0 && slug === slugifyTitle(slug)
+}
+
+/**
+ * Reads one already-generated digest without ever invoking an LLM. Missing,
+ * corrupt, or schema-invalid cache records are treated as a cache miss so a
+ * damaged local record cannot crash the paper page.
+ */
+export async function loadCachedDigestBySlug(storage: VaultStorage, slug: string): Promise<DigestResult | null> {
+  if (!isDigestCacheSlug(slug)) return null
+
+  const cachedRaw = await storage.read(digestCachePathFromSlug(slug))
+  if (cachedRaw === null) return null
+
+  try {
+    const parsed = DigestSchema.safeParse(JSON.parse(cachedRaw))
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
+}
+
+/** Read-only paper-record convenience wrapper around `loadCachedDigestBySlug`. */
+export async function loadCachedDigest(storage: VaultStorage, paper: PaperRecord): Promise<DigestResult | null> {
+  return loadCachedDigestBySlug(storage, paperSlug(paper))
 }
 
 /**
@@ -201,18 +274,10 @@ export async function generateDigest(
   // Execute the actual work asynchronously, but the promise is already tracked.
   ;(async () => {
     try {
-      const cachedRaw = await storage.read(path)
-
-      if (cachedRaw !== null) {
-        try {
-          const parsed = DigestSchema.safeParse(JSON.parse(cachedRaw))
-          if (parsed.success) {
-            resolvePromise!({ digest: parsed.data, fromCache: true })
-            return
-          }
-        } catch {
-          // Corrupt JSON — fall through to regenerate.
-        }
+      const cachedDigest = await loadCachedDigest(storage, paper)
+      if (cachedDigest !== null) {
+        resolvePromise!({ digest: cachedDigest, fromCache: true })
+        return
       }
 
       const run = await runSkill({

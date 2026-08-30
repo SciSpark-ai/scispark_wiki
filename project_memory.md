@@ -26,6 +26,100 @@
 
 # Current Release/Session State
 
+- Human acceptance feedback is being addressed on
+  `codex/human-test-onboarding-profile-refresh`; the earlier candidate
+  `65d6f561a595133d9a26671ca8cab14c207fffbc` is invalidated and must not be
+  released as the preview candidate.
+- The active branch now has an Ember-led transcript onboarding with name first,
+  a revision-checked profile editor for name/avatar/all onboarding answers, and
+  atomic History-compatible profile mutations. Existing profiles without a
+  `## Name` section safely open as `Researcher` so the user can rename them.
+- Feed refresh and its pre-refresh consolidation are server single-flight so a
+  reload or second tab joins existing paid work. Structured feed prompts request
+  Qwen non-thinking mode, candidate ranking is capped at two 25-paper batches,
+  and the UI shows real stage plus elapsed time. Opening Home no longer starts a
+  background trending LLM refresh; paid trending refresh remains explicit.
+- The 2026-08-29 deterministic checks for these acceptance fixes passed: 2,075
+  tests passed with 15 environment-gated skips, `npx tsc --noEmit` passed,
+  ESLint passed, and all 4 Playwright developer-preview scenarios passed. A
+  production build generated 53 routes before the final no-post-commit-reread
+  hardening; the exact-current Turbopack rebuild later hit a Codex sandbox-only
+  internal-port denial (Webpack is not a supported fallback for this tree).
+  The current source is running through the loopback development server at
+  `http://127.0.0.1:3111` with the correct preserved disposable vault for the
+  next human walkthrough. A clean exact-current production build remains a
+  candidate gate, not a confirmed result.
+- Human feed acceptance exposed Qwen inconsistently removing the object wrapper
+  from each feed schema whose only property is a list: first `feed-rank`'s
+  `{ scores: [...] }`, then `feed-strategy`'s `{ queries: [...] }` on the next
+  attempt. Strategy, rank, and rerank now explicitly normalize their equivalent
+  bare-list wire form before strict validation while still advertising the
+  original root-object JSON schema; all item, score, and index constraints remain
+  strict. One full-pipeline
+  regression replays bare arrays through all three stages. Next-specific
+  single-flight test reset hooks were also moved out of `route.ts` modules so
+  Next 16 generated route types remain valid. Subsequent real-provider attempts
+  exposed a second, independent Qwen failure: the configured `Qwen/Qwen3.8-27B`
+  exhausted exactly both 2,048-token strategy allowances or both 4,096-token
+  rerank allowances before returning incomplete JSON. The `/no_think` prompt
+  hint was therefore not reliably disabling GMI-hosted Qwen thinking. Feed
+  requests now opt into an internal `thinking: "disabled"` control, and the
+  OpenAI-compatible adapter maps that opt-in only for Qwen models to Qwen's
+  documented `chat_template_kwargs.enable_thinking: false` plus its non-thinking
+  sampling settings. Other models' payloads are unchanged. A user-triggered
+  real GMI/Qwen refresh after the hard switch completed the product route in 101
+  seconds: strategy, two rank batches, and rerank all succeeded, and the cache
+  contains 12 items selected from 50 ranked candidates. Individual arXiv 429s
+  degraded retrieval but did not fail the refresh. Digest acceptance then
+  exposed another root-array variant. Digest now explicitly requires one root
+  object and safely normalizes only a singleton object wrapper or unique digest
+  fields split across an array before applying the original strict schema. It
+  retains controlled Qwen thinking at `medium` effort with an 8,192-token cap.
+  A subsequent user-triggered live digest completed successfully through the
+  product route in 22.3 seconds (383 input and 1,028 output tokens), and later
+  requests correctly reused its cache. The focused 60-test
+  provider/structured/feed/digest/API gate, full 2,075-test suite, TypeScript,
+  and ESLint pass. The exact-current production build still reaches the known
+  Codex-host Turbopack CSS-worker internal-port `EPERM`, not a source diagnostic.
+- The paper detail page now uses a responsive research-desk layout rather than
+  a fixed `max-w-3xl` column: a wider editorial header and actions lead into a
+  primary evidence column plus a sticky 340px context rail on wide screens.
+  Feed rationale is a three-part comparison strip, digest typography and
+  sections have clearer hierarchy, and smaller viewports stack everything
+  without horizontal overflow. Dark desktop (1600x1000) and mobile (390x844)
+  screenshots were visually inspected; all 22 focused paper tests, the full
+  2,075-test suite, TypeScript, and ESLint pass.
+- A generated paper digest is durably restored from its validated
+  `.scispark/digests/<paper-slug>.json` cache whenever the paper page opens.
+  Hydration uses a read-only GET route that cannot acquire full text or invoke
+  an LLM; missing/corrupt cache records degrade to a normal miss, and canonical
+  slug validation blocks traversal. A headless-browser reload of the exact
+  human-acceptance paper showed the digest before and after reload with only GET
+  requests, and the generated action is visibly complete/non-clickable. The
+  persistence checkpoint passed 2,081 tests with 15 environment-gated skips,
+  TypeScript, ESLint, and `git diff --check`.
+- The reader's unavailable-full-text state now centers a clear external-source
+  handoff instead of showing a detached technical error card. Canonical DOI,
+  arXiv, and PubMed records take precedence, followed by validated HTTP(S)
+  source URLs and stable metadata records; unsafe URL schemes are rejected.
+  The exact human-acceptance paper resolves to its DOI in a new tab, with the
+  paper-detail return kept secondary. Desktop dark and mobile light browser
+  screenshots passed without horizontal overflow. The exact-current gate
+  passes 2,086 tests with 15 environment-gated skips, TypeScript, ESLint, and
+  `git diff --check`.
+- During visual QA, a preview was initially launched with the incorrect
+  `SCISPARK_VAULT_PATH` variable instead of `SCISPARK_VAULT`. It therefore read
+  the configured default vault and Home triggered companion/trending work before
+  the processes were stopped. Four successful LLM runs recorded $0.045597 total
+  usage and updated the default vault's usage, run, event, and trending-cache
+  files. With user approval, the entirely incident-created usage log, event log,
+  and four run records were backed up and removed on 2026-08-29. The prior
+  trending cache had been overwritten and no exact backup or reconstructable
+  copy existed, so the valid refreshed dashboard was retained rather than
+  causing further data loss. The seven incident artifacts, including that
+  dashboard, are recoverably copied under
+  `/private/tmp/scispark-incident-backup.ZrawFe` for this machine session.
+
 - SP5 PR #18 is merged into `main` at merge commit
   `5e729f8c22aff0a38450fe16f635ca9b78dd98f5`.
 - SP6 foundation PR #19 is merged into `main` at merge commit
@@ -120,6 +214,10 @@
   analysis output should not be committed.
 
 # Known Pitfalls
+
+- The vault override is `SCISPARK_VAULT`, not `SCISPARK_VAULT_PATH`. Resolve and
+  verify the effective vault before opening any route that can trigger provider
+  work; never assume a temporary-vault preview from the command label alone.
 
 - Do not rely on generic Next.js knowledge for this installed version; consult
   `node_modules/next/dist/docs/` first.

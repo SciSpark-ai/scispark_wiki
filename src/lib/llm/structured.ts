@@ -18,6 +18,17 @@ export class StructuredOutputError extends LLMError {
   }
 }
 
+export interface StructuredOutputOptions {
+  schemaName?: string
+  /**
+   * Narrow compatibility hook applied before strict schema validation. It may
+   * normalize a known provider wire quirk, but the normalized value must still
+   * pass the original zod schema. The provider always receives that original
+   * schema; this hook never weakens or changes the advertised JSON contract.
+   */
+  normalizeCandidate?: (candidate: unknown) => unknown
+}
+
 function sumUsage(a: LLMUsage, b: LLMUsage): LLMUsage {
   return {
     inputTokens: a.inputTokens + b.inputTokens,
@@ -36,7 +47,7 @@ export async function completeStructured<T>(
   model: string,
   req: Omit<LLMRequest, "jsonSchema" | "schemaName">,
   schema: z.ZodType<T>,
-  opts?: { schemaName?: string },
+  opts?: StructuredOutputOptions,
 ): Promise<{ value: T; usage: LLMUsage }> {
   const jsonSchema = z.toJSONSchema(schema)
   const attempts: string[] = []
@@ -66,6 +77,7 @@ export async function completeStructured<T>(
     }
 
     if (parseError === undefined) {
+      if (opts?.normalizeCandidate) candidate = opts.normalizeCandidate(candidate)
       const parsed = schema.safeParse(candidate)
       if (parsed.success) {
         return { value: parsed.data, usage: usage! }

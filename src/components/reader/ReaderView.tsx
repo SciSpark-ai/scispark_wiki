@@ -8,6 +8,7 @@ import HighlightLayer from "./HighlightLayer"
 import AskableSurface from "./AskableSurface"
 import type { ReaderContent } from "@/lib/reader/load"
 import { paperKey, type PaperRecord } from "@/lib/papers/types"
+import { originalPaperUrl } from "@/lib/papers/source-link"
 import { paperSlug } from "@/lib/wiki/authoring"
 import { displayTitle } from "@/lib/papers/title"
 import type { VaultStorage } from "@/lib/vault/storage"
@@ -83,8 +84,8 @@ export interface ReaderViewProps {
  * Owns the reader's client-side state: the mounted surface's plain text +
  * DOM root and persisted highlights. Mounts `HtmlSurface` or `PdfSurface`
  * depending on `content.kind`, wrapped in `AskableSurface` (Task 7 extract)
- * for the select→ask and select→capture-idea flows; `kind: "none"` renders an
- * abstract-plus-back-link card instead (M6 plan Task 8).
+ * for the select→ask and select→capture-idea flows; `kind: "none"` renders a
+ * centered handoff to the paper's canonical external source.
  */
 export default function ReaderView({ paper, content, storage }: ReaderViewProps) {
   const key = paperKey(paper)
@@ -164,25 +165,56 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
   }
 
   if (content.kind === "none") {
+    const sourceUrl = originalPaperUrl(paper)
     return (
-      <div className="p-7">
-        <div className="border border-border-warm rounded-card px-4 py-3 bg-light-surface max-w-2xl">
-          <h1 className="font-heading text-[20px] text-espresso tracking-heading-card">{displayTitle(paper.title)}</h1>
-          <div className="mt-2 text-[13px] text-muted-text tracking-body">{content.reason}</div>
-          {paper.abstract && (
-            <div className="mt-3 text-[13px]/[19px] text-espresso whitespace-pre-wrap">{paper.abstract}</div>
-          )}
-          {/* SP2 moved the digest onto the paper page and slimmed /papers to
-              search-only, so the old `/papers?paperKey=` target no longer
-              renders a digest at all — link to the paper page itself. */}
-          <Link
-            href={`/paper/${paperSlug(paper)}`}
-            className="mt-3 inline-block text-[13px] text-orange hover:text-orange-light"
+      <main className="flex min-h-[calc(100dvh-2rem)] items-center justify-center px-5 py-12 sm:px-8">
+        <section aria-labelledby="reader-unavailable-title" className="w-full max-w-[720px] text-center">
+          <h1
+            id="reader-unavailable-title"
+            className="font-heading text-[32px]/[1.16] tracking-heading text-espresso sm:text-[40px]/[1.12]"
           >
-            Back to paper
-          </Link>
-        </div>
-      </div>
+            Full text is not available inside SciSpark
+          </h1>
+
+          <p className="mx-auto mt-5 max-w-[58ch] text-[15px]/[1.7] tracking-body text-muted-text">
+            SciSpark could not retrieve a readable open-access copy. The original paper may still be available
+            through your institution or from the publisher.
+          </p>
+
+          <p className="mx-auto mt-7 max-w-[52ch] font-heading text-[20px]/[1.35] tracking-heading-card text-espresso">
+            {displayTitle(paper.title)}
+          </p>
+
+          <div className="mt-8 flex flex-col items-center gap-4">
+            {sourceUrl && (
+              <a
+                href={sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Open original paper in a new tab"
+                className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-pill bg-orange px-5 py-2.5 text-[14px] font-medium text-white transition-colors hover:bg-orange/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange focus-visible:ring-offset-2"
+              >
+                Open original paper
+              </a>
+            )}
+
+            {/* SP2 moved the digest onto the paper page and slimmed /papers to
+                search-only, so return to the paper detail rather than /papers. */}
+            <Link
+              href={`/paper/${paperSlug(paper)}`}
+              className="text-[13px] text-muted-text underline decoration-border-warm underline-offset-4 transition-colors hover:text-orange"
+            >
+              Back to paper details
+            </Link>
+          </div>
+
+          {!sourceUrl && (
+            <p className="mx-auto mt-6 max-w-[48ch] text-[13px]/[1.6] tracking-body text-muted-text">
+              This record does not include a verified external source link.
+            </p>
+          )}
+        </section>
+      </main>
     )
   }
 

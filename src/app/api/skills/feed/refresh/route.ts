@@ -1,25 +1,65 @@
 import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
 import { nodeSearchFn } from "@/lib/papers/node-search"
-import { runFeed } from "@/lib/skills/feed"
+import { runFeed, type FeedStage } from "@/lib/skills/feed"
+import {
+  skillSingleFlightState,
+  type ActiveFeedRefresh,
+} from "@/lib/server/skill-singleflight-state"
+
+function broadcast(state: ActiveFeedRefresh, stage: FeedStage): void {
+  state.stage = stage
+  for (const listener of state.listeners) {
+    try {
+      listener({ type: "progress", stage })
+    } catch {
+      // A disconnected stream must not interrupt the shared provider run.
+      state.listeners.delete(listener)
+    }
+  }
+}
 
 /**
- * POST /api/skills/feed/refresh — body `{}`, streams NDJSON progress
- * (`{type:"progress", stage}` once per funnel stage, via runFeed's `onStage`)
- * terminating in the full FeedResult as the result event. Builds its own deps
- * server-side (per M11's local-runtime pivot: the browser never runs skills or
- * holds LLM keys) — getServerVault() (via ndjsonSkillRoute), loadSettings(vault),
- * and a Node searchFn — so the client sends nothing. `setSkillTestOverrides` lets
- * tests inject a MockProvider/fake searchFn instead of nodeSearchFn()'s real
- * network calls. Mirrors src/app/api/skills/trending/refresh/route.ts exactly.
+ * POST /api/skills/feed/refresh — body `{}`, streaming NDJSON progress.
+ *
+ * The provider pipeline is process-wide single-flight: reloading, navigating,
+ * or opening another tab while a refresh is running joins that exact promise
+ * and receives its current/future stage instead of paying for duplicate work.
  */
 export const POST = ndjsonSkillRoute<Record<string, never>>(async (_input, vault, emit) => {
-  const settings = await loadSettings(vault)
-  const overrides = getSkillTestOverrides()
-  return runFeed(vault, {
-    searchFn: overrides.searchFn ?? nodeSearchFn(),
-    settings,
-    providerOverride: overrides.providerOverride,
-    onStage: (stage) => emit({ type: "progress", stage }),
-  })
+  const existing = skillSingleFlightState.feed
+  if (existing) {
+    existing.listeners.add(emit)
+    if (existing.stage) emit({ type: "progress", stage: existing.stage })
+    try {
+      return await existing.promise
+    } finally {
+      existing.listeners.delete(emit)
+    }
+  }
+
+  // Start on the next microtask so the active state is visible before any async
+  // dependency lookup can yield to a second request.
+  const state: ActiveFeedRefresh = {
+    stage: null,
+    listeners: new Set([emit]),
+    promise: Promise.resolve().then(async () => {
+      const settings = await loadSettings(vault)
+      const overrides = getSkillTestOverrides()
+      return runFeed(vault, {
+        searchFn: overrides.searchFn ?? nodeSearchFn(),
+        settings,
+        providerOverride: overrides.providerOverride,
+        onStage: (stage) => broadcast(state, stage),
+      })
+    }),
+  }
+  skillSingleFlightState.feed = state
+
+  try {
+    return await state.promise
+  } finally {
+    state.listeners.delete(emit)
+    if (skillSingleFlightState.feed === state) skillSingleFlightState.feed = null
+  }
 })
