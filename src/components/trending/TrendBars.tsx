@@ -13,6 +13,8 @@ export interface TrendBarsProps {
   /** Raw volumes — described in the accessible label, never drawn to scale. */
   priorCount: number
   recentCount: number
+  priorWindowLabel?: string
+  recentWindowLabel?: string
 }
 
 /**
@@ -34,7 +36,14 @@ export interface TrendBarsProps {
  * that case, and the all-zero case short-circuits to a flat baseline — so no
  * division by zero and no NaN height can reach the DOM.
  */
-export function TrendBars({ priorShare, recentShare, priorCount, recentCount }: TrendBarsProps) {
+export function TrendBars({
+  priorShare,
+  recentShare,
+  priorCount,
+  recentCount,
+  priorWindowLabel = "the preceding complete two-week period",
+  recentWindowLabel = "the latest complete two-week period",
+}: TrendBarsProps) {
   const max = Math.max(priorShare, recentShare)
   const priorHeight = barHeight(priorShare, max)
   const recentHeight = barHeight(recentShare, max)
@@ -46,8 +55,8 @@ export function TrendBars({ priorShare, recentShare, priorCount, recentCount }: 
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       role="img"
       aria-label={
-        `${formatShare(priorShare)} of the field's papers in the prior window (${priorCount}), ` +
-        `${formatShare(recentShare)} in the recent window (${recentCount})`
+        `${formatShare(priorShare)} of the field's papers from ${priorWindowLabel} (${priorCount}), ` +
+        `${formatShare(recentShare)} from ${recentWindowLabel} (${recentCount})`
       }
       className="shrink-0"
     >

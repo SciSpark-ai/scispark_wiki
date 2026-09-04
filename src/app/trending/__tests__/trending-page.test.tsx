@@ -173,6 +173,8 @@ describe("TrendingPage — ready board (SP4 Task 9)", () => {
     expect(container.textContent).toContain("128")
     expect(container.textContent).toContain("Sparse Attention")
     expect(container.textContent).toContain("relevant to you")
+    expect(container.textContent).toContain("Jul 6–19, 2026")
+    expect(container.textContent).not.toContain("this window")
 
     // Leaderboard rows
     expect(container.textContent).toContain("Diffusion Priors")
@@ -258,14 +260,19 @@ describe("TrendingPage — anchors-changed scope mismatch (SP4 Task 9)", () => {
 })
 
 describe("TrendingPage — surveyError (SP4 Task 9)", () => {
-  it("surfaces a surveyError without hiding the ranking", async () => {
-    loadBoardMock.mockResolvedValue(board({ surveyError: "Machine Learning: LLM call timed out" }))
+  it("explains a prior summary failure without leaking a stale provider requirement", async () => {
+    loadBoardMock.mockResolvedValue(
+      board({ surveyError: 'Machine Learning: Missing API key for provider "anthropic"' }),
+    )
     isStaleMock.mockReturnValue(false)
     anchorsMatchBoardMock.mockReturnValue(true)
 
     const { container, cleanup } = await renderPage()
 
-    expect(container.textContent).toContain("LLM call timed out")
+    expect(container.textContent).toContain("previous refresh")
+    expect(container.textContent).toContain("current AI settings")
+    expect(container.textContent?.toLowerCase()).not.toContain("anthropic")
+    expect(container.textContent).not.toContain("Missing API key")
     // ranking still visible
     expect(container.textContent).toContain("Sparse Attention")
     expect(container.textContent).toContain("Diffusion Priors")

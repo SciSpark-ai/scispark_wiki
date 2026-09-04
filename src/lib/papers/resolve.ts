@@ -3,6 +3,7 @@ import type { Frontmatter } from "../vault/types"
 import { loadFeed } from "../skills/feed"
 import { loadBundle } from "../vault/bundle"
 import { readReaderHandoff, readReaderHandoffBySlug } from "../reader/handoff"
+import { loadTrendingPaperRecords } from "../trending/cache"
 import { paperSlug } from "../wiki/authoring"
 import { paperKey, type PaperRecord } from "./types"
 
@@ -70,12 +71,15 @@ export function paperRecordFromFrontmatter(fm: Frontmatter): PaperRecord {
 
 /**
  * Shared candidate scan: the M5 feed cache first (has htmlUrl/oaUrl/pdfUrl
- * for `acquireFullText`), then every ingested paper page's frontmatter
+ * for `acquireFullText`), then the derived trending cache, then every ingested
+ * paper page's frontmatter
  * (works because its `sources/` snapshot serves the reader without any URLs
  * — see `paperRecordFromFrontmatter`'s doc comment). `matches` decides
  * identity — `resolvePaperByKey`/`resolvePaperBySlug` differ only in which
  * derived string they compare. Returns `null` on no match or any failure
- * (missing/corrupt cache or bundle) — best-effort, same as before.
+ * (missing/corrupt cache or bundle) — best-effort, same as before. Each source
+ * is isolated so one corrupt cache cannot prevent a valid later source from
+ * resolving the paper.
  */
 async function findPaperCandidate(
   storage: VaultStorage,
@@ -85,7 +89,19 @@ async function findPaperCandidate(
     const feed = await loadFeed(storage)
     const feedItem = feed?.items.find((it) => matches(it.paper))
     if (feedItem) return feedItem.paper
+  } catch {
+    // Continue to the independent trending/wiki sources.
+  }
 
+  try {
+    const trending = await loadTrendingPaperRecords(storage)
+    const trendingPaper = trending.find(matches)
+    if (trendingPaper) return trendingPaper
+  } catch {
+    // Continue to the independent wiki source.
+  }
+
+  try {
     const bundle = await loadBundle(storage)
     for (const page of bundle.pages.values()) {
       if (page.frontmatter.type !== "paper") continue
@@ -93,15 +109,15 @@ async function findPaperCandidate(
       if (matches(candidate)) return candidate
     }
   } catch {
-    // Best-effort resolution — a missing/corrupt cache or bundle just falls
-    // through to "not found".
+    // Best-effort resolution — a missing/corrupt bundle falls through.
   }
   return null
 }
 
 /**
  * Resolves the `PaperRecord` for `?paperKey=`: the shared candidate scan
- * (feed cache → ingested wiki paper pages) matched by `paperKey`, falling
+ * (feed cache → trending cache → ingested wiki paper pages) matched by
+ * `paperKey`, falling
  * back to a reader handoff — a paper reached via the /papers search box
  * stashes its full record there (keyed by `paperKey`) when the user clicks
  * "Read full paper", before it exists anywhere else. `null` when nothing

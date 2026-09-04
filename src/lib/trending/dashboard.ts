@@ -26,21 +26,9 @@ import {
 import { topicLens } from "./lens"
 import type { CountFn } from "./counts"
 import { trendingSkill } from "../skills/trending"
+import { DASHBOARD_CACHE_PATH, TRENDING_BOARD_VERSION } from "./cache"
 
-/**
- * Structure version of the cached board (`.scispark/trending/dashboard.json`).
- * Bumped whenever the persisted shape changes; `loadBoard` treats any other
- * version — including the M10/v1.1 shape, which carried no `version` at all —
- * as a cold start rather than parsing it into the wrong type.
- *
- * 3: `weekly` (the sparkline series) replaced by `priorCount` (the before/after
- * bars). A v2 board carries no `priorCount`, so rendering one would size the
- * bars off `undefined` — the bump makes it a cold start instead.
- * 4: growth is a ratio of SHARES of the discipline corpus, and the bars are
- * drawn from `recentShare`/`priorShare`. A v3 board carries neither field, so
- * rendering one would size every bar off `undefined`; cold-start instead.
- */
-export const TRENDING_BOARD_VERSION = 4
+export { DASHBOARD_CACHE_PATH, TRENDING_BOARD_VERSION } from "./cache"
 
 export interface BoardPaper {
   record: PaperRecord
@@ -103,10 +91,11 @@ export interface TrendingBoard {
   crossDisciplineNote: string | null
   /**
    * Present iff at least one discipline's qualitative survey failed. Carries
-   * the real reason(s) so the failure is surfaced instead of a silent set of
-   * null `why`s — the M10 failure-honesty rule (a survey that fails quietly
-   * while still billing was a real bug). Failed structured calls stay metered:
-   * their spend is still accumulated into the `trending_refresh` event.
+   * the diagnostic reason(s) so the cache records a real failure instead of a
+   * silent set of null `why`s. The UI intentionally translates this into
+   * provider-neutral retry guidance because a cached provider error may predate
+   * the user's current settings. Failed structured calls stay metered: their
+   * spend is still accumulated into the `trending_refresh` event.
    */
   surveyError?: string
   /**
@@ -122,8 +111,6 @@ export interface TrendingBoard {
   dataError?: string
   generatedAt: string
 }
-
-export const DASHBOARD_CACHE_PATH = ".scispark/trending/dashboard.json"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const CADENCE_MS: Record<Cadence, number> = { daily: DAY_MS, weekly: 7 * DAY_MS }

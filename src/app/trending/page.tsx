@@ -203,7 +203,8 @@ export default function TrendingPage() {
           )}
           {state.dashboard.surveyError && (
             <p className="mb-4 text-[12px] text-muted-text tracking-body">
-              Written summaries unavailable. Reason: {state.dashboard.surveyError}
+              AI-written summaries weren’t available from the previous refresh. Topic counts and papers are still
+              available. Refresh to retry with your current AI settings.
             </p>
           )}
           {state.dashboard.dataError && (
@@ -213,7 +214,7 @@ export default function TrendingPage() {
             </p>
           )}
           <div className="flex flex-col gap-5">
-            <OverviewStrip overview={state.dashboard.overview} />
+            <OverviewStrip overview={state.dashboard.overview} generatedAt={state.dashboard.generatedAt} />
             <Leaderboard board={state.dashboard} expandedKey={expandedKey} onToggle={toggleTopic} />
             <BreakoutPapers breakouts={state.dashboard.breakouts} />
           </div>

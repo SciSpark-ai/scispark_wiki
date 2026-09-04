@@ -4,7 +4,8 @@ import { paperSlug, buildPaperPage } from "../../wiki/authoring"
 import { applyChangeset } from "../../vault/changesets"
 import { serializeDocument } from "../../vault/frontmatter"
 import { writeReaderHandoff } from "../../reader/handoff"
-import { resolvePaperBySlug, extractAbstractFromBody } from "../resolve"
+import { DASHBOARD_CACHE_PATH, TRENDING_BOARD_VERSION } from "../../trending/cache"
+import { resolvePaperByKey, resolvePaperBySlug, extractAbstractFromBody } from "../resolve"
 import type { PaperRecord } from "../types"
 
 const PAPER: PaperRecord = {
@@ -14,6 +15,25 @@ const PAPER: PaperRecord = {
   abstract: "We study ear-EEG.",
   fields: [],
   source: "arxiv",
+}
+
+const BREAKOUT_PAPER: PaperRecord = {
+  ...PAPER,
+  ids: { doi: "10.22331/q-2026-08-13-2189" },
+  title: "A Trending Breakout Paper",
+  source: "openalex",
+}
+
+async function writeTrendingBoard(s: MemoryVaultStorage) {
+  await s.write(
+    DASHBOARD_CACHE_PATH,
+    JSON.stringify({
+      version: TRENDING_BOARD_VERSION,
+      generatedAt: "2026-08-29T21:51:44.393Z",
+      topics: [{ papers: [{ record: PAPER, wikiPageId: null }] }],
+      breakouts: [{ record: BREAKOUT_PAPER, citationCount: 12, wikiPageId: null }],
+    }),
+  )
 }
 
 async function writePaperPage(s: MemoryVaultStorage, paper: PaperRecord) {
@@ -51,6 +71,32 @@ describe("resolvePaperBySlug", () => {
     const resolved = await resolvePaperBySlug(s, paperSlug(PAPER))
     expect(resolved?.ids.arxiv).toBe("2409.08710")
     expect(resolved?.title).toBe("A Study of Ear-EEG")
+  })
+
+  it("resolves topic and breakout papers straight from the trending cache", async () => {
+    const s = new MemoryVaultStorage()
+    await writeTrendingBoard(s)
+
+    expect((await resolvePaperBySlug(s, paperSlug(PAPER)))?.title).toBe("A Study of Ear-EEG")
+    expect((await resolvePaperBySlug(s, paperSlug(BREAKOUT_PAPER)))?.title).toBe("A Trending Breakout Paper")
+    expect((await resolvePaperByKey(s, "doi:10.22331/q-2026-08-13-2189"))?.title).toBe(
+      "A Trending Breakout Paper",
+    )
+  })
+
+  it("ignores malformed trending records instead of crashing paper resolution", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write(
+      DASHBOARD_CACHE_PATH,
+      JSON.stringify({
+        version: TRENDING_BOARD_VERSION,
+        generatedAt: "2026-08-29T21:51:44.393Z",
+        topics: [{ papers: [{ record: { title: "missing required fields" } }] }],
+        breakouts: [{ record: null }],
+      }),
+    )
+
+    await expect(resolvePaperBySlug(s, "missing-required-fields")).resolves.toBeNull()
   })
 })
 

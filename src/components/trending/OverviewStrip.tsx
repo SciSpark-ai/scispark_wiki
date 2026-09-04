@@ -1,5 +1,6 @@
 import { Card } from "@/components/ui/Card"
 import type { BoardOverview } from "@/lib/trending/dashboard"
+import { trendingWindowLabels } from "@/lib/trending/topics"
 
 /** Same null-means-"new" rule as TopicRow's growth badge — see that file's doc comment. */
 function growthLabel(growth: number | null): string {
@@ -15,13 +16,14 @@ function growthLabel(growth: number | null): string {
  * approximate count across the user's disciplines, never as an exact
  * deduplicated total.
  */
-export function OverviewStrip({ overview }: { overview: BoardOverview }) {
+export function OverviewStrip({ overview, generatedAt }: { overview: BoardOverview; generatedAt?: string }) {
+  const recentWindow = trendingWindowLabels(generatedAt ?? "").recent
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <Card className="p-3">
         <div className="font-heading text-[22px] text-espresso tracking-heading-card">{overview.totalRecent}</div>
         <div className="text-[12px] text-muted-text tracking-body">
-          papers published across your disciplines this window
+          papers published across your disciplines from {recentWindow}
         </div>
       </Card>
       <Card className="p-3">
