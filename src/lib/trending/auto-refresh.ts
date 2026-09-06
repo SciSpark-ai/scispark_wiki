@@ -6,13 +6,14 @@ import type { TopicGroupFn, TopWorksFn } from "../papers/node-search"
 import { readUserModel } from "../usermodel/pages"
 import { effectiveTrackedFields } from "./fields"
 import { loadTrendingSettings } from "./settings"
-import { loadBoard, isStale, anchorsMatchBoard, runTrendingBoard } from "./dashboard"
+import { loadBoard, isStale, anchorsMatchBoard } from "./cache"
+import { runTrendingBoard } from "./dashboard"
 
 /**
  * Scheduled/manual auto-refresh helper: refresh the trending board if it is stale for the
  * user's cadence, OR if the cached board was built for a different set of
  * anchor disciplines than the settings now hold (mirrors /trending's own
- * staleness check — see dashboard.ts's anchorsMatchBoard JSDoc: a cache can be
+ * staleness check — see cache.ts's anchorsMatchBoard JSDoc: a cache can be
  * time-fresh but scope-stale after an anchor edit). The home page does not
  * call this automatically; opening the app must never start a paid LLM run.
  *

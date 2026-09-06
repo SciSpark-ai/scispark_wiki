@@ -12,6 +12,7 @@ import { LoadingState } from "@/components/ui/LoadingState"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { Composer } from "@/components/chat/Composer"
 import { SourcesToggle } from "@/components/chat/SourcesToggle"
+import { StreamingReply } from "@/components/chat/StreamingReply"
 
 const RECENT_LIMIT = 8
 
@@ -40,6 +41,7 @@ export default function ChatEntryPage() {
   const [readSourcesOnly, setReadSourcesOnly] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [stage, setStage] = useState<ChatStage | null>(null)
+  const [draft, setDraft] = useState("")
   const [error, setError] = useState<string | null>(null)
 
   const [recentSessions, setRecentSessions] = useState<ChatSession[]>([])
@@ -69,8 +71,9 @@ export default function ChatEntryPage() {
     setSubmitting(true)
     setError(null)
     setStage(null)
+    setDraft("")
     try {
-      const result = await askChatRemote({ sessionId: null, question: q, readSourcesOnly }, setStage)
+      const result = await askChatRemote({ sessionId: null, question: q, readSourcesOnly }, setStage, undefined, setDraft)
       router.push(`/chat/${result.sessionId}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -87,7 +90,7 @@ export default function ChatEntryPage() {
         <Composer value={question} onChange={setQuestion} onSubmit={handleSubmit} busy={submitting} />
         <SourcesToggle value={readSourcesOnly} onChange={setReadSourcesOnly} />
 
-        {submitting && <p className="text-[12px] text-muted-text tracking-body">{stageLabel(stage)}</p>}
+        {submitting && <StreamingReply text={draft} label={draft ? "Sparky is responding…" : stageLabel(stage)} />}
         {error && <LlmErrorMessage message={error} />}
       </div>
 

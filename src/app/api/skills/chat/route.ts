@@ -36,6 +36,7 @@ export const POST = ndjsonSkillRoute<unknown>(async (rawInput, vault, emit) => {
     settings,
     providerOverride: overrides.providerOverride,
     onProgress: (stage) => emit({ type: "progress", stage }),
+    onText: (text) => emit({ type: "text", text }),
   })
   return result
 })

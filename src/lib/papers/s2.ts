@@ -66,6 +66,7 @@ interface S2SearchResponse {
 export interface S2Query {
   query: string
   limit?: number
+  fromDate?: string
 }
 
 export interface S2Deps {
@@ -116,6 +117,7 @@ function buildUrl(q: S2Query): string {
   url.searchParams.set("query", q.query)
   url.searchParams.set("limit", String(clampLimit(q.limit)))
   url.searchParams.set("fields", SEARCH_FIELDS.join(","))
+  if (q.fromDate) url.searchParams.set("publicationDateOrYear", `${q.fromDate}:`)
   return url.toString()
 }
 

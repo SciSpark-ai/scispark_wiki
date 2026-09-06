@@ -31,6 +31,7 @@ export interface RunCompanionArgs {
   settings?: LLMSettings
   providerOverride?: Partial<Record<Tier, LLMProvider>>
   now?: () => Date
+  onText?: (draft: CompanionUtterance) => void
 }
 
 /**
@@ -60,6 +61,9 @@ export async function runCompanion(args: RunCompanionArgs): Promise<CompanionUtt
 
     const run = await runSkill({
       skill: companionSkill,
+      onText: args.onText ? (text) => args.onText!({
+        trigger: fired.id, text, action: null, costUsd: 0, fromTemplate: false,
+      }) : undefined,
       input: {
         triggerContext: fired.contextBlurb,
         feedback: userModel.feedback ?? "",

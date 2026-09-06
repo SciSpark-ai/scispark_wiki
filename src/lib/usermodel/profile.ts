@@ -11,6 +11,7 @@ import {
   type UserModel,
 } from "./pages"
 import { splitTopics } from "../trending/fields"
+import { RecommendationPreferencesSchema, readRecommendationPreferences } from "../recommendation/contract"
 
 export const PROFILE_AVATAR_PATH = "profile/avatar.json"
 export const MAX_AVATAR_DATA_URL_LENGTH = 1_500_000
@@ -53,12 +54,15 @@ function normalizedText(value: unknown, field: string, maxLength: number, requir
 }
 
 function normalizeAnswers(value: OnboardingAnswers): OnboardingAnswers {
+  const preferences = value.recommendations === undefined ? undefined : RecommendationPreferencesSchema.safeParse(value.recommendations)
+  if (preferences && !preferences.success) throw new UserProfileValidationError("invalid recommendation settings")
   return {
     name: normalizedText(value.name, "name", 100, true),
     role: normalizedText(value.role, "role", 1_000, true),
     fields: normalizedText(value.fields, "fields", 2_000, true),
     topics: normalizedText(value.topics, "topics", 4_000, false),
     feedPrefs: normalizedText(value.feedPrefs, "feedPrefs", 4_000, false),
+    ...(preferences?.success ? { recommendations: preferences.data } : {}),
   }
 }
 
@@ -159,6 +163,7 @@ function answersFromModel(model: UserModel): OnboardingAnswers {
     fields: sectionBody(model.profile, "Research fields"),
     topics: topicsFromInterests(model.interests),
     feedPrefs: sectionBody(model.profile, "What I want from my feed"),
+    recommendations: readRecommendationPreferences(model.profile),
   }
 }
 
@@ -256,6 +261,7 @@ export async function updateUserProfile(
   nextProfile = replaceSection(nextProfile, "Who I am", answers.role)
   nextProfile = replaceSection(nextProfile, "Research fields", answers.fields)
   nextProfile = replaceSection(nextProfile, "What I want from my feed", answers.feedPrefs)
+  if (answers.recommendations) nextProfile = replaceSection(nextProfile, "Recommendation settings", JSON.stringify(answers.recommendations))
   const nextInterests = replaceSection(current.interests, "Active topics", activeTopicsBody(answers.topics))
   const nextAvatar = avatarRaw(avatarDataUrl)
 
@@ -286,6 +292,7 @@ export async function updateUserProfile(
       ...answers,
       avatarDataUrl,
       revision: await profileRevision(nextProfile, nextInterests, nextAvatar),
+      recommendations: readRecommendationPreferences(nextProfile),
     },
     changesetId: mutation.changesetId,
     warnings: mutation.warnings,

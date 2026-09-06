@@ -1,4 +1,5 @@
 import type { LLMProvider, LLMRequest, LLMResult, ProviderId } from "../types"
+import { readSseData } from "../sse"
 import {
   LLMAuthError, LLMBadRequestError, LLMRateLimitError, LLMTransientError,
 } from "../types"
@@ -11,6 +12,7 @@ export class GoogleProvider implements LLMProvider {
   constructor(private apiKey: string, private fetchFn: typeof fetch = fetch) {}
 
   async complete(model: string, req: LLMRequest): Promise<LLMResult> {
+    req.onText?.("")
     const systemText = req.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n")
     const contents = req.messages
       .filter((m) => m.role !== "system")
@@ -37,13 +39,15 @@ export class GoogleProvider implements LLMProvider {
 
     let res: Response
     try {
-      res = await this.fetchFn(`${BASE_URL}/models/${model}:generateContent`, {
+      const method = req.onText ? "streamGenerateContent?alt=sse" : "generateContent"
+      res = await this.fetchFn(`${BASE_URL}/models/${model}:${method}`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
           "x-goog-api-key": this.apiKey,
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(120_000),
       })
     } catch (e) {
       throw new LLMTransientError(e instanceof Error ? e.message : "network error")
@@ -62,14 +66,16 @@ export class GoogleProvider implements LLMProvider {
       throw new LLMBadRequestError(text || `HTTP ${res.status}`)
     }
 
-    const data = (await res.json().catch(() => ({}))) as GenerateContentResponse
-    const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? ""
+    const data = req.onText
+      ? await readGoogleStream(res, req.onText)
+      : (await res.json().catch(() => ({}))) as GenerateContentResponse
+    const text = data.candidates?.[0]?.content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? "").join("") ?? ""
     return {
       text,
       json: req.jsonSchema ? safeParse(text) : undefined,
       usage: {
         inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
-        outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
+        outputTokens: (data.usageMetadata?.candidatesTokenCount ?? 0) + (data.usageMetadata?.thoughtsTokenCount ?? 0),
       },
       model: data.modelVersion ?? model,
       provider: this.id,
@@ -80,11 +86,28 @@ export class GoogleProvider implements LLMProvider {
 
 interface GenerateContentResponse {
   candidates?: Array<{
-    content?: { parts?: Array<{ text?: string }> }
+    content?: { parts?: Array<{ text?: string; thought?: boolean }> }
     finishReason?: string
   }>
-  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number }
   modelVersion?: string
+}
+
+async function readGoogleStream(res: Response, onText: (text: string) => void): Promise<GenerateContentResponse> {
+  let text = ""
+  let finishReason: string | undefined
+  let result: GenerateContentResponse = {}
+  for await (const data of readSseData(res)) {
+    const chunk = JSON.parse(data) as GenerateContentResponse & { error?: { message?: string } }
+    if (chunk.error) throw new LLMTransientError(chunk.error.message ?? "Provider stream failed")
+    const candidate = chunk.candidates?.[0]
+    const delta = candidate?.content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? "").join("") ?? ""
+    if (delta) { text += delta; onText(text) }
+    finishReason = candidate?.finishReason ?? finishReason
+    result = { ...result, ...chunk }
+  }
+  if (!finishReason) throw new LLMTransientError("Provider stream interrupted before completion")
+  return { ...result, candidates: [{ content: { parts: [{ text }] }, finishReason }] }
 }
 
 function safeParse(text: string): unknown {

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest"
 import { readFileSync, readdirSync, statSync, writeFileSync, rmSync, existsSync } from "node:fs"
-import { join } from "node:path"
+import { dirname, join, relative, resolve } from "node:path"
 
 /**
  * Browser-purity gate (M11 Task 10 — local-runtime pivot, final enforcement
@@ -30,9 +30,9 @@ import { join } from "node:path"
  *    client-side legitimately needs the module at all.
  *  - "named": only specific exported bindings are banned; other exports
  *    (types, pure helpers, constants) from the same module are fine and
- *    already used client-side today (e.g. `lib/skills/feed` exports
- *    `loadFeed`/`FeedResult`/`FEED_CACHE_PATH` for the feed page, but
- *    `runFeed` — the LLM-calling orchestrator — must stay server-only).
+ *    already used client-side today. Modules that pull in providers must be
+ *    whole-module banned, even if the imported binding is a pure helper:
+ *    production bundlers still resolve the module's dependency graph.
  */
 
 const ROOTS = ["src/app", "src/components"]
@@ -54,11 +54,18 @@ const FILE_EXTENSIONS = new Set([".ts", ".tsx"])
  * is added, add its path here.
  */
 const CLIENT_LIB_FILES = [
+  join("src", "lib", "skills", "feed-cache.ts"),
+  join("src", "lib", "skills", "digest-contract.ts"),
+  join("src", "lib", "reader", "ask-context.ts"),
+  join("src", "lib", "recommendation", "client.ts"),
   join("src", "lib", "trending", "client.ts"),
+  join("src", "lib", "trending", "cache.ts"),
   join("src", "lib", "spark", "client.ts"),
   join("src", "lib", "skills", "feed-client.ts"),
   join("src", "lib", "skills", "ingest-client.ts"),
   join("src", "lib", "skills", "search-intent-client.ts"),
+  join("src", "lib", "skills", "research-search-client.ts"),
+  join("src", "lib", "skills", "research-search-contract.ts"),
   join("src", "lib", "skills", "enrich-client.ts"),
   join("src", "lib", "companion", "client.ts"),
   join("src", "lib", "companion", "settings-client.ts"),
@@ -76,19 +83,20 @@ const CLIENT_LIB_FILES = [
 ]
 
 const WHOLE_MODULE_BANS = new Set([
+  "lib/skills/feed",
+  "lib/skills/digest",
   "lib/skills/runner",
   "lib/spark/quick",
   "lib/spark/deep",
   "lib/trending/auto-refresh",
+  "lib/trending/dashboard",
   "lib/skills/consolidation",
   "lib/companion/run",
 ])
 const PROVIDERS_PREFIX = "lib/llm/providers"
 
 const NAMED_BANS: Record<string, string[]> = {
-  "lib/trending/dashboard": ["runTrendingBoard"],
   "lib/skills/feed": ["runFeed"],
-  "lib/skills/digest": ["generateDigest"],
   "lib/vault/changesets": ["applyChangeset", "revertChangeset"],
   "lib/llm/settings": ["loadSettings", "saveSettings"],
   // Companion/trending settings live in the same server-only
@@ -191,8 +199,11 @@ function stripComments(src: string): string {
 }
 
 /** Only internal `lib/...` modules are relevant (npm packages, `next/...`, `@/components/...` etc. are never banned). Handles both the `@/lib/...` alias and relative paths that traverse into `lib/`. */
-function normalizeModulePath(spec: string): string | null {
-  const m = spec.match(/(?:^|\/)lib\/(.+)$/)
+function normalizeModulePath(spec: string, file: string): string | null {
+  const path = spec.startsWith(".")
+    ? relative(resolve("src"), resolve(dirname(file), spec))
+    : spec.replace(/^@\//, "")
+  const m = path.replace(/\.(?:tsx?|jsx?)$/, "").match(/^lib\/(.+)$/)
   return m ? `lib/${m[1]}` : null
 }
 
@@ -235,7 +246,7 @@ function parseClause(clauseText: string): ImportClause {
 }
 
 function checkAnyAccess(moduleSpec: string, statement: string, file: string, violations: Violation[]): void {
-  const normalized = normalizeModulePath(moduleSpec)
+  const normalized = normalizeModulePath(moduleSpec, file)
   if (!normalized) return
   if (WHOLE_MODULE_BANS.has(normalized) || normalized.startsWith(PROVIDERS_PREFIX) || NAMED_BANS[normalized]) {
     violations.push({
@@ -247,7 +258,7 @@ function checkAnyAccess(moduleSpec: string, statement: string, file: string, vio
 }
 
 function checkWholeOnly(moduleSpec: string, statement: string, file: string, violations: Violation[]): void {
-  const normalized = normalizeModulePath(moduleSpec)
+  const normalized = normalizeModulePath(moduleSpec, file)
   if (!normalized) return
   if (WHOLE_MODULE_BANS.has(normalized) || normalized.startsWith(PROVIDERS_PREFIX)) {
     violations.push({
@@ -258,9 +269,9 @@ function checkWholeOnly(moduleSpec: string, statement: string, file: string, vio
   }
 }
 
-function scanFile(file: string): Violation[] {
+function scanFile(file: string, source = readFileSync(file, "utf-8")): Violation[] {
   const violations: Violation[] = []
-  const cleaned = stripComments(readFileSync(file, "utf-8"))
+  const cleaned = stripComments(source)
 
   // Dynamic import("mod") — resolves to the full module namespace object.
   // The quote class includes backtick so a no-substitution template-literal
@@ -301,7 +312,7 @@ function scanFile(file: string): Violation[] {
     const [full, , typeOnlyStmt, clauseText, moduleSpec] = m
     if (typeOnlyStmt) continue // `import type {...} from "..."` / `export type {...} from "..."` — erased at compile time
 
-    const normalized = normalizeModulePath(moduleSpec)
+    const normalized = normalizeModulePath(moduleSpec, file)
     if (!normalized) continue
 
     const clause = parseClause(clauseText)
@@ -338,6 +349,21 @@ function scanFile(file: string): Violation[] {
 }
 
 describe("browser purity", () => {
+  it.each([
+    ['import { loadBoard } from "@/lib/trending/dashboard"', "src/app/trending/page.tsx"],
+    ['export { isStale } from "./dashboard"', "src/lib/trending/cache.ts"],
+    ['import { anchorsMatchBoard } from "../../lib/trending/dashboard.ts"', "src/app/trending/page.tsx"],
+    ['import { runSkill } from "../skills/runner"', "src/lib/trending/cache.ts"],
+    ['import { DigestSchema } from "../skills/digest"', "src/lib/reader/ask-context.ts"],
+  ])("rejects server-module value access: %s", (source, file) => {
+    expect(scanFile(file, source)).not.toEqual([])
+  })
+
+  it("allows erased type-only imports from server modules", () => {
+    expect(scanFile("src/app/trending/page.tsx", 'import type { TrendingBoard } from "@/lib/trending/dashboard"')).toEqual([])
+    expect(scanFile("src/lib/trending/cache.ts", 'import { type TrendingBoard } from "./dashboard"')).toEqual([])
+  })
+
   it("client code (src/app excluding src/app/api, src/components) never imports skill-running, changeset-applying, settings-loading, or provider code", () => {
     const violations: Violation[] = []
     for (const root of ROOTS) {

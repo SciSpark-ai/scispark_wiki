@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/Card"
 import { displayTitle } from "@/lib/papers/title"
 import { wikiHref } from "@/lib/wiki/href"
 import { paperSlug } from "@/lib/wiki/authoring"
-import type { TrendingBoard } from "@/lib/trending/dashboard"
+import type { TrendingBoard } from "@/lib/trending/types"
 
 export interface BreakoutPapersProps {
   breakouts: TrendingBoard["breakouts"]

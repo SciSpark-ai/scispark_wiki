@@ -114,6 +114,25 @@ function renderSurface(props: Partial<React.ComponentProps<typeof AskableSurface
 }
 
 describe("AskableSurface", () => {
+  it("shows partial text while asking, then replaces it with the final answer and sources", async () => {
+    loadCompanionSettingsRemoteMock.mockResolvedValue({ companionName: "Sparky", chattiness: "medium" })
+    let finish!: (answer: { answer: string; citedPageIds: string[] }) => void
+    askRemoteMock.mockImplementation((_input, _fetch, onText) => {
+      onText?.("A partial explanation")
+      return new Promise((resolve) => { finish = resolve })
+    })
+    const { host, getRenderProps } = renderSurface()
+    act(() => getRenderProps().onHtmlSelectionChange(SELECTION))
+    act(() => findBubbleButton(host, "Ask").click())
+    await flush()
+    expect(host.querySelector("[data-streaming-reply]")?.textContent).toContain("A partial explanation")
+    expect(host.textContent).not.toContain("Sources")
+    await act(async () => finish({ answer: "The validated explanation.", citedPageIds: ["wiki/concepts/attention"] }))
+    expect(host.querySelector("[data-streaming-reply]")).toBeNull()
+    expect(host.textContent).not.toContain("A partial explanation")
+    expect(host.textContent).toContain("The validated explanation.")
+    expect(host.querySelector('a[href="/wiki/concepts/attention"]')).not.toBeNull()
+  })
   it("renders children and stays bubble-free with no selection", () => {
     const { host } = renderSurface()
     expect(host.textContent).toContain("paper content")

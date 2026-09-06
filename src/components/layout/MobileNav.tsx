@@ -4,6 +4,7 @@ import { Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useUIStore } from "@/stores/ui-store";
 import { Sidebar } from "./Sidebar";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function MobileNav() {
   const { sidebarOpen, setSidebarOpen } = useUIStore();
@@ -22,7 +23,7 @@ export function MobileNav() {
         <span className="flex-1 text-center font-heading text-[18px] text-espresso tracking-heading">
           SciSpark
         </span>
-        <div className="w-[38px]" />
+        <ThemeToggle />
       </div>
 
       {/* Slide-over sidebar */}

@@ -37,6 +37,7 @@ export async function askChatRemote(
   input: AskChatInput,
   onStage?: (stage: ChatStage) => void,
   fetchFn: typeof fetch = fetch,
+  onText?: (text: string) => void,
 ): Promise<AskChatResult> {
   const res = await fetchFn("/api/skills/chat", {
     method: "POST",
@@ -47,5 +48,6 @@ export async function askChatRemote(
     // Membership-checked, not cast: an unknown stage name is ignored rather
     // than handed to a caller that will switch on it.
     if (event?.type === "progress" && isChatStage(event.stage)) onStage?.(event.stage)
+    if (event?.type === "text" && typeof event.text === "string") onText?.(event.text)
   }) as Promise<AskChatResult>
 }

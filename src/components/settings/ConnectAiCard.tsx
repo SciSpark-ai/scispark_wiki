@@ -119,7 +119,19 @@ function inferPresetId(provider: ProviderId, baseUrl: string): string {
   return direct?.id ?? "anthropic"
 }
 
-export function ConnectAiCard() {
+export interface ConnectedAi {
+  provider: ProviderId
+  providerLabel: string
+  model: string
+}
+
+export function ConnectAiCard({
+  onConnected,
+  firstRun = false,
+}: {
+  onConnected?: (connection: ConnectedAi) => void
+  firstRun?: boolean
+} = {}) {
   const [loaded, setLoaded] = useState(false)
   const [presetId, setPresetId] = useState<string>("anthropic")
   const [fastModel, setFastModel] = useState("")
@@ -220,7 +232,9 @@ export function ConnectAiCard() {
           `Request failed (${res.status})`
         setTest({ status: "error", message: friendlyError(message ?? "Connection test failed") })
       } else {
-        setTest({ status: "ok", ms: Date.now() - started, costUsd: result.costUsd ?? 0 })
+        const nextTest = { status: "ok" as const, ms: Date.now() - started, costUsd: result.costUsd ?? 0 }
+        setTest(nextTest)
+        onConnected?.({ provider: preset.provider, providerLabel: preset.label, model: strongModel.trim() })
       }
     } catch (err) {
       setTest({ status: "error", message: friendlyError(err instanceof Error ? err.message : String(err)) })
@@ -249,8 +263,8 @@ export function ConnectAiCard() {
         </span>
       </div>
       <p className="text-[13px] text-muted-text mb-5">
-        Your key is stored on this machine and never sent to the browser. SciSpark calls the provider
-        directly — bring your own key.
+        Your key is stored only in this local vault and is never shown again after saving. SciSpark calls the provider
+        from its local runtime.{firstRun ? " Once the connection works, SciSpark will build your first feed automatically." : ""}
       </p>
 
       {!loaded ? (
@@ -406,7 +420,7 @@ export function ConnectAiCard() {
               className="px-4 py-2 rounded-pill text-[14px] font-medium bg-orange text-white hover:bg-orange/90 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
-              {saving ? "Saving…" : "Save & test connection"}
+              {saving ? "Saving…" : firstRun ? "Save, test & build my feed" : "Save & test connection"}
             </button>
 
             {test.status === "ok" && (

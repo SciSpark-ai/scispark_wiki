@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/Card"
 import { EmptyState } from "@/components/ui/EmptyState"
-import type { TrendingBoard } from "@/lib/trending/dashboard"
+import type { TrendingBoard } from "@/lib/trending/types"
 import { trendingWindowLabels } from "@/lib/trending/topics"
 import { TopicRow } from "./TopicRow"
 

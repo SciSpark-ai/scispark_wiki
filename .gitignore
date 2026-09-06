@@ -19,6 +19,8 @@
 # next.js
 /.next/
 /.next-e2e/
+# Isolated production/browser verification builds
+/.next-*/
 /out/
 
 # production

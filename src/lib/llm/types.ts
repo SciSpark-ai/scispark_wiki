@@ -7,6 +7,8 @@ export interface LLMMessage {
 }
 
 export interface LLMRequest {
+  /** Optional live output snapshot. An empty snapshot resets a retried attempt. Never includes reasoning. */
+  onText?: (text: string) => void
   messages: LLMMessage[]
   maxTokens?: number
   /**

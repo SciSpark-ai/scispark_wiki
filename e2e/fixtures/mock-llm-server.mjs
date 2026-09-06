@@ -33,11 +33,28 @@ const server = createServer((request, response) => {
         : ""
       const output = prompt.includes("You select which pages")
         ? { pageIds: ["e2e-grounding-paper"] }
+        : prompt.includes("exactly ONE short")
+          ? { utterance: "Your research space is ready." }
         : {
             answer: "The disposable paper supports this project-scoped answer.",
             citedPageIds: ["wiki/papers/e2e-grounding-paper"],
           }
 
+      if (body.stream) {
+        response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" })
+        const content = JSON.stringify(output)
+        const split = Math.min(content.length, 35)
+        response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: content.slice(0, split) } }] })}\n\n`)
+        // Hold the real provider response open so E2E proves the UI updates
+        // BEFORE the completion is available, not a typewriter after buffering.
+        const timer = setTimeout(() => {
+          response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: content.slice(split) } }] })}\n\n`)
+          response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 20, completion_tokens: 10 } })}\n\n`)
+          response.end("data: [DONE]\n\n")
+        }, 1500)
+        response.on("close", () => clearTimeout(timer))
+        return
+      }
       response.writeHead(200, { "content-type": "application/json" })
       response.end(JSON.stringify({
         id: "chatcmpl-e2e",

@@ -10,8 +10,8 @@ import {
   loadBoard,
   isStale,
   anchorsMatchBoard,
-  type TrendingBoard,
-} from "@/lib/trending/dashboard"
+} from "@/lib/trending/cache"
+import type { TrendingBoard } from "@/lib/trending/types"
 import { refreshTrendingDashboard } from "@/lib/trending/client"
 import { useUIStore } from "@/stores/ui-store"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"

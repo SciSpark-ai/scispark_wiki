@@ -1,0 +1,32 @@
+import { expect, test } from "@playwright/test"
+
+test("streams a reading answer from a selected passage before showing sources", async ({ page }) => {
+  await page.goto("/paper/e2e-grounding-paper")
+  await page.getByRole("heading", { name: "E2E Grounding Paper" }).click({ clickCount: 3 })
+  await page.getByRole("toolbar", { name: "Selection actions" }).getByRole("button", { name: "Ask", exact: true }).click()
+  const panel = page.getByRole("dialog", { name: "Ask panel" })
+  await expect(panel.locator("[data-streaming-reply]")).toContainText("The disposable paper")
+  await expect(panel.getByText("Sources", { exact: true })).toBeHidden()
+  await expect(panel.locator("[data-streaming-reply]")).toBeHidden()
+  await expect(panel.getByText("The disposable paper supports this project-scoped answer.", { exact: true })).toBeVisible()
+  await expect(panel.getByText("Sources", { exact: true })).toBeVisible()
+})
+
+test("streams new and existing Chat turns before completing, then reloads the saved answer", async ({ page }) => {
+  await page.goto("/chat")
+  await page.getByPlaceholder("Ask about your knowledge base…").fill("What does the paper demonstrate?")
+  await page.getByRole("button", { name: "Send" }).click()
+  const draft = page.locator("[data-streaming-reply]")
+  await expect(draft).toContainText("The disposable paper")
+  await expect(page).toHaveURL(/\/chat$/)
+  await expect(draft).not.toContainText("citedPageIds")
+  await expect(draft.getByRole("button")).toHaveCount(0)
+  await page.waitForURL(/\/chat\/chat_/)
+  await expect(page.getByText("The disposable paper supports this project-scoped answer.", { exact: true })).toBeVisible()
+  await page.getByPlaceholder("Ask about your knowledge base…").fill("Explain that evidence further.")
+  await page.getByRole("button", { name: "Send" }).click()
+  await expect(draft).toContainText("The disposable paper")
+  await expect(draft).toBeHidden()
+  await page.reload()
+  await expect(page.getByText("The disposable paper supports this project-scoped answer.", { exact: true })).toHaveCount(2)
+})

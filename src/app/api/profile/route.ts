@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { RecommendationPreferencesSchema } from "@/lib/recommendation/contract"
 import {
   createUserProfile,
   getUserProfile,
@@ -16,6 +17,7 @@ const answersSchema = z.object({
   fields: z.string(),
   topics: z.string(),
   feedPrefs: z.string(),
+  recommendations: RecommendationPreferencesSchema.optional(),
 }).strict()
 
 const updateSchema = answersSchema.extend({

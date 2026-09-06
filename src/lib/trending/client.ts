@@ -1,6 +1,6 @@
 import { readNdjson } from "../server/ndjson"
 import type { TrackedField } from "./fields"
-import type { TrendingBoard } from "./dashboard"
+import type { TrendingBoard } from "./types"
 
 /**
  * Browser-side callers for the trending skill routes (M11 Task 5). Both

@@ -3,16 +3,15 @@ import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { createVault } from "../../vault/scaffold"
 import { loadChangeset } from "../../vault/changesets"
 import { DEFAULT_SETTINGS } from "../../llm/settings"
-import { searchArxiv } from "../../papers/arxiv"
-import { searchOpenAlex } from "../../papers/openalex"
+import { nodeFeedSearchFn } from "../../papers/node-search"
 import { seedUserModel, USER_MODEL_PATHS } from "../../usermodel/pages"
 import { logEvent } from "../../events/log"
-import { runFeed, loadFeed, FEED_CACHE_PATH, type SearchFn } from "../feed"
+import { runFeed, loadFeed, FEED_CACHE_PATH } from "../feed"
 import { runConsolidation } from "../consolidation"
 
 /**
  * LIVE end-to-end gate for M5: a real personalized feed run (strategy ->
- * retrieve -> rank -> re-rank) against real arXiv/OpenAlex search and a real
+ * retrieve -> assess -> diversify) against real scholarly sources and a real
  * LLM, followed by a forced Memory-Consolidation pass — all against an
  * in-memory vault. Skipped unless all three env vars are set:
  *
@@ -29,31 +28,7 @@ const API_KEY = process.env.LIVE_LLM_API_KEY
 const MODEL = process.env.LIVE_LLM_MODEL
 
 const live = Boolean(BASE_URL && API_KEY && MODEL)
-const LIVE_TIMEOUT = 240_000 // strategy + rank + re-rank across several LLM calls takes a while
-
-/**
- * Node relay-free SearchFn: calls the M3 search-core adapters (searchArxiv,
- * searchOpenAlex) directly — no HTTP server, no /api/search proxy. s2/pubmed
- * queries are remapped onto openalex so the strategy skill's full 4-source
- * vocabulary is exercised without hitting sources that need API keys or are
- * prone to live rate-limit flakes. A failed query resolves to [] (per the
- * SearchFn contract) rather than failing the whole feed run.
- */
-function nodeSearchFn(): SearchFn {
-  const mailto = process.env.OPENALEX_MAILTO
-  return async (source, query, limit) => {
-    const effectiveSource = source === "s2" || source === "pubmed" ? "openalex" : source
-    try {
-      if (effectiveSource === "arxiv") {
-        return await searchArxiv({ query, limit })
-      }
-      return await searchOpenAlex({ query, limit }, { mailto })
-    } catch (err) {
-      console.warn(`[live-feed] search failed for source=${source} query="${query}":`, err)
-      return []
-    }
-  }
-}
+const LIVE_TIMEOUT = 240_000 // planning + batched assessment plus the separately gated legacy consolidation
 
 describe.skipIf(!live)("LIVE feed funnel + consolidation gate", () => {
   it(
@@ -142,7 +117,7 @@ describe.skipIf(!live)("LIVE feed funnel + consolidation gate", () => {
 
       // ── runFeed against real search + a real LLM ─────────────────────────
       const feedResult = await runFeed(storage, {
-        searchFn: nodeSearchFn(),
+        searchFn: nodeFeedSearchFn(),
         settings,
       })
 
@@ -154,16 +129,16 @@ describe.skipIf(!live)("LIVE feed funnel + consolidation gate", () => {
       )
       console.log(
         `[live-feed] items:\n${feedResult.items
-          .map((i) => `  [${i.score}] ${i.paper.title} — whyYou: ${i.whyYou}`)
+          .map((i) => `  [${i.score}] ${i.paper.title} — topics: ${i.ranking?.matchedTopics.join(", ")}`)
           .join("\n")}`,
       )
 
       expect(feedResult.items.length).toBeGreaterThanOrEqual(5)
 
       for (const item of feedResult.items) {
-        expect(item.whyThis.trim().length).toBeGreaterThan(0)
-        expect(item.whyYou.trim().length).toBeGreaterThan(0)
-        expect(item.whyNow.trim().length).toBeGreaterThan(0)
+        expect(item.ranking?.relevance).toBeGreaterThanOrEqual(50)
+        expect(item.ranking?.total).not.toBeNull()
+        expect(item.whyThis).toBe("")
         expect(item.paper.title.trim().length).toBeGreaterThan(0)
         const hasId = Object.values(item.paper.ids).some((v) => typeof v === "string" && v.length > 0)
         expect(hasId || item.paper.year !== undefined).toBe(true)

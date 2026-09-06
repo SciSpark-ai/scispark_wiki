@@ -31,10 +31,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full w-full" data-scroll-behavior="smooth" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={THEME_INIT_SCRIPT} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${halant.variable} antialiased h-full w-full m-0 p-0`}
       >
-        <script dangerouslySetInnerHTML={THEME_INIT_SCRIPT} />
         <AppShell>{children}</AppShell>
       </body>
     </html>

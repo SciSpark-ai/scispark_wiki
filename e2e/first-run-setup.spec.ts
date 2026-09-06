@@ -1,0 +1,119 @@
+import { expect, test } from "@playwright/test"
+import { NodeFsVaultStorage } from "../src/lib/vault/node-fs-storage"
+import { FEED_CACHE_PATH, type FeedResult } from "../src/lib/skills/feed"
+
+const ANSWERS = {
+  name: "Ada",
+  role: "Research fellow",
+  fields: "Auditory neuroscience",
+  topics: "Language development",
+  feedPrefs: "Recent methods papers",
+}
+
+const FEED: FeedResult = {
+  generatedAt: new Date().toISOString(),
+  items: [{
+    paper: {
+      ids: {}, title: "First-run fixture paper", authors: [{ name: "Ada Researcher" }],
+      abstract: "A deterministic first-feed result for UI acceptance.",
+      year: 2026, venue: "SciSpark Preview", fields: ["Neuroscience"], source: "s2",
+    },
+    score: 90, whyThis: "A methods paper.", whyYou: "Matches your research field.", whyNow: "Recently published.",
+  }],
+  costUsd: 0,
+  strategy: { queries: [{ source: "s2", query: "auditory neuroscience", rationale: "Matches the profile." }] },
+  stats: { retrieved: 1, ranked: 1 },
+}
+
+for (const entry of ["new connection", "saved connection"] as const) {
+  test(`first feed starts automatically with a ${entry} and reaches the feed`, async ({ page, request }, testInfo) => {
+    const vaultPath = process.env.SCISPARK_E2E_VAULT_PATH
+    if (!vaultPath) throw new Error("Disposable E2E vault is required")
+    const storage = new NodeFsVaultStorage(vaultPath)
+    expect(await storage.read(FEED_CACHE_PATH)).toBeNull()
+    let changesetId: string | undefined
+    let feedRequests = 0
+    let consolidationRequests = 0
+    let releaseFeed!: () => void
+    const feedGate = new Promise<void>((resolve) => { releaseFeed = resolve })
+
+    // Exercise the real setup components, profile/settings APIs, and BYOK ping
+    // against the local mock provider. Isolate external literature retrieval at
+    // the feed transport boundary; this test targets auto-start, not ranking.
+    await page.route("**/api/skills/consolidate", async (route) => {
+      consolidationRequests++
+      await route.fulfill({ json: { result: { status: "skipped", costUsd: 0 } } })
+    })
+    await page.route("**/api/skills/feed/refresh", async (route) => {
+      feedRequests++
+      await feedGate
+      await route.fulfill({
+        contentType: "application/x-ndjson",
+        body: [
+          ...["strategy", "retrieval", "rank", "rerank"].map((stage) => ({ type: "progress", stage })),
+          { type: "result", payload: FEED },
+        ].map((event) => JSON.stringify(event)).join("\n") + "\n",
+      })
+    })
+
+    try {
+      await page.emulateMedia({ reducedMotion: "reduce" })
+      if (entry === "new connection") {
+        const cleared = await request.put("/api/settings", { data: { patch: { keys: { openai: "" } } } })
+        expect(cleared.ok()).toBe(true)
+        await page.goto("/onboarding")
+        const created = page.waitForResponse((response) => response.url().endsWith("/api/profile") && response.request().method() === "POST")
+        for (const answer of Object.values(ANSWERS)) {
+          if (answer === ANSWERS.feedPrefs) {
+            await page.getByRole("button", { name: /Feed preferences/ }).click()
+            await page.getByRole("radio", { name: /Exploratory/ }).check()
+            await page.getByRole("checkbox", { name: /Learn from my explicit/ }).uncheck()
+            await page.getByRole("button", { name: "Done", exact: true }).click()
+          }
+          const composer = page.getByRole("region", { name: "Chat with Sparky" }).getByRole("textbox")
+          await composer.fill(answer)
+          await composer.press("Enter")
+        }
+        const profileResponse = await created
+        expect(profileResponse.status()).toBe(201)
+        changesetId = (await profileResponse.json()).changesetId
+        expect((await (await request.get("/api/profile")).json()).profile.recommendations).toMatchObject({ diversity: "exploratory", learnFromFeedback: false })
+        await expect(page).toHaveURL(/\/setup$/)
+        await page.getByPlaceholder("Paste your API key").fill("e2e-local-only-key")
+        await page.getByRole("button", { name: "Save, test & build my feed" }).click()
+      } else {
+        const profileResponse = await request.post("/api/profile", { data: ANSWERS })
+        expect(profileResponse.status()).toBe(201)
+        changesetId = (await profileResponse.json()).changesetId
+        await page.goto("/setup")
+      }
+
+      await expect.poll(() => feedRequests).toBe(1)
+      expect(consolidationRequests).toBe(0)
+      await expect(page.getByRole("status").filter({ hasText: "Checking research memory" })).toBeVisible()
+      await page.screenshot({ path: testInfo.outputPath("initialization-started.png") })
+
+      // Seed the cache a successful feed route would persist before completion.
+      await storage.write(FEED_CACHE_PATH, JSON.stringify(FEED))
+      releaseFeed()
+      await expect(page.getByRole("heading", { name: "Your research radar is ready." })).toBeVisible()
+      await expect(page.getByText(/Sparky found 1 paper/)).toBeVisible()
+      await page.getByRole("link", { name: "Open my feed" }).click()
+      await expect(page.getByText("First-run fixture paper", { exact: true })).toBeVisible()
+      await page.goto("/setup")
+      await expect(page.getByRole("heading", { name: "Your research radar is ready." })).toBeVisible()
+      expect(feedRequests).toBe(1)
+      expect(consolidationRequests).toBe(0)
+    } finally {
+      releaseFeed()
+      await storage.delete(FEED_CACHE_PATH)
+      if (changesetId) {
+        const undone = await request.post("/api/history/changes", { data: { changesetId } })
+        expect(undone.ok()).toBe(true)
+      }
+      // Restore only the disposable fixture key for the rest of the E2E suite.
+      const restored = await request.put("/api/settings", { data: { patch: { keys: { openai: "e2e-local-only-key" } } } })
+      expect(restored.ok()).toBe(true)
+    }
+  })
+}

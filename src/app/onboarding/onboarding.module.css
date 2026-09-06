@@ -1,0 +1,54 @@
+.page {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  padding-block: clamp(12px, 3dvh, 32px);
+}
+
+.content {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  max-height: 900px;
+  min-height: 0;
+  flex-direction: column;
+  gap: clamp(12px, 3dvh, 24px);
+}
+
+.intro {
+  width: 100%;
+  max-width: 960px;
+  margin-inline: auto;
+  flex-shrink: 0;
+}
+
+.title {
+  margin-top: 8px;
+  text-wrap: balance;
+}
+
+.description {
+  margin-top: 12px;
+  text-wrap: pretty;
+}
+
+/* Give the conversation priority when vertical space is limited. */
+@media (max-height: 700px) {
+  .title {
+    margin-top: 4px;
+    font-size: 24px;
+  }
+
+  .description {
+    display: none;
+  }
+}
+
+@media (max-height: 480px) {
+  .title {
+    display: none;
+  }
+}

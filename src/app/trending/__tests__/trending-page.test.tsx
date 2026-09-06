@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createRoot } from "react-dom/client"
 import { act } from "react"
-import type { TrendingBoard } from "@/lib/trending/dashboard"
+import type { TrendingBoard } from "@/lib/trending/types"
 import type { TrendingSettings } from "@/lib/trending/settings"
 import type { PaperRecord } from "@/lib/papers/types"
 
@@ -26,12 +26,8 @@ vi.mock("@/lib/usermodel/pages", () => ({
 vi.mock("@/lib/trending/settings-client", () => ({
   loadTrendingSettingsRemote: (...args: unknown[]) => loadTrendingSettingsRemoteMock(...args),
 }))
-// No `vi.importActual` here — that pulls in the real module (which imports
-// `runSkill`/providers) via a dynamic import the browser-purity gate treats
-// as exposing every named export, including the banned `runTrendingBoard`.
-// The page only needs these three functions plus the `TrendingBoard` type
-// (type-only, erased at compile time), so mock them directly.
-vi.mock("@/lib/trending/dashboard", () => ({
+// Control freshness and scope without importing server orchestration.
+vi.mock("@/lib/trending/cache", () => ({
   loadBoard: (...args: unknown[]) => loadBoardMock(...args),
   isStale: (...args: unknown[]) => isStaleMock(...args),
   anchorsMatchBoard: (...args: unknown[]) => anchorsMatchBoardMock(...args),

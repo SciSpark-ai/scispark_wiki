@@ -4,10 +4,11 @@ import Link from "next/link"
 import { useState, type FormEvent } from "react"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { wikiHref } from "@/lib/wiki/href"
+import { StreamingReply } from "@/components/chat/StreamingReply"
 
 export type AskState =
   | { status: "idle" }
-  | { status: "loading" }
+  | { status: "loading"; text?: string }
   | { status: "done"; answer: string; citedPageIds: string[] }
   | { status: "error"; message: string }
 
@@ -74,6 +75,7 @@ export default function AskPanel({ selectionText, state, onAsk }: AskPanelProps)
         </form>
 
         {state.status === "error" && <LlmErrorMessage message={state.message} />}
+        {state.status === "loading" && <div className="mt-3"><StreamingReply text={state.text ?? ""} /></div>}
 
         {state.status === "done" && (
           <div className="mt-3 border border-border-warm rounded-card px-3 py-2 bg-card-surface">

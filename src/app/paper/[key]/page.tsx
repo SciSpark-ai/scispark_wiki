@@ -11,7 +11,7 @@ import { paperKey, type PaperRecord } from "@/lib/papers/types"
 import { savePaper } from "@/lib/papers/save-client"
 import { generateDigestRemote, ingestRemote, loadCachedDigestRemote, undoIngestRemote } from "@/lib/skills/ingest-client"
 import { enrichRemote } from "@/lib/skills/enrich-client"
-import { loadFeed, type FeedItem } from "@/lib/skills/feed"
+import { loadFeed, type FeedItem } from "@/lib/skills/feed-cache"
 import { logEvent } from "@/lib/events/log"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { rangeToOffsets, plainTextOf } from "@/lib/reader/dom-offsets"
@@ -21,6 +21,7 @@ import { PaperHeader } from "@/components/paper/PaperHeader"
 import { PaperActions, type DigestState, type EnrichState, type IngestState, type SaveState } from "@/components/paper/PaperActions"
 import { PaperDigestView } from "@/components/paper/PaperDigestView"
 import { PaperFeedContext } from "@/components/paper/PaperFeedContext"
+import { RecommendationDetails } from "@/components/feed/RecommendationDetails"
 import { PaperMeta } from "@/components/paper/PaperMeta"
 import { PaperSynthesis } from "@/components/paper/PaperSynthesis"
 import { RelatedInWiki, resolveRelatedPages, type RelatedPageLink } from "@/components/paper/RelatedInWiki"
@@ -466,7 +467,8 @@ function PaperPageContent() {
                 >
                   {hasPrimaryContent && (
                     <main className="min-w-0">
-                      {feedContext && (
+                      {feedContext?.ranking && <RecommendationDetails ranking={feedContext.ranking} />}
+                      {feedContext && !feedContext.ranking && (
                         <PaperFeedContext
                           whyThis={feedContext.whyThis}
                           whyYou={feedContext.whyYou}

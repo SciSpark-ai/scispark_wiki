@@ -9,6 +9,7 @@ import { createUserProfileRemote } from "@/lib/usermodel/profile-client"
 import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { useUserStore } from "@/stores/user-store"
+import styles from "./onboarding.module.css"
 
 type PageState =
   | { status: "checking" }
@@ -52,7 +53,7 @@ export default function OnboardingPage() {
       await createUserProfileRemote(answers)
       useUserStore.getState().setUser({ name: answers.name })
       useUserStore.getState().setOnboardingComplete(true)
-      router.push("/")
+      router.push("/setup")
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       if (message.includes("already") && message.includes("profile")) {
@@ -66,7 +67,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-full bg-page-warm px-4 py-8 sm:px-8 sm:py-12">
+    <div className={`${styles.page} bg-page-warm px-3 sm:px-8`}>
       {state.status === "checking" && <p className="text-[14px] text-muted-text">Loading…</p>}
 
       {state.status === "error" && <p className="text-[13px] text-red-600">Error: {state.message}</p>}
@@ -81,15 +82,18 @@ export default function OnboardingPage() {
       )}
 
       {state.status === "ready" && (
-        <div className="w-full">
-          <div className="mx-auto mb-7 max-w-[720px]">
-            <p className="mb-2 text-[12px] font-medium uppercase tracking-[0.14em] text-orange">Welcome to SciSpark</p>
-            <h1 className="max-w-xl font-heading text-[30px] leading-tight tracking-heading text-espresso sm:text-[38px]">
-              Start with a conversation, not a configuration screen.
+        <div className={styles.content}>
+          <div className={`${styles.intro} text-center`}>
+            <p className="text-[13px] font-medium text-orange">Welcome to SciSpark</p>
+            <h1 className={`${styles.title} font-heading text-[28px] leading-tight tracking-heading text-espresso sm:text-[38px]`}>
+              Let’s find the work worth your attention.
             </h1>
+            <p className={`${styles.description} text-[14px] leading-relaxed text-muted-text`}>
+              Sparky will listen for your fields, current questions, and the kinds of papers you want to see.
+            </p>
           </div>
           <OnboardingFlow onSubmit={handleSubmit} submitting={submitting} />
-          {submitError && <p className="mt-4 text-center text-[13px] text-red-600">Error: {submitError}</p>}
+          {submitError && <p role="alert" className="max-h-20 shrink-0 overflow-y-auto text-center text-[13px] text-red-600">Error: {submitError}</p>}
         </div>
       )}
     </div>

@@ -139,6 +139,8 @@ test.describe.serial("SP6 developer preview", () => {
     await page.getByRole("switch", { name: /Read Sources Only/ }).check()
     await page.getByPlaceholder("Ask about your knowledge base…").fill(QUESTION)
     await page.getByRole("button", { name: "Send" }).click()
+    await expect(page.locator("[data-streaming-reply]")).toContainText("The disposable paper")
+    await expect(page.getByRole("button", { name: "Send" })).toBeDisabled()
     await page.waitForURL(/\/chat\/chat_[A-Za-z0-9_-]+$/)
     chatPath = new URL(page.url()).pathname
     await expect(page.getByText(ANSWER)).toBeVisible()

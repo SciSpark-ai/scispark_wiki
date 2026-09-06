@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/Card"
-import type { BoardOverview } from "@/lib/trending/dashboard"
+import type { BoardOverview } from "@/lib/trending/types"
 import { trendingWindowLabels } from "@/lib/trending/topics"
 
 /** Same null-means-"new" rule as TopicRow's growth badge — see that file's doc comment. */

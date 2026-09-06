@@ -73,10 +73,11 @@ export function jsonSkillRoute<TIn, TOut>(
  * are already committed once streaming starts).
  */
 export function ndjsonSkillRoute<TIn>(
-  handler: (input: TIn, vault: VaultStorage, emit: (event: object) => void) => Promise<object>,
+  handler: (input: TIn, vault: VaultStorage, emit: (event: object) => void) => Promise<unknown>,
 ): (req: Request) => Promise<Response> {
   return async (req: Request): Promise<Response> => {
     const encoder = new TextEncoder()
+    let closed = false
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         // Guards against a handler calling `emit` after it has already
@@ -86,39 +87,40 @@ export function ndjsonSkillRoute<TIn>(
         // enqueueing on it throws. Without this guard that throw becomes an
         // unhandled rejection outside any try/catch here (the `start`
         // callback has already returned by the time the late timer fires).
-        let closed = false
         const emit = (event: object): void => {
           if (closed) return
-          // Eager, unbuffered enqueue with no desiredSize/backpressure check:
-          // fine for today's low-volume progress events (one per field/item,
-          // human-timescale cadence). Revisit with a backpressure-aware queue
-          // if a skill starts emitting at high volume (e.g. per-token).
           controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))
         }
         try {
           const input = (await req.json()) as TIn
           const vault = await getServerVault()
           const result = await handler(input, vault, emit)
-          closed = true
-          controller.enqueue(encoder.encode(`${JSON.stringify({ type: "result", payload: result })}\n`))
+          emit({ type: "result", payload: result })
         } catch (err) {
-          closed = true
-          controller.enqueue(
-            encoder.encode(
-              `${JSON.stringify({ type: "error", message: err instanceof Error ? err.message : String(err) })}\n`,
-            ),
-          )
+          emit({ type: "error", message: err instanceof Error ? err.message : String(err) })
         } finally {
+          if (!closed) controller.close()
           closed = true
-          controller.close()
         }
       },
+      // Keep the bounded server operation alive to finish persisting a chat,
+      // but never enqueue into a disconnected browser's closed controller.
+      cancel() { closed = true },
     })
     return new Response(stream, {
       status: 200,
-      headers: { "content-type": "application/x-ndjson" },
+      headers: { "content-type": "application/x-ndjson", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" },
     })
   }
+}
+
+/** Existing JSON clients remain compatible; chat UIs opt into live NDJSON. */
+export function streamingSkillRoute<TIn, TOut>(
+  handler: (input: TIn, vault: VaultStorage, emit?: (event: object) => void) => Promise<TOut>,
+): (req: Request) => Promise<Response> {
+  return (req) => req.headers.get("accept")?.includes("application/x-ndjson")
+    ? ndjsonSkillRoute<TIn>(handler)(req)
+    : jsonSkillRoute<TIn, TOut>(handler)(req)
 }
 
 export interface SkillTestOverrides {
@@ -155,4 +157,3 @@ export function setSkillTestOverrides(overrides: SkillTestOverrides = {}): void 
 export function getSkillTestOverrides(): SkillTestOverrides {
   return skillTestOverrides
 }
-

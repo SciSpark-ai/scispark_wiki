@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { LLMError, type LLMProvider, type LLMRequest, type LLMUsage } from "./types"
+import { streamedStringField } from "./streamed-field"
 
 export class StructuredOutputError extends LLMError {
   constructor(
@@ -19,6 +20,8 @@ export class StructuredOutputError extends LLMError {
 }
 
 export interface StructuredOutputOptions {
+  streamField?: string
+  onText?: (text: string) => void
   schemaName?: string
   /**
    * Narrow compatibility hook applied before strict schema validation. It may
@@ -55,11 +58,20 @@ export async function completeStructured<T>(
   let messages = req.messages
 
   for (let attempt = 0; attempt < 2; attempt++) {
+    let previousPreview: string | undefined
     const result = await provider.complete(model, {
       ...req,
       messages,
       jsonSchema,
       schemaName: opts?.schemaName,
+      ...(opts?.streamField && opts.onText ? {
+        onText: (raw: string) => {
+          const preview = streamedStringField(raw, opts.streamField!)
+          if (preview === previousPreview) return
+          previousPreview = preview
+          opts.onText!(preview)
+        },
+      } : {}),
     })
     usage = usage ? sumUsage(usage, result.usage) : result.usage
     attempts.push(result.text)

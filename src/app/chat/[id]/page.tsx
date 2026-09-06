@@ -16,6 +16,7 @@ import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { MessageList } from "@/components/chat/MessageList"
 import { Composer } from "@/components/chat/Composer"
 import { SourcesToggle } from "@/components/chat/SourcesToggle"
+import { StreamingReply } from "@/components/chat/StreamingReply"
 import { getProjectRemote, ProjectApiError } from "@/lib/projects/client"
 
 type LoadState = "loading" | "ready" | "not-found"
@@ -53,6 +54,7 @@ export default function ChatSessionPage() {
   const [readSourcesOnly, setReadSourcesOnly] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [stage, setStage] = useState<ChatStage | null>(null)
+  const [draft, setDraft] = useState("")
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const [savingIndex, setSavingIndex] = useState<number | null>(null)
@@ -114,13 +116,14 @@ export default function ChatSessionPage() {
     setSubmitting(true)
     setSubmitError(null)
     setStage(null)
+    setDraft("")
     try {
       await askChatRemote({
         sessionId,
         question: q,
         readSourcesOnly,
         ...(session?.projectId ? { projectId: session.projectId } : {}),
-      }, setStage)
+      }, setStage, undefined, setDraft)
       setQuestion("")
       await reload()
     } catch (err) {
@@ -212,6 +215,7 @@ export default function ChatSessionPage() {
       )}
 
       <div className="mt-6 flex flex-col gap-3">
+        {submitting && <StreamingReply text={draft} label={draft ? "Sparky is responding…" : stageLabel(stage)} />}
         <Composer
           value={question}
           onChange={setQuestion}
@@ -219,7 +223,6 @@ export default function ChatSessionPage() {
           busy={submitting || projectScope.status === "unavailable"}
         />
         <SourcesToggle value={readSourcesOnly} onChange={setReadSourcesOnly} />
-        {submitting && <p className="text-[12px] text-muted-text tracking-body">{stageLabel(stage)}</p>}
         {submitError && <LlmErrorMessage message={submitError} />}
       </div>
     </div>

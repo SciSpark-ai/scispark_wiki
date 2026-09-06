@@ -1,4 +1,4 @@
-import { jsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
+import { streamingSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
 import { loadFeed } from "@/lib/skills/feed"
 import { readRecentEvents } from "@/lib/events/log"
@@ -15,7 +15,9 @@ export interface CompanionRouteInput {
 }
 
 /**
- * POST /api/skills/companion — body `CompanionRouteInput`, JSON result
+ * POST /api/skills/companion — body `CompanionRouteInput`. With NDJSON Accept,
+ * streams provisional utterances without actions, followed by the validated
+ * result. Existing JSON clients still receive
  * `CompanionUtterance | null` — the same shape `useCompanion` used to get
  * back from calling `runCompanion` directly.
  *
@@ -38,7 +40,7 @@ export interface CompanionRouteInput {
  * JSON `null`, not an absent field, so `companionUtteranceRemote` round-trips
  * it faithfully.
  */
-export const POST = jsonSkillRoute<CompanionRouteInput, CompanionUtterance | null>(async (input, vault) => {
+export const POST = streamingSkillRoute<CompanionRouteInput, CompanionUtterance | null>(async (input, vault, emit) => {
   const overrides = getSkillTestOverrides()
 
   const [settings, feed, recentEvents, reviews, bundle] = await Promise.all([
@@ -50,6 +52,7 @@ export const POST = jsonSkillRoute<CompanionRouteInput, CompanionUtterance | nul
   ])
 
   return runCompanion({
+    onText: emit ? (draft) => emit({ type: "text", draft }) : undefined,
     storage: vault,
     state: {
       route: input.route,

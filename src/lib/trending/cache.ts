@@ -1,5 +1,8 @@
 import type { PaperRecord, SourceId } from "../papers/types"
 import type { VaultStorage } from "../vault/storage"
+import type { AnchorDiscipline } from "./anchors"
+import type { Cadence } from "./settings"
+import type { TrendingBoard } from "./types"
 
 /**
  * Structure version of `.scispark/trending/dashboard.json`. Bump whenever the
@@ -12,6 +15,54 @@ export const TRENDING_BOARD_VERSION = 4
 export const DASHBOARD_CACHE_PATH = ".scispark/trending/dashboard.json"
 
 const PAPER_SOURCES = new Set<SourceId>(["arxiv", "openalex", "s2", "pubmed"])
+
+const DAY_MS = 24 * 60 * 60 * 1000
+const CADENCE_MS: Record<Cadence, number> = { daily: DAY_MS, weekly: 7 * DAY_MS }
+
+/**
+ * Reads the cached board. Returns null — a cold start, never a crash — when the
+ * file is missing, unparseable, or written by a different structure version
+ * (notably the M10/v1.1 `{panels}` shape, which has no `version` field at all
+ * and is still sitting on real users' disks).
+ */
+export async function loadBoard(storage: VaultStorage): Promise<TrendingBoard | null> {
+  const raw = await storage.read(DASHBOARD_CACHE_PATH)
+  if (raw == null) return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed === null || typeof parsed !== "object") return null
+    if (parsed.version !== TRENDING_BOARD_VERSION) return null
+    if (!Array.isArray(parsed.topics) || typeof parsed.generatedAt !== "string") return null
+    return parsed as TrendingBoard
+  } catch {
+    return null
+  }
+}
+
+export function isStale(board: TrendingBoard | null, cadence: Cadence, now: Date): boolean {
+  if (board == null) return true
+  const gen = new Date(board.generatedAt).getTime()
+  if (Number.isNaN(gen)) return true
+  return now.getTime() - gen >= CADENCE_MS[cadence]
+}
+
+/**
+ * True iff `board` is non-null and the SET of its anchor ids equals the set of
+ * `anchors`' ids (order-insensitive). Detects a settings change (anchor edit,
+ * reset-to-auto) that rescoped the board without a corresponding refresh — a
+ * cache can be time-fresh but scope-stale, and showing a board for the wrong
+ * anchors is actively misleading.
+ */
+export function anchorsMatchBoard(board: TrendingBoard | null, anchors: AnchorDiscipline[]): boolean {
+  if (board == null) return false
+  const boardIds = new Set(board.anchors.map((a) => a.id))
+  const ids = new Set(anchors.map((a) => a.id))
+  if (boardIds.size !== ids.size) return false
+  for (const id of ids) {
+    if (!boardIds.has(id)) return false
+  }
+  return true
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)

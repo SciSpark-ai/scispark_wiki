@@ -27,6 +27,8 @@ export async function runSkill<I, O>(opts: {
   settings?: LLMSettings
   providerOverride?: Partial<Record<Tier, LLMProvider>>
   now?: () => Date
+  /** Provisional answer snapshots; only skills opting into a streamField emit. */
+  onText?: (text: string) => void
   /** Passed through to every `withRetry` call (both `ctx.llm` and `ctx.llmStructured`). Tests use this to shrink backoff delays. */
   retryOpts?: { retries?: number; baseDelayMs?: number; sleep?: (ms: number) => Promise<void> }
 }): Promise<SkillRunResult<O>> {
@@ -108,7 +110,9 @@ export async function runSkill<I, O>(opts: {
         complete: (m, r) => withRetry(() => provider.complete(m, r), opts.retryOpts),
       }
       try {
-        const { value, usage } = await completeStructured(retryingProvider, model, req, schema, structuredOpts)
+        const { value, usage } = await completeStructured(retryingProvider, model, req, schema, {
+          ...structuredOpts, onText: opts.onText,
+        })
         await meterAndContinue({ provider: provider.id, model, usage })
         return value
       } catch (e) {
@@ -135,6 +139,7 @@ export async function runSkill<I, O>(opts: {
   try {
     output = await opts.skill.run(ctx, opts.input)
   } catch (e) {
+    opts.onText?.("")
     status = e instanceof BudgetExceededError ? "budget_exceeded" : "error"
     error = e instanceof Error ? e.message : String(e)
   }

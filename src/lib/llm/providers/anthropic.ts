@@ -24,7 +24,8 @@ export class AnthropicProvider implements LLMProvider {
       .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }))
 
     try {
-      const response = await this.client.messages.create({
+      req.onText?.("")
+      const params = {
         model,
         max_tokens: req.maxTokens ?? 8192,
         ...(system ? { system } : {}),
@@ -32,7 +33,14 @@ export class AnthropicProvider implements LLMProvider {
         ...(req.jsonSchema
           ? { output_config: { format: { type: "json_schema" as const, schema: req.jsonSchema } } }
           : {}),
-      })
+      }
+      let streamed = ""
+      const response = req.onText
+        ? await this.client.messages.stream(params).on("text", (delta) => {
+            streamed += delta
+            req.onText!(streamed)
+          }).finalMessage()
+        : await this.client.messages.create(params)
 
       if (response.stop_reason === "refusal") {
         throw new LLMRefusalError("provider declined the request")

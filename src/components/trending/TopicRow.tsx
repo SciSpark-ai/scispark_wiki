@@ -5,7 +5,7 @@ import { Chip } from "@/components/ui/Chip"
 import { displayTitle } from "@/lib/papers/title"
 import { wikiHref } from "@/lib/wiki/href"
 import { paperSlug } from "@/lib/wiki/authoring"
-import type { BoardTopic } from "@/lib/trending/dashboard"
+import type { BoardTopic } from "@/lib/trending/types"
 import { TrendBars } from "./TrendBars"
 
 /**

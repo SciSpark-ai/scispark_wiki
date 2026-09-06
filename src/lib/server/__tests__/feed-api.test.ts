@@ -14,12 +14,14 @@ import * as feedRefreshRoute from "../../../app/api/skills/feed/refresh/route"
 import * as consolidateRoute from "../../../app/api/skills/consolidate/route"
 
 function paper(o: Partial<PaperRecord> & { title: string }): PaperRecord {
-  return { ids: {}, authors: [], fields: [], source: "arxiv", ...o }
+  return { ids: {}, authors: [], fields: [], source: "arxiv", abstract: "Sparse attention research", ...o }
 }
 
 function structured(json: unknown, model = "m", usage = { inputTokens: 10, outputTokens: 5 }): LLMResult {
   return { text: JSON.stringify(json), json, usage, model, provider: "anthropic", stopReason: "end_turn" }
 }
+
+const assessment = (index: number, grade: number) => ({ index, question: { grade, evidence: "Sparse attention" }, topic: { grade, evidence: "Sparse attention" }, approach: { grade: null, evidence: "" }, matches: [{ topic: "sparse attention", evidence: "Sparse attention" }], excluded: false })
 
 const ONE_QUERY_STRATEGY: FeedStrategy = {
   queries: [{ source: "arxiv", query: "sparse attention", rationale: "core interest" }],
@@ -71,10 +73,7 @@ describe("feed + consolidation skill routes", () => {
       ])
       const fastProvider = new MockProvider([
         structured({
-          scores: [
-            { index: 0, score: 90 },
-            { index: 1, score: 40 },
-          ],
+          assessments: [assessment(0, 4), assessment(1, 1)],
         }),
       ])
       setSkillTestOverrides({ providerOverride: { strong: strongProvider, fast: fastProvider }, searchFn: fakeSearchFn })
@@ -121,7 +120,7 @@ describe("feed + consolidation skill routes", () => {
         new Request("http://x/api/skills/feed/refresh", { method: "POST", body: JSON.stringify({}) }),
       )
       await expect(readNdjson(res, () => undefined)).rejects.toThrow(
-        "no candidates retrieved — try adjusting profile.md or interests.md",
+        "No eligible papers were retrieved.",
       )
       expect(await storage.read(FEED_CACHE_PATH)).toBeNull()
     })
@@ -156,7 +155,7 @@ describe("feed + consolidation skill routes", () => {
         },
       }
       const fastProvider = new MockProvider([
-        structured({ scores: [{ index: 0, score: 90 }, { index: 1, score: 40 }] }),
+        structured({ assessments: [assessment(0, 4), assessment(1, 1)] }),
       ])
       setSkillTestOverrides({
         providerOverride: { strong: strongProvider, fast: fastProvider },
@@ -177,7 +176,7 @@ describe("feed + consolidation skill routes", () => {
         readNdjson(secondResponse, () => undefined),
       ])
       expect(second).toEqual(first)
-      expect(strongCalls).toHaveLength(2) // strategy + rerank, not two of each
+      expect(strongCalls).toHaveLength(1) // planning only, joined across requests
       expect(fastProvider.calls).toHaveLength(1)
     })
   })

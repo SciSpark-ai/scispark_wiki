@@ -1,6 +1,6 @@
 import type { VaultStorage } from "../vault/storage"
 import type { Frontmatter } from "../vault/types"
-import { loadFeed } from "../skills/feed"
+import { loadFeed } from "../skills/feed-cache"
 import { loadBundle } from "../vault/bundle"
 import { readReaderHandoff, readReaderHandoffBySlug } from "../reader/handoff"
 import { loadTrendingPaperRecords } from "../trending/cache"

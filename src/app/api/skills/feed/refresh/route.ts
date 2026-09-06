@@ -1,6 +1,6 @@
 import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
-import { nodeSearchFn } from "@/lib/papers/node-search"
+import { nodeFeedSearchFn } from "@/lib/papers/node-search"
 import { runFeed, type FeedStage } from "@/lib/skills/feed"
 import {
   skillSingleFlightState,
@@ -47,7 +47,7 @@ export const POST = ndjsonSkillRoute<Record<string, never>>(async (_input, vault
       const settings = await loadSettings(vault)
       const overrides = getSkillTestOverrides()
       return runFeed(vault, {
-        searchFn: overrides.searchFn ?? nodeSearchFn(),
+        searchFn: overrides.searchFn ?? nodeFeedSearchFn(),
         settings,
         providerOverride: overrides.providerOverride,
         onStage: (stage) => broadcast(state, stage),

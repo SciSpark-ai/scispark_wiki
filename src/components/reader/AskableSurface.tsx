@@ -99,6 +99,8 @@ export default function AskableSurface({
   const [pendingSelection, setPendingSelection] = useState<SurfaceSelection | null>(null)
   const [askTarget, setAskTarget] = useState<SurfaceSelection | null>(null)
   const [askState, setAskState] = useState<AskState>({ status: "idle" })
+  const askRequest = useRef(0)
+  useEffect(() => () => { askRequest.current++ }, [key])
   const [captureNotice, setCaptureNotice] = useState<{ path: string } | null>(null)
   // The passage "Capture idea" was invoked on, snapshotted independently of
   // the live selection (same pattern as askTarget): typing in the card's
@@ -165,6 +167,7 @@ export default function AskableSurface({
   }
 
   async function runAsk(target: SurfaceSelection, question: string) {
+    const requestId = ++askRequest.current
     setAskState({ status: "loading" })
     try {
       const context = await buildAskContext(storage, {
@@ -174,10 +177,16 @@ export default function AskableSurface({
         userQuestion: question,
       })
       const companionSettings = await loadCompanionSettingsRemote()
-      const answer = await askRemote({ ...context, companionName: companionSettings.companionName })
+      if (requestId !== askRequest.current) return
+      const answer = await askRemote(
+        { ...context, companionName: companionSettings.companionName }, undefined,
+        (text) => { if (requestId === askRequest.current) setAskState({ status: "loading", text }) },
+      )
+      if (requestId !== askRequest.current) return
       setAskState({ status: "done", answer: answer.answer, citedPageIds: answer.citedPageIds })
       void logEvent(storage, { type: "reading_ask", paperKey: key })
     } catch (err) {
+      if (requestId !== askRequest.current) return
       setAskState({ status: "error", message: err instanceof Error ? err.message : String(err) })
     }
   }

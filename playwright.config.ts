@@ -5,8 +5,9 @@ const runDir = process.env.SCISPARK_E2E_RUN_DIR
 const appPort = Number(process.env.SCISPARK_E2E_APP_PORT)
 const llmPort = Number(process.env.SCISPARK_E2E_LLM_PORT)
 const distDir = process.env.SCISPARK_E2E_DIST_DIR
+const serverMode = process.env.SCISPARK_E2E_SERVER_MODE
 
-if (!runDir || !Number.isInteger(appPort) || !Number.isInteger(llmPort) || !distDir) {
+if (!runDir || !Number.isInteger(appPort) || !Number.isInteger(llmPort) || !distDir || (serverMode !== "dev" && serverMode !== "start")) {
   throw new Error("Run Playwright through `npm run e2e` so it receives a disposable vault and isolated ports.")
 }
 
@@ -44,7 +45,7 @@ export default defineConfig({
       env: { SCISPARK_E2E_LLM_PORT: String(llmPort) },
     },
     {
-      command: `node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port ${appPort}`,
+      command: `node node_modules/next/dist/bin/next ${serverMode} --hostname 127.0.0.1 --port ${appPort}`,
       url: `${baseURL}/api/vault/list`,
       reuseExistingServer: false,
       timeout: 120_000,

@@ -1,4 +1,5 @@
 import type { LLMProvider, LLMRequest, LLMResult } from "../types"
+import { readSseData } from "../sse"
 import {
   LLMAuthError, LLMBadRequestError, LLMRateLimitError, LLMTransientError,
 } from "../types"
@@ -67,6 +68,7 @@ export class OpenAICompatProvider implements LLMProvider {
     req: LLMRequest,
     schemaMode: "none" | "native" | "prompt",
   ): Promise<LLMResult> {
+    req.onText?.("")
     const messages =
       schemaMode === "prompt" && req.jsonSchema
         ? [...req.messages, { role: "user" as const, content: buildPromptJsonInstruction(req.jsonSchema) }]
@@ -75,6 +77,7 @@ export class OpenAICompatProvider implements LLMProvider {
     const body: Record<string, unknown> = {
       model,
       messages,
+      ...(req.onText ? { stream: true, stream_options: { include_usage: true } } : {}),
       ...(req.maxTokens ? { max_completion_tokens: req.maxTokens } : {}),
       ...qwenGenerationControls(model, req),
       ...(schemaMode === "native" && req.jsonSchema
@@ -148,7 +151,7 @@ export class OpenAICompatProvider implements LLMProvider {
 
       let data: ChatCompletionResponse
       try {
-        data = (await res.json()) as ChatCompletionResponse
+        data = req.onText ? await readChatStream(res, req.onText) : (await res.json()) as ChatCompletionResponse
       } catch (e) {
         // Only remap the timeout-abort case; a genuine malformed-body error
         // keeps its original shape/behavior (unchanged from before this guard).
@@ -253,6 +256,35 @@ interface ChatCompletionResponse {
     finish_reason?: string
   }>
   usage?: { prompt_tokens?: number; completion_tokens?: number }
+}
+
+async function readChatStream(res: Response, onText: (text: string) => void): Promise<ChatCompletionResponse> {
+  let content = ""
+  let finished = false
+  let done = false
+  const result: ChatCompletionResponse = {}
+  for await (const data of readSseData(res)) {
+    if (data === "[DONE]") { done = true; break }
+    const chunk = JSON.parse(data) as Omit<ChatCompletionResponse, "choices"> & {
+      error?: { message?: string }
+      choices?: Array<{ index?: number; delta?: { content?: string; refusal?: string }; finish_reason?: string }>
+    }
+    if (chunk.error) throw new LLMTransientError(chunk.error.message ?? "Provider stream failed")
+    const choice = chunk.choices?.find((entry) => (entry.index ?? 0) === 0)
+    if (choice?.delta?.refusal) throw new LLMBadRequestError("Provider declined the request")
+    if (typeof choice?.delta?.content === "string") {
+      content += choice.delta.content
+      onText(content)
+    }
+    if (choice?.finish_reason) {
+      finished = true
+      result.choices = [{ message: { content }, finish_reason: choice.finish_reason }]
+    }
+    if (chunk.model) result.model = chunk.model
+    if (chunk.usage) result.usage = chunk.usage
+  }
+  if (!finished || !done) throw new LLMTransientError("Provider stream interrupted before completion")
+  return result
 }
 
 // Parses JSON from a model response. The native structured-output path returns

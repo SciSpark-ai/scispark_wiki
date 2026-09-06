@@ -23,6 +23,7 @@ import { reviewCount } from "@/lib/wiki/review-queue";
 import { listSessions } from "@/lib/chat/session";
 import type { ChatSession } from "@/lib/chat/session";
 import { Chip } from "@/components/ui/Chip";
+import { ThemeToggle } from "./ThemeToggle";
 
 /** A nav aid, not a second inbox — just enough recent conversations to jump
  * back into one, no badges/counts. */
@@ -96,8 +97,8 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
   const onboardingComplete = useUserStore((s) => s.onboardingComplete);
   const toggleDesktopSidebar = useUIStore((s) => s.toggleDesktopSidebar);
   const openSettingsModal = useUIStore((s) => s.openSettingsModal);
-  const isOnboarding = pathname === "/onboarding";
-  const disabled = isOnboarding && !onboardingComplete;
+  const isFirstRun = pathname === "/onboarding" || pathname === "/setup";
+  const disabled = isFirstRun && !onboardingComplete;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -206,6 +207,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
         >
           SciSpark
         </span>
+        <ThemeToggle className={collapsed ? "invisible" : "ml-auto"} />
       </div>
 
       {/* Grouped nav — icons always at same position */}

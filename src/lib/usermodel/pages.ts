@@ -1,5 +1,6 @@
 import type { VaultStorage } from "../vault/storage"
 import { splitTopics } from "../trending/fields"
+import { DEFAULT_RECOMMENDATION_PREFERENCES, type RecommendationPreferences } from "../recommendation/contract"
 
 export const USER_MODEL_PATHS = {
   profile: "profile.md",
@@ -32,6 +33,7 @@ export interface OnboardingAnswers {
   fields: string
   topics: string
   feedPrefs: string
+  recommendations?: RecommendationPreferences
 }
 
 function formatDate(date: Date): string {
@@ -63,6 +65,10 @@ function buildProfile(answers: OnboardingAnswers, now: Date): string {
     "## What I want from my feed",
     "",
     answers.feedPrefs,
+    "",
+    "## Recommendation settings",
+    "",
+    JSON.stringify(answers.recommendations ?? DEFAULT_RECOMMENDATION_PREFERENCES),
     "",
   ].join("\n")
 }

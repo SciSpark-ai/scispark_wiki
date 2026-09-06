@@ -23,7 +23,7 @@ export interface ReadingCompanionInput {
   wikiNeighborhood: string
   /** "" -> treated as "explain this passage"; else the user's typed question. */
   userQuestion: string
-  /** User-chosen companion name (M7 addendum) — defaults to Ember when absent. */
+  /** User-chosen companion name (M7 addendum) — defaults to Sparky when absent. */
   companionName?: string
 }
 
@@ -90,6 +90,7 @@ export const readingCompanionSkill = defineSkill<ReadingCompanionInput, ReadingA
         maxTokens: 2048,
       },
       ReadingAnswerSchema,
+      { streamField: "answer" },
     )
   },
 })

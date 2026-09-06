@@ -116,6 +116,7 @@ interface EsearchResponse {
 export interface PubmedQuery {
   query: string
   limit?: number
+  fromDate?: string
 }
 
 export interface PubmedDeps {
@@ -309,6 +310,11 @@ function buildEsearchUrl(q: PubmedQuery, apiKey: string | undefined): string {
   url.searchParams.set("retmax", String(clampLimit(q.limit)))
   url.searchParams.set("retmode", "json")
   url.searchParams.set("sort", "pub_date")
+  if (q.fromDate) {
+    url.searchParams.set("datetype", "pdat")
+    url.searchParams.set("mindate", q.fromDate.replaceAll("-", "/"))
+    url.searchParams.set("maxdate", "3000/12/31")
+  }
   if (apiKey) url.searchParams.set("api_key", apiKey)
   return url.toString()
 }

@@ -32,6 +32,7 @@ import { wikiHref } from "@/lib/wiki/href"
 import { askChatRemote, type ChatStage } from "@/lib/chat/client"
 import { Composer } from "@/components/chat/Composer"
 import { SourcesToggle } from "@/components/chat/SourcesToggle"
+import { StreamingReply } from "@/components/chat/StreamingReply"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 
 type Tab = "papers" | "notes" | "chats"
@@ -76,6 +77,7 @@ export default function ProjectDetailPage() {
   const [chatReadSourcesOnly, setChatReadSourcesOnly] = useState(false)
   const [chatBusy, setChatBusy] = useState(false)
   const [chatStage, setChatStage] = useState<ChatStage | null>(null)
+  const [chatDraft, setChatDraft] = useState("")
   const [chatError, setChatError] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
@@ -237,6 +239,7 @@ export default function ProjectDetailPage() {
     if (!question || chatBusy || load.status !== "ready") return
     setChatBusy(true)
     setChatStage(null)
+    setChatDraft("")
     setChatError(null)
     try {
       const result = await askChatRemote({
@@ -244,7 +247,7 @@ export default function ProjectDetailPage() {
         question,
         readSourcesOnly: chatReadSourcesOnly,
         projectId: load.project.id,
-      }, setChatStage)
+      }, setChatStage, undefined, setChatDraft)
       router.push(`/chat/${result.sessionId}`)
     } catch (error) {
       setChatError(error instanceof Error ? error.message : String(error))
@@ -356,7 +359,7 @@ export default function ProjectDetailPage() {
               <div className="flex flex-col gap-3">
                 <Composer value={chatQuestion} onChange={setChatQuestion} onSubmit={startProjectChat} busy={chatBusy} />
                 <SourcesToggle value={chatReadSourcesOnly} onChange={setChatReadSourcesOnly} />
-                {chatBusy && <p className="text-[12px] text-muted-text">{chatStageLabel(chatStage)}</p>}
+                {chatBusy && <StreamingReply text={chatDraft} label={chatDraft ? "Sparky is responding…" : chatStageLabel(chatStage)} />}
                 {chatError && <LlmErrorMessage message={chatError} />}
               </div>
             </div>

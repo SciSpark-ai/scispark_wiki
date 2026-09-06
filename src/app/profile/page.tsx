@@ -7,6 +7,8 @@ import { PageHeader } from "@/components/ui/PageHeader"
 import { loadUserProfile, updateUserProfileRemote } from "@/lib/usermodel/profile-client"
 import type { EditableUserProfile, UserProfileDetail } from "@/lib/usermodel/profile"
 import { useUserStore } from "@/stores/user-store"
+import { RecommendationControls } from "@/components/feed/RecommendationControls"
+import { DEFAULT_RECOMMENDATION_PREFERENCES } from "@/lib/recommendation/contract"
 
 const MAX_AVATAR_FILE_BYTES = 1_000_000
 
@@ -19,7 +21,7 @@ const FIELD_CONFIG: Array<{
   {
     key: "role",
     label: "Role",
-    description: "How Ember should understand your research perspective.",
+    description: "How Sparky should understand your research perspective.",
     placeholder: "For example: PhD student studying pediatric language and neuroimaging",
   },
   {
@@ -50,6 +52,7 @@ function editable(profile: UserProfileDetail): EditableUserProfile {
     topics: profile.topics,
     feedPrefs: profile.feedPrefs,
     avatarDataUrl: profile.avatarDataUrl,
+    recommendations: profile.recommendations ?? DEFAULT_RECOMMENDATION_PREFERENCES,
   }
 }
 
@@ -203,7 +206,7 @@ export default function ProfilePage() {
             <UserRound className="mb-4 text-orange" aria-hidden="true" />
           )}
           <h2 className="font-heading text-[22px] text-espresso">
-            {failedToLoad ? "SciSpark could not open your profile" : "Ember has not met you yet"}
+            {failedToLoad ? "SciSpark could not open your profile" : "Sparky has not met you yet"}
           </h2>
           <p className="mt-2 max-w-[560px] text-[14px] leading-relaxed text-muted-text">
             {failedToLoad
@@ -216,7 +219,7 @@ export default function ProfilePage() {
             </button>
           ) : (
             <Link href="/onboarding" className="mt-5 inline-flex rounded-pill bg-orange px-5 py-2.5 text-[14px] font-medium text-white hover:bg-orange/90">
-              Meet Ember
+              Meet Sparky
             </Link>
           )}
         </div>
@@ -282,7 +285,7 @@ export default function ProfilePage() {
       <section className="mt-4 rounded-[18px] border border-border-warm/40 bg-light-surface p-6 sm:p-8">
         <div className="mb-6">
           <h2 className="font-heading text-[20px] text-espresso">Research context</h2>
-          <p className="mt-1 text-[13px] text-muted-text">These are the answers Ember uses to personalize your feed and conversations.</p>
+          <p className="mt-1 text-[13px] text-muted-text">These are the answers Sparky uses to personalize your feed and conversations.</p>
         </div>
 
         <div className="divide-y divide-border-warm/50">
@@ -309,6 +312,14 @@ export default function ProfilePage() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section id="recommendations" className="mt-4 rounded-[18px] border border-border-warm/40 bg-light-surface p-6 sm:p-8">
+        <h2 className="mb-4 font-heading text-[20px] text-espresso">Paper recommendations</h2>
+        {editing ? <RecommendationControls value={draft.recommendations ?? DEFAULT_RECOMMENDATION_PREFERENCES} onChange={(recommendations) => setDraft((previous) => previous ? { ...previous, recommendations } : previous)} allowReset disabled={saving} /> : <>
+          <p className="text-[14px] text-espresso">Exploration: {profile.recommendations?.diversity ?? "balanced"}. Feedback learning: {profile.recommendations?.learnFromFeedback === false ? "off" : "on"}.</p>
+          <p className="mt-2 text-[13px] text-muted-text">Relevance 70% · recency 20% · venue standing 10%. Missing venue metrics are neutral, not guessed. Edit profile to change exploration or reset learned preferences.</p>
+        </>}
       </section>
 
       {(error || notice) && (

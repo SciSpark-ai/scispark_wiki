@@ -56,6 +56,7 @@ export interface AskChatOpts {
   providerOverride?: Partial<Record<Tier, LLMProvider>>
   now?: () => Date
   onProgress?: (stage: "selecting" | "answering") => void
+  onText?: (text: string) => void
 }
 
 /** Strict runtime parser for the public chat request. The API route receives
@@ -354,6 +355,7 @@ async function answerQuestion(
   const companionName = await resolveCompanionName(storage)
   const run = await runSkill({
     skill: chatAnswerSkill,
+    onText: opts.onText,
     input: {
       question: input.question,
       context,
