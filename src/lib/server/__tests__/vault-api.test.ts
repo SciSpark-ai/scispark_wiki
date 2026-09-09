@@ -3,6 +3,7 @@ import type { VaultStorage } from "../../vault/storage"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { RemoteVaultStorage } from "../../vault/remote-storage"
 import { setServerVaultForTests } from "../vault"
+import { readRecentEvents } from "../../events/log"
 import * as fileRoute from "../../../app/api/vault/file/route"
 import * as listRoute from "../../../app/api/vault/list/route"
 import * as changesetRoute from "../../../app/api/vault/changeset/route"
@@ -370,6 +371,8 @@ describe("vault API", () => {
     }))
     expect(revert.status).toBe(200)
     expect(await storage.read("wiki/rev.md")).toBeNull()
+    const reverts = (await readRecentEvents(storage)).filter((e) => e.type === "changeset_revert")
+    expect(reverts).toEqual([expect.objectContaining({ changesetId: cs.id, skill: "test-skill" })])
   })
 
   it("POST /api/vault/changeset rejects a client-forged revert payload", async () => {

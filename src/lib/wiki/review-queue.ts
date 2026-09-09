@@ -140,6 +140,22 @@ export interface IngestRecord {
 }
 
 /**
+ * Extracts the set of changeset ids that have an "undo | {changesetId}" entry
+ * in `log.md` (the entry `undoIngest` — src/lib/skills/ingest.ts — appends via
+ * `appendLog`). Tolerant of any other log.md content; an empty/missing log
+ * yields an empty set.
+ */
+export function parseUndoneChangesetIds(logMd: string): Set<string> {
+  const revertedIds = new Set<string>()
+  const revertPattern = /\]\s+undo\s+\|\s+(\S+)/g
+  let match
+  while ((match = revertPattern.exec(logMd)) !== null) {
+    revertedIds.add(match[1])
+  }
+  return revertedIds
+}
+
+/**
  * Lists ingest changesets, sorted by timestamp descending (newest first).
  * Reads .scispark/changesets/*.json records and detects reverts by checking
  * log.md for "undo | {changesetId}" entries. Skips corrupt/unparseable changesets.
@@ -150,15 +166,7 @@ export async function listIngests(storage: VaultStorage): Promise<IngestRecord[]
 
   // Read log.md once to check for reverts
   const logContent = await storage.read("log.md")
-  const revertedIds = new Set<string>()
-  if (logContent !== null) {
-    // Look for entries like "undo | {changesetId}"
-    const revertPattern = /\]\s+undo\s+\|\s+(\S+)/g
-    let match
-    while ((match = revertPattern.exec(logContent)) !== null) {
-      revertedIds.add(match[1])
-    }
-  }
+  const revertedIds = parseUndoneChangesetIds(logContent ?? "")
 
   const records: IngestRecord[] = []
   for (const path of paths) {

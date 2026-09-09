@@ -7,6 +7,7 @@ export type SciSparkEvent =
   | { type: "ingest"; paperKey: string; title: string; changesetId: string }
   | { type: "ingest_undo"; changesetId: string }
   | { type: "feed_refresh"; itemCount: number; costUsd?: number | null }
+  | { type: "changeset_revert"; changesetId: string; skill: string }
   | { type: "feed_save"; paperKey: string; title: string }
   | { type: "feed_dismiss"; paperKey: string; title: string }
   | { type: "consolidation"; changesetId: string | null }

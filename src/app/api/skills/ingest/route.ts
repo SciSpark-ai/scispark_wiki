@@ -7,6 +7,7 @@ import { runSkill } from "@/lib/skills/runner"
 import { serverRelayFetch } from "@/lib/server/relay-fetch"
 import { listHighlights, formatHighlightsForPrompt } from "@/lib/highlights/store"
 import { paperKey, type PaperRecord } from "@/lib/papers/types"
+import { withLedger } from "@/lib/runs/ledger"
 
 export interface IngestRouteResult {
   output: IngestOutput
@@ -59,25 +60,37 @@ export const POST = ndjsonSkillRoute<{ paper: PaperRecord }>(async ({ paper }, v
   emit({ type: "progress", phase: "ingesting" })
   const highlights = formatHighlightsForPrompt(await listHighlights(vault, paperKey(paper)))
   const today = new Date().toISOString().slice(0, 10)
-  const run = await runSkill({
-    skill: ingestSkill,
-    input: {
+
+  return withLedger(vault, { orchestrator: "ingest", trigger: "user" }, async () => {
+    const run = await runSkill({
+      skill: ingestSkill,
+      input: {
+        storage: vault,
+        paper,
+        digest,
+        fullText: { kind: acquired.kind, text: acquired.text, snapshotPath },
+        highlights,
+        today,
+      },
       storage: vault,
-      paper,
-      digest,
-      fullText: { kind: acquired.kind, text: acquired.text, snapshotPath },
-      highlights,
-      today,
-    },
-    storage: vault,
-    settings,
-    providerOverride: overrides.providerOverride,
+      settings,
+      providerOverride: overrides.providerOverride,
+    })
+
+    if (run.status !== "ok" || run.output === undefined) {
+      throw new Error(run.error ?? `ingest run finished with unexpected status "${run.status}"`)
+    }
+
+    const output = run.output
+    const result: IngestRouteResult = { output, costUsd: run.costUsd }
+    if (output.status === "draft") {
+      return {
+        result,
+        status: "degraded",
+        reason: `draft: ${output.errors.length} validation errors`,
+        costUsd: run.costUsd,
+      }
+    }
+    return { result, status: "ok", costUsd: run.costUsd }
   })
-
-  if (run.status !== "ok" || run.output === undefined) {
-    throw new Error(run.error ?? `ingest run finished with unexpected status "${run.status}"`)
-  }
-
-  const result: IngestRouteResult = { output: run.output, costUsd: run.costUsd }
-  return result
 })

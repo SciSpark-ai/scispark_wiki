@@ -44,7 +44,7 @@ export async function refreshTrendingDashboard(
  */
 export async function autoRefreshTrending(
   fetchFn: typeof fetch = fetch,
-): Promise<"refreshed" | "fresh" | "no-fields"> {
+): Promise<"refreshed" | "fresh" | "no-fields" | "backoff" | "failed"> {
   const res = await fetchFn("/api/skills/trending/auto-refresh", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -60,6 +60,6 @@ export async function autoRefreshTrending(
     }
     throw new Error(message)
   }
-  const body = (await res.json()) as { result: "refreshed" | "fresh" | "no-fields" }
+  const body = (await res.json()) as { result: "refreshed" | "fresh" | "no-fields" | "backoff" | "failed" }
   return body.result
 }

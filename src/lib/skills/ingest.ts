@@ -1,3 +1,6 @@
+import { sanitizeSlugList } from "../wiki/slug-list"
+export { sanitizeSlugList } from "../wiki/slug-list"
+import { runPostIngestLint } from "../lint/run"
 import { z } from "zod"
 import type { VaultStorage } from "../vault/storage"
 import { paperKey, type PaperRecord } from "../papers/types"
@@ -106,21 +109,6 @@ interface ComposedFile {
  * value goes through slugifyTitle, empties/punctuation-only values dropped
  * (slugifyTitle's "untitled" fallback marks those), order-preserving dedupe.
  */
-export function sanitizeSlugList(values: string[]): string[] {
-  const out: string[] = []
-  const seen = new Set<string>()
-  for (const value of values) {
-    const lastSegment = value.includes("/") ? value.slice(value.lastIndexOf("/") + 1) : value
-    const slug = slugifyTitle(lastSegment)
-    // slugifyTitle falls back to "untitled" when a value has no usable slug characters
-    // (empty or punctuation-only) — drop those instead of tagging pages "untitled".
-    if (slug === "untitled" && lastSegment.trim().toLowerCase() !== "untitled") continue
-    if (seen.has(slug)) continue
-    seen.add(slug)
-    out.push(slug)
-  }
-  return out
-}
 
 /**
  * Unions two string lists order-stably: `existing` values first (in their original
@@ -558,6 +546,31 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
       op: "ingest",
       summary: paper.title,
     })
+
+    // ── Post-apply verify step: scoped deterministic lint ────────────────────
+    // Ingest is the highest-stakes wiki writer (an LLM generation applied
+    // atomically across several pages), so run a scoped lint pass over just
+    // the pages THIS changeset touched right after applying it — a broken
+    // wikilink the generation introduced lands in the review inbox
+    // immediately rather than waiting for the next scheduled/manual lint run.
+    // `touched` = every changed path under wiki/ (page ids, i.e. the path
+    // without its ".md" extension — see vault/bundle.ts#loadBundle) — filters
+    // out anything not ending ".md" and, defensively, any path starting with
+    // "." (protected paths like .scispark/... are never in a changeset's
+    // changes anyway, but this guards against ever mapping one into a bogus
+    // page id). This is a best-effort VERIFY step, not part of the ingest's
+    // own success contract: a lint failure (thrown storage error, etc.) is
+    // logged and swallowed here, never allowed to turn an otherwise-successful
+    // ingest into a failure.
+    const touched = changes
+      .map((c) => c.path)
+      .filter((p) => p.endsWith(".md") && !p.startsWith("."))
+      .map((p) => p.slice(0, -3))
+    try {
+      await runPostIngestLint(storage, touched, { now: () => new Date(nowIso) })
+    } catch (err) {
+      ctx.log(`post-ingest lint failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`)
+    }
 
     for (let i = 0; i < generation.reviews.length; i++) {
       const review = generation.reviews[i]

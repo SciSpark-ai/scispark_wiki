@@ -4,7 +4,7 @@ import { applyChangeset, makeChangesetId } from "../vault/changesets"
 import { slugifyTitle, composePage, type PageDraft } from "../wiki/authoring"
 import { logEvent } from "../events/log"
 import { neutralizeFenceMarkers } from "../skills/ingest-analysis"
-import { sanitizeSlugList } from "../skills/ingest"
+import { sanitizeSlugList } from "../wiki/slug-list"
 
 export interface CaptureIdeaInput {
   storage: VaultStorage

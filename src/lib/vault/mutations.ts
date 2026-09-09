@@ -1,3 +1,4 @@
+import { logEvent } from "../events/log"
 import { loadBundle } from "./bundle"
 import { applyChangeset, revertPersistedChangeset } from "./changesets"
 import { appendLog, writeIndex } from "./index-builder"
@@ -99,6 +100,8 @@ export async function undoChangeset(
 ): Promise<ChangesetMutationResult> {
   return withMutationCoordinator(storage, async () => {
     const changeset = await revertPersistedChangeset(storage, changesetId)
+    await logEvent(storage, { type: "changeset_revert", changesetId, skill: changeset.skill },
+      log.timestamp ? () => new Date(log.timestamp!) : undefined)
     const warnings = await refreshDerivedData(storage, changeset, {
       ...log,
       op: log.op ?? "undo",

@@ -26,6 +26,15 @@
 
 # Current Release/Session State
 
+- September 9 all-work integration: all 182 remaining local files were committed
+  and pushed as `2e9a10e`. Integration includes the 14 previously unmerged
+  `loop/loop-engineering-hardening` commits, reconciled with current main.
+  Current security, nullable costs, single-flight refreshes and review recovery
+  are preserved; scheduled background jobs require `SCISPARK_SCHEDULER=on`.
+  Full suite: 2,566 passed / 17 gated skips; production build and 27 Chromium
+  checks passed. See `docs/testing/2026-09-09-all-work-integration.md` for exact
+  validation scope. These checks do not close live scientific acceptance.
+
 - September 9: user authorized commit and push. Isolated review commit candidate
   passed 2,356 tests / 17 gated skips, production build, TypeScript, targeted lint
   and six Chromium tests. Includes required chat/source/billing dependencies;

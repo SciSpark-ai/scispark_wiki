@@ -10,6 +10,8 @@ import type { TopicGroupFn, TopWorksFn } from "../../papers/node-search"
 import { loadBoard, DASHBOARD_CACHE_PATH, TRENDING_BOARD_VERSION, type TrendingBoard } from "../../trending/dashboard"
 import { completeWindows } from "../../trending/topics"
 import type { CountFn } from "../../trending/counts"
+import { REFRESH_FAILURE_PATH } from "../../trending/auto-refresh"
+import { readLedger } from "../../runs/ledger"
 import * as refreshRoute from "../../../app/api/skills/trending/refresh/route"
 import * as autoRefreshRoute from "../../../app/api/skills/trending/auto-refresh/route"
 
@@ -188,6 +190,30 @@ describe("trending skill routes", () => {
     const body = await res.json()
     expect(body).toEqual({ result: "no-fields" })
     expect(await loadBoard(storage)).toBeNull()
+  })
+
+  it("POST /api/skills/trending/auto-refresh returns 'backoff' and records a skipped ledger entry when a recent failure marker is still within its backoff window", async () => {
+    const { saveTrendingSettings } = await import("../../trending/settings")
+    await saveTrendingSettings(storage, { fields: [{ slug: "nlp", label: "NLP" }], cadence: "weekly", anchors: [], anchorsOverridden: false })
+    // A failure marker recorded "just now" with consecutiveFailures: 1 (30min backoff) —
+    // real wall-clock elapsed since writing it is a few ms, well under the window.
+    await storage.write(
+      REFRESH_FAILURE_PATH,
+      JSON.stringify({ lastFailureAt: new Date().toISOString(), consecutiveFailures: 1, lastError: "boom" }),
+    )
+    setSkillTestOverrides({ topWorksFn: fakeTopWorksFn })
+
+    const res = await autoRefreshRoute.POST(
+      new Request("http://x/api/skills/trending/auto-refresh", { method: "POST", body: JSON.stringify({}) }),
+    )
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ result: "backoff" })
+
+    const records = await readLedger(storage)
+    const record = records.find((r) => r.orchestrator === "trending-refresh")
+    expect(record).toBeDefined()
+    expect(record?.status).toBe("skipped")
+    expect(record?.reason).toBe("backoff")
   })
 
   it("POST /api/skills/trending/auto-refresh: 'refreshed' when fields are tracked and nothing is cached yet, using the injected provider (no network)", async () => {

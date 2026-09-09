@@ -37,3 +37,18 @@ export function estimateCostUsd(model: string, usage: LLMUsage): number | null {
   if (!p) return null
   return (usage.inputTokens / 1e6) * p.inPerM + (usage.outputTokens / 1e6) * p.outPerM
 }
+
+/**
+ * Conservative pre-call cost projection: prompt chars/4 as input tokens + full
+ * maxTokens (default 1024) as output. Unknown model → null (caller treats as 0,
+ * preserving today's reactive behavior for unpriced models).
+ */
+export function estimateNextCallUsd(
+  model: string,
+  req: { messages: Array<{ content: string }>; maxTokens?: number },
+): number | null {
+  const chars = req.messages.reduce((sum, m) => sum + m.content.length, 0)
+  const inputTokens = Math.ceil(chars / 4)
+  const outputTokens = req.maxTokens ?? 1024
+  return estimateCostUsd(model, { inputTokens, outputTokens })
+}
