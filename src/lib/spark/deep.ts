@@ -1,3 +1,4 @@
+import { addCosts, estimateCostUsd } from "../llm/pricing"
 import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
@@ -6,7 +7,6 @@ import { makeChangesetId } from "../vault/changesets"
 import { commitChangeset, type MutationWarning } from "../vault/mutations"
 import { runSkill } from "../skills/runner"
 import { logEvent } from "../events/log"
-import { PRICES } from "../llm/pricing"
 import { assembleGrounding, type SearchFn } from "./grounding"
 import { bottleneckSkill } from "./bottleneck"
 import { ideationSkill, type IdeaCandidate } from "./ideation"
@@ -31,8 +31,8 @@ export type DeepSparkOutcome =
 
 export interface DeepSparkResult {
   outcome: DeepSparkOutcome
-  costUsd: number
-  phaseCosts: Record<string, number>
+  costUsd: number | null
+  phaseCosts: Record<string, number | null>
   warnings?: MutationWarning[]
 }
 
@@ -58,11 +58,8 @@ export interface DeepSparkArgs {
 // estimateDeepSparkCost: a static, documented-approximate upfront estimate for
 // the confirm dialog. Real cost varies with how much context assembleGrounding
 // pulls in and whether the audit's single internal retry fires — this is a
-// rough sum of typical per-phase token counts at the default strong-tier
-// model's pricing, NOT a budget guarantee. It exists to be shown to the user
-// BEFORE they confirm a spend, so it must be honest about the product's
-// documented cost range (CLAUDE.md M9: "Deep Spark ... ~$1-3, always
-// user-confirmed with a cost estimate") rather than a best-case lowball.
+// rough sum of per-phase token counts at the selected strong-tier model's
+// pricing, NOT a budget guarantee. Unknown model pricing stays unknown.
 // ---------------------------------------------------------------------------
 
 const ESTIMATE_MODEL = "claude-opus-4-8"
@@ -107,12 +104,11 @@ const RETRYABLE_PHASES = new Set(["ideation", "scoop-terms", "scoop-verdict", "a
  */
 const RETRY_HEADROOM_FACTOR = 1.5
 
-export async function estimateDeepSparkCost(): Promise<number> {
-  const price = PRICES[ESTIMATE_MODEL]
-  if (!price) return 0
+export async function estimateDeepSparkCost(model = ESTIMATE_MODEL): Promise<number | null> {
   let total = 0
   for (const [phase, { inputTokens, outputTokens }] of Object.entries(PHASE_TOKEN_ESTIMATES)) {
-    const passCost = (inputTokens / 1e6) * price.inPerM + (outputTokens / 1e6) * price.outPerM
+    const passCost = estimateCostUsd(model, { inputTokens, outputTokens })
+    if (passCost === null) return null
     total += RETRYABLE_PHASES.has(phase) ? passCost * RETRY_HEADROOM_FACTOR : passCost
   }
   return total
@@ -208,12 +204,12 @@ export async function runDeepSpark(args: DeepSparkArgs): Promise<DeepSparkResult
 
 async function runDeepSparkUncached(args: DeepSparkArgs): Promise<DeepSparkResult> {
   const now = args.now ?? (() => new Date())
-  const phaseCosts: Record<string, number> = {}
-  let costUsd = 0
+  const phaseCosts: Record<string, number | null> = {}
+  let costUsd: number | null = 0
 
-  function addCost(phase: string, amount: number): void {
-    phaseCosts[phase] = (phaseCosts[phase] ?? 0) + amount
-    costUsd += amount
+  function addCost(phase: string, amount: number | null): void {
+    phaseCosts[phase] = addCosts(phaseCosts[phase] === undefined ? 0 : phaseCosts[phase], amount)
+    costUsd = addCosts(costUsd, amount)
   }
 
   async function logOutcome(outcome: string, ideaPageId?: string): Promise<void> {

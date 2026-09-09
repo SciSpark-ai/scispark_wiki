@@ -11,6 +11,7 @@ import type { AnalysisResult } from "../../skills/ingest-analysis"
 import type { GenerationResult } from "../../skills/ingest"
 import { parseDocument } from "../../vault/frontmatter"
 import { paperSlug } from "../../wiki/authoring"
+import { readLedger } from "../../runs/ledger"
 import * as digestRoute from "../../../app/api/skills/digest/route"
 import * as ingestRoute from "../../../app/api/skills/ingest/route"
 import * as ingestUndoRoute from "../../../app/api/skills/ingest/undo/route"
@@ -207,6 +208,49 @@ describe("digest + ingest + undo skill routes", () => {
       const undoBody = await jsonResult<{ ok: true }>(undoRes)
       expect(undoBody.ok).toBe(true)
       expect(await storage.read(CONCEPT_PATH)).toBeNull()
+    })
+
+    it("a draft outcome (generation still invalid after retry) records a degraded ledger entry", async () => {
+      // A file with an unknown "type" fails validateFilesAgainstRouting on both the
+      // initial generation AND the one retry, so ingestSkill returns a `draft` output
+      // with nothing written to the vault.
+      const invalidGeneration = {
+        files: [
+          {
+            path: "wiki/bogus/nope.md",
+            type: "not-a-real-type",
+            title: "Bogus",
+            tags: [],
+            related: [],
+            body: "# Bogus\n",
+          },
+        ],
+        reviews: [],
+      }
+      const provider = new MockProvider([
+        structured(SAMPLE_DIGEST),
+        structured(SAMPLE_ANALYSIS),
+        structured(invalidGeneration),
+        structured(invalidGeneration),
+      ])
+      setSkillTestOverrides({ providerOverride: { strong: provider }, fetchFn: htmlFetchFn })
+
+      const res = await ingestRoute.POST(
+        new Request("http://x/api/skills/ingest", { method: "POST", body: JSON.stringify({ paper: PAPER_WITH_HTML }) }),
+      )
+      const result = (await readNdjson(res, () => undefined)) as {
+        output: { status: string; errors?: string[] }
+        costUsd: number
+      }
+      expect(result.output.status).toBe("draft")
+      const errors = result.output.errors ?? []
+      expect(errors.length).toBeGreaterThan(0)
+
+      const records = await readLedger(storage)
+      const record = records.find((r) => r.orchestrator === "ingest")
+      expect(record).toBeDefined()
+      expect(record?.status).toBe("degraded")
+      expect(record?.reason).toBe(`draft: ${errors.length} validation errors`)
     })
 
     it("a skill run failure (e.g. missing key with no provider override) terminates the stream with a terminal error, not a result", async () => {

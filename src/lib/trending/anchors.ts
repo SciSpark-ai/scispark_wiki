@@ -1,4 +1,6 @@
 import type { TopicGroupFn } from "../papers/node-search"
+import { canonicalAnchor } from "./openalex-fields"
+import { openAlexSubfield } from "./openalex-subfields"
 
 /**
  * A broad OpenAlex discipline (e.g. "Neuroscience") that a user's narrow,
@@ -9,26 +11,56 @@ import type { TopicGroupFn } from "../papers/node-search"
 export interface AnchorDiscipline {
   id: string
   label: string
+  /** Optional subset of this field. Empty/omitted means the entire field. */
+  subfieldIds?: string[]
 }
 
 /** Upper bound on how many anchor disciplines the leaderboard scopes to. */
 export const MAX_ANCHORS = 3
+export const MAX_ANCHOR_LABEL_LENGTH = 120
 
-/** An OpenAlex field key: "https://openalex.org/fields/17", "fields/17" or "17". */
-const OPENALEX_FIELD_ID = /^(?:https?:\/\/openalex\.org\/)?(?:fields\/)?\d+$/i
+/** Legacy identity helper for compatibility fixtures; no longer a valid scope. */
+export function customAnchor(label: string): AnchorDiscipline {
+  const cleaned = label.trim().replace(/\s+/g, " ")
+  return { id: `custom:${encodeURIComponent(cleaned.normalize("NFKC").toLowerCase())}`, label: cleaned }
+}
+
+/** Validate all selections, including automatic ones, against the catalog. */
+export function manualAnchorError(raw: unknown): string | null {
+  if (!raw || typeof raw !== "object") return null
+  const anchors = "anchors" in raw ? raw.anchors : undefined
+  const manual = "anchorsOverridden" in raw && raw.anchorsOverridden === true
+  if (anchors === undefined && !manual) return null
+  if (!Array.isArray(anchors) || (manual && !anchors.length) || anchors.length > MAX_ANCHORS) return `Choose 1–${MAX_ANCHORS} general fields from OpenAlex.`
+  const ids = new Set<string>()
+  for (const anchor of anchors) {
+    const field = anchor && typeof anchor === "object" && typeof anchor.id === "string" ? canonicalAnchor(anchor.id) : undefined
+    if (!field) return "Replace custom topics with official OpenAlex fields in Settings → Trending fields."
+    if (ids.has(field.id)) return "Each general field must be different."
+    ids.add(field.id)
+    if (anchor.subfieldIds !== undefined) {
+      if (!Array.isArray(anchor.subfieldIds)) return "Choose valid subfields within each general field."
+      const children = new Set<string>()
+      for (const id of anchor.subfieldIds) {
+        const subfield = typeof id === "string" ? openAlexSubfield(id) : undefined
+        if (!subfield || subfield.fieldId !== field.id) return "Choose subfields that belong to their selected general field."
+        if (children.has(subfield.id)) return "Each subfield must be different."
+        children.add(subfield.id)
+      }
+    }
+  }
+  return null
+}
 
 /**
  * The anchor's id as an OpenAlex `primary_topic.field.id` value, or undefined
  * when it isn't one.
  *
- * A DERIVED anchor's id is a real field key (it comes straight from
- * `group_by=primary_topic.field.id`), so requests for that discipline can be
- * filtered by entity. The FALLBACK anchors built when derivation fails carry
- * the user's interest SLUG instead (see dashboard.ts's `resolveAnchors`), which
- * would be a nonsense filter value — those callers fall back to text scoping.
+ * Both selected and derived anchors must resolve to the bundled catalog.
+ * Unknown legacy IDs require user review, never fallback text scoping.
  */
 export function openAlexFieldId(anchor: AnchorDiscipline): string | undefined {
-  return OPENALEX_FIELD_ID.test(anchor.id.trim()) ? anchor.id.trim() : undefined
+  return canonicalAnchor(anchor.id)?.id
 }
 
 /**
@@ -41,7 +73,7 @@ export function openAlexFieldId(anchor: AnchorDiscipline): string | undefined {
  *
  * A label whose lookup throws or returns no entries contributes nothing and
  * never fails the whole derivation — only every label failing yields `[]`,
- * which is the caller's cue to fall back to some other scoping.
+ * which is the caller's cue to ask the user to choose official fields.
  */
 export async function deriveAnchorDisciplines(
   labels: string[],
@@ -53,7 +85,11 @@ export async function deriveAnchorDisciplines(
   const modalFields = await Promise.all(
     labels.map(async (label) => {
       try {
-        const entries = await fieldGroupFn({ query: label, fromDate: window.fromDate, toDate: window.toDate })
+        const entries = (await fieldGroupFn({ query: label, fromDate: window.fromDate, toDate: window.toDate }))
+          .flatMap((entry) => {
+            const field = canonicalAnchor(entry.key)
+            return field ? [{ ...entry, key: field.id, label: field.label }] : []
+          })
         if (entries.length === 0) return null
         return entries.reduce((best, entry) => (entry.count > best.count ? entry : best))
       } catch {
@@ -76,5 +112,5 @@ export async function deriveAnchorDisciplines(
   return [...totals.entries()]
     .sort(([, a], [, b]) => b.count - a.count || a.label.localeCompare(b.label))
     .slice(0, MAX_ANCHORS)
-    .map(([id, { label }]) => ({ id, label }))
+    .flatMap(([id]) => { const field = canonicalAnchor(id); return field ? [field] : [] })
 }

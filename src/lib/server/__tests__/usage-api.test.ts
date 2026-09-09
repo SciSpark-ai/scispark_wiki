@@ -3,6 +3,9 @@ import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { setServerVaultForTests } from "../vault"
 import { saveSettings, DEFAULT_SETTINGS } from "../../llm/settings"
 import type { UsageRecord } from "../../llm/metering"
+import { recordOrchestratorRun } from "../../runs/ledger"
+import { logEvent } from "../../events/log"
+import type { Changeset } from "../../vault/types"
 import * as usageRoute from "../../../app/api/usage/route"
 
 const SECRET_KEY = "sk-ant-usage-secret-xyz789"
@@ -48,7 +51,7 @@ describe("usage API", () => {
       rec({ ts: `${today}T01:00:00.000Z`, skill: "digest", costUsd: 1 }),
       rec({ ts: `${today}T02:00:00.000Z`, skill: "digest", costUsd: 2 }),
       rec({ ts: `${today}T03:00:00.000Z`, skill: "feed", costUsd: 5 }),
-      // a null-cost record: counted in unpricedCount, contributes 0 to totals
+      // A billed unpriced call makes the total unknown, not zero.
       rec({ ts: `${today}T04:00:00.000Z`, skill: "ingest", costUsd: null }),
     ]
     await storage.write(`.scispark/usage/${today}.jsonl`, jsonlWithCorruptLine(records))
@@ -60,11 +63,11 @@ describe("usage API", () => {
 
     expect(body.budgetUsd).toBe(9.5)
     // corrupt line skipped; the four valid records aggregate correctly
-    expect(body.summary.today.totalUsd).toBeCloseTo(8, 6)
+    expect(body.summary.today.totalUsd).toBeNull()
     expect(body.summary.today.bySkill).toEqual([
       { skill: "feed", totalUsd: 5 },
       { skill: "digest", totalUsd: 3 },
-      { skill: "ingest", totalUsd: 0 },
+      { skill: "ingest", totalUsd: null },
     ])
     expect(body.summary.unpricedCount).toBe(1)
     expect(body.summary.days).toHaveLength(7)
@@ -122,6 +125,97 @@ describe("usage API", () => {
     expect(body.summary.today.bySkill).toEqual([])
     expect(body.summary.unpricedCount).toBe(0)
     expect(body.summary.days).toHaveLength(7)
+  })
+
+  it("response includes acceptance (per-skill cost-per-accepted-change) and recentRuns from the ledger", async () => {
+    await saveSettings(storage, { ...DEFAULT_SETTINGS, dailyBudgetUsd: 5 })
+
+    const cs1: Changeset = {
+      id: "cs-applied-1",
+      skill: "ingest",
+      model: "tier:strong",
+      timestamp: `${today}T01:00:00.000Z`,
+      changes: [{ path: "wiki/papers/p1.md", before: null, after: "content" }],
+    }
+    const cs2: Changeset = {
+      id: "cs-applied-2",
+      skill: "ingest",
+      model: "tier:strong",
+      timestamp: `${today}T02:00:00.000Z`,
+      changes: [{ path: "wiki/papers/p2.md", before: null, after: "content" }],
+    }
+    await storage.write(".scispark/changesets/cs-applied-1.json", JSON.stringify(cs1))
+    await storage.write(".scispark/changesets/cs-applied-2.json", JSON.stringify(cs2))
+
+    // cs-applied-1 was reverted, recorded as a changeset_revert event.
+    await logEvent(
+      storage,
+      { type: "changeset_revert", changesetId: "cs-applied-1", skill: "ingest" },
+      () => new Date(`${today}T03:00:00.000Z`),
+    )
+
+    await storage.write(
+      `.scispark/usage/${today}.jsonl`,
+      JSON.stringify(rec({ ts: `${today}T00:30:00.000Z`, skill: "ingest", costUsd: 4 })) + "\n",
+    )
+
+    await recordOrchestratorRun(
+      storage,
+      { orchestrator: "ingest", trigger: "user", status: "ok", costUsd: 4 },
+      () => new Date(`${today}T01:00:00.000Z`),
+    )
+
+    const res = await usageRoute.GET()
+    expect(res.status).toBe(200)
+    const body = await res.json()
+
+    expect(body.acceptance).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          skill: "ingest",
+          applied: 2,
+          reverted: 1,
+          acceptRate: 0.5,
+          totalCostUsd: 4,
+          costPerAcceptedUsd: 4, // 4 / (2 - 1)
+        }),
+      ]),
+    )
+
+    expect(body.recentRuns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ orchestrator: "ingest", trigger: "user", status: "ok", costUsd: 4 }),
+      ]),
+    )
+
+    // still never leaks key material
+    const bodyText = JSON.stringify(body)
+    expect(bodyText).not.toMatch(/sk-/)
+  })
+
+  it("unions changeset_revert events with ingest's log.md undo entries so a revert is never double-counted", async () => {
+    const cs: Changeset = {
+      id: "cs-log-undo",
+      skill: "ingest",
+      model: "tier:strong",
+      timestamp: `${today}T01:00:00.000Z`,
+      changes: [{ path: "wiki/papers/p3.md", before: null, after: "content" }],
+    }
+    await storage.write(".scispark/changesets/cs-log-undo.json", JSON.stringify(cs))
+    // Both sources record the same revert: log.md's undo entry AND a
+    // changeset_revert event (undoIngest now emits both) — must count once.
+    await storage.write("log.md", `# Log\n\n## [${today}] undo | cs-log-undo\n`)
+    await logEvent(
+      storage,
+      { type: "changeset_revert", changesetId: "cs-log-undo", skill: "ingest" },
+      () => new Date(`${today}T02:00:00.000Z`),
+    )
+
+    const res = await usageRoute.GET()
+    const body = await res.json()
+    const ingestEntry = body.acceptance.find((a: { skill: string }) => a.skill === "ingest")
+    expect(ingestEntry.applied).toBe(1)
+    expect(ingestEntry.reverted).toBe(1)
   })
 
   it("storage failure → 500 with a JSON {error}, no key leakage", async () => {

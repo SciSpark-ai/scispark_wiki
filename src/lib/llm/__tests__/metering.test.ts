@@ -89,7 +89,7 @@ describe("Meter", () => {
   })
 
   describe("unknown model pricing", () => {
-    it("records costUsd: null for an unpriced model and leaves spentTodayUsd unchanged", async () => {
+    it("records unknown cost without claiming a zero total or complete budget coverage", async () => {
       const storage = new MemoryVaultStorage()
       const meter = new Meter(storage, () => new Date("2026-07-12T10:00:00.000Z"))
 
@@ -98,7 +98,11 @@ describe("Meter", () => {
         usage: haikuUsage(1_000_000, 1_000_000),
       })
       expect(rec.costUsd).toBeNull()
-      expect(await meter.spentTodayUsd()).toBe(0)
+      expect(await meter.spentTodayUsd()).toBeNull()
+      expect(await meter.spendingToday()).toEqual({ totalUsd: null, knownUsd: 0, unpricedCount: 1 })
+      const warnings: string[] = []
+      await checkBudget(meter, DEFAULT_SETTINGS, undefined, (message) => warnings.push(message))
+      expect(warnings[0]).toContain("Budget coverage is incomplete")
 
       // and it's still persisted as a JSONL line (not dropped)
       const day = await meter.recordsForDay("2026-07-12")

@@ -22,7 +22,7 @@ export interface LintDeterministicRemoteResult {
 }
 
 export interface LintLlmRemoteResult extends LintDeterministicRemoteResult {
-  costUsd: number
+  costUsd: number | null
 }
 
 export interface LintPairProgress {
@@ -89,7 +89,7 @@ export async function runLintLlmRemote(
  * POST /api/skills/lint/estimate with `{}`; resolves with the static
  * `costUsd` estimate shown in the deep-lint confirm dialog.
  */
-export async function estimateLintCost(fetchFn: typeof fetch = fetch): Promise<number> {
+export async function estimateLintCost(fetchFn: typeof fetch = fetch): Promise<number | null> {
   const res = await fetchFn("/api/skills/lint/estimate", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -98,7 +98,7 @@ export async function estimateLintCost(fetchFn: typeof fetch = fetch): Promise<n
   if (!res.ok) {
     throw new Error(await readErrorMessage(res, `lint estimate failed (${res.status})`))
   }
-  const body = (await res.json()) as { result: { costUsd: number } }
+  const body = (await res.json()) as { result: { costUsd: number | null } }
   return body.result.costUsd
 }
 

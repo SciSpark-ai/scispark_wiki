@@ -14,8 +14,8 @@ import { loadRedactedSettings } from "@/lib/llm/settings-client"
 type SetupPhase = "checking" | "connect" | "initializing" | "ready" | "error"
 
 const STEPS = [
-  { id: "profile", label: "Research profile", detail: "Sparky knows what you work on.", icon: Check },
   { id: "connect", label: "Connect your AI", detail: "Your key stays on this machine.", icon: KeyRound },
+  { id: "profile", label: "Meet Sparky", detail: "Talk about your research and confirm your profile.", icon: Sparkles },
   { id: "feed", label: "Find your first papers", detail: "Build a feed around your interests.", icon: LibraryBig },
 ] as const
 
@@ -24,25 +24,24 @@ export function FirstRunSetup() {
   const [phase, setPhase] = useState<SetupPhase>("checking")
   const [error, setError] = useState<string | null>(null)
   const [feed, setFeed] = useState<FeedResult | null>(null)
+  const [hasProfile, setHasProfile] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
         const vault = await getOpenVault()
-        if (!(await isOnboarded(vault))) {
-          router.replace("/onboarding")
-          return
-        }
-        const [existingFeed, settings] = await Promise.all([loadFeed(vault), loadRedactedSettings()])
+        const [onboarded, existingFeed, settings] = await Promise.all([isOnboarded(vault), loadFeed(vault), loadRedactedSettings()])
         if (cancelled) return
-        if (existingFeed) {
+        setHasProfile(onboarded)
+        if (existingFeed && onboarded) {
           setFeed(existingFeed)
           setPhase("ready")
           return
         }
         const provider = settings.tierModels.strong.provider
-        setPhase(settings.keys[provider]?.present ? "initializing" : "connect")
+        if (settings.keys[provider]?.present && onboarded) setPhase("initializing")
+        else setPhase("connect")
       } catch (caught) {
         if (!cancelled) {
           setError(caught instanceof Error ? caught.message : String(caught))
@@ -55,7 +54,7 @@ export function FirstRunSetup() {
     }
   }, [router])
 
-  const currentStep = phase === "connect" ? 1 : 2
+  const currentStep = phase === "connect" || phase === "checking" ? 0 : 2
 
   return (
     <div className="flex min-h-full flex-col justify-center bg-page-warm px-4 py-8 sm:px-8 sm:py-12">
@@ -63,13 +62,14 @@ export function FirstRunSetup() {
         <header className="mx-auto mb-8 max-w-[680px] text-center">
           <div className="mb-3 flex items-center justify-center gap-2 text-[13px] font-medium text-orange">
             <Sparkles size={16} aria-hidden="true" />
-            Profile saved
+            {hasProfile ? "Profile saved" : "Welcome to SciSpark"}
           </div>
           <h1 className="font-heading text-[34px] leading-tight tracking-heading text-espresso sm:text-[44px]">
             Give Sparky a way to think with you.
           </h1>
-          <p className="mx-auto mt-3 max-w-[620px] text-[15px] leading-relaxed text-muted-text">
-            Connect an AI provider with your own key. SciSpark keeps the key in your local vault, tests the connection, and then finds your first papers automatically.
+          <p className="mx-auto mt-3 text-[15px] leading-relaxed text-muted-text [text-wrap:pretty]">
+            Connect your AI provider to meet Sparky.
+            <span className="block">Then tell us about your research and review your first feed.</span>
           </p>
         </header>
 
@@ -102,7 +102,7 @@ export function FirstRunSetup() {
             )}
 
             {phase === "connect" && (
-              <ConnectAiCard firstRun onConnected={() => setPhase("initializing")} />
+              <ConnectAiCard firstRun onConnected={() => hasProfile ? setPhase("initializing") : router.push("/onboarding")} />
             )}
 
             {phase === "initializing" && (

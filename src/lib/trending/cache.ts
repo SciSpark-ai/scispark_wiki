@@ -1,6 +1,9 @@
 import type { PaperRecord, SourceId } from "../papers/types"
 import type { VaultStorage } from "../vault/storage"
 import type { AnchorDiscipline } from "./anchors"
+import { manualAnchorError } from "./anchors"
+import { canonicalAnchor } from "./openalex-fields"
+import { openAlexSubfield } from "./openalex-subfields"
 import type { Cadence } from "./settings"
 import type { TrendingBoard } from "./types"
 
@@ -8,9 +11,10 @@ import type { TrendingBoard } from "./types"
  * Structure version of `.scispark/trending/dashboard.json`. Bump whenever the
  * persisted shape changes; `loadBoard` treats every other version as a cold
  * start. Version 3 replaced weekly sparklines with prior counts. Version 4
- * changed growth and bar sizing to discipline-corpus shares.
+ * changed growth and bar sizing to discipline-corpus shares. Version 5 uses
+ * canonical field-ID scopes instead of label searches for all trend metrics.
  */
-export const TRENDING_BOARD_VERSION = 4
+export const TRENDING_BOARD_VERSION = 5
 
 export const DASHBOARD_CACHE_PATH = ".scispark/trending/dashboard.json"
 
@@ -47,16 +51,21 @@ export function isStale(board: TrendingBoard | null, cadence: Cadence, now: Date
 }
 
 /**
- * True iff `board` is non-null and the SET of its anchor ids equals the set of
- * `anchors`' ids (order-insensitive). Detects a settings change (anchor edit,
+ * True iff the parent fields AND optional subfield sets match, regardless of
+ * selection order. Detects a settings change (anchor edit,
  * reset-to-auto) that rescoped the board without a corresponding refresh — a
  * cache can be time-fresh but scope-stale, and showing a board for the wrong
  * anchors is actively misleading.
  */
 export function anchorsMatchBoard(board: TrendingBoard | null, anchors: AnchorDiscipline[]): boolean {
   if (board == null) return false
-  const boardIds = new Set(board.anchors.map((a) => a.id))
-  const ids = new Set(anchors.map((a) => a.id))
+  if (!Array.isArray(board.anchors) || manualAnchorError({ anchors: board.anchors }) || manualAnchorError({ anchors })) return false
+  const identity = (anchor: AnchorDiscipline) => JSON.stringify([
+    canonicalAnchor(anchor.id)!.id,
+    (anchor.subfieldIds ?? []).map((id) => openAlexSubfield(id)!.id).sort(),
+  ])
+  const boardIds = new Set(board.anchors.map(identity))
+  const ids = new Set(anchors.map(identity))
   if (boardIds.size !== ids.size) return false
   for (const id of ids) {
     if (!boardIds.has(id)) return false
@@ -93,7 +102,8 @@ export async function loadTrendingPaperRecords(storage: VaultStorage): Promise<P
 
   try {
     const parsed: unknown = JSON.parse(raw)
-    if (!isRecord(parsed) || parsed.version !== TRENDING_BOARD_VERSION) return []
+    // Old trend metrics need recomputing, but their paper records remain usable.
+    if (!isRecord(parsed) || (parsed.version !== TRENDING_BOARD_VERSION && parsed.version !== 4)) return []
 
     const values: unknown[] = []
     if (Array.isArray(parsed.topics)) {

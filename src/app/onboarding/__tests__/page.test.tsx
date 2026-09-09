@@ -1,74 +1,40 @@
 // @vitest-environment jsdom
 import { act } from "react"
-import { createRoot, type Root } from "react-dom/client"
+import { createRoot } from "react-dom/client"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { useUserStore } from "@/stores/user-store"
-
+import { initialRecord } from "@/lib/onboarding/contract"
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-
-const { pushMock, replaceMock, routerMock, getVaultMock, isOnboardedMock, createProfileMock } = vi.hoisted(() => {
-  const push = vi.fn()
-  const replace = vi.fn()
-  return {
-    pushMock: push,
-    replaceMock: replace,
-    routerMock: { push, replace },
-    getVaultMock: vi.fn(),
-    isOnboardedMock: vi.fn(),
-    createProfileMock: vi.fn(),
-  }
-})
-
-vi.mock("next/navigation", () => ({ useRouter: () => routerMock }))
-vi.mock("@/lib/vault/get-vault", () => ({ getOpenVault: getVaultMock }))
-vi.mock("@/lib/usermodel/pages", () => ({ isOnboarded: isOnboardedMock }))
-vi.mock("@/lib/usermodel/profile-client", () => ({ createUserProfileRemote: createProfileMock }))
+const { router, load } = vi.hoisted(() => ({ router: { push: vi.fn(), replace: vi.fn() }, load: vi.fn() }))
+vi.mock("next/navigation", () => ({ useRouter: () => router }))
+vi.mock("@/lib/onboarding/client", () => ({ loadOnboarding: load }))
 vi.mock("@/components/onboarding/OnboardingFlow", () => ({
-  OnboardingFlow: ({ onSubmit }: { onSubmit: (answers: Record<string, string>) => void }) => (
-    <button type="button" onClick={() => onSubmit({
-      name: "Ada",
-      role: "Research fellow",
-      fields: "Neuroscience",
-      topics: "Auditory attention",
-      feedPrefs: "Methods papers",
-    })}>
-      Finish profile
-    </button>
-  ),
+  OnboardingFlow: ({ onComplete }: { onComplete: (name: string) => void }) => <button onClick={() => onComplete("Ada")}>Confirm profile</button>,
 }))
-
 import OnboardingPage from "../page"
-
-function mount(): { host: HTMLDivElement; root: Root } {
-  const host = document.createElement("div")
-  document.body.appendChild(host)
-  const root = createRoot(host)
-  return { host, root }
-}
-
-describe("OnboardingPage", () => {
+describe("OnboardingPage routing", () => {
   beforeEach(() => {
-    pushMock.mockReset()
-    replaceMock.mockReset()
-    getVaultMock.mockReset().mockResolvedValue({})
-    isOnboardedMock.mockReset().mockResolvedValue(false)
-    createProfileMock.mockReset().mockResolvedValue({})
+    vi.clearAllMocks()
+    load.mockResolvedValue({ ...initialRecord(), connected: true, onboarded: false, revision: null })
     useUserStore.setState({ user: null, onboardingComplete: false })
   })
-
-  it("sends a completed profile to BYOK setup instead of an empty home page", async () => {
-    const { host, root } = mount()
-    act(() => root.render(<OnboardingPage />))
-    await act(async () => { await Promise.resolve() })
-
-    const finish = Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Finish profile")
-    await act(async () => finish?.click())
-
-    expect(createProfileMock).toHaveBeenCalled()
-    expect(pushMock).toHaveBeenCalledWith("/setup")
-    expect(useUserStore.getState().user?.name).toBe("Ada")
-
+  it("routes an unconnected new user to BYOK without starting AI", async () => {
+    load.mockResolvedValue({ ...initialRecord(), connected: false, onboarded: false, revision: null })
+    const host = document.createElement("div")
+    const root = createRoot(host)
+    await act(async () => root.render(<OnboardingPage />))
+    expect(router.replace).toHaveBeenCalledWith("/setup")
+    expect(host.querySelector("button")).toBeNull()
     act(() => root.unmount())
-    host.remove()
+  })
+  it("opens the conversation after connection and starts feed setup only after confirmed completion", async () => {
+    const host = document.createElement("div")
+    const root = createRoot(host)
+    await act(async () => root.render(<OnboardingPage />))
+    expect(router.push).not.toHaveBeenCalled()
+    await act(async () => host.querySelector("button")!.click())
+    expect(router.push).toHaveBeenCalledWith("/setup")
+    expect(useUserStore.getState().user?.name).toBe("Ada")
+    act(() => root.unmount())
   })
 })

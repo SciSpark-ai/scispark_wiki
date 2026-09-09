@@ -1,3 +1,4 @@
+import { addCosts } from "../llm/pricing"
 import type { VaultStorage } from "../vault/storage"
 import { loadBundle, type Bundle } from "../vault/bundle"
 import { loadChangeset, makeChangesetId } from "../vault/changesets"
@@ -112,6 +113,48 @@ async function writeFindingsAsReviews(
   return reviewIds
 }
 
+/**
+ * Stable per-finding identity used to dedupe against ALREADY-OPEN review
+ * items before writing (see `dropFindingsAlreadyOpen` below). Distinct from
+ * `matchFreshFindingByIdentity` above, which is an APPLY-time recompute (re-
+ * finding one specific stored finding after a sibling fix mutated the vault)
+ * — this one is a WRITE-time dedupe key comparing a batch of freshly detected
+ * findings against the current open-review inbox. Exported so tests (and any
+ * future caller needing the same key) don't have to reimplement the format.
+ */
+export function findingIdentity(f: Pick<LintFinding, "lintKind" | "fixTarget" | "pages">): string {
+  // Unescaped `|`/`,` delimiters are safe here because `fixTarget`/`pages` are
+  // page ids constrained by `isValidSlug` (src/lib/wiki/schema-routing.ts —
+  // kebab-case only, no spaces/underscores/uppercase), which can never contain
+  // either character, and `lintKind` is a closed `LintKind` enum. Revisit this
+  // format if `findingIdentity` is ever reused against a less-constrained id source.
+  return `${f.lintKind}|${f.fixTarget ?? ""}|${[...f.pages].sort().join(",")}`
+}
+
+/**
+ * Drops findings whose identity (see `findingIdentity`) already matches an
+ * OPEN review item, so re-running lint over an unchanged (or only partially
+ * fixed) vault doesn't spam a second review item for the same still-open
+ * finding — this matters once lint runs on a schedule (M12 follow-up Task 7),
+ * not just on manual demand.
+ *
+ * Scoped to OPEN items only: `listReviews` excludes archived/dismissed ones,
+ * so a finding whose review was DISMISSED can legitimately reappear here.
+ * Dismissing a review item is a human decision to stop seeing THAT item, not
+ * a fix — if the underlying issue is still detected on a later run, filing a
+ * fresh review item is correct, not a dedupe bug. Accepted v1 behavior.
+ */
+async function dropFindingsAlreadyOpen(storage: VaultStorage, findings: LintFinding[]): Promise<LintFinding[]> {
+  if (findings.length === 0) return findings
+  const openReviews = await listReviews(storage)
+  const openIdentities = new Set(
+    openReviews
+      .filter((r) => r.kind === "lint-finding" && r.lintKind !== undefined)
+      .map((r) => findingIdentity({ lintKind: r.lintKind!, fixTarget: r.fixTarget, pages: r.pages })),
+  )
+  return findings.filter((f) => !openIdentities.has(findingIdentity(f)))
+}
+
 export interface RunLintDeterministicOptions {
   now?: () => Date
 }
@@ -119,7 +162,11 @@ export interface RunLintDeterministicOptions {
 /**
  * Runs the deterministic lint checks (orphans, broken links, bad frontmatter,
  * index drift) over the current vault and writes one review item per finding
- * to the shared inbox. Logs a `lint_run` event regardless of finding count.
+ * that isn't already open in the inbox (see `dropFindingsAlreadyOpen`) to the
+ * shared inbox. Logs a `lint_run` event regardless of finding count — the
+ * event and `findings` both report the FULL detected set (write-time dedupe
+ * only affects which findings actually get a NEW review item, not what the
+ * scan itself found).
  */
 export async function runLintDeterministic(
   storage: VaultStorage,
@@ -131,9 +178,56 @@ export async function runLintDeterministic(
   const storedIndex = await storage.read("index.md")
   const findings = runDeterministicChecks(bundle, { storedIndex })
 
-  const reviewIds = await writeFindingsAsReviews(storage, findings, now)
+  const toWrite = await dropFindingsAlreadyOpen(storage, findings)
+  const reviewIds = await writeFindingsAsReviews(storage, toWrite, now)
 
   await logEvent(storage, { type: "lint_run", mode: "deterministic", findingCount: findings.length }, now)
+
+  return { findings, reviewIds }
+}
+
+export interface RunPostIngestLintOptions {
+  now?: () => Date
+}
+
+/**
+ * Scoped deterministic-lint verify step run automatically right after a
+ * successful ingest apply (`src/lib/skills/ingest.ts`, post-`appendLog`) —
+ * NOT a general lint run the user/schedule triggers, so unlike
+ * `runLintDeterministic`/`runLintLlm` it does NOT log a `lint_run` event;
+ * that event's `findingCount`/cost bookkeeping is for explicit lint runs, and
+ * this is just a byproduct check riding along on the ingest that already ran.
+ *
+ * Runs the full deterministic checks against a fresh `loadBundle`, then
+ * narrows to findings that are actually IN SCOPE for this ingest:
+ * - only findings touching a page this ingest's changeset wrote (`pages`
+ *   intersects `touchedPageIds`) — a pre-existing broken link on some
+ *   unrelated, untouched page is not this ingest's concern to surface here;
+ * - excludes `lintKind === "index-drift"` entirely — the caller (ingest.ts)
+ *   already rebuilt index.md via `writeIndex` immediately before this runs,
+ *   so any drift finding at this point would be stale/spurious by
+ *   construction, not a real signal about the ingest.
+ * Applies the same write-time dedupe as the other two run* functions
+ * (`dropFindingsAlreadyOpen`) before writing review items.
+ */
+export async function runPostIngestLint(
+  storage: VaultStorage,
+  touchedPageIds: string[],
+  opts: RunPostIngestLintOptions = {},
+): Promise<{ findings: LintFinding[]; reviewIds: string[] }> {
+  const now = opts.now ?? (() => new Date())
+  const touched = new Set(touchedPageIds)
+
+  const bundle = await loadBundle(storage)
+  const storedIndex = await storage.read("index.md")
+  const allFindings = runDeterministicChecks(bundle, { storedIndex })
+
+  const findings = allFindings.filter(
+    (f) => f.lintKind !== "index-drift" && f.pages.some((p) => touched.has(p)),
+  )
+
+  const toWrite = await dropFindingsAlreadyOpen(storage, findings)
+  const reviewIds = await writeFindingsAsReviews(storage, toWrite, now)
 
   return { findings, reviewIds }
 }
@@ -175,11 +269,11 @@ export interface RunLintLlmOptions {
 export async function runLintLlm(
   storage: VaultStorage,
   opts: RunLintLlmOptions = {},
-): Promise<{ findings: LintFinding[]; reviewIds: string[]; costUsd: number }> {
+): Promise<{ findings: LintFinding[]; reviewIds: string[]; costUsd: number | null }> {
   const now = opts.now ?? (() => new Date())
   const bundle = await loadBundle(storage)
 
-  let costUsd = 0
+  let costUsd: number | null = 0
 
   const screenRun = await runSkill({
     skill: lintScreenSkill,
@@ -189,7 +283,7 @@ export async function runLintLlm(
     providerOverride: opts.providerOverride,
     now,
   })
-  costUsd += screenRun.costUsd
+  costUsd = addCosts(costUsd, screenRun.costUsd)
 
   const pairs = screenRun.status === "ok" && screenRun.output ? screenRun.output.pairs : []
 
@@ -212,7 +306,7 @@ export async function runLintLlm(
       providerOverride: opts.providerOverride,
       now,
     })
-    costUsd += judgeRun.costUsd
+    costUsd = addCosts(costUsd, judgeRun.costUsd)
 
     if (judgeRun.status !== "ok" || !judgeRun.output) continue
     const { verdict, explanation } = judgeRun.output
@@ -226,7 +320,11 @@ export async function runLintLlm(
     })
   }
 
-  const reviewIds = await writeFindingsAsReviews(storage, findings, now)
+  // Same write-time dedupe as runLintDeterministic (see dropFindingsAlreadyOpen)
+  // — a contradiction/stale-claim pair the LLM re-flags on a later run must not
+  // spam a second review item while the first is still open.
+  const toWrite = await dropFindingsAlreadyOpen(storage, findings)
+  const reviewIds = await writeFindingsAsReviews(storage, toWrite, now)
 
   await logEvent(storage, { type: "lint_run", mode: "llm", findingCount: findings.length, costUsd }, now)
 

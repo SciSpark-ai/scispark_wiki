@@ -1,71 +1,74 @@
 "use client"
 
-import { useCallback, useEffect } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { usePathname } from "next/navigation"
 import { companionUtteranceRemote } from "@/lib/companion/client"
 import { useCompanionStore } from "@/stores/companion-store"
+import { useUIStore } from "@/stores/ui-store"
 
-/**
- * Client hook that wires the Research Companion (M7) into an app surface.
- *
- * On mount (and whenever the route changes) it reports the current route plus
- * the anti-Clippy session bookkeeping the companion store already tracks
- * (`sessionShownCount`/`lastShownTs`) to `POST /api/skills/companion`, which
- * assembles the rest of `TriggerState` (feed cache presence, recent Tier-1
- * events, open review-inbox count, the wiki bundle) server-side and runs
- * `runCompanion` there (M11 Task 9 — local-runtime pivot: no vault reads or
- * LLM settings touch the browser from this hook anymore). A non-null result
- * is handed to the store, which shows the mascot bubble.
- *
- * The chattiness budget/cooldown enforcement itself was already entirely
- * inside `runCompanion`/`evaluateTriggers` (session-budget check, per-trigger
- * cooldown via `lastShownTs`) before this task, not in this hook — moving
- * `runCompanion`'s execution server-side moves that enforcement logic with
- * it unchanged; this hook still owns nothing but reporting the two pieces of
- * session state only the client has.
- *
- * Fire-and-forget: this never blocks render, never throws into the caller,
- * and never suspends. `companionUtteranceRemote` only throws on a genuinely
- * failed request (network error, non-2xx) — a real `null` result is a normal
- * outcome, not an error — and this callback wraps the whole thing anyway,
- * since a companion failure must never break the host page.
- *
- * Returns a `reevaluate` function so callers can nudge the companion after
- * an app event that just happened (e.g. a successful ingest) without
- * waiting for the next mount or route change.
- */
+/** Ask the single shell-owned hook to check a just-completed app event. */
+export function requestCompanionCheck(): void {
+  window.dispatchEvent(new Event("companion-check"))
+}
+
+/** Mounted once in AppShell. Route/visibility changes cancel old streams and
+ * clear stale messages. The server, not this component, owns delivery history. */
 export function useCompanion(): () => void {
   const pathname = usePathname()
-  // Read bookkeeping directly; only the mascot subscribes to streamed text.
-  // Store-owned stream IDs prevent overlapping requests and late replies from
-  // reopening a dismissed bubble. Budget accounting happens once per bubble.
+  const settingsSection = useUIStore((s) => s.settingsModalSection)
+  const activeRequest = useRef<AbortController | null>(null)
+  const clear = useCallback(() => {
+    activeRequest.current?.abort()
+    activeRequest.current = null
+    useCompanionStore.getState().dismiss()
+  }, [])
+  // The server gates new events before spending. Stream IDs also invalidate
+  // late replies when navigation, focus, or a feedback question takes priority.
   const reevaluate = useCallback(() => {
+    if (document.hidden || settingsSection !== null || /^\/(?:onboarding|setup|chat|papers|settings)(?:\/|$)/.test(pathname ?? "/")) return
+    if (document.activeElement?.matches("input, textarea, [contenteditable='true']")) return
     const streamId = useCompanionStore.getState().beginStream()
     if (streamId === null) return
+    const controller = new AbortController()
+    activeRequest.current = controller
     void (async () => {
       try {
-        const { sessionShownCount, lastShownTs } = useCompanionStore.getState()
-
         const utterance = await companionUtteranceRemote({
           route: pathname ?? "/",
-          sessionShownCount,
-          lastShownTs,
-        }, undefined, (draft) => useCompanionStore.getState().updateStream(streamId, draft))
+        }, undefined, (draft) => {
+          if (!document.hidden) useCompanionStore.getState().updateStream(streamId, draft)
+        }, controller.signal)
 
-        useCompanionStore.getState().finishStream(streamId, utterance)
+        useCompanionStore.getState().finishStream(streamId, document.hidden ? null : utterance)
       } catch {
         useCompanionStore.getState().finishStream(streamId, null)
         // Fire-and-forget: a companion failure must never break the host page.
+      } finally {
+        if (activeRequest.current === controller) activeRequest.current = null
       }
     })()
-  }, [pathname])
+  }, [pathname, settingsSection])
 
   useEffect(() => {
+    clear()
     reevaluate()
-    // Re-evaluate automatically on mount and on route change only; callers
-    // invoke the returned `reevaluate` directly for other app events.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname])
+    const onVisibility = () => {
+      clear()
+      if (!document.hidden) reevaluate()
+    }
+    const onFocus = () => {
+      if (document.activeElement?.matches("input, textarea, [contenteditable='true']")) clear()
+    }
+    window.addEventListener("companion-check", reevaluate)
+    document.addEventListener("visibilitychange", onVisibility)
+    document.addEventListener("focusin", onFocus)
+    return () => {
+      clear()
+      window.removeEventListener("companion-check", reevaluate)
+      document.removeEventListener("visibilitychange", onVisibility)
+      document.removeEventListener("focusin", onFocus)
+    }
+  }, [reevaluate, clear])
 
   return reevaluate
 }

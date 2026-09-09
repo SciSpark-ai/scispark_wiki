@@ -1,3 +1,4 @@
+import { addCosts } from "../llm/pricing"
 import { z } from "zod"
 import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
@@ -164,7 +165,7 @@ export interface ScoopResult {
    * searchedSignature) — may overlap the signature count. */
   searchedAlias: number
   /** Sum of costUsd across the terms call and the verdict call. */
-  costUsd: number
+  costUsd: number | null
 }
 
 // Keyless-safe default (same as Task 3's grounding.ts): arxiv + openalex need no
@@ -360,6 +361,6 @@ export async function runScoopCheck(
     collidingTitles: verdictRun.output.collidingTitles,
     searchedSignature: signatureHits.length,
     searchedAlias: aliasHits.length,
-    costUsd: termsRun.costUsd + verdictRun.costUsd,
+    costUsd: addCosts(termsRun.costUsd, verdictRun.costUsd),
   }
 }

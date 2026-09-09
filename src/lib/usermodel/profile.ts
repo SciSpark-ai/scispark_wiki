@@ -12,6 +12,7 @@ import {
 } from "./pages"
 import { splitTopics } from "../trending/fields"
 import { RecommendationPreferencesSchema, readRecommendationPreferences } from "../recommendation/contract"
+import { ONBOARDING_PATH, type OnboardingRecord } from "../onboarding/contract"
 
 export const PROFILE_AVATAR_PATH = "profile/avatar.json"
 export const MAX_AVATAR_DATA_URL_LENGTH = 1_500_000
@@ -204,6 +205,7 @@ export async function createUserProfile(
   storage: VaultStorage,
   rawAnswers: OnboardingAnswers,
   now: Date = new Date(),
+  onboarding?: { before: string; record: OnboardingRecord },
 ): Promise<UserProfileMutation> {
   if (!Number.isFinite(now.getTime())) throw new UserProfileValidationError("now must be a valid date")
   const answers = normalizeAnswers(rawAnswers)
@@ -224,6 +226,7 @@ export async function createUserProfile(
         { path: USER_MODEL_PATHS.profile, before: null, after: contents.profile },
         { path: USER_MODEL_PATHS.interests, before: null, after: contents.interests },
         { path: USER_MODEL_PATHS.feedback, before: null, after: contents.feedback },
+        ...(onboarding ? [{ path: ONBOARDING_PATH, before: onboarding.before, after: JSON.stringify(onboarding.record, null, 2) + "\n" }] : []),
       ],
     },
     { op: "profile-create", summary: answers.name },

@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,7 +23,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
   "include": [
@@ -30,7 +36,55 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts",
     ".next-e2e/types/**/*.ts",
-    ".next-e2e/dev/types/**/*.ts"
+    ".next-e2e/dev/types/**/*.ts",
+    ".next-onboarding-acceptance-webpack/types/**/*.ts",
+    ".next-onboarding-acceptance-webpack/dev/types/**/*.ts",
+    ".next-onboarding-acceptance-final/types/**/*.ts",
+    ".next-onboarding-acceptance-final/dev/types/**/*.ts",
+    ".next-source-pacing/types/**/*.ts",
+    ".next-source-pacing/dev/types/**/*.ts",
+    ".next-home-notices/types/**/*.ts",
+    ".next-home-notices/dev/types/**/*.ts",
+    ".next-paper-sources/types/**/*.ts",
+    ".next-paper-sources/dev/types/**/*.ts",
+    ".next-paper-sources-final/types/**/*.ts",
+    ".next-paper-sources-final/dev/types/**/*.ts",
+    ".next-source-save-test/types/**/*.ts",
+    ".next-source-save-test/dev/types/**/*.ts",
+    ".next-source-privacy/types/**/*.ts",
+    ".next-source-privacy/dev/types/**/*.ts",
+    ".next-source-selection/types/**/*.ts",
+    ".next-source-selection/dev/types/**/*.ts",
+    ".next-source-selection-final/types/**/*.ts",
+    ".next-source-selection-final/dev/types/**/*.ts",
+    ".next-trending-topics/types/**/*.ts",
+    ".next-trending-topics/dev/types/**/*.ts",
+    ".next-trending-fields/types/**/*.ts",
+    ".next-trending-fields/dev/types/**/*.ts",
+    ".next-avatar-camera/types/**/*.ts",
+    ".next-avatar-camera/dev/types/**/*.ts",
+    ".next-trending-subfields/types/**/*.ts",
+    ".next-trending-subfields/dev/types/**/*.ts",
+    ".next-feed-shared-fields/types/**/*.ts",
+    ".next-feed-shared-fields/dev/types/**/*.ts",
+    ".next-trending-ui/types/**/*.ts",
+    ".next-trending-ui/dev/types/**/*.ts",
+    ".next-trending-ui-final/types/**/*.ts",
+    ".next-trending-ui-final/dev/types/**/*.ts",
+    ".next-paper-feedback-row/types/**/*.ts",
+    ".next-paper-feedback-row/dev/types/**/*.ts",
+    ".next-search-settings-overlay/types/**/*.ts",
+    ".next-search-settings-overlay/dev/types/**/*.ts",
+    ".next-quiet-companion/types/**/*.ts",
+    ".next-quiet-companion/dev/types/**/*.ts",
+    ".next-chat-preview/types/**/*.ts",
+    ".next-chat-preview/dev/types/**/*.ts",
+    ".next-literature-workspace/types/**/*.ts",
+    ".next-literature-workspace/dev/types/**/*.ts",
+    ".next-deep-review/types/**/*.ts",
+    ".next-deep-review/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules"
+  ]
 }

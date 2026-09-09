@@ -38,25 +38,27 @@ function ingestEvent(tsOffsetMs: number, title: string): LoggedEvent {
 }
 
 const baseState: TriggerState = {
-  route: "/papers",
+  route: "/wiki",
   hasFeedCache: false,
   recentEvents: [],
   reviewCount: 0,
-  bundle: null,
+  reviews: [{ id: "rev-1", createdAt: NOW_ISO, title: "Possible duplicate" }],
+  bundle: bundleOf(["Attention Is All You Need", "Boundary Paper", "Old Paper", "Paper A"].map((title) => page(`wiki/papers/${title}`, "paper", title))),
   lastShownTs: {},
   nowMs: NOW_MS,
 }
 
-describe("app-open trigger", () => {
-  it("fires on route \"/\" with a feed cache", () => {
+describe("no generic app-open trigger", () => {
+  it.each(["/chat", "/chat/saved", "/papers"])("defers actionable events while the user is in %s", (route) => {
+    expect(evaluateTriggers({ ...baseState, route, reviewCount: 3 })).toBeNull()
+  })
+  it("stays quiet on Home with an existing feed cache", () => {
     const fired = evaluateTriggers({ ...baseState, route: "/", hasFeedCache: true })
-    expect(fired?.id).toBe("app-open")
-    expect(fired?.action).toEqual({ label: "Home", href: "/" })
-    expect(fired?.priority).toBeGreaterThan(0)
+    expect(fired).toBeNull()
   })
 
   it("does not fire off-route", () => {
-    expect(evaluateTriggers({ ...baseState, route: "/papers", hasFeedCache: true })).toBeNull()
+    expect(evaluateTriggers({ ...baseState, route: "/wiki", hasFeedCache: true })).toBeNull()
   })
 
   it("does not fire without a feed cache", () => {
@@ -69,7 +71,7 @@ describe("post-ingest trigger", () => {
     const state = { ...baseState, recentEvents: [ingestEvent(-30_000, "Attention Is All You Need")] }
     const fired = evaluateTriggers(state)
     expect(fired?.id).toBe("post-ingest")
-    expect(fired?.action).toEqual({ label: "View wiki", href: "/wiki" })
+    expect(fired?.action).toEqual({ label: "View paper in Wiki", href: "/wiki/papers/Attention Is All You Need" })
     expect(fired?.contextBlurb).toContain("Attention Is All You Need")
   })
 
@@ -99,7 +101,7 @@ describe("review-pending trigger", () => {
     const fired = evaluateTriggers({ ...baseState, reviewCount: 3 })
     expect(fired?.id).toBe("review-pending")
     expect(fired?.action).toEqual({ label: "Review inbox", href: "/wiki/inbox" })
-    expect(fired?.contextBlurb).toContain("3")
+    expect(fired?.contextBlurb).toContain("Possible duplicate")
   })
 
   it("does not fire when reviewCount is 0", () => {

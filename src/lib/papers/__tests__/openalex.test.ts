@@ -15,6 +15,11 @@ function fakeFetch(body: unknown, status = 200) {
 const noSleep = async () => {}
 
 describe("searchOpenAlex", () => {
+  it("preserves source publication type and retraction status for eligibility checks", async () => {
+    const [record] = await searchOpenAlex({ query: "EEG" }, { fetchFn: fakeFetch({ results: [{ display_name: "EEG public review", type: "peer-review", is_retracted: false }] }) })
+    expect(record.publicationTypes).toEqual(["peer-review"])
+    expect(record.isRetracted).toBe(false)
+  })
   it("maps a work record with a full set of fields (Swin Transformer fixture)", async () => {
     const record = fixture.results[0]
     const fetchFn = fakeFetch({ results: [record] })

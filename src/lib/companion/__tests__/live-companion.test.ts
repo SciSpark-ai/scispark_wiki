@@ -78,7 +78,7 @@ describe.skipIf(!live)("LIVE companion utterance gate", () => {
       // A one-liner: the system prompt asks for ~20 words; this is a loose ceiling.
       expect(output.utterance.length).toBeLessThanOrEqual(160)
 
-      console.log(`[live-companion] costUsd: $${run.costUsd.toFixed(4)}`)
+      console.log(`[live-companion] costUsd: $${(run.costUsd?.toFixed(4) ?? "unknown")}`)
       expect(run.costUsd).toBeLessThan(0.02)
     },
   )

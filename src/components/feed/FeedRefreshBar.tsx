@@ -1,5 +1,7 @@
 "use client"
 
+import { formatCost } from "@/lib/llm/pricing"
+
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Check, Loader2 } from "lucide-react"
 import type { VaultStorage } from "@/lib/vault/storage"
@@ -21,7 +23,7 @@ type RefreshPhase = "memory" | FeedStage
 type RefreshState =
   | { status: "idle" }
   | { status: "running"; phase: RefreshPhase; startedAt: number }
-  | { status: "done"; costUsd: number }
+  | { status: "done"; costUsd: number | null }
   | { status: "error"; message: string }
 
 /** Refresh the server-owned recommendation pipeline with real NDJSON progress.
@@ -57,17 +59,13 @@ export function FeedRefreshBar({
     setState({ status: "running", phase: "memory", startedAt })
 
     try {
-      let costUsd = 0
-
       // Explicit profile answers stay user-owned. Feed learning is deterministic
       // and bounded; do not run the legacy profile-rewriting consolidation here.
 
       const feed = await refreshFeed((stage) => {
         if (STAGE_ORDER.includes(stage)) setState({ status: "running", phase: stage, startedAt })
       })
-      costUsd += feed.costUsd
-
-      setState({ status: "done", costUsd })
+      setState({ status: "done", costUsd: feed.costUsd })
       onUpdated(feed)
       onComplete?.(feed)
     } catch (err) {
@@ -174,7 +172,7 @@ export function FeedRefreshBar({
         )}
         {state.status === "done" && (
           <span className="text-[13px] text-muted-text tracking-body">
-            This refresh cost ≈ ${state.costUsd.toFixed(2)}
+            {state.costUsd === null ? "Refresh complete · cost unavailable for this model. Check your provider’s usage." : `This refresh ${formatCost(state.costUsd).toLowerCase()}`}
           </span>
         )}
       </div>

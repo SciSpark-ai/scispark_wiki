@@ -50,18 +50,30 @@ Researchers and research-adjacent professionals who need to stay current in one 
 
 ## The Research Companion
 
+**September 7, 2026 implementation update:** Search and Chat share one Sparky
+conversation workspace. Quick searches persist complete paper-result snapshots
+in conversation History automatically, including failed turns and source warnings.
+The composer stays visible while conversation content scrolls. Source Settings
+opens in place. Deep literature review is now integrated as a distinct,
+explicitly approved preview mode with selective personal context, durable local
+jobs, bounded evidence search/checks and a versioned report beside the chat.
+See the [implementation plan](../superpowers/plans/2026-09-07-personalized-literature-review.md)
+and [verification record](../testing/2026-09-07-deep-review-integration.md).
+Live scientific-quality acceptance is still separate from feature integration.
+Retention in History and selective use as personal memory are separate permissions.
+
 A persistent, cute, **proactive** AI companion is the personality of the whole product (think "Codex pet") — the thing that makes SciSpark feel alive where other research tools feel like databases. It is text-only (no audio/voice): a small character floating in the shell, available to chat, occasionally popping a speech bubble to encourage action.
 
 **The companion IS the interface to the agent system.** Every conversation in the product — onboarding, knowledge-base chat, select-to-ask while reading, review-queue discussions, spark sessions — is a conversation *with the companion*. Skills are the invisible backend; the user only ever talks to one character, in one persona, with one continuous memory. (Architecturally: skills produce content; the companion persona layer renders every conversational surface.)
 
 It is the *voice of the skill system*, not a separate intelligence:
 
-- On app open: greets you and nudges toward what's new ("3 new papers in your feed look strong today — want a look?").
-- While reading a digest: proactively observes ("this looks related to [[closed-loop DBS]] in your wiki — import it?").
-- After an ingest: celebrates progress, surfaces flagged review items conversationally.
-- Ambiently: notices sparkable clusters ("your last 4 papers circle one unsolved problem… want me to spark ideas on it?") and idle moments.
+- After an ingest: links to the paper's Wiki page, when that page still exists.
+- For a new review item: names what needs attention and offers the review inbox.
+- For recent papers sharing a concept: offers to explore a grounded idea, unless that theme already has an idea page.
+- App opens, idle moments, and cached feeds alone are not notification events. Visiting an action's destination consumes the corresponding events quietly.
 
-Anti-Clippy rules (product-level commitments): never modal, never blocks, always dismissible; proactivity budget (max interventions per session + cooldowns); chattiness setting (quiet / normal / chatty); dismissals are Tier-1 events the memory system learns from, so the companion gets less annoying over time, not more. The companion suggests expensive actions (e.g., a Spark run) but never auto-spends meaningful budget.
+Anti-Clippy rules (product-level commitments): never modal, never blocks, always dismissible; a persisted per-vault budget spans tabs/reloads/restarts (default two messages per rolling day, 30 minutes apart). Once claimed, an event is not repeated, even after dismissal or delivery failure. Messages expire after 60 seconds and clear on navigation, Settings, typing or hidden tabs; onboarding and Chat stay quiet. Chattiness is configurable, including Off. Dismissals/actions remain Tier-1 events. User-initiated feedback questions are separate. The companion suggests expensive actions (e.g., a Spark run) but never starts them without a click.
 
 ## v1 scope
 

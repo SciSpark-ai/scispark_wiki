@@ -109,7 +109,7 @@ export async function deepSparkRemote(
  * POST /api/skills/spark/estimate with `{}`; resolves with the static
  * `costUsd` estimate, same as the old direct `estimateDeepSparkCost()` call.
  */
-export async function estimateRemote(fetchFn: typeof fetch = fetch): Promise<number> {
+export async function estimateRemote(fetchFn: typeof fetch = fetch): Promise<number | null> {
   const res = await fetchFn("/api/skills/spark/estimate", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -123,5 +123,5 @@ export async function estimateRemote(fetchFn: typeof fetch = fetch): Promise<num
 }
 
 interface EstimateRemoteResult {
-  costUsd: number
+  costUsd: number | null
 }

@@ -62,25 +62,27 @@ for (const entry of ["new connection", "saved connection"] as const) {
         const cleared = await request.put("/api/settings", { data: { patch: { keys: { openai: "" } } } })
         expect(cleared.ok()).toBe(true)
         await page.goto("/onboarding")
-        const created = page.waitForResponse((response) => response.url().endsWith("/api/profile") && response.request().method() === "POST")
-        for (const answer of Object.values(ANSWERS)) {
-          if (answer === ANSWERS.feedPrefs) {
-            await page.getByRole("button", { name: /Feed preferences/ }).click()
-            await page.getByRole("radio", { name: /Exploratory/ }).check()
-            await page.getByRole("checkbox", { name: /Learn from my explicit/ }).uncheck()
-            await page.getByRole("button", { name: "Done", exact: true }).click()
-          }
-          const composer = page.getByRole("region", { name: "Chat with Sparky" }).getByRole("textbox")
-          await composer.fill(answer)
-          await composer.press("Enter")
-        }
-        const profileResponse = await created
-        expect(profileResponse.status()).toBe(201)
-        changesetId = (await profileResponse.json()).changesetId
-        expect((await (await request.get("/api/profile")).json()).profile.recommendations).toMatchObject({ diversity: "exploratory", learnFromFeedback: false })
         await expect(page).toHaveURL(/\/setup$/)
+        expect(feedRequests).toBe(0)
         await page.getByPlaceholder("Paste your API key").fill("e2e-local-only-key")
-        await page.getByRole("button", { name: "Save, test & build my feed" }).click()
+        await page.getByRole("button", { name: "Connect & continue" }).click()
+        await expect(page).toHaveURL(/\/onboarding$/)
+        const composer = page.getByRole("textbox", { name: "Your reply to Sparky" })
+        for (const answer of ["Ada", "Postdoc in auditory neuroscience", "Language development and hearing", "Mostly hearing research, with some computational methods from nearby fields", "No, don’t learn from my feedback"]) {
+          await composer.fill(answer)
+          const turn = page.waitForResponse((response) => response.url().endsWith("/api/onboarding") && response.request().method() === "POST")
+          await composer.press("Enter")
+          await (await turn).finished()
+          await expect(composer).toBeEnabled()
+          expect(feedRequests).toBe(0)
+        }
+        const review = page.getByRole("form", { name: "Review your research profile" })
+        await expect(review).toBeVisible()
+        expect((await request.get("/api/profile")).status()).toBe(404)
+        const confirmation = page.waitForResponse((response) => response.url().endsWith("/api/onboarding") && response.request().postDataJSON()?.action === "confirm")
+        await review.getByRole("button", { name: "Confirm profile & find papers" }).click()
+        changesetId = (await (await confirmation).json()).changesetId
+        expect((await (await request.get("/api/profile")).json()).profile.recommendations).toMatchObject({ diversity: "exploratory", learnFromFeedback: false })
       } else {
         const profileResponse = await request.post("/api/profile", { data: ANSWERS })
         expect(profileResponse.status()).toBe(201)
@@ -111,6 +113,7 @@ for (const entry of ["new connection", "saved connection"] as const) {
         const undone = await request.post("/api/history/changes", { data: { changesetId } })
         expect(undone.ok()).toBe(true)
       }
+      await storage.delete("profile/onboarding-conversation.json")
       // Restore only the disposable fixture key for the rest of the E2E suite.
       const restored = await request.put("/api/settings", { data: { patch: { keys: { openai: "e2e-local-only-key" } } } })
       expect(restored.ok()).toBe(true)

@@ -14,7 +14,7 @@ type DigestOutcome = {
   digest: DigestResult
   fromCache: boolean
   runId?: string
-  costUsd?: number
+  costUsd?: number | null
   cacheWriteFailed?: boolean
 }
 

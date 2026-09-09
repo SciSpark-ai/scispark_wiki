@@ -5,9 +5,8 @@ import { loadSettings, resolveTier, buildProvider, type LLMSettings } from "../l
 import { Meter, checkBudget, BudgetExceededError } from "../llm/metering"
 import { withRetry } from "../llm/retry"
 import { completeStructured, StructuredOutputError } from "../llm/structured"
-import { estimateCostUsd } from "../llm/pricing"
+import { estimateCostUsd, addCosts, estimateNextCallUsd } from "../llm/pricing"
 import type { SkillContext, SkillDefinition, SkillRunResult } from "./types"
-
 import { withVaultExclusive } from "../vault/exclusive"
 
 function makeRunId(now: () => Date): string {
@@ -34,6 +33,8 @@ export async function runSkill<I, O>(opts: {
   /** Passed through to every `withRetry` call (both `ctx.llm` and `ctx.llmStructured`). Tests use this to shrink backoff delays. */
   retryOpts?: { retries?: number; baseDelayMs?: number; sleep?: (ms: number) => Promise<void> }
 }): Promise<SkillRunResult<O>> {
+  // The review coordinator uses this same cross-process spending lock. Existing
+  // skills cannot race a deep-review reservation against the daily allowance.
   return withVaultExclusive(opts.storage, "ai-spend", () => runSkillLocked(opts))
 }
 
@@ -44,13 +45,13 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
   const runId = makeRunId(now)
 
   const totals: LLMUsage = { inputTokens: 0, outputTokens: 0 }
-  let costUsd = 0
+  let costUsd: number | null = 0
   const logs: string[] = []
 
   function accumulate(model: string, usage: LLMUsage): void {
     totals.inputTokens += usage.inputTokens
     totals.outputTokens += usage.outputTokens
-    costUsd += estimateCostUsd(model, usage) ?? 0
+    costUsd = addCosts(costUsd, estimateCostUsd(model, usage))
   }
 
   function resolveProvider(tier: Tier): LLMProvider {
@@ -81,9 +82,13 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
 
   const ctx: SkillContext = {
     async llm(tier, req) {
-      await checkBudget(meter, settings)
-      const provider = resolveProvider(tier)
+      // Resolve just the model id (a pure settings lookup) before the budget check
+      // so the projection can be priced; provider construction (which can throw
+      // MissingKeyError) stays AFTER the check, preserving today's precedence —
+      // an over-budget run still fails with BudgetExceededError first.
       const model = resolveTier(settings, tier).model
+      await checkBudget(meter, settings, estimateNextCallUsd(model, req) ?? 0, (message) => { if (!logs.includes(message)) logs.push(message) })
+      const provider = resolveProvider(tier)
       const result = await withRetry(() => provider.complete(model, req), opts.retryOpts)
       // Meter/price on the REQUESTED model (`model`), not the provider-echoed
       // `result.model`: pricing.ts's PRICES table is keyed by requested ids, but
@@ -101,13 +106,22 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
       schema: z.ZodType<T>,
       structuredOpts?: Parameters<SkillContext["llmStructured"]>[3],
     ) {
-      await checkBudget(meter, settings)
-      // NOTE: budget is checked once here, not inside completeStructured's internal
-      // validation-retry loop — a structured call can therefore spend up to ~2x a
-      // single call's cost before the next budget check catches it. Accepted
-      // soft-overrun per the "summed usage recorded once" contract.
-      const provider = resolveProvider(tier)
+      // Same resolve-model-before-check, resolve-provider-after ordering as ctx.llm
+      // above (see its comment): keeps BudgetExceededError taking precedence over
+      // a MissingKeyError from provider construction.
       const model = resolveTier(settings, tier).model
+      await checkBudget(meter, settings, estimateNextCallUsd(model, req) ?? 0, (message) => { if (!logs.includes(message)) logs.push(message) })
+      const provider = resolveProvider(tier)
+      // NOTE: the projection above covers the FIRST attempt only — it is checked
+      // once here, not inside completeStructured's internal validation-retry loop.
+      // If that first attempt returns schema-invalid JSON, completeStructured makes
+      // one more provider call to retry before giving up, and that second call is
+      // never itself budget-checked. So a structured call can still spend up to
+      // ~2x the projected estimate before the NEXT budget check (on the following
+      // skill call) catches it. Accepted soft-overrun per the "summed usage
+      // recorded once" contract — projecting here just shrinks the window from
+      // "a whole call's cost" (today) to "one retry's worth" on top of a covered
+      // first attempt.
       // Wrap the provider in a retry-facade so transient/rate-limit errors during a
       // structured call are retried with backoff, same as ctx.llm — completeStructured's
       // own 2-attempt loop is for schema-validation retries only, not transient failures.

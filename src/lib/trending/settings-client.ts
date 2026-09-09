@@ -1,6 +1,7 @@
 import type { TrendingSettings } from "./settings"
 import type { SettingsResponse } from "@/app/api/settings/route"
 import { errorMessageFor } from "@/lib/llm/settings-client"
+import type { AnchorDiscipline } from "./anchors"
 
 /**
  * Browser-side trending settings, read/written through `/api/settings` (M12
@@ -34,4 +35,13 @@ export async function saveTrendingSettingsRemote(
   if (!res.ok) throw new Error(await errorMessageFor(res))
   const body = (await res.json()) as SettingsResponse
   return body.trending
+}
+
+/** Read-only OpenAlex lookup after the user explicitly asks for suggestions. */
+export async function suggestTrendingFieldsRemote(labels: string[], fetchFn: typeof fetch = fetch): Promise<AnchorDiscipline[]> {
+  const res = await fetchFn("/api/settings/trending/suggestions", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ labels }),
+  })
+  if (!res.ok) throw new Error(await errorMessageFor(res))
+  return ((await res.json()) as { anchors: AnchorDiscipline[] }).anchors
 }

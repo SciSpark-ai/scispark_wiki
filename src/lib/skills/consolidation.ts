@@ -135,7 +135,7 @@ export async function runConsolidation(
 ): Promise<{
   status: "skipped" | "unchanged" | "applied"
   changesetId?: string
-  costUsd?: number
+  costUsd?: number | null
   runId?: string
   warnings?: MutationWarning[]
 }> {

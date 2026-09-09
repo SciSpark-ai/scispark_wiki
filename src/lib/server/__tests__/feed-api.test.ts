@@ -10,6 +10,7 @@ import type { PaperRecord } from "../../papers/types"
 import type { SearchFn } from "../../skills/feed"
 import { loadFeed, FEED_CACHE_PATH, type FeedResult, type FeedStrategy } from "../../skills/feed"
 import { logEvent } from "../../events/log"
+import { saveTrendingSettings } from "../../trending/settings"
 import * as feedRefreshRoute from "../../../app/api/skills/feed/refresh/route"
 import * as consolidateRoute from "../../../app/api/skills/consolidate/route"
 
@@ -53,6 +54,25 @@ describe("feed + consolidation skill routes", () => {
   })
 
   describe("POST /api/skills/feed/refresh", () => {
+    it("reads shared fields from the server vault, not a client-forged preference payload", async () => {
+      await seedOnboardedUserModel(storage)
+      await saveTrendingSettings(storage, { fields: [], cadence: "weekly", anchorsOverridden: true,
+        anchors: [{ id: "28", label: "Neuroscience", subfieldIds: ["2805"] }],
+      })
+      const strong = new MockProvider([structured(ONE_QUERY_STRATEGY)])
+      const fast = new MockProvider([structured({ assessments: [assessment(0, 4), assessment(1, 3)] })])
+      setSkillTestOverrides({ providerOverride: { strong, fast }, searchFn: fakeSearchFn })
+      const response = await feedRefreshRoute.POST(new Request("http://x/api/skills/feed/refresh", {
+        method: "POST", body: JSON.stringify({ fieldPreferences: [{ label: "FORGED CLIENT INTEREST" }] }),
+      }))
+      const result = await readNdjson(response, () => {}) as FeedResult
+      for (const provider of [strong, fast]) {
+        expect(provider.calls[0].req.messages[1].content).toContain("Cognitive Neuroscience")
+        expect(JSON.stringify(provider.calls)).not.toContain("FORGED CLIENT INTEREST")
+      }
+      expect(result.recommendation?.fieldPreferences?.[0].subfields[0].id).toBe("https://openalex.org/subfields/2805")
+      expect(await loadFeed(storage)).toEqual(result)
+    })
     it("streams funnel-stage progress, result parses as a FeedResult, and the cache is written to the test vault", async () => {
       await seedOnboardedUserModel(storage)
 

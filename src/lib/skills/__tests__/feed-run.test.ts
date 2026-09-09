@@ -66,6 +66,36 @@ function providers(grades = [4, 1, 3]) {
 }
 
 describe("runFeed weighted pipeline", () => {
+  it.each([false, true])("honors enabled sources even when the model proposes only disabled sources (planner failure=%s)", async (fails) => {
+    const storage = await vault(), p = providers([4]), seen: string[] = []
+    await storage.write(".scispark/settings.json", JSON.stringify({ paperSources: { enabledSources: ["pubmed"] } }))
+    if (fails) p.strong = new MockProvider([])
+    const result = await runFeed(storage, {
+      searchFn: async (source) => { seen.push(source); return candidates(1) },
+      settings: settingsWithKeys(), providerOverride: p, now: NOW,
+    })
+    expect(seen.length).toBeGreaterThan(0)
+    expect(new Set(seen)).toEqual(new Set(["pubmed"]))
+    expect(result.strategy.queries.every((query) => query.source === "pubmed")).toBe(true)
+    if (!fails) expect(p.strong.calls[0].req.messages[0].content).toContain("Only use these enabled sources: pubmed")
+  })
+  it("drops disabled sources from a mixed model plan", async () => {
+    const storage = await vault(), p = providers([4]), seen: string[] = []
+    await storage.write(".scispark/settings.json", JSON.stringify({ paperSources: { enabledSources: ["arxiv", "pubmed"] } }))
+    p.strong = new MockProvider([llmResult({ queries: [...ONE_QUERY_STRATEGY.queries, { source: "s2", query: "attention", rationale: "forbidden source" }] }, "claude-opus-4-8")])
+    await runFeed(storage, { searchFn: async (source) => { seen.push(source); return candidates(1) }, settings: settingsWithKeys(), providerOverride: p, now: NOW })
+    expect(new Set(seen)).toEqual(new Set(["arxiv"]))
+  })
+  it("completes a first feed when source records explicitly contain missing optional IDs", async () => {
+    const storage = await vault()
+    const result = await runFeed(storage, {
+      searchFn: async () => candidates(1).map((paper) => ({ ...paper, ids: { ...paper.ids, doi: undefined, pmid: undefined } })),
+      settings: settingsWithKeys(), providerOverride: providers([4]), now: NOW,
+    })
+    expect(result.items).toHaveLength(1)
+    expect(result.recommendation?.status).toBe("ranked")
+    expect((await loadFeed(storage))?.items).toHaveLength(1)
+  })
   it("reads persisted Sparky reasons into both next search planning and candidate assessment", async () => {
     const storage = await vault()
     await storage.write(FEEDBACK_PATH, JSON.stringify({ version: 1, entries: [{ paperKey: "doi:old-feedback", title: "Sparse attention methods", abstract: "Sparse attention in simulation.", topics: ["sparse attention"], reason: "wrong_method", note: "I need empirical evaluations, not simulation alone.", at: NOW().toISOString() }] }))

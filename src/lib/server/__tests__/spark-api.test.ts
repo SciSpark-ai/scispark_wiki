@@ -5,6 +5,7 @@ import { setServerVaultForTests } from "../vault"
 import { setSkillTestOverrides } from "../skill-route"
 import { readNdjson } from "../ndjson"
 import { MockProvider } from "../../llm/mock-provider"
+import { DEFAULT_SETTINGS, saveSettings } from "../../llm/settings"
 import type { LLMResult } from "../../llm/types"
 import { loadBundle } from "../../vault/bundle"
 import type { SearchFn } from "../../spark/grounding"
@@ -216,6 +217,14 @@ describe("spark quick/seed/deep/estimate skill routes", () => {
   })
 
   describe("POST /api/skills/spark/estimate", () => {
+    it("uses the selected model and preserves an unknown rate", async () => {
+      await saveSettings(storage, { ...DEFAULT_SETTINGS, tierModels: {
+        ...DEFAULT_SETTINGS.tierModels, strong: { provider: "openai", model: "google/gemini-3.8-flash" },
+      } })
+      const res = await estimateRoute.POST(new Request("http://x/api/skills/spark/estimate", { method: "POST", body: "{}" }))
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ result: { costUsd: null } })
+    })
     it("returns the static estimateDeepSparkCost() number, no provider needed", async () => {
       const res = await estimateRoute.POST(
         new Request("http://x/api/skills/spark/estimate", { method: "POST", body: JSON.stringify({}) }),

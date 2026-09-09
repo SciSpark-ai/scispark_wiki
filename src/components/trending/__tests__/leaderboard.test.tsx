@@ -48,10 +48,9 @@ function topic(overrides: Partial<BoardTopic> = {}): BoardTopic {
 
 /** Every `height="…"` in the rendered SVG, in document order (prior bar, then recent bar). */
 function barHeights(html: string): number[] {
-  return [...html.matchAll(/height="([^"]*)"/g)]
-    .map((m) => m[1])
-    .slice(1) // the <svg> element's own height comes first
-    .map(Number)
+  const container = document.createElement("div")
+  container.innerHTML = html
+  return Array.from(container.querySelectorAll('svg[role="img"] rect')).map((rect) => Number(rect.getAttribute("height")))
 }
 
 describe("TrendBars", () => {
@@ -147,7 +146,7 @@ describe("TopicRow growth badge", () => {
 })
 
 describe("TopicRow badge/bar agreement", () => {
-  it("a positive badge is never drawn beside a shrinking recent bar", () => {
+  it("expanded comparison bars agree with the positive growth badge", () => {
     // The live row: 184 → 134 papers, corpus 22808 → 13953. Badge +19%, and
     // the bars must agree with it.
     const html = renderToStaticMarkup(
@@ -160,7 +159,7 @@ describe("TopicRow badge/bar agreement", () => {
           recentShare: 134 / 13953,
         })}
         rank={1}
-        expanded={false}
+        expanded={true}
         onToggle={() => {}}
       />,
     )
@@ -187,19 +186,27 @@ describe("TopicRow badge/bar agreement", () => {
 })
 
 describe("TopicRow relevance marker", () => {
-  it("renders a 'Relevant to you' marker only when topic.relevant", () => {
+  it("renders a 'Matches your interests' marker only when topic.relevant", () => {
     const relevantHtml = renderToStaticMarkup(
       <TopicRow topic={topic({ relevant: true })} rank={1} expanded={false} onToggle={() => {}} />,
     )
     const notRelevantHtml = renderToStaticMarkup(
       <TopicRow topic={topic({ relevant: false })} rank={1} expanded={false} onToggle={() => {}} />,
     )
-    expect(relevantHtml).toMatch(/Relevant to you/i)
-    expect(notRelevantHtml).not.toMatch(/Relevant to you/i)
+    expect(relevantHtml).toMatch(/Matches your interests/i)
+    expect(notRelevantHtml).not.toMatch(/Matches your interests/i)
   })
 })
 
 describe("TopicRow expand control", () => {
+  it("keeps raw volume visible and unlabeled bars out of collapsed rows", () => {
+    const html = renderToStaticMarkup(<TopicRow topic={topic({ recentCount: 1420 })} rank={1} expanded={false} onToggle={() => {}} />)
+    expect(html).toContain("1,420")
+    expect(html).toContain("Share growth:")
+    expect(html).not.toContain('role="img"')
+    expect(html).not.toContain("truncate")
+  })
+
   it("is a real <button> with aria-expanded reflecting the expanded prop", () => {
     const collapsedHtml = renderToStaticMarkup(
       <TopicRow topic={topic()} rank={1} expanded={false} onToggle={() => {}} />,
@@ -270,21 +277,22 @@ describe("TopicRow expanded content", () => {
 })
 
 describe("OverviewStrip", () => {
-  it("renders an em dash for a null topTopicLabel", () => {
+  it("renders labeled zero counts without an empty top-topic card", () => {
     const html = renderToStaticMarkup(
       <OverviewStrip overview={{ totalRecent: 0, topTopicLabel: null, topTopicGrowth: null, relevantCount: 0 }} />,
     )
-    expect(html).toContain("—")
+    expect(html).toContain("0 topics match your interests")
+    expect(html).not.toContain("—")
   })
 
-  it("renders the literal word 'new' for a null topTopicGrowth, never an em dash for it", () => {
+  it("does not duplicate the leading topic above the list", () => {
     const html = renderToStaticMarkup(
       <OverviewStrip
         overview={{ totalRecent: 12, topTopicLabel: "Sparse Attention", topTopicGrowth: null, relevantCount: 1 }}
       />,
     )
-    expect(html).toContain("Sparse Attention")
-    expect(html).toMatch(/>new</)
+    expect(html).not.toContain("Sparse Attention")
+    expect(html).toContain("1 topic matches your interests")
   })
 
   it("phrases totalRecent without overclaiming an exact dedup total", () => {
@@ -347,6 +355,13 @@ describe("Leaderboard", () => {
 })
 
 describe("BreakoutPapers", () => {
+  it("uses the same publication cutoff as the board instead of today for its lookback", () => {
+    const html = renderToStaticMarkup(<BreakoutPapers breakouts={[{ record: paper(), citationCount: 12, wikiPageId: null }]} generatedAt="2026-08-29T21:51:44Z" />)
+    expect(html).toContain("Published May 25–Aug 23, 2026.")
+    expect(html).toContain("Across all your selected fields.")
+    expect(html).not.toContain("truncate")
+  })
+
   it("renders null for an empty breakouts list", () => {
     const html = renderToStaticMarkup(<BreakoutPapers breakouts={[]} />)
     expect(html).toBe("")

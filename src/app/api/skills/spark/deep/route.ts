@@ -2,6 +2,7 @@ import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-rout
 import { loadSettings } from "@/lib/llm/settings"
 import { nodeSearchFn } from "@/lib/papers/node-search"
 import { runDeepSpark, type DeepSparkResult } from "@/lib/spark/deep"
+import { withLedger } from "@/lib/runs/ledger"
 
 export interface DeepSparkRouteInput {
   direction: string
@@ -40,16 +41,25 @@ export const POST = ndjsonSkillRoute<DeepSparkRouteInput>(async (input, vault, e
   const overrides = getSkillTestOverrides()
   const today = new Date().toISOString().slice(0, 10)
 
-  const result: DeepSparkResult = await runDeepSpark({
-    storage: vault,
-    direction: input.direction,
-    clusterPageIds: input.clusterPageIds,
-    seedPageId: input.seedPageId,
-    searchFn: overrides.searchFn ?? nodeSearchFn(),
-    settings,
-    providerOverride: overrides.providerOverride,
-    today,
-    onPhase: (phase) => emit({ type: "progress", phase }),
+  return withLedger(vault, { orchestrator: "spark-deep", trigger: "user" }, async () => {
+    const result: DeepSparkResult = await runDeepSpark({
+      storage: vault,
+      direction: input.direction,
+      clusterPageIds: input.clusterPageIds,
+      seedPageId: input.seedPageId,
+      searchFn: overrides.searchFn ?? nodeSearchFn(),
+      settings,
+      providerOverride: overrides.providerOverride,
+      today,
+      onPhase: (phase) => emit({ type: "progress", phase }),
+    })
+
+    const degraded = result.outcome.kind === "abandoned" || result.outcome.kind === "do_not_generate"
+    return {
+      result,
+      status: degraded ? "degraded" : "ok",
+      reason: degraded ? result.outcome.kind : undefined,
+      costUsd: result.costUsd,
+    }
   })
-  return result
 })

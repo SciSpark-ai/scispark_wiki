@@ -1,3 +1,4 @@
+import { withLedger } from "@/lib/runs/ledger"
 import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
 import { nodeFeedSearchFn } from "@/lib/papers/node-search"
@@ -46,11 +47,14 @@ export const POST = ndjsonSkillRoute<Record<string, never>>(async (_input, vault
     promise: Promise.resolve().then(async () => {
       const settings = await loadSettings(vault)
       const overrides = getSkillTestOverrides()
-      return runFeed(vault, {
-        searchFn: overrides.searchFn ?? nodeFeedSearchFn(),
-        settings,
-        providerOverride: overrides.providerOverride,
-        onStage: (stage) => broadcast(state, stage),
+      return withLedger(vault, { orchestrator: "feed-refresh", trigger: "user" }, async () => {
+        const result = await runFeed(vault, {
+          searchFn: overrides.searchFn ?? nodeFeedSearchFn(),
+          settings,
+          providerOverride: overrides.providerOverride,
+          onStage: (stage) => broadcast(state, stage),
+        })
+        return { result, status: "ok", costUsd: result.costUsd, meta: { itemCount: result.items.length } }
       })
     }),
   }

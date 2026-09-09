@@ -36,6 +36,6 @@ export interface SkillRunResult<O> {
   output?: O
   error?: string
   usage: LLMUsage
-  costUsd: number
+  costUsd: number | null
   logs: string[]
 }

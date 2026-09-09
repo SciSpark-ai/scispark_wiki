@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Check, Eye, EyeOff, ExternalLink, Loader2, AlertCircle } from "lucide-react"
 import { loadRedactedSettings, patchSettings } from "@/lib/llm/settings-client"
 import type { ProviderId } from "@/lib/llm/types"
+import { estimateCostUsd, formatCost } from "@/lib/llm/pricing"
 
 /**
  * A guided BYOK connection preset. Picking a named provider fills in its
@@ -88,7 +89,7 @@ const PRESETS: Preset[] = [
 type TestState =
   | { status: "idle" }
   | { status: "testing" }
-  | { status: "ok"; ms: number; costUsd: number }
+  | { status: "ok"; ms: number; costUsd: number | null }
   | { status: "error"; message: string }
 
 const inputClass =
@@ -140,6 +141,7 @@ export function ConnectAiCard({
   const [apiKey, setApiKey] = useState("")
   const [showKey, setShowKey] = useState(false)
   const [keySaved, setKeySaved] = useState(false)
+  const [savedProviders, setSavedProviders] = useState<Partial<Record<ProviderId, boolean>>>({})
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [test, setTest] = useState<TestState>({ status: "idle" })
@@ -159,6 +161,7 @@ export function ConnectAiCard({
         setStrongModel(s.tierModels.strong.model)
         setBaseUrl(provider === "openai" ? savedBaseUrl : s.baseUrls?.openrouter ?? "")
         setKeySaved(!!s.keys[provider]?.present)
+        setSavedProviders(Object.fromEntries(Object.entries(s.keys).map(([id, value]) => [id, !!value?.present])))
       } catch {
         // Fall back to the first preset's defaults if settings can't be read.
         applyPreset(PRESETS[0])
@@ -175,6 +178,8 @@ export function ConnectAiCard({
     setBaseUrl(p.baseUrl)
     setAdvancedOpen(false)
     setTest({ status: "idle" })
+    setKeySaved(!!savedProviders[p.provider])
+    setApiKey("")
   }
 
   /** In "Other" mode a single Model field drives both tiers; Advanced can split. */
@@ -203,6 +208,7 @@ export function ConnectAiCard({
       })
       if (apiKey.trim()) {
         setKeySaved(true)
+        setSavedProviders((previous) => ({ ...previous, [preset.provider]: true }))
         setApiKey("")
       }
     } catch (err) {
@@ -210,18 +216,17 @@ export function ConnectAiCard({
       setTest({ status: "error", message: friendlyError(err instanceof Error ? err.message : String(err)) })
       return
     }
-    // Ping the just-saved config through the server so the user sees whether
-    // their key actually works, with round-trip latency.
+    // Test both saved model tiers through the server before handing off.
     setTest({ status: "testing" })
     const started = Date.now()
     try {
-      const res = await fetch("/api/skills/debug/ping", {
+      const res = await fetch("/api/settings/test-connection", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind: "ping" }),
+        body: "{}",
       })
       const body = (await res.json().catch(() => null)) as
-        | { result?: { status: string; error?: string; costUsd?: number } }
+        | { result?: { status: string; error?: string; costUsd?: number | null } }
         | { error?: string }
         | null
       const result = body && "result" in body ? body.result : undefined
@@ -232,7 +237,7 @@ export function ConnectAiCard({
           `Request failed (${res.status})`
         setTest({ status: "error", message: friendlyError(message ?? "Connection test failed") })
       } else {
-        const nextTest = { status: "ok" as const, ms: Date.now() - started, costUsd: result.costUsd ?? 0 }
+        const nextTest = { status: "ok" as const, ms: Date.now() - started, costUsd: result.costUsd ?? null }
         setTest(nextTest)
         onConnected?.({ provider: preset.provider, providerLabel: preset.label, model: strongModel.trim() })
       }
@@ -243,7 +248,7 @@ export function ConnectAiCard({
     }
   }
 
-  const connected = keySaved && test.status !== "error"
+  const connected = test.status === "ok"
   const missingCustomFields = isCustom && (!baseUrl.trim() || !strongModel.trim())
   const saveDisabled = saving || (!apiKey.trim() && !keySaved) || missingCustomFields
 
@@ -259,18 +264,18 @@ export function ConnectAiCard({
           }`}
         >
           <span className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-green-500" : "bg-muted-text/50"}`} />
-          {connected ? `Connected — ${preset.label}${strongModel ? ` · ${strongModel}` : ""}` : "Not connected"}
+          {connected ? `Connected — ${preset.label}${strongModel ? ` · ${strongModel}` : ""}` : keySaved ? "Key saved — test connection" : "Not connected"}
         </span>
       </div>
       <p className="text-[13px] text-muted-text mb-5">
         Your key is stored only in this local vault and is never shown again after saving. SciSpark calls the provider
-        from its local runtime.{firstRun ? " Once the connection works, SciSpark will build your first feed automatically." : ""}
+        from its local runtime.{firstRun ? " Once connected, you’ll talk with Sparky and confirm your profile before the first feed starts." : ""}
       </p>
 
       {!loaded ? (
         <p className="text-[13px] text-muted-text">Loading…</p>
       ) : (
-        <>
+        <fieldset disabled={saving} onChangeCapture={() => setTest({ status: "idle" })} className="min-w-0">
           {/* Provider preset picker */}
           <label className="block text-[13px] text-muted-text font-medium uppercase tracking-[0.06em] mb-2">
             Provider
@@ -412,6 +417,7 @@ export function ConnectAiCard({
           )}
 
           {/* Save & test */}
+          {[strongModel, fastModel].some((model) => model && estimateCostUsd(model, { inputTokens: 1, outputTokens: 1 }) === null) && <p className="mt-3 text-[12px] leading-relaxed text-muted-text">SciSpark does not have pricing for one or more selected models. Provider calls may incur charges, and the local budget cannot account for them. Set a spending limit with your provider.</p>}
           <div className="flex items-center gap-3 mt-4">
             <button
               type="button"
@@ -420,13 +426,13 @@ export function ConnectAiCard({
               className="px-4 py-2 rounded-pill text-[14px] font-medium bg-orange text-white hover:bg-orange/90 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
-              {saving ? "Saving…" : firstRun ? "Save, test & build my feed" : "Save & test connection"}
+              {saving ? "Testing connection…" : firstRun ? "Connect & continue" : "Save & test connection"}
             </button>
 
             {test.status === "ok" && (
               <span className="inline-flex items-center gap-1.5 text-[13px] text-green-700">
                 <Check size={15} strokeWidth={2.2} />
-                Connected in {test.ms} ms{test.costUsd > 0 ? ` · ~$${test.costUsd.toFixed(4)}` : ""}
+                Connected in {test.ms} ms · {formatCost(test.costUsd, 4)}
               </span>
             )}
             {test.status === "error" && (
@@ -436,7 +442,7 @@ export function ConnectAiCard({
               </span>
             )}
           </div>
-        </>
+        </fieldset>
       )}
     </div>
   )

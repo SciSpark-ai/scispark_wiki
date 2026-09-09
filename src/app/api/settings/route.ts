@@ -14,6 +14,7 @@ import {
 import { normalizeUiSettings, type UiSettings } from "@/lib/ui/settings"
 import { withSettingsWrite } from "@/lib/vault/settings-write"
 import type { ProviderId } from "@/lib/llm/types"
+import { manualAnchorError } from "@/lib/trending/anchors"
 
 const SETTINGS_PATH = ".scispark/settings.json"
 
@@ -164,6 +165,8 @@ export async function PUT(req: Request): Promise<Response> {
   if (hasTrending && (body.trending === null || typeof body.trending !== "object")) {
     return jsonResponse(400, { error: "trending must be an object" })
   }
+  const topicError = hasTrending ? manualAnchorError(body.trending) : null
+  if (topicError) return jsonResponse(400, { error: topicError })
   if (hasUi && (body.ui === null || typeof body.ui !== "object")) {
     return jsonResponse(400, { error: "ui must be an object" })
   }

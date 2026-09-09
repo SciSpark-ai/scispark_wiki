@@ -1,4 +1,4 @@
-import { mergeRecords, paperKey, type PaperRecord } from "../papers/types"
+import { mergeRecords, paperKey, PaperSourceError, type PaperRecord } from "../papers/types"
 import { feedExclusionReason } from "../papers/eligibility"
 import type { FeedPreferenceMemory } from "../usermodel/feed-memory"
 import { FEEDBACK_LIMIT, preferenceEffects } from "./preference-effects"
@@ -7,6 +7,7 @@ import {
   AssessmentSchema, VenueSignalSchema, RECOMMENDATION_VERSION,
   type Assessment, type FeedbackEntry, type RecommendationPreferences,
   type RecommendationRun, type ScoreBreakdown, type VenueSignal,
+  type ResearchFieldPreference,
 } from "./contract"
 
 export const WEIGHTS = { relevance: 70, recency: 20, venue: 10 } as const
@@ -21,6 +22,8 @@ export interface RecommendationContext {
   hasQuestion: boolean
   hasApproach: boolean
   memories?: FeedPreferenceMemory[]
+  fieldPreferences?: ResearchFieldPreference[]
+  diversity?: RecommendationPreferences["diversity"]
 }
 export interface Candidate {
   paper: PaperRecord
@@ -73,7 +76,11 @@ export function interleaveCandidates(groups: Candidate[][], excluded: Set<string
   }
   return result.filter(({ paper }) => {
     if (feedExclusionReason(paper)) return false
-    const aliases = Object.entries(paper.ids).map(([kind, id]) => `${kind}:${fold(id!)}`)
+    // Source adapters retain optional ID keys with undefined values. Only real,
+    // non-empty identifiers can participate in saved/dismissed-paper exclusions.
+    const aliases = Object.entries(paper.ids).flatMap(([kind, id]) =>
+      typeof id === "string" && id.trim() ? [`${kind}:${fold(id)}`] : [],
+    )
     return ![paperKey(paper), ...aliases, `title:${fold(paper.title)}`].some((key) => excluded.has(key))
   })
 }
@@ -196,11 +203,15 @@ export function selectRecommendations(items: RecommendedPaper[], preferences: Re
   return selected
 }
 
-export async function withDeadline<T>(task: Promise<T>, milliseconds: number): Promise<T> {
+export async function withDeadline<T>(task: Promise<T>, milliseconds: number, controller?: AbortController): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([task, new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error("Source timed out")), milliseconds)
+      timer = setTimeout(() => {
+        const error = new DOMException("Source timed out", "TimeoutError")
+        controller?.abort(error)
+        reject(error)
+      }, milliseconds)
     })])
   } finally { clearTimeout(timer) }
 }
@@ -218,8 +229,9 @@ export async function retrieveRecommendationCandidates(
     const groups = await Promise.all(strategy.queries.map(async (query) => {
       const trace: RecommendationRun["retrieval"][number] = { source: query.source, query: query.query, fromDate: from, count: 0 }
       retrieval.push(trace)
+      const controller = new AbortController()
       try {
-        const papers = await withDeadline(search(query.source, query.query, 25, { fromDate: from, sort: "relevance" }), opts.timeoutMs ?? 20_000)
+        const papers = await withDeadline(search(query.source, query.query, 25, { fromDate: from, sort: "relevance", signal: controller.signal }), opts.timeoutMs ?? 20_000, controller)
         const eligible = papers.filter((paper) => {
           if (feedExclusionReason(paper)) return false
           const date = publicationDate(paper)
@@ -230,9 +242,15 @@ export async function retrieveRecommendationCandidates(
         })
         trace.count = eligible.length
         return eligible.map((paper) => ({ paper, sources: [query.source], queries: [query.query] }))
-      } catch {
+      } catch (error) {
         // Do not expose arbitrary adapter errors: URLs can include data-source keys.
-        trace.error = "Source unavailable or timed out"
+        trace.error = error instanceof PaperSourceError && error.status === 429
+          ? "Rate limited; some papers could not be retrieved."
+          : error instanceof PaperSourceError && (error.status === 401 || error.status === 403)
+            ? "Access denied by this source; check its API key or access permissions."
+            : error instanceof Error && error.name === "TimeoutError"
+              ? "Search timed out; some papers could not be retrieved."
+              : "Search failed; some papers could not be retrieved."
         return []
       }
     }))

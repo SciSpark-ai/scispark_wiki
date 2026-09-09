@@ -3,12 +3,9 @@ import { readNdjson } from "../server/ndjson"
 
 /**
  * Browser-side caller for the companion utterance skill route (M11 Task 9).
- * `useCompanion` used to assemble the full `TriggerState` itself (`loadFeed`
- * + `readRecentEvents` + `reviewCount` + `loadBundle` + `loadSettings`, all
- * client-side vault reads) and call `runCompanion` directly — it now only
- * reports what it alone knows (current route, and the per-tab session
- * bookkeeping already tracked in `useCompanionStore`) and lets the server
- * assemble the rest and run the skill.
+ * Reports the current route. The server owns event detection, persisted
+ * delivery history, and frequency limits. Legacy counts remain optional for
+ * compatibility and cannot reset server-owned limits.
  *
  * `CompanionUtterance` is imported with `import type` from `./run`, which is
  * erased at compile time — none of that module's runtime code (skill runner,
@@ -18,8 +15,8 @@ import { readNdjson } from "../server/ndjson"
 
 export interface CompanionRemoteInput {
   route: string
-  sessionShownCount: number
-  lastShownTs: Record<string, string>
+  sessionShownCount?: number
+  lastShownTs?: Record<string, string>
 }
 
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
@@ -32,7 +29,7 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
 }
 
 /**
- * POST /api/skills/companion with `{route, sessionShownCount, lastShownTs}`;
+ * POST /api/skills/companion with `{route}`;
  * resolves with `CompanionUtterance | null` — a real `null` result (no
  * trigger eligible / budget exhausted / chattiness off) is a normal, non-error
  * outcome and resolves rather than throwing. Only a genuinely failed request
@@ -42,11 +39,13 @@ export async function companionUtteranceRemote(
   input: CompanionRemoteInput,
   fetchFn: typeof fetch = fetch,
   onText?: (draft: CompanionUtterance) => void,
+  signal?: AbortSignal,
 ): Promise<CompanionUtterance | null> {
   const res = await fetchFn("/api/skills/companion", {
     method: "POST",
     headers: { "content-type": "application/json", ...(onText ? { accept: "application/x-ndjson" } : {}) },
     body: JSON.stringify(input),
+    signal,
   })
   if (!res.ok) {
     throw new Error(await readErrorMessage(res, `companion failed (${res.status})`))

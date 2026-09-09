@@ -4,7 +4,17 @@
 // option here would make the feed's freshness window a no-op with zero test
 // failures anywhere else — the adapters are mocked, so this tests exactly
 // the threading and nothing about the adapters themselves.
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { MemoryVaultStorage } from "../../vault/memory-storage"
+import { setServerVaultForTests } from "../../server/vault"
+import { saveS2Key } from "../../server/paper-source-settings"
+
+let sourceSettings: MemoryVaultStorage
+beforeEach(() => {
+  sourceSettings = new MemoryVaultStorage()
+  setServerVaultForTests(sourceSettings)
+})
+afterEach(() => { setServerVaultForTests(null); vi.unstubAllEnvs() })
 
 const { mockSearchArxiv, mockSearchOpenAlex, mockSearchS2, mockSearchPubmed } = vi.hoisted(() => ({
   mockSearchArxiv: vi.fn<(q: unknown) => Promise<unknown[]>>(async () => []),
@@ -77,6 +87,28 @@ describe("nodeResearchSearchFn", () => {
 })
 
 describe("nodeFeedSearchFn", () => {
+  it("uses saved keys for feed and research searches, including replacements on existing factories", async () => {
+    vi.stubEnv("S2_API_KEY", "environment-key")
+    const feed = nodeFeedSearchFn()
+    const research = nodeResearchSearchFn()
+    for (const key of ["first-key", "replacement-key"]) {
+      await saveS2Key(sourceSettings, key)
+      await feed("s2", "attention", 1)
+      expect(mockSearchS2).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ apiKey: key }))
+      await research("s2", "attention", 1)
+      expect(mockSearchS2).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ apiKey: key }))
+    }
+    await saveS2Key(sourceSettings, null)
+    await feed("s2", "attention", 1)
+    expect(mockSearchS2).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ apiKey: "environment-key" }))
+  })
+  it("threads feed cancellation into both paced adapters", async () => {
+    const signal = new AbortController().signal
+    await nodeFeedSearchFn()("s2", "x", 1, { signal })
+    await nodeFeedSearchFn()("pubmed", "x", 1, { signal })
+    expect(mockSearchS2).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ signal }))
+    expect(mockSearchPubmed).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ signal }))
+  })
   it("preserves all four sources and forwards native date bounds", async () => {
     for (const mock of [mockSearchArxiv, mockSearchOpenAlex, mockSearchS2, mockSearchPubmed]) mock.mockClear()
     const search = nodeFeedSearchFn()

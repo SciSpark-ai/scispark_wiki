@@ -12,6 +12,7 @@ export function GrainOverlay({
 
   return (
     <div
+      aria-hidden="true"
       className={`absolute inset-0 pointer-events-none ${opacityClass}`}
       style={{
         backgroundImage: "url(/textures/grain.png)",

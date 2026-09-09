@@ -14,7 +14,7 @@ import type { PaperRecord } from "@/lib/papers/types"
 export interface DigestRouteResult {
   digest: DigestResult
   fromCache: boolean
-  costUsd?: number
+  costUsd?: number | null
 }
 
 export interface CachedDigestRouteResult {

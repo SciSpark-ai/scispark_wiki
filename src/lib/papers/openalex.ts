@@ -1,4 +1,6 @@
 import { fetchWithTimeout } from "./fetch-timeout"
+import { openAlexSubfield } from "../trending/openalex-subfields"
+import { openAlexField } from "../trending/openalex-fields"
 import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
 
 const OPENALEX_WORKS_URL = "https://api.openalex.org/works"
@@ -88,6 +90,8 @@ export interface TopCitedWorksQuery {
   topicId?: string
   /** `primary_topic.field.id:` filter — a field key as returned by `groupWorksByTopicField`. */
   fieldId?: string
+  /** Optional union of subfields inside the selected parent field. */
+  subfieldIds?: string[]
   fromDate: string
   toDate: string
   limit?: number
@@ -254,6 +258,19 @@ function fieldFilterClause(fieldId: string): string {
   return `primary_topic.field.id:${idTail(fieldId) ?? fieldId}`
 }
 
+function subfieldFilters(q: { fieldId?: string; subfieldIds?: string[] }): string[] {
+  if (q.subfieldIds === undefined) return []
+  if (!Array.isArray(q.subfieldIds)) throw new PaperSourceError("Invalid OpenAlex subfield selection")
+  if (!q.subfieldIds.length) return []
+  const field = q.fieldId ? openAlexField(q.fieldId) : undefined
+  const ids = q.subfieldIds.map((id) => {
+    const subfield = typeof id === "string" ? openAlexSubfield(id) : undefined
+    if (!field || !subfield || subfield.fieldId !== field.id) throw new PaperSourceError("Subfields must belong to the selected OpenAlex field")
+    return idTail(subfield.id)!
+  })
+  return [`primary_topic.subfield.id:${[...new Set(ids)].sort().join("|")}`]
+}
+
 function buildUrl(q: OpenAlexQuery, deps: OpenAlexDeps, opts: BuildUrlOpts = {}): string {
   const url = new URL(OPENALEX_WORKS_URL)
   // An EMPTY query means "no text scope at all" (an entity-filtered request
@@ -361,8 +378,7 @@ export async function searchOpenAlex(q: OpenAlexQuery, deps: OpenAlexDeps = {}):
  * comes from `primary_topic.id`, so its papers must too.
  *
  * `query` is an OPTIONAL additional free-text scope, kept for the callers whose
- * scope really is a text query (the board's anchor disciplines, whose ids may
- * be interest slugs rather than OpenAlex field ids). Omit it and the request
+ * scope really is a text query. Trending omits it and the request
  * carries no `search` at all — pure entity + date filtering.
  *
  * Always `is_paratext:false`: without it a citation-sorted recent window is
@@ -384,6 +400,7 @@ export async function searchTopCitedWorks(q: TopCitedWorksQuery, deps: OpenAlexD
   const filters = [NON_PARATEXT_FILTER]
   if (q.topicId) filters.push(topicFilterClause(q.topicId))
   if (q.fieldId) filters.push(fieldFilterClause(q.fieldId))
+  filters.push(...subfieldFilters(q))
   const url = buildUrl({ query: q.query ?? "", fromDate: q.fromDate, toDate: q.toDate, limit: q.limit }, deps, {
     filters,
     sort: CITED_BY_COUNT_DESC,
@@ -409,19 +426,21 @@ export async function searchTopCitedWorks(q: TopCitedWorksQuery, deps: OpenAlexD
  * `topicId` additionally scopes the count to one `primary_topic.id`. That is
  * the leaderboard's PRIOR-count lookup (SP4 §3): a count carries no 200-bucket
  * horizon, so it reads a topic's true total where `groupWorksByTopic` would
- * simply omit the topic below its visibility threshold. Pass the SAME `query`
- * as the grouped call being compared against — the count is scoped by
- * `search=` too, so an unscoped lookup would return a much larger corpus-wide
- * figure and manufacture a fake decline (live check, Computer Science /
- * T10689, 2026-07-25: 16 scoped vs 149 unscoped for the same prior window,
- * against a scoped recent count of 27).
+ * simply omit the topic below its visibility threshold. Pass the SAME field
+ * scope as the grouped call being compared against. Trending uses `fieldId`
+ * with an empty query for every metric; non-paratext filtering also matches
+ * its paper requests. Other callers can still supply a text query.
  */
 export async function countOpenAlexWorks(
-  q: { query: string; fromDate: string; toDate: string; topicId?: string },
+  q: { query: string; fromDate: string; toDate: string; topicId?: string; fieldId?: string; subfieldIds?: string[] },
   deps: OpenAlexDeps = {},
 ): Promise<number> {
   const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate, limit: 1 }, deps, {
-    filters: q.topicId ? [topicFilterClause(q.topicId)] : undefined,
+    filters: [
+      ...(q.topicId ? [topicFilterClause(q.topicId)] : []),
+      ...(q.fieldId ? [fieldFilterClause(q.fieldId), NON_PARATEXT_FILTER] : []),
+      ...subfieldFilters(q),
+    ],
   })
   const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexWorksResponse
   const count = body.meta?.count
@@ -488,11 +507,12 @@ function mapGroupByEntries(groups: OpenAlexGroupByEntry[]): GroupEntry[] {
  * OpenAlex calls; tolerates missing/malformed entries by skipping them.
  */
 export async function groupWorksByTopic(
-  q: { query: string; fromDate: string; toDate: string },
+  q: { query: string; fromDate: string; toDate: string; fieldId?: string; subfieldIds?: string[] },
   deps: OpenAlexDeps = {},
 ): Promise<GroupEntry[]> {
   const url = buildUrl({ query: q.query, fromDate: q.fromDate, toDate: q.toDate }, deps, {
     groupBy: "primary_topic.id",
+    filters: [...(q.fieldId ? [fieldFilterClause(q.fieldId), NON_PARATEXT_FILTER] : []), ...subfieldFilters(q)],
   })
   const body = (await fetchOpenAlexJson(url, deps)) as OpenAlexGroupByResponse
   return mapGroupByEntries(body.group_by ?? [])

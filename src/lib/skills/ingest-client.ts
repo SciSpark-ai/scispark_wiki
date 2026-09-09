@@ -24,7 +24,7 @@ import type { IngestOutput } from "./ingest"
 export interface DigestRemoteResult {
   digest: DigestResult
   fromCache: boolean
-  costUsd?: number
+  costUsd?: number | null
 }
 
 interface CachedDigestRemoteResult {
@@ -79,7 +79,7 @@ export type IngestPhase = "acquiring" | "snapshotting" | "digesting" | "ingestin
 
 export interface IngestRemoteResult {
   output: IngestOutput
-  costUsd: number
+  costUsd: number | null
 }
 
 /**

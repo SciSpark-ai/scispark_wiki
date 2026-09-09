@@ -7,6 +7,8 @@ import type { LLMResult } from "../../llm/types"
 import type { PaperRecord } from "../../papers/types"
 import { parseDocument } from "../../vault/frontmatter"
 import { composePage, type PageDraft } from "../../wiki/authoring"
+import { readRecentEvents } from "../../events/log"
+import { listReviews } from "../../wiki/review-queue"
 import type { AnalysisResult } from "../ingest-analysis"
 import { runSkill } from "../runner"
 import {
@@ -726,12 +728,69 @@ describe("undoIngest", () => {
     const archived = await storage.read(`.scispark/review/archived/${changesetId}-0.json`)
     expect(archived).not.toBeNull()
     expect(JSON.parse(archived as string).changesetId).toBe(changesetId)
+
+    // Durable revert telemetry alongside the log.md undo entry (Task 4).
+    const events = await readRecentEvents(storage)
+    const revertEvent = events.find((e) => e.type === "changeset_revert")
+    expect(revertEvent).toEqual(
+      expect.objectContaining({ type: "changeset_revert", changesetId, skill: "ingest" }),
+    )
   })
 
   it("throws when the changeset does not exist", async () => {
     const storage = new MemoryVaultStorage()
     await seedVault(storage)
     await expect(undoIngest(storage, "cs-missing")).rejects.toThrow(/not found/i)
+  })
+})
+
+describe("ingestSkill post-ingest lint verify step (Task 6)", () => {
+  it("a generation containing a broken wikilink files a lint-finding review item in the inbox after ingest returns ok", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedVault(storage)
+    const generation = sampleGeneration()
+    // Introduce a broken wikilink into the LLM-generated concept page — a
+    // slug that resolves to no page anywhere in the vault.
+    generation.files[0].body =
+      `# Sparse Attention\n\nAn attention mechanism, see [[does-not-exist]] for background.\n`
+    const provider = new MockProvider([llmResult(SAMPLE_ANALYSIS), llmResult(generation)])
+
+    const run = await runIngest(storage, provider)
+    expectOk(run.output)
+
+    const reviews = await listReviews(storage)
+    const lintFindings = reviews.filter((r) => r.kind === "lint-finding")
+    expect(lintFindings.length).toBeGreaterThan(0)
+    const brokenLinkFinding = lintFindings.find((r) => r.lintKind === "broken-link")
+    expect(brokenLinkFinding).toBeDefined()
+    expect(brokenLinkFinding?.pages).toEqual([CONCEPT_PATH.slice(0, -3)])
+  })
+
+  it("a storage that throws during the post-ingest lint step does not fail the ingest", async () => {
+    class ThrowingReviewListStorage extends MemoryVaultStorage {
+      async list(prefix = ""): Promise<string[]> {
+        // ".scispark/review/" is listed ONLY by listReviews (the write-time
+        // dedupe step inside runPostIngestLint) at this point in the ingest
+        // pipeline — buildAnalysisContext/index-builder/etc. never list that
+        // prefix, and the ingest's own review-item writes below use
+        // storage.write, not list. This throws exactly inside the post-ingest
+        // lint verify step, leaving the rest of ingest's own reads/writes
+        // unaffected.
+        if (prefix === ".scispark/review/") throw new Error("simulated storage failure")
+        return super.list(prefix)
+      }
+    }
+    const storage = new ThrowingReviewListStorage()
+    await seedVault(storage)
+    const provider = new MockProvider([llmResult(SAMPLE_ANALYSIS), llmResult(sampleGeneration())])
+
+    const run = await runIngest(storage, provider)
+
+    expect(run.status).toBe("ok")
+    expectOk(run.output)
+    expect(run.logs.some((l) => l.includes("post-ingest lint failed") && l.includes("simulated storage failure"))).toBe(
+      true,
+    )
   })
 })
 

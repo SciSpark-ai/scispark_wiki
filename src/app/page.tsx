@@ -7,10 +7,13 @@ import { isOnboarded } from "@/lib/usermodel/pages"
 import { loadFeed, type FeedResult } from "@/lib/skills/feed-cache"
 import { loadRecommendationFeedback } from "@/lib/recommendation/client"
 import { paperKey } from "@/lib/papers/types"
+import { loadBundle } from "@/lib/vault/bundle"
+import { paperRecordFromFrontmatter } from "@/lib/papers/resolve"
+import { useUserStore } from "@/stores/user-store"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { RealFeedCard } from "@/components/feed/RealFeedCard"
 import { FeedRefreshBar } from "@/components/feed/FeedRefreshBar"
-import { useCompanion } from "@/components/companion/useCompanion"
+import { FeedRunSummary } from "@/components/feed/FeedRunSummary"
 import { COMPANION_CLEARANCE } from "@/components/layout/companion-clearance"
 
 type PageState =
@@ -35,11 +38,7 @@ function formatUpdatedAt(iso: string): string {
 }
 
 export default function HomePage() {
-  // App-open trigger (M7): home is the app's landing surface, so evaluating
-  // the companion on mount here also catches "just came back after an
-  // ingest/review" since the trigger engine looks at recent events, not just
-  // the current route.
-  useCompanion()
+  const user = useUserStore((state) => state.user)
 
   const [storage, setStorage] = useState<VaultStorage | null>(null)
   const [state, setState] = useState<PageState>({ status: "checking" })
@@ -58,12 +57,15 @@ export default function HomePage() {
           return
         }
         const feed = await loadFeed(vault)
+        const bundle = await loadBundle(vault)
+        const persistedSavedKeys = new Set([...bundle.pages.values()].filter((page) => page.frontmatter.type === "paper").map((page) => paperKey(paperRecordFromFrontmatter(page.frontmatter))))
         const feedback = await loadRecommendationFeedback().catch(() => ({ entries: [], warning: "Saved feedback could not be loaded." }))
         // Keep rated papers in the existing feed, including after a reload.
         const hidden = new Set(feedback.entries.filter((entry) => entry.reason === "dismiss").map((entry) => entry.paperKey))
         if (feed) feed.items = feed.items.filter((item) => !hidden.has(paperKey(item.paper)))
         if (cancelled) return
         setFeedbackWarning(feedback.warning)
+        setSavedKeys(persistedSavedKeys)
         setState({ status: "ready", feed })
       } catch (err) {
         if (!cancelled) setState({ status: "error", message: err instanceof Error ? err.message : String(err) })
@@ -105,7 +107,7 @@ export default function HomePage() {
     <div className={state.status === "not-onboarded"
       ? "flex min-h-full flex-col items-center justify-center px-5 py-16 text-center sm:px-8"
       : `p-7 ${COMPANION_CLEARANCE}`}>
-      <h1 className="font-heading text-[28px] text-espresso tracking-heading">{getGreeting()}</h1>
+      <h1 className="font-heading text-[28px] text-espresso tracking-heading">{getGreeting()}{user?.name ? `, ${user.name}` : ""}</h1>
 
       {state.status === "checking" && <p className="mt-6 text-[14px] text-muted-text">Loading…</p>}
 
@@ -121,7 +123,7 @@ export default function HomePage() {
             the first refresh.
           </p>
           <Link
-            href="/onboarding"
+            href="/setup"
             className="mt-4 inline-block text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium"
           >
             Set up my profile →
@@ -139,16 +141,7 @@ export default function HomePage() {
           </div>
 
           {feedbackWarning && <p role="status" className="mt-4 text-[13px] text-muted-text">{feedbackWarning}</p>}
-          {state.feed?.recommendation && <section className="mt-4 space-y-2 text-[13px] text-muted-text" aria-label="Feed strategy">
-            <p>Publication window: {state.feed.recommendation.fromDate} to {state.feed.recommendation.toDate}. <Link href="/profile#recommendations" className="text-orange underline">{state.feed.recommendation.preferences.diversity} exploration · edit preferences</Link></p>
-            {state.feed.recommendation.warnings.map((warning) => <p key={warning} role="status">{warning}</p>)}
-            <details><summary className="cursor-pointer text-espresso">Search strategy and learned preferences</summary>
-              <ul className="mt-2 space-y-1">{state.feed.recommendation.retrieval.map((query, index) => <li key={index}>{query.source}: {query.query} — {query.error ?? `${query.count} results`}</li>)}</ul>
-              <p className="mt-2">Learning {state.feed.recommendation.preferences.learnFromFeedback ? "enabled" : "disabled"}. Ranking weights remain 70% relevance, 20% recency, 10% venue.</p>
-              <p>{state.feed.recommendation.memoryPaperKeys?.length ?? 0} saved paper memories supplied to this refresh. Review them in Settings → Recommendations.</p>
-              {state.feed.recommendation.learnedTopics.length ? state.feed.recommendation.learnedTopics.map((topic) => <p key={topic.topic}>{topic.topic}: {topic.adjustment > 0 ? "+" : ""}{topic.adjustment} from {topic.examples} papers</p>) : <p>No additional numeric topic adjustments yet.</p>}
-            </details>
-          </section>}
+          {state.feed?.recommendation && <FeedRunSummary run={state.feed.recommendation} generatedAt={state.feed.generatedAt} />}
 
           {!state.feed || state.feed.items.length === 0 ? (
             <div className="mt-8 border border-border-warm rounded-card px-5 py-6 bg-light-surface max-w-lg">

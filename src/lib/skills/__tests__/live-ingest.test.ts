@@ -225,8 +225,8 @@ describe.skipIf(!live)("LIVE ingest end-to-end gate", () => {
       )
 
       // ── Costs ───────────────────────────────────────────────────────────
-      const totalCost = (digestRes.costUsd ?? 0) + run.costUsd
-      console.log(`[live-ingest] total cost: $${totalCost.toFixed(4)} (digest + ingest)`)
+      const totalCost = digestRes.costUsd == null || run.costUsd === null ? null : digestRes.costUsd + run.costUsd
+      console.log(`[live-ingest] total cost: ${totalCost === null ? "unknown" : `$${totalCost.toFixed(4)}`} (digest + ingest)`)
       expect(totalCost).toBeLessThan(1.0)
 
       // ── Undo restores the pre-ingest vault exactly ──────────────────────

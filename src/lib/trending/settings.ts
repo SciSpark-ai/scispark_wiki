@@ -3,7 +3,9 @@ import { withSettingsWrite } from "../vault/settings-write"
 import type { TrackedField } from "./fields"
 import { MAX_TRACKED_FIELDS } from "./fields"
 import type { AnchorDiscipline } from "./anchors"
-import { MAX_ANCHORS } from "./anchors"
+import { MAX_ANCHORS, manualAnchorError } from "./anchors"
+import { canonicalAnchor } from "./openalex-fields"
+import { openAlexSubfield } from "./openalex-subfields"
 
 /**
  * Trending settings — stored under a top-level "trending" key in
@@ -22,18 +24,8 @@ export interface TrendingSettings {
   /** Derived (or user-set) broad anchor disciplines the leaderboard scopes
    * to. `[]` means not yet derived. */
   anchors: AnchorDiscipline[]
-  /**
-   * True once the user has set anchors by hand. **Recorded intent only — NO
-   * production code branches on it today.** It is written by the settings
-   * editor, normalized, persisted and round-tripped, and that is the whole of
-   * its life: "Reset to auto" and "remove the last anchor chip" are
-   * behaviorally identical, because what actually protects a hand-set list is
-   * the non-empty-list rule in `resolveAnchors` (a non-empty `anchors` is
-   * authoritative and never recomputed; an empty one always derives, flag or
-   * no flag — see that function's comment for why honoring the flag on an
-   * empty list would silently strand the board on the narrow interest labels).
-   * Kept because the semantics may matter later; do not read it as load-bearing.
-   */
+  /** Manual fields are authoritative. An empty manual list must be repaired,
+   * never silently auto-derived. */
   anchorsOverridden: boolean
 }
 
@@ -115,7 +107,21 @@ export function normalizeTrendingSettings(raw: unknown): TrendingSettings {
     ? dedupeFieldsBySlug(t.fields.filter(isTrackedField) as TrackedField[]).slice(0, MAX_TRACKED_FIELDS)
     : DEFAULT_TRENDING_SETTINGS.fields
   const anchors = Array.isArray(t.anchors)
-    ? (t.anchors.filter(isAnchor) as AnchorDiscipline[]).slice(0, MAX_ANCHORS)
+    ? t.anchors.flatMap((anchor: unknown) => {
+      if (anchor && typeof anchor === "object" && "id" in anchor && typeof anchor.id === "string") {
+        const canonical = canonicalAnchor(anchor.id)
+        if (canonical) {
+          if (!("subfieldIds" in anchor) || anchor.subfieldIds === undefined) return [canonical]
+          // Preserve invalid stored selections for validation/user repair. Dropping
+          // them would silently broaden a restricted field to its entire corpus.
+          const subfieldIds = Array.isArray(anchor.subfieldIds)
+            ? anchor.subfieldIds.map((id: unknown) => typeof id === "string" ? openAlexSubfield(id)?.id ?? id : id)
+            : anchor.subfieldIds
+          return [{ ...canonical, subfieldIds: subfieldIds as string[] }]
+        }
+      }
+      return isAnchor(anchor) ? [anchor as AnchorDiscipline] : []
+    }).slice(0, MAX_ANCHORS)
     : DEFAULT_TRENDING_SETTINGS.anchors
   return {
     fields,
@@ -131,9 +137,11 @@ export async function loadTrendingSettings(storage: VaultStorage): Promise<Trend
 }
 
 export async function saveTrendingSettings(storage: VaultStorage, settings: TrendingSettings): Promise<void> {
+  const error = manualAnchorError(settings)
+  if (error) throw new Error(error)
   await withSettingsWrite(storage, (file) => ({
     ...file,
-    trending: { ...settings, fields: dedupeFieldsBySlug(settings.fields) },
+    trending: normalizeTrendingSettings(settings),
   }))
 }
 
@@ -142,13 +150,21 @@ export async function saveTrendingSettings(storage: VaultStorage, settings: Tren
  * INSIDE the settings write-lock. The board orchestrator derives anchors from
  * network calls that take seconds; a snapshot-then-write would silently revert
  * a cadence/fields edit the user made in that window (the same lost-update
- * class M12 closed for the `llm` section). Never touches `anchorsOverridden` —
- * a derived list refreshes the user's scope, it does not un-set their recorded
- * intent (which nothing branches on; see the field's own doc).
+ * class M12 closed for the `llm` section). A manual edit or another completed
+ * derivation wins over this late result. Returns the authoritative scope.
  */
-export async function saveDerivedAnchors(storage: VaultStorage, anchors: AnchorDiscipline[]): Promise<void> {
-  await withSettingsWrite(storage, (file) => ({
-    ...file,
-    trending: { ...normalizeTrendingSettings(file.trending), anchors: anchors.slice(0, MAX_ANCHORS) },
-  }))
+export async function saveDerivedAnchors(storage: VaultStorage, anchors: AnchorDiscipline[]): Promise<AnchorDiscipline[]> {
+  let result: AnchorDiscipline[] = []
+  await withSettingsWrite(storage, (file) => {
+    const current = normalizeTrendingSettings(file.trending)
+    if (current.anchorsOverridden || current.anchors.length) {
+      const error = manualAnchorError(current)
+      if (error) throw new Error(error)
+      result = current.anchors
+      return file
+    }
+    result = anchors.slice(0, MAX_ANCHORS)
+    return { ...file, trending: { ...current, anchors: result } }
+  })
+  return result
 }

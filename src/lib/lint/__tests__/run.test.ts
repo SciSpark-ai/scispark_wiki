@@ -5,13 +5,20 @@ import { loadBundle } from "../../vault/bundle"
 import { buildIndexMarkdown } from "../../vault/index-builder"
 import { loadChangeset, revertChangeset } from "../../vault/changesets"
 import { readRecentEvents } from "../../events/log"
-import { listReviews } from "../../wiki/review-queue"
+import { listReviews, dismissReview } from "../../wiki/review-queue"
 import { MockProvider } from "../../llm/mock-provider"
 import { DEFAULT_SETTINGS, type LLMSettings } from "../../llm/settings"
 import type { LLMResult } from "../../llm/types"
 import type { Frontmatter } from "../../vault/types"
 import { runDeterministicChecks } from "../checks"
-import { runLintDeterministic, runLintLlm, applyLintFix, LINT_FIX_NOOP_SENTINEL } from "../run"
+import {
+  runLintDeterministic,
+  runLintLlm,
+  runPostIngestLint,
+  applyLintFix,
+  findingIdentity,
+  LINT_FIX_NOOP_SENTINEL,
+} from "../run"
 
 const NOW = () => new Date("2026-07-14T10:00:00.000Z")
 
@@ -134,6 +141,142 @@ describe("runLintDeterministic", () => {
     // but applying it is special-cased in applyLintFix (see below), not a normal
     // applyChangeset-backed fix.
     expect(driftItem?.fix?.path).toBe("index.md")
+  })
+
+  it("write-time dedupe: two consecutive runs on a vault with one broken link produce ONE open review item", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/concepts/a.md", serializeDocument(fm("concept", "A"), "See [[ghost]] for details."))
+
+    const first = await runLintDeterministic(s, { now: NOW })
+    const brokenLinkFinding = first.findings.find((f) => f.lintKind === "broken-link")
+    expect(brokenLinkFinding).toBeDefined()
+    expect(first.reviewIds.length).toBeGreaterThan(0)
+
+    const afterFirst = await listReviews(s)
+    expect(afterFirst.filter((r) => r.lintKind === "broken-link")).toHaveLength(1)
+
+    // Second run re-detects the SAME still-open broken link (nothing fixed it),
+    // but must not write a second review item for it — write-time dedupe against
+    // the already-open item, keyed by findingIdentity.
+    const second = await runLintDeterministic(s, { now: NOW })
+    expect(second.findings.some((f) => f.lintKind === "broken-link")).toBe(true)
+
+    const afterSecond = await listReviews(s)
+    expect(afterSecond.filter((r) => r.lintKind === "broken-link")).toHaveLength(1)
+    // Still exactly the same review id as after the first run.
+    expect(afterSecond.find((r) => r.lintKind === "broken-link")?.id).toBe(
+      afterFirst.find((r) => r.lintKind === "broken-link")?.id,
+    )
+  })
+
+  it("write-time dedupe: a DISMISSED finding is not excluded — it can legitimately reappear as a fresh review item", async () => {
+    const s = new MemoryVaultStorage()
+    // Linked from "hub" so "a" isn't ALSO flagged as an orphan — keeps this
+    // test scoped to exactly the one broken-link finding under test.
+    await s.write("wiki/concepts/hub.md", serializeDocument(fm("concept", "Hub"), "See [[a]]."))
+    await s.write("wiki/concepts/a.md", serializeDocument(fm("concept", "A"), "See [[ghost]] for details."))
+
+    const first = await runLintDeterministic(s, { now: NOW })
+    const brokenItem = (await listReviews(s)).find((r) => r.lintKind === "broken-link")!
+    expect(first.reviewIds).toContain(brokenItem.id)
+
+    await dismissReview(s, brokenItem.id)
+    expect((await listReviews(s)).filter((r) => r.lintKind === "broken-link")).toHaveLength(0)
+
+    // The underlying issue is untouched, so a fresh run must file it again —
+    // dismissing does not fix the vault, so this is accepted v1 behavior, not
+    // a dedupe bug.
+    const second = await runLintDeterministic(s, { now: NOW })
+    expect(second.reviewIds.length).toBeGreaterThan(0)
+    const reviewsAfter = await listReviews(s)
+    expect(reviewsAfter.filter((r) => r.lintKind === "broken-link")).toHaveLength(1)
+  })
+})
+
+describe("findingIdentity", () => {
+  it("combines lintKind, fixTarget (or empty string), and sorted pages", () => {
+    expect(findingIdentity({ lintKind: "broken-link", fixTarget: "ghost", pages: ["wiki/concepts/a"] })).toBe(
+      "broken-link|ghost|wiki/concepts/a",
+    )
+    expect(findingIdentity({ lintKind: "orphan", fixTarget: undefined, pages: ["wiki/concepts/a"] })).toBe(
+      "orphan||wiki/concepts/a",
+    )
+    // Page order doesn't matter — sorted before joining.
+    expect(findingIdentity({ lintKind: "contradiction", fixTarget: undefined, pages: ["b", "a"] })).toBe(
+      findingIdentity({ lintKind: "contradiction", fixTarget: undefined, pages: ["a", "b"] }),
+    )
+  })
+})
+
+describe("runPostIngestLint", () => {
+  it("files a scoped finding for a touched page's broken link, and nothing for a pre-existing broken link on an untouched page", async () => {
+    const s = new MemoryVaultStorage()
+    // Untouched page with a pre-existing broken link — not part of this ingest.
+    // Also links to "new" so the touched page isn't ALSO flagged as an orphan
+    // (which would otherwise be scoped in too, since it's a distinct real
+    // finding on the touched page — this test keeps the assertion to exactly
+    // the one finding under test: the broken link).
+    await s.write(
+      "wiki/concepts/old.md",
+      serializeDocument(fm("concept", "Old"), "See [[pre-existing-ghost]] and also [[new]]."),
+    )
+    // Touched page — this run's changeset introduced the broken link.
+    await s.write("wiki/concepts/new.md", serializeDocument(fm("concept", "New"), "See [[does-not-exist]]."))
+
+    const result = await runPostIngestLint(s, ["wiki/concepts/new"], { now: NOW })
+
+    expect(result.findings).toHaveLength(1)
+    expect(result.findings[0].lintKind).toBe("broken-link")
+    expect(result.findings[0].pages).toEqual(["wiki/concepts/new"])
+    expect(result.reviewIds).toHaveLength(1)
+
+    const reviews = await listReviews(s)
+    expect(reviews).toHaveLength(1)
+    expect(reviews[0].pages).toEqual(["wiki/concepts/new"])
+  })
+
+  it("never files an index-drift finding, even when index.md is stale", async () => {
+    const s = new MemoryVaultStorage()
+    // Linked from "hub" so "new" isn't flagged as an orphan — isolates this
+    // test to exactly the index-drift-exclusion behavior under test.
+    await s.write("wiki/concepts/hub.md", serializeDocument(fm("concept", "Hub"), "See [[new]]."))
+    await s.write("wiki/concepts/new.md", serializeDocument(fm("concept", "New"), "No other links."))
+    // Stale index — would normally produce an index-drift finding.
+    await s.write("index.md", "# Index\n\nstale\n")
+
+    const result = await runPostIngestLint(s, ["wiki/concepts/new"], { now: NOW })
+
+    expect(result.findings.some((f) => f.lintKind === "index-drift")).toBe(false)
+    expect(result.findings).toHaveLength(0)
+    expect(result.reviewIds).toHaveLength(0)
+    const reviews = await listReviews(s)
+    expect(reviews.every((r) => r.lintKind !== "index-drift")).toBe(true)
+  })
+
+  it("does not log a lint_run event — it's a verify step of the ingest run, not a lint run", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/concepts/new.md", serializeDocument(fm("concept", "New"), "See [[does-not-exist]]."))
+
+    await runPostIngestLint(s, ["wiki/concepts/new"], { now: NOW })
+
+    const events = await readRecentEvents(s)
+    expect(events.filter((e) => e.type === "lint_run")).toHaveLength(0)
+  })
+
+  it("applies the same write-time dedupe as runLintDeterministic: a still-open finding from a prior lint run is not re-filed", async () => {
+    const s = new MemoryVaultStorage()
+    await s.write("wiki/concepts/new.md", serializeDocument(fm("concept", "New"), "See [[does-not-exist]]."))
+
+    // A full deterministic lint run already filed this exact broken-link finding.
+    await runLintDeterministic(s, { now: NOW })
+    const before = await listReviews(s)
+    expect(before.filter((r) => r.lintKind === "broken-link")).toHaveLength(1)
+
+    const result = await runPostIngestLint(s, ["wiki/concepts/new"], { now: NOW })
+    expect(result.reviewIds).toHaveLength(0)
+
+    const after = await listReviews(s)
+    expect(after.filter((r) => r.lintKind === "broken-link")).toHaveLength(1)
   })
 })
 

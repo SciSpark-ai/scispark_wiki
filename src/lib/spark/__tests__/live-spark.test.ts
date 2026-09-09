@@ -160,7 +160,7 @@ describe.skipIf(!live)("LIVE Spark gate (Quick + Deep)", () => {
       })
 
       console.log(`[live-spark] quick seeds: ${JSON.stringify(result.seeds, null, 2)}`)
-      console.log(`[live-spark] quick costUsd: $${result.costUsd.toFixed(4)}`)
+      console.log(`[live-spark] quick costUsd: $${(result.costUsd?.toFixed(4) ?? "unknown")}`)
 
       expect(result.seeds.length).toBeGreaterThanOrEqual(1)
 
@@ -197,7 +197,7 @@ describe.skipIf(!live)("LIVE Spark gate (Quick + Deep)", () => {
       console.log(`[live-spark] deep phases: ${phases.join(" -> ")}`)
       console.log(`[live-spark] deep outcome: ${JSON.stringify(result.outcome)}`)
       console.log(`[live-spark] deep phaseCosts: ${JSON.stringify(result.phaseCosts)}`)
-      console.log(`[live-spark] deep costUsd: $${result.costUsd.toFixed(4)}`)
+      console.log(`[live-spark] deep costUsd: $${(result.costUsd?.toFixed(4) ?? "unknown")}`)
 
       expect(["idea", "do_not_generate", "abandoned"]).toContain(result.outcome.kind)
 

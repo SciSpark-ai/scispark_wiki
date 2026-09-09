@@ -3,7 +3,8 @@
  * range. `topicId` (optional) additionally scopes the count to one OpenAlex
  * `primary_topic.id` — the SP4 leaderboard's per-candidate PRIOR-count lookup,
  * so a topic's recent count, prior count, growth badge and bars all come from
- * the same filter.
+ * the same filter. Trending supplies the same canonical `fieldId` to all
+ * requests and an empty query, avoiding accidental field-name text filtering.
  *
  * This is trending's ONLY counting primitive. The `group_by=publication_date`
  * weekly-series path that used to sit beside it is gone: OpenAlex now rejects
@@ -21,4 +22,4 @@
  * as `TrendingBoard.dataError`), whereas a fabricated zero would rank a topic
  * as brand-new at the top of the board.
  */
-export type CountFn = (q: { query: string; fromDate: string; toDate: string; topicId?: string }) => Promise<number>
+export type CountFn = (q: { query: string; fromDate: string; toDate: string; topicId?: string; fieldId?: string; subfieldIds?: string[] }) => Promise<number>

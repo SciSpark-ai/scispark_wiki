@@ -5,7 +5,7 @@ import { candidateText, type RecommendationContext } from "./engine"
 import type { PaperRecord } from "../papers/types"
 
 export const recommendationAssessmentSkill = defineSkill({
-  name: "recommendation-assessment", version: "2",
+  name: "recommendation-assessment", version: "3",
   async run(ctx, input: { context: RecommendationContext; candidates: PaperRecord[] }) {
     return ctx.llmStructured("fast", {
       messages: [
@@ -15,6 +15,9 @@ export const recommendationAssessmentSkill = defineSkill({
           "Each entry has index; question, topic, approach (each {grade,evidence}); matches [{topic,evidence}]; excluded; memoryMatches (an array, empty when none apply).",
           "Grades: 0 unrelated, 1 weak/adjacent, 2 useful partial fit, 3 strong fit, 4 directly addresses the stated interest.",
           "question = active research-question fit; topic = best fit to ANY declared interest (not an average across all interests); approach = stated methods/populations/article-type preference.",
+          "Context.fieldPreferences contains the user's selected research fields and optional subfields. Treat them as additional topic interests, not hard exclusions or a numeric bonus. When a field has selected subfields, its parent label is context, not an additional whole-field preference from this setting.",
+          "Use title/abstract evidence to assess a semantic fit. A paper need not carry an OpenAlex field/subfield ID or literal label. Unselected fields are not disliked. Never set excluded=true solely because a paper lies outside the selected taxonomy.",
+          "These selections do not invent active questions, methods or populations. Preserve explicit profile constraints. Context.diversity allows adjacent research; it does not justify inflated relevance grades, missing evidence or overriding those constraints.",
           "Context.memories contains structured preferences with verbatim user notes and server-owned paper snapshots. Positive examples can establish additional research interests beyond onboarding; question/topic grades may match ANY explicit or positively demonstrated interest. Do not require all interests to overlap.",
           "Grade baseline relevance WITHOUT reducing grades for negative feedback. Report feedback separately in memoryMatches so it is not counted twice. Approach grades describe explicit profile preferences only. Learned method/population matches belong in memoryMatches even when hasApproach=false.",
           "Return at most THREE strongest applicable memoryMatches per candidate. Each has paperKey (exact saved-memory key), facet, effect, match (close or related), candidateEvidence, memoryEvidence. No duplicate memory key. No numeric feedback score: code computes effects.",

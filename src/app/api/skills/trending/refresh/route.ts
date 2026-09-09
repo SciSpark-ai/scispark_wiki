@@ -1,3 +1,4 @@
+import { withLedger } from "@/lib/runs/ledger"
 import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
 import { nodeTopWorksFn, nodeCountFn, nodeTopicGroupFn, nodeTopicFieldGroupFn } from "@/lib/papers/node-search"
@@ -26,14 +27,17 @@ interface RefreshInput {
 export const POST = ndjsonSkillRoute<RefreshInput>(async (input, vault, emit) => {
   const settings = await loadSettings(vault)
   const overrides = getSkillTestOverrides()
-  return runTrendingBoard(vault, {
-    fields: input.fields,
-    topWorksFn: overrides.topWorksFn ?? nodeTopWorksFn(),
-    countFn: overrides.countFn ?? nodeCountFn(),
-    topicGroupFn: overrides.topicGroupFn ?? nodeTopicGroupFn(),
-    fieldGroupFn: overrides.fieldGroupFn ?? nodeTopicFieldGroupFn(),
-    settings,
-    providerOverride: overrides.providerOverride,
-    onProgress: (field) => emit({ type: "progress", field }),
+  return withLedger(vault, { orchestrator: "trending-refresh", trigger: "user" }, async () => {
+    const result = await runTrendingBoard(vault, {
+      fields: input.fields,
+      topWorksFn: overrides.topWorksFn ?? nodeTopWorksFn(),
+      countFn: overrides.countFn ?? nodeCountFn(),
+      topicGroupFn: overrides.topicGroupFn ?? nodeTopicGroupFn(),
+      fieldGroupFn: overrides.fieldGroupFn ?? nodeTopicFieldGroupFn(),
+      settings,
+      providerOverride: overrides.providerOverride,
+      onProgress: (field) => emit({ type: "progress", field }),
+    })
+    return { result, status: result.surveyError ? "degraded" : "ok", reason: result.surveyError }
   })
 })

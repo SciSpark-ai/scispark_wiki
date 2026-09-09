@@ -62,7 +62,7 @@ async function enrich(): Promise<EnrichResult> {
     storage: new MemoryVaultStorage(),
     settings: liveSettings(),
   })
-  console.log(`[live-enrich] status=${run.status} out=${JSON.stringify(run.output)} cost=$${run.costUsd.toFixed(5)}`)
+  console.log(`[live-enrich] status=${run.status} out=${JSON.stringify(run.output)} cost=$${(run.costUsd?.toFixed(5) ?? "unknown")}`)
   if (run.status !== "ok") console.log(`[live-enrich] error: ${run.error}`)
   expect(run.status).toBe("ok")
   return run.output as EnrichResult

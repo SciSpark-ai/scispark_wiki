@@ -8,6 +8,7 @@ import { RightPanel } from "./RightPanel";
 import { useUIStore } from "@/stores/ui-store";
 import { SelectionToNoteBubble } from "@/components/notes/SelectionToNoteBubble";
 import { CompanionMascot } from "@/components/companion/CompanionMascot";
+import { useCompanion } from "@/components/companion/useCompanion";
 import SettingsModal from "@/components/settings/SettingsModal";
 import ThemeApplier from "./ThemeApplier";
 import NavHistoryTracker from "./NavHistoryTracker";
@@ -19,6 +20,7 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
+  useCompanion();
   const showRightPanel = useUIStore((s) => s.showRightPanel);
   const rightPanelContent = useUIStore((s) => s.rightPanelContent);
   const desktopSidebarOpen = useUIStore((s) => s.desktopSidebarOpen);

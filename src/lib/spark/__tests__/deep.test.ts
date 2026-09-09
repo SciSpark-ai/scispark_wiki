@@ -153,6 +153,10 @@ function legResponses(auditOutput: unknown, candidate: unknown = CANDIDATE): LLM
 }
 
 describe("estimateDeepSparkCost", () => {
+  it("estimates the selected known model and leaves unknown prices null", async () => {
+    expect(await estimateDeepSparkCost("gpt-5.4-mini")).toBeLessThan((await estimateDeepSparkCost())!)
+    expect(await estimateDeepSparkCost("google/gemini-3.8-flash")).toBeNull()
+  })
   it("returns a positive rough estimate", async () => {
     const estimate = await estimateDeepSparkCost()
     expect(estimate).toBeGreaterThan(0)
@@ -205,8 +209,9 @@ describe("runDeepSpark", () => {
     expect(sparkEvents[0].costUsd).toBeGreaterThan(0)
 
     expect(Object.keys(result.phaseCosts).length).toBeGreaterThan(0)
-    const sum = Object.values(result.phaseCosts).reduce((a, b) => a + b, 0)
-    expect(sum).toBeCloseTo(result.costUsd, 10)
+    expect(Object.values(result.phaseCosts)).not.toContain(null)
+    const sum = Object.values(result.phaseCosts).reduce<number>((a, b) => a + b!, 0)
+    expect(sum).toBeCloseTo(result.costUsd!, 10)
     expect(result.costUsd).toBeGreaterThan(0)
 
     expect(phases).toEqual(["grounding", "bottleneck", "ideation", "scoop-check", "audit"])

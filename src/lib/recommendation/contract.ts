@@ -10,6 +10,13 @@ export const RecommendationPreferencesSchema = z.object({
 export type RecommendationPreferences = z.infer<typeof RecommendationPreferencesSchema>
 export const DEFAULT_RECOMMENDATION_PREFERENCES = RecommendationPreferencesSchema.parse({})
 
+/** Server-owned snapshot of explicitly selected research fields, never keys/settings. */
+export const ResearchFieldPreferenceSchema = z.object({
+  id: z.string().max(120), label: z.string().max(200),
+  subfields: z.array(z.object({ id: z.string().max(120), label: z.string().max(200) }).strict()).max(100),
+}).strict()
+export type ResearchFieldPreference = z.infer<typeof ResearchFieldPreferenceSchema>
+
 export const FeedbackReasonSchema = z.enum(["more_like_this", "less_like_this", "not_my_topic", "wrong_method", "too_old", "already_know", "other", "dismiss"])
 export type FeedbackReason = z.infer<typeof FeedbackReasonSchema>
 export const FEEDBACK_LABELS: Record<FeedbackReason, string> = {
@@ -95,6 +102,7 @@ export const RecommendationRunSchema = z.object({
   // Planning plus up to five ten-paper assessment batches, 24 memories each.
   memoryPaperKeys: z.array(z.string()).max(144).optional(),
   memoryStatus: z.enum(["off", "none", "checked", "incomplete"]).optional(),
+  fieldPreferences: z.array(ResearchFieldPreferenceSchema).max(3).optional(),
 })
 export type RecommendationRun = z.infer<typeof RecommendationRunSchema>
 

@@ -26,6 +26,15 @@
 
 # Current Release/Session State
 
+- September 9 all-work integration: all 182 remaining local files were committed
+  and pushed as `2e9a10e`. Integration includes the 14 previously unmerged
+  `loop/loop-engineering-hardening` commits, reconciled with current main.
+  Current security, nullable costs, single-flight refreshes and review recovery
+  are preserved; scheduled background jobs require `SCISPARK_SCHEDULER=on`.
+  Full suite: 2,566 passed / 17 gated skips; production build and 27 Chromium
+  checks passed. See `docs/testing/2026-09-09-all-work-integration.md` for exact
+  validation scope. These checks do not close live scientific acceptance.
+
 - September 9: user authorized commit and push. Isolated review commit candidate
   passed 2,356 tests / 17 gated skips, production build, TypeScript, targeted lint
   and six Chromium tests. Includes required chat/source/billing dependencies;
@@ -42,6 +51,407 @@
   Production review and restart browser regressions passed. New live synthesis
   acceptance remains open; existing report/ledger preserved with $0.603068 left.
   No commit/push. See `docs/testing/2026-09-09-deep-review-coverage.md`.
+
+- September 8 production UI retry passed on fresh webpack build
+  `.next-review-production-retry` / `EVfGQrrCrSM-3D1BLSZG_`. Real Chromium Retry
+  source checks → API/coordinator → live GMI → completed checked-draft version 2;
+  version 1 unchanged. History/latest selection and free readback passed, mobile
+  inspected. Fifteen new calls cost $0.1779; cumulative ledger $1.396932 accounted,
+  $0 held, $0.603068 remains. Canonical attempt-117 is an aggregate workflow
+  reservation covering 15 individually retained production attempts, not one call.
+  Abstract-only coverage still leaves the main methods comparison unresolved and
+  repetition/general wording limits quality. Technical gate passed; research-quality
+  acceptance remains open, so no commit/push. See
+  `docs/testing/2026-09-08-deep-review-production-retry.md` and the companion report.
+
+- September 8 general recovery follow-up: partial reviews now have a production
+  Retry source checks action through the normal API/coordinator. Explicit retries
+  use a new persisted grounding attempt, reuse research/synthesis checkpoints,
+  preserve the existing allowance and append report versions. Read/reopen stays
+  free; paused/interrupted resumes retain paid checkpoints. History points to the
+  latest pipeline version. Learning and battery fixtures verify general recovery.
+  Full suite: 2,473 passed / 17 skipped; TypeScript, targeted ESLint and Chromium
+  review/retry/edit/export flow passed; mobile retry screenshot inspected. No new
+  paid calls, human-vault migration, commit or push. Details in
+  `docs/testing/2026-09-08-deep-review-grounding-fix.md`.
+
+- September 8 grounding-failure fix: two failed paragraphs traced to an unsupported
+  adult qualifier and a false-positive uncertainty regex spanning a separate future
+  application clause. Rewrites now separate requested/reported populations; semantic
+  audits resolve uncertainty warnings while hard evidence checks remain enforced.
+  Partial citations deduplicated and aggregate checkpoint version bumped. Review
+  tests: 49 passed / 2 live-gated skipped; TypeScript and targeted ESLint passed.
+  Live two-paragraph repair passed; 27 combined claims validated. Original partial
+  run preserved; separate checked report under integration-v1/repair-2026-09-08.
+  This is not a full pipeline rerun or broad scientific acceptance. Ledger now has
+  116 attempts, $1.219032 accounted, $0 held, $0.780968 remaining. See
+  `docs/testing/2026-09-08-deep-review-grounding-fix.md`. No commit/push.
+
+- September 8 authorized live deep-review retry resolved the provider DNS blocker.
+  The existing run finished `partial` / `needs-review`, so the checked-draft live
+  gate FAILED (expected completed). 32 new HTTP-200 model calls cost $0.37729275;
+  five abstract-only evidence records yielded a three-source report with unresolved
+  comparative coverage, repetition and duplicate citations. Sampled claims/table
+  excerpts matched saved abstracts, but broader scientific acceptance remains open.
+  Canonical $2 ledger now accounts for $1.17573525, including $0.01937475 explicitly
+  counted conservatively for old attempt 80 (not confirmed usage); $0 held and
+  $0.82426475 remains across 112 preserved attempts. Locks cleared, no paid run
+  active, no human-vault/port-3113 changes or commit/push. Saved report remains in
+  the isolated integration-v1 vault. See `docs/testing/2026-09-08-deep-review-live-retry.md`.
+  This supersedes the prior pending network-retry approval below.
+
+- September 7 full deep-review integration resumed at the user's request. The
+  licensed ScholarQA TypeScript adaptation is wired into Sparky as an integrated
+  preview: inline approved briefs, selected context, server-owned resumable jobs,
+  per-attempt/daily reservations, source acquisition/gap retrieval, bounded PDF
+  extraction, checked claims, separate personal interpretation, pinned follow-ups,
+  automatic History, versioned report editing, exports and undoable KB insertion.
+  Local cross-process ownership and explicit restart recovery are implemented;
+  no silent paid replay after an unknown response. Human port 3113/vault untouched.
+  Verified: 2,468 offline tests passed / 17 gated tests skipped; TypeScript passed;
+  lint has zero errors and only the existing ConnectAiCard warning; production
+  webpack build `.next-deep-review` / `iEiLQg7nVFiqovl62O5m-` passed. All six
+  affected production Chromium tests passed, including an actual dedicated-server
+  kill/restart, History/edit/export/KB flow, citations, streaming and mobile layout.
+  The full live integration attempt DID NOT pass: Node provider DNS failed before
+  returning usage. Canonical cumulative ledger retains $0.77906775 known spend,
+  $0.01937475 held reservation, $1.20155750 remaining (80 attempts). No paid process
+  is running, ledger reset or automatic retry. User was asked to authorize counting
+  the held reservation and retrying with approved network access. Broader live
+  scientific-quality acceptance remains open; edited versions are not automatically
+  re-audited. Prior claims below saying jobs/report integration is unimplemented
+  are historical, superseded by this entry. No commit/push. Details:
+  `docs/testing/2026-09-07-deep-review-integration.md`.
+
+- September 7 claim-grounding correction supersedes the earlier failed pilot
+  below. A host-injected rewrite → per-claim passage check → semantic re-audit
+  loop now corrects every paragraph, with two attempts maximum and a checked
+  report gate. Legitimate research gaps are disclosed separately, not invented
+  answers or failed claims. Claim/source edits invalidate audit signatures.
+  The saved live pilot now has 7 checked paragraphs / 35 cited claims; manual
+  checking confirmed the significance, certainty and missing-citation examples
+  are corrected. Cache-only replay passed without new calls. This is not full
+  scientific acceptance or production deep-review delivery. PubMed mixed-text
+  parsing also preserves inline symbols and their original reading order.
+  Shared paid-test ledger: $0.77906775 spent, $1.22093225 remains, 79 attempts,
+  no held reservations or running paid process. All previous attempts remain
+  in `/tmp/scispark-review-live-GWqrkU`; do not reset the allowance for later
+  tests. Full offline suite: 2,446 passed / 16 skipped; TypeScript passed;
+  lint has only the existing ConnectAiCard warning. The isolated production
+  build (`.next-review-grounding`) remained at compilation and was interrupted;
+  no build pass or compiler failure cause is established. Human port 3113 and vault
+  unchanged; no commit/push. Details and remaining integration work:
+  `docs/testing/2026-09-07-review-grounding-correction.md`.
+
+- September 7 literature-review implementation, partial delivery: Search and
+  Chat now share the fixed-height Sparky workspace. Questions and full search
+  snapshots persist automatically in conversation History; navigation/reload
+  restores results without new paid calls. Project scope, source Settings in
+  place, legacy links and streamed replies are preserved. `/papers` is quiet
+  for proactive notifications just like Chat. Phase 1 is not deep-review delivery.
+  The ScholarQA quote/outline/iterative-synthesis algorithm has an Apache-2.0,
+  unwired TypeScript trial plus an offline upstream probe. Both candidates'
+  actual core code was exercised with injected fixture completions; the adapted
+  ScholarQA trial also ran on public abstracts with the configured live model.
+  Gap retrieval, passage-backed tables and paragraph-level support audit exist
+  only in the trial. Its draft has unsupported claims and does not pass the
+  scientific quality gate. No production engine is selected. Brief/context/jobs,
+  shared budgets, full-text acquisition, report editing/versioning/export and
+  KB insertion are still to implement. User approved provider acceptance up to
+  $2 total. The user has now supplied GMI-hosted `google/gemini-3.8-flash` rates:
+  $0.75/M input, $3.75/M output, $0.075/M cache reads (September 7). The pricing
+  blocker is resolved. Endpoint-scoped evaluation pricing avoids applying this
+  quote globally; reservations do not assume cache hits. Live evaluation has a
+  persistent cumulative $2 ledger in `/tmp/scispark-review-live-GWqrkU`; consult
+  that ledger/evaluation record before any further paid test. Last verified spend:
+  $0.33594525 across 53 attempts; $1.66405475 remains, no held reservations.
+  Thinking remained enabled. Five study rows and seven claim checks completed;
+  six paragraphs were flagged, and manual checking also found overstatement in
+  the model-approved paragraph. No paid process is left running.
+  Follow-up offline suite: 2,437 passed, 16 skipped; TypeScript passed; lint has
+  no errors and the same pre-existing ConnectAiCard dependency warning.
+  Routine tests/preview use disposable key-free vaults.
+  Earlier foundation suite: 2,420 passed, 15 skipped; TypeScript/build passed; lint has only
+  the existing ConnectAiCard warning. Isolated artifact `.next-literature-workspace`
+  (`7Ac9c4OIY7l3027pRpP2V`) is not serving the user's port 3113. That server and
+  vault were untouched; no commit/push. Final browser evidence and remaining gates:
+  `docs/testing/2026-09-07-literature-review-foundation.md`.
+  All 25 production/disposable-vault browser tests passed on that artifact.
+  Reopened long chats scroll to the latest message after loading. Draft mode,
+  Read Sources Only and narrowed indexes survive navigation without silently
+  widening context. The offline browser preview and port-3124 server are closed.
+
+- September 7 personalized literature-review planning: the grill-me interview
+  settled a unified Search/Chat workspace, inline brief approval, scoped personal
+  context, honest abstract-only evidence, model-aware per-review allowances
+  (provisional $2 plus daily budget), durable background/resumable jobs, and
+  editable/versioned reports with Markdown/BibTeX and explicit KB insertion.
+  User clarification: all AI chat conversations, including literature reviews,
+  are automatically recorded in conversation History with their linked reports,
+  sources, run status and revisions. No Save, export or KB action is required;
+  reuse starts with reopening/continuing that history. History retention is
+  separate from deliberate selection as personal memory for future chats.
+  Plan: `docs/superpowers/plans/2026-09-07-personalized-literature-review.md`.
+  Evaluate academic ScholarQA/OpenScholar components before selecting an engine;
+  the earlier generic DeepAgentsJS suggestion is not the chosen implementation.
+  Current source confirms search results remain page-local and request streaming
+  is not a restartable job system. Planning only: no application code, dependency,
+  active vault, server process, paid-call, commit or push changes in this turn.
+
+- September 6 quiet Sparky proactivity supersedes the serving artifact below:
+  `.next-quiet-companion`, build `jAfvasmbgFo1pQNUU3zm6`, detached PID 51021 on
+  loopback port 3113. The existing vault remains
+  `/tmp/scispark-production-walkthrough-kafjXM/vault`; no keys or research data
+  were replaced. Home, Search artifact identity and settings health passed.
+  Removed the app-open/cached-feed trigger and generic Home invitation.
+  Server-owned event claims and rolling limits now persist across reloads,
+  concurrent tabs and restarts; default two proactive messages/24h with a
+  30-minute gap. Viewed destinations consume events quietly. Navigation,
+  Settings, typing, hidden tabs and expiry clear/invalidate proactive bubbles.
+  User-initiated feedback questions remain separate and unchanged.
+  Gates: 2,396 Vitest tests passed (15 skipped); TypeScript, production build,
+  and 24 production/disposable-vault Playwright tests passed. ESLint has no new
+  warnings/errors (existing ConnectAiCard dependency warning only). Desktop
+  and phone captures inspected, including removal of the one-word bubble wrap.
+  No paid AI/external source calls, human-vault edits, commit or push.
+  Details: `docs/testing/2026-09-06-quiet-companion.md`.
+
+- September 6 Search source-settings overlay supersedes the serving artifact
+  below: `.next-search-settings-overlay`, build `ote_J2twcvUixmNLQNjZZ`,
+  detached PID 44202 on port 3113 with the unchanged walkthrough vault.
+  Search's Manage sources opens the existing UI-store modal directly, without
+  navigating through the legacy /settings route (which redirects to Home).
+  Search stays mounted; draft text, results and temporary scope survive closing
+  via X/Escape. Saving sources updates available indexes without rerunning or
+  clearing Search. Direct /settings URL compatibility is unchanged.
+  Gates: 8 focused unit tests, TypeScript, focused ESLint, production build,
+  and 2 disposable-vault browser flows passed (source settings and Search
+  overlay/state retention). Desktop/phone screenshots inspected. No paid AI,
+  external source calls, human-vault edits, commit or push.
+
+- September 6 paper feedback alignment supersedes the serving artifact below:
+  `.next-paper-feedback-row`, build `BgM73Ya6M1p4H8456G0DB`, detached PID
+  39505 on loopback port 3113 with the unchanged walkthrough vault. Paper
+  detail feedback is now a trailing slot in the primary action row, aligned
+  right; narrow screens wrap naturally. Feedback persistence, selected colors,
+  Sparky prompts and action status/error messages are unchanged.
+  Gates: 24 focused unit tests, TypeScript, focused ESLint, production build,
+  and the disposable-vault recommendation/feedback/History browser flow passed.
+  Browser assertions cover desktop row alignment, right-edge positioning and
+  phone overflow. Desktop/light and phone/dark screenshots were inspected.
+  Paper route/build identity and settings health checks passed on port 3113.
+  No human-vault edits, paid AI calls, commit or push.
+
+- September 6 Trending layout supersedes the serving artifact below:
+  .next-trending-ui-final, build rLrsCoDCvfHIG9oGomerf, detached PID 37982 on
+  port 3113 with the unchanged walkthrough vault. Trending has compact local
+  field filters, a scope disclosure, dated comparisons, labeled paper counts
+  and share growth, expandable summaries/comparisons/paper links, and a
+  separate all-fields Highly cited papers section. Long titles wrap rather
+  than truncate; desktop/phone and light/dark styling use existing brand tokens.
+  Field filters only select from the cached top-ten list; no requests, settings
+  writes or re-ranking. Missing fields are not described as inactive. Retrieval,
+  ranking, preferences and cache format are unchanged. README documents scope.
+  Gates: 2,379 unit tests passed (15 skips), TypeScript, focused ESLint,
+  production build and all 22 disposable-vault browser tests passed. Final
+  expanded-detail screenshot capture rerun also passed on the same artifact.
+  Full ESLint has zero errors and the existing ConnectAiCard dependency warning.
+  Final desktop/light-dark and phone/light-dark screenshots inspected; local
+  serving artifact and settings API verified. No human-vault edits, paid AI
+  calls, live literature requests, commit or push.
+  Evidence: docs/testing/2026-09-06-trending-layout.md.
+
+- September 6 shared Feed research interests supersedes the serving artifact
+  below: .next-feed-shared-fields, build iVk6qVXIX1aJAcer_0oAe, detached PID
+  34147 on port 3113 with the unchanged walkthrough vault. Each Feed refresh
+  reads the explicit Trending field/subfield selection and supplies it to
+  search planning and relevance assessment as soft interests. Subfield labels
+  are the interests when narrowed; parents provide context. No taxonomy-ID
+  filtering, extra score bonus, added model call or numeric weight change.
+  Profile constraints, diversity, source choices and feedback semantics remain.
+  Planning fallback covers selected fields; invalid saved selections warn.
+  Cached run metadata records the canonical selection; old caches remain valid.
+  README and a plain Settings note explain the shared behavior. Existing Feed
+  applies the new preference only after the next successful refresh.
+  Gates: 2,375 unit tests passed (15 skips), TypeScript, focused ESLint,
+  production build and all 21 disposable-vault browser tests passed.
+  Full ESLint has zero errors and the existing ConnectAiCard dependency warning.
+  Desktop Feed and phone Settings screenshots inspected; serving artifact and
+  settings API verified. AI/source tests use fixtures, not live quality evidence.
+  No human vault changes, paid AI calls, commit or push.
+  Evidence: docs/testing/2026-09-06-feed-shared-fields.md.
+
+- September 6 field-first optional subfields supersedes the serving artifact
+  below: .next-trending-subfields, build ZH0b4fh2GUncBsTQcbhuD, detached PID
+  24624 on port 3113, preserving the same walkthrough vault. Users choose
+  broad fields first, then optionally expand each selected field's own
+  subfields. No children means the entire field; selected children form a
+  union. Canonical parent/child validation, consistent retrieval filters and
+  scope-sensitive cache matching are implemented and documented in README.
+  Gates: 2,359 unit tests passed (15 skips), TypeScript, focused ESLint,
+  production build and all 20 disposable-vault browser tests passed.
+  Full ESLint has zero errors and the existing ConnectAiCard dependency warning.
+  Desktop/light and phone/dark screenshots inspected. A public keyless
+  OpenAlex parent-plus-child filter probe returned 200 with correct membership.
+  No human vault changes, paid AI calls, commit or push.
+  Evidence: docs/testing/2026-09-06-trending-subfields.md.
+
+- September 6 avatar camera control supersedes the serving artifact below:
+  `.next-avatar-camera`, build `1qdlc5cyDnKb_fgA61uMY`, detached PID 22229
+  on loopback port 3113 with the unchanged walkthrough vault.
+  The main profile avatar now has a bottom-right camera button. The duplicate
+  upload row is removed; keyboard picker access, validation, Save/Cancel and
+  Remove photo remain. No API or storage-format changes.
+  Gates: 2,343 tests (15 gated skips), TypeScript, focused ESLint, production
+  build, 18 existing browser tests plus the new avatar regression. The new test
+  initially matched Next's separate route announcer; its locator was scoped
+  to main and the complete avatar flow passed on rerun with the same artifact.
+  Desktop/light and phone/dark screenshots checked for initials and photos.
+  No human profile/key/photo edits, AI calls, commit or push.
+  Evidence: `docs/testing/2026-09-06-avatar-camera.md`.
+
+- September 6 official OpenAlex field selection supersedes the free-text editor
+  and serving artifact below: `.next-trending-fields`, build
+  `udq9eZUHyjDWHyNmwL4sk`, detached PID 20536 on loopback port 3113,
+  with the unchanged `/tmp/scispark-production-walkthrough-kafjXM/vault`.
+  Settings → Trending fields offers a searchable selector for up to three of
+  26 verified official fields. Narrow interests remain free text. Suggestions
+  preview only until Add + Save; legacy custom topics require explicit replacement.
+  All trend metrics and paper lookups now use canonical primary-field IDs,
+  not additional field-name keyword searches. Cache v5 invalidates older metrics
+  while retaining v4 paper records. README documents the taxonomy and pipeline.
+  Gates: 2,342 tests (15 gated skips), TypeScript, full/focused ESLint, production
+  build, all 18 production browser tests on the final artifact; desktop/light
+  and phone/dark screenshots inspected. Source responses in tests are fixtures;
+  only the public catalog was verified live. No human-vault edits, AI calls,
+  commit or push. Evidence: `docs/testing/2026-09-06-trending-fields.md`.
+
+- September 6 editable Trending topics supersedes the serving artifact below:
+  `.next-trending-topics`, build `QVoMeCcoPpHSRFulKCWDM`, detached PID 15310
+  on loopback port 3113 with the unchanged walkthrough vault. Settings →
+  Trending fields now supports adding, renaming and removing 1–3 General topics;
+  Use suggestions + Save explicitly resets automatic derivation. Custom labels
+  use text scopes, not fabricated OpenAlex IDs. Manual edits survive background
+  derivation; broad topics work without narrow interests. Saving does not trigger
+  source or AI calls. Existing keys/profile/feed were preserved.
+  Gates: 2,328 tests, TypeScript, focused ESLint, production build, all 18
+  production E2E tests; desktop/light and phone/dark screenshots inspected.
+  Evidence: `docs/testing/2026-09-06-trending-topics.md`.
+
+- September 6 paper-source multi-selection supersedes the serving artifact below:
+  `.next-source-selection-final`, build `a4jV0KuigzGkNcvovOlmE`, detached PID 9293
+  on loopback port 3113 with the same unchanged walkthrough vault. Settings →
+  Paper sources offers arXiv/OpenAlex/Semantic Scholar/PubMed checkboxes and Save
+  sources. At least one selection is required. Feed planning/fallback and Search
+  scopes enforce the saved list; legacy defaults enable all four. Source saves
+  preserve credentials and do not trigger retrieval or paid calls. Existing
+  papers/feed are untouched. Trending analytics and explicit metadata/reader/
+  citation lookups are not controlled by this Feed/Search preference.
+  Gates: 2,314 tests, focused ESLint, production build/TypeScript, full 17-test
+  E2E suite; final mobile-copy-only adjustment rechecked with focused production
+  source E2E and screenshots. Evidence: `docs/testing/2026-09-06-paper-source-selection.md`.
+
+- September 6 Paper sources copy follow-up supersedes the serving artifact below:
+  `.next-source-privacy`, build `s4wlFmpf5HrqZGlqu_Yz0`, detached PID 6794 on
+  loopback port 3113 with the same unchanged walkthrough vault. The main key
+  helper is one plain-language sentence; unencrypted storage/export details
+  are in a collapsed Storage & privacy disclosure. Five focused component tests,
+  focused ESLint, production build/TypeScript, and the Paper sources production
+  E2E passed, including keyboard disclosure and desktop/light + phone/dark
+  screenshots. No key changes or real source probes were performed.
+
+- September 6 personal Semantic Scholar key support supersedes the serving
+  artifact below: `.next-source-save-test`, build
+  `08N4G7fDIhC5w_PQAJ7Oj`, detached PID 5558 on loopback port 3113, using the
+  unchanged `/tmp/scispark-production-walkthrough-kafjXM/vault`.
+  Settings → Paper sources (`/settings?section=sources`) now accepts a personal
+  S2 key and offers one Save & test connection action with key-free access status.
+  Saving precedes testing; failed tests retain the saved key. The same button
+  re-tests an existing key when the input is empty; removal remains separate.
+  Combined-button gates: 2,290 tests, TypeScript, focused ESLint, production
+  build, and all 17 production E2E tests passed. Home/settings API return 200.
+  Vault keys override environment fallback immediately for new feed, search,
+  and citation requests. Probes/citations share S2 search pacing. Settings
+  credentials remain outside exports/History and browser responses; malformed
+  settings errors cannot quote secret fragments. Key presence is not a verified
+  connection. A real authenticated S2 test awaits the user's key; no source
+  availability guarantee, feed rewrite, vault reset, commit or push.
+  Verification is recorded in
+  `docs/testing/2026-09-06-semantic-scholar-personal-key.md`.
+
+- September 6 Home follow-up supersedes the serving artifact below:
+  `.next-home-notices`, build `a-_ulQ5oeS5yCnAbsXxi9`, detached PID 90003 on
+  port 3113 with the same disposable vault. Home removes recommendation
+  preferences/edit links; Settings retains them. Historical source failures are
+  collapsed and timestamped, not presented as current outages; assessment
+  warnings stay visible. Actual paced-adapter recheck: PubMed two articles in
+  694 ms, Semantic Scholar still HTTP 429 after retry (5,399 ms). Do not claim
+  Semantic Scholar availability is fixed. Gates: 2,255 tests, TypeScript,
+  focused ESLint, production build and all 16 production E2E tests passed;
+  actual Home layout/disclosure browser-verified. No AI calls or feed/cache
+  rewrite; no commit/push. Follow-up evidence is recorded in
+  `docs/testing/2026-09-06-source-pacing-and-card-texture.md`.
+
+- September 6 source pacing/card-texture follow-up: live source-only diagnostics
+  confirmed Semantic Scholar HTTP 429; PubMed ESearch/EFetch both returned 200
+  with two articles. Historical PubMed failure cause remains unknown. S2/PubMed
+  search adapters now share per-source HTTP pacing (1000/350 ms), bounded
+  429/503 retry/cooldown, full-search timeouts and feed cancellation. New warnings
+  preserve safe failure categories. Card headers reuse the original grain asset
+  without the heavy top rule. Gates: 2,251 tests, TypeScript, production build and
+  all 16 production E2E tests passed; ESLint has zero errors and one existing
+  `ConnectAiCard` hook warning. Port 3113 now serves `.next-source-pacing`, build
+  `srQ6kCJ4uWHzHWcvsv-mU`, as detached PID 85097 using the unchanged disposable
+  vault `/tmp/scispark-production-walkthrough-kafjXM/vault`. Browser visuals and
+  HTTP 200 verified; cached warnings retained; no AI calls or commit/push.
+  Evidence: `docs/testing/2026-09-06-source-pacing-and-card-texture.md`.
+
+- September 6 BYOK-first onboarding/recommendation implementation is in the
+  uncommitted worktree. The adaptive streamed conversation retains original
+  answers, confirms an editable profile before first feed, and replaces the
+  onboarding preferences popup. Shared paper feedback, source eligibility and
+  unknown-cost reporting are implemented. Current deterministic gate: TypeScript,
+  ESLint, diff check and 2,236 tests passed (15 gated skips). BYOK now verifies
+  both configured model tiers rather than only the old fast-tier ping; identical
+  provider/model configurations share one test call. Onboarding API security,
+  stale turns, atomic rollback and post-commit warnings have focused regressions.
+  After explicit approval for Next's supported Webpack builder, production build
+  and all 16 production Playwright tests passed. Final artifact:
+  `.next-onboarding-acceptance-final`, build ID `3fdcbq7gYHW1KZVY4oaxV`.
+  A visible fresh-vault Gemini walkthrough on 3113 completed BYOK, adaptive
+  onboarding, editable confirmation, automatic nine-paper feed, persistent
+  Home/detail Save/thumbs, optional reasons/Skip/switch/clear and a twelve-paper
+  learned refresh. Search planning honored the EEG-over-fMRI reason; nine
+  selected papers received positive memory effects. The profile hash stayed
+  unchanged, and unknown pricing remained unknown in Settings. The live run
+  found generic metadata mislabeling a dataset/review; explicit abstract
+  self-descriptions now refine category labels, with regression tests. The
+  final production artifact was rechecked after that category-only correction.
+  Live History Undo is awaiting the user's native confirmation click; automated
+  History Undo passed. Phone/landscape acceptance is automated production-browser
+  coverage, not live-provider mobile acceptance. Evidence and limits:
+  `docs/testing/2026-09-06-production-onboarding-walkthrough.md`. The older
+  walkthrough below remains dev-server evidence only. No commit/push/release.
+
+- Live browser walkthrough completed 2026-09-06 with explicit paid-call approval,
+  a fresh disposable vault and user-selected `google/gemini-3.8-flash` through
+  the existing OpenAI-compatible provider. First initialization exposed absent
+  optional paper IDs reaching `toLowerCase()` in recommendation interleaving.
+  Two regressions reproduced it before the fix; absent/empty aliases are now
+  skipped without dropping valid saved-paper exclusions. The same browser then
+  completed onboarding/BYOK, an eight-paper feed, positive feedback, a reasoned
+  negative vote, reload, Settings memory inspection, a 12-paper learned refresh,
+  and History Undo (native confirmation clicked by the user). A related paper
+  received a visible +8 memory adjustment; profile hash stayed unchanged. Undo
+  restored the bare negative vote and kept the positive vote and cached feed.
+  Negative-memory persistence/delivery passed, but an isolated live negative
+  score effect was not demonstrated. Full tests: 2,200 passed, 15 gated skips;
+  TypeScript and focused ESLint passed. No production build/E2E rerun or new
+  commit/push was performed in this session. Remaining findings: public referee
+  reports appear as separate papers, unknown Gemini pricing displays as $0.00,
+  and some source requests failed with disclosed warnings. Detailed evidence:
+  `docs/testing/2026-09-06-live-feed-walkthrough.md`. Test server remains on 3112;
+  the original user vault was not modified.
 
 - Production browser/server import boundary fixed 2026-09-05. Trending's
   cache-loading/freshness/scope helpers now live in `trending/cache.ts`, and its
