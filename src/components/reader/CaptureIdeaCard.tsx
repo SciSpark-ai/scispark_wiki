@@ -89,7 +89,7 @@ export default function CaptureIdeaCard({
           <button
             type="submit"
             disabled={saving}
-            className="text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium disabled:opacity-50"
+            className="text-[13px] text-on-accent bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save"}
           </button>

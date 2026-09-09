@@ -23,7 +23,7 @@ export function PaperDigestView({ digest, fromCache }: { digest: DigestResult; f
       {digest.keyPoints.length > 0 && (
         <Card className="mt-7 p-5 sm:p-6">
           <h3 className="text-[13px] font-medium text-espresso">Key points</h3>
-          <ul className="mt-3 list-outside list-disc space-y-2 pl-5 text-[14px] leading-[1.65] text-espresso tracking-body marker:text-orange">
+          <ul className="mt-3 list-outside list-disc space-y-2 pl-5 text-[14px] leading-[1.65] text-espresso tracking-body marker:text-accent-ink">
             {digest.keyPoints.map((point, i) => (
               <li key={i}>{point}</li>
             ))}

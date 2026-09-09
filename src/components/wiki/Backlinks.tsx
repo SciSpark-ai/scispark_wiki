@@ -22,7 +22,7 @@ export function Backlinks({ bundle, id }: BacklinksProps) {
         const page = bundle.pages.get(sourceId)
         return (
           <li key={sourceId}>
-            <Link href={wikiHref(sourceId)} className="text-[13px] text-orange hover:underline">
+            <Link href={wikiHref(sourceId)} className="text-[13px] text-accent-ink hover:underline">
               {page?.frontmatter.title ?? sourceId}
             </Link>
           </li>

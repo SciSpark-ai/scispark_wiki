@@ -57,12 +57,12 @@ export function ProjectMembershipControl({ pageId }: { pageId: string }) {
   return (
     <section className="mt-4 rounded-card border border-border-warm bg-light-surface p-4">
       <div className="flex items-center gap-2 text-[13px] font-medium text-espresso">
-        <FolderOpen size={15} className="text-orange" />
+        <FolderOpen size={15} className="text-accent-ink" />
         Project membership
       </div>
       {load.status === "loading" && <p className="mt-2 text-[12px] text-muted-text">Loading projects…</p>}
-      {load.status === "error" && <p className="mt-2 text-[12px] text-red-700">{load.message} <button type="button" onClick={() => void reload()} className="text-orange">Retry</button></p>}
-      {load.status === "ready" && load.projects.length === 0 && <p className="mt-2 text-[12px] text-muted-text">No projects yet. <Link href="/projects" className="text-orange">Create one</Link></p>}
+      {load.status === "error" && <p className="mt-2 text-[12px] text-red-700">{load.message} <button type="button" onClick={() => void reload()} className="text-accent-ink">Retry</button></p>}
+      {load.status === "ready" && load.projects.length === 0 && <p className="mt-2 text-[12px] text-muted-text">No projects yet. <Link href="/projects" className="text-accent-ink">Create one</Link></p>}
       {load.status === "ready" && load.projects.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {load.projects.map((project) => {
@@ -73,7 +73,7 @@ export function ProjectMembershipControl({ pageId }: { pageId: string }) {
                 type="button"
                 disabled={busyProjectId !== null}
                 onClick={() => void toggle(project, isMember)}
-                className={`flex items-center gap-1.5 rounded-pill border px-3 py-1.5 text-[12px] transition-colors disabled:opacity-50 ${isMember ? "border-orange bg-orange/10 text-orange" : "border-border-warm text-espresso hover:bg-card-surface"}`}
+                className={`flex items-center gap-1.5 rounded-pill border px-3 py-1.5 text-[12px] transition-colors disabled:opacity-50 ${isMember ? "border-orange bg-orange/10 text-accent-ink" : "border-border-warm text-espresso hover:bg-card-surface"}`}
               >
                 {isMember && <Check size={12} />}
                 {busyProjectId === project.id ? "Saving…" : project.title}

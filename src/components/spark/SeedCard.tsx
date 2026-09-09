@@ -48,7 +48,7 @@ export function SeedCard({ seed, saveState, onSave, onDevelop, developBusy, deve
         {saveState.status === "saved" ? (
           <Link
             href={wikiHref(saveState.pageId)}
-            className="text-[13px] text-orange hover:text-orange-light font-medium"
+            className="text-[13px] text-accent-ink hover:text-accent-ink-hover font-medium"
           >
             View idea page →
           </Link>
@@ -66,7 +66,7 @@ export function SeedCard({ seed, saveState, onSave, onDevelop, developBusy, deve
           type="button"
           onClick={onDevelop}
           disabled={developDisabled}
-          className="text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-3 py-1 font-medium disabled:opacity-50"
+          className="text-[13px] text-on-accent bg-orange hover:bg-orange/90 rounded-pill px-3 py-1 font-medium disabled:opacity-50"
         >
           {developBusy ? "Developing…" : "Develop fully"}
         </button>

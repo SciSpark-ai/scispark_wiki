@@ -27,7 +27,7 @@ export function PaperFeedContext({ whyThis, whyYou, whyNow }: PaperFeedContextPr
       <div className="grid divide-y divide-border-warm md:grid-cols-3 md:divide-x md:divide-y-0">
         {reasons.map((reason) => (
           <div key={reason.label} className="p-5 sm:p-6">
-            <div className="text-[12px] font-medium text-orange">{reason.label}</div>
+            <div className="text-[12px] font-medium text-accent-ink">{reason.label}</div>
             <p className="mt-2 text-[14px] leading-[1.65] text-espresso tracking-body">{reason.value}</p>
           </div>
         ))}

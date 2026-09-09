@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Visual brand contract
+
+Read [design.md](design.md) before UI work. The user's September 9 correction
+requires preserving the current real product UI, integrating the supplied logo,
+and auditing consistency/accessibility in place. The earlier editorial mockup
+is superseded. Keep the warm palette, typography, shapes and layout; do not
+redesign screens as part of branding work.
+
 ## What this project is
 
 **SciSpark Paper Manager** — an AI-agent-driven wiki / knowledge-base system with rich visualization, for researchers to track the fields they care about. It generalizes SciSpark (currently a clinical-evidence product) to all research domains and adds a persistent personal knowledge layer on top of SciSpark's recommendation feed.

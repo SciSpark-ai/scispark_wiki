@@ -146,7 +146,7 @@ export function TrendingFieldsCard() {
             <div className="flex" role="group" aria-label="Refresh cadence">
               {(["daily", "weekly"] as const).map((value) => <button key={value} type="button" aria-pressed={cadence === value}
                 onClick={() => { setCadence(value); markEdited() }}
-                className={"px-3 py-1.5 text-[13px] font-medium first:rounded-l-btn last:rounded-r-btn " + (cadence === value ? "bg-orange text-white" : "bg-card-surface text-muted-text")}
+                className={"px-3 py-1.5 text-[13px] font-medium first:rounded-l-btn last:rounded-r-btn " + (cadence === value ? "bg-orange text-on-accent" : "bg-card-surface text-muted-text")}
               >{value === "daily" ? "Daily" : "Weekly"}</button>)}
             </div>
           </div>

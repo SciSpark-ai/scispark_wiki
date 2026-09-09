@@ -26,7 +26,7 @@ export function LegacyPrototypeWarning() {
       className="fixed bottom-5 left-1/2 z-[80] w-[min(92vw,620px)] -translate-x-1/2 rounded-card border border-border-warm bg-light-surface p-4 shadow-lg"
     >
       <div className="flex items-start gap-3">
-        <AlertTriangle className="mt-0.5 shrink-0 text-orange" size={18} />
+        <AlertTriangle className="mt-0.5 shrink-0 text-accent-ink" size={18} />
         <div className="min-w-0 flex-1">
           <p className="text-[14px] font-medium text-espresso">Prototype browser data found</p>
           <p className="mt-1 text-[13px] leading-relaxed text-muted-text">
@@ -40,7 +40,7 @@ export function LegacyPrototypeWarning() {
                 clearLegacyPrototypeData(window.localStorage)
                 setKeys([])
               }}
-              className="rounded-pill bg-orange px-3 py-1.5 text-[12px] font-medium text-white hover:bg-orange/90"
+              className="rounded-pill bg-orange px-3 py-1.5 text-[12px] font-medium text-on-accent hover:bg-orange/90"
             >
               Delete prototype data
             </button>

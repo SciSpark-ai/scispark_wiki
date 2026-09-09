@@ -23,6 +23,7 @@ import { listSessions } from "@/lib/chat/session";
 import type { ChatSession } from "@/lib/chat/session";
 import { Chip } from "@/components/ui/Chip";
 import { ThemeToggle } from "./ThemeToggle";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 /** A nav aid, not a second inbox — just enough recent conversations to jump
  * back into one, no badges/counts. */
@@ -32,7 +33,7 @@ function UserAvatar() {
   const user = useUserStore((s) => s.user);
   const initial = user?.name?.charAt(0).toUpperCase() ?? "U";
   return (
-    <div className="w-9 h-9 rounded-full bg-orange text-white flex items-center justify-center text-[14px] font-medium flex-shrink-0 overflow-hidden">
+    <div className="w-9 h-9 rounded-full bg-orange text-on-accent flex items-center justify-center text-[14px] font-medium flex-shrink-0 overflow-hidden">
       {user?.avatar ? (
         // The image is a validated local data URL loaded from the user's vault.
         // eslint-disable-next-line @next/next/no-img-element
@@ -201,11 +202,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
         >
           <PanelLeftClose size={18} strokeWidth={1.8} />
         </button>
-        <span
-          className={`font-heading text-[26px] text-espresso tracking-heading leading-none ${fadeLabel}`}
-        >
-          SciSpark
-        </span>
+        <BrandLogo className={fadeLabel} />
         <ThemeToggle className={collapsed ? "invisible" : "ml-auto"} />
       </div>
 

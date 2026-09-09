@@ -58,8 +58,8 @@ export function ShareButton({
     variant === "pill"
       ? "flex items-center gap-1.5 px-4 py-2 rounded-pill text-[13px] transition-colors border border-border-warm text-espresso hover:bg-card-surface"
       : variant === "ghost"
-        ? "p-1.5 text-muted-text hover:text-orange transition-colors rounded-[6px]"
-        : "hover:text-orange transition-colors";
+        ? "p-1.5 text-muted-text hover:text-accent-ink transition-colors rounded-[6px]"
+        : "hover:text-accent-ink transition-colors";
 
   return (
     <div ref={ref} className={`relative ${className ?? ""}`}>
@@ -85,7 +85,7 @@ export function ShareButton({
             }}
             className="flex items-center gap-2 px-3 py-2 text-[13px] text-espresso hover:bg-light-surface transition-colors w-full text-left"
           >
-            {copied ? <Check size={14} className="text-orange" /> : <Link2 size={14} />}
+            {copied ? <Check size={14} className="text-accent-ink" /> : <Link2 size={14} />}
             {copied ? "Copied!" : "Copy link"}
           </button>
           <button

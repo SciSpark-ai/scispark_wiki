@@ -52,7 +52,7 @@ export function RelatedInWiki({ related }: { related: RelatedPageLink[] }) {
       <ul className="space-y-1">
         {related.map((r) => (
           <li key={r.id}>
-            <Link href={wikiHref(r.id)} className="text-[13px] text-orange hover:text-orange-light transition-colors">
+            <Link href={wikiHref(r.id)} className="text-[13px] text-accent-ink hover:text-accent-ink-hover transition-colors">
               {r.title}
             </Link>
           </li>

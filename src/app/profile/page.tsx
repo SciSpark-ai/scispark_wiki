@@ -75,7 +75,7 @@ function Avatar({ profile }: { profile: EditableUserProfile }) {
       className={`${dimensions} rounded-full object-cover ring-4 ring-white`}
     />
   ) : (
-    <span className={`${dimensions} flex items-center justify-center rounded-full bg-orange font-medium text-white ring-4 ring-white`}>
+    <span className={`${dimensions} flex items-center justify-center rounded-full bg-orange font-medium text-on-accent ring-4 ring-white`}>
       {avatarInitial(profile.name)}
     </span>
   )
@@ -201,9 +201,9 @@ export default function ProfilePage() {
         <PageHeader title="Profile" />
         <div className="mt-6 rounded-[18px] border border-border-warm/40 bg-light-surface p-8">
           {failedToLoad ? (
-            <RotateCcw className="mb-4 text-orange" aria-hidden="true" />
+            <RotateCcw className="mb-4 text-accent-ink" aria-hidden="true" />
           ) : (
-            <UserRound className="mb-4 text-orange" aria-hidden="true" />
+            <UserRound className="mb-4 text-accent-ink" aria-hidden="true" />
           )}
           <h2 className="font-heading text-[22px] text-espresso">
             {failedToLoad ? "SciSpark could not open your profile" : "Sparky has not met you yet"}
@@ -214,11 +214,11 @@ export default function ProfilePage() {
               : "Start a short conversation so SciSpark can personalize your research feed and companion."}
           </p>
           {failedToLoad ? (
-            <button type="button" onClick={() => void reloadProfile()} className="mt-5 inline-flex items-center gap-2 rounded-pill bg-orange px-5 py-2.5 text-[14px] font-medium text-white hover:bg-orange/90">
+            <button type="button" onClick={() => void reloadProfile()} className="mt-5 inline-flex items-center gap-2 rounded-pill bg-orange px-5 py-2.5 text-[14px] font-medium text-on-accent hover:bg-orange/90">
               <RotateCcw size={14} aria-hidden="true" /> Retry
             </button>
           ) : (
-            <Link href="/onboarding" className="mt-5 inline-flex rounded-pill bg-orange px-5 py-2.5 text-[14px] font-medium text-white hover:bg-orange/90">
+            <Link href="/onboarding" className="mt-5 inline-flex rounded-pill bg-orange px-5 py-2.5 text-[14px] font-medium text-on-accent hover:bg-orange/90">
               Meet Sparky
             </Link>
           )}
@@ -342,7 +342,7 @@ export default function ProfilePage() {
       {editing && (
         <div className="sticky bottom-4 mt-5 flex justify-end gap-3 rounded-[16px] border border-border-warm bg-light-surface/95 p-3 shadow-sm backdrop-blur">
           <button type="button" onClick={cancelEditing} disabled={saving} className="rounded-pill px-5 py-2.5 text-[14px] font-medium text-espresso hover:bg-card-surface disabled:opacity-50">Cancel</button>
-          <button type="button" onClick={() => void saveProfile()} disabled={saving || !hasChanges || !draft.name.trim() || !draft.role.trim() || !draft.fields.trim()} className="rounded-pill bg-orange px-5 py-2.5 text-[14px] font-medium text-white hover:bg-orange/90 disabled:opacity-45">
+          <button type="button" onClick={() => void saveProfile()} disabled={saving || !hasChanges || !draft.name.trim() || !draft.role.trim() || !draft.fields.trim()} className="rounded-pill bg-orange px-5 py-2.5 text-[14px] font-medium text-on-accent hover:bg-orange/90 disabled:opacity-45">
             {saving ? "Saving…" : "Save changes"}
           </button>
         </div>

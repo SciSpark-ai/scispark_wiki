@@ -216,7 +216,7 @@ export default function WikiInboxPage() {
           <p className="text-[14px] text-muted-text tracking-body">Nothing needs review right now.</p>
           <Link
             href="/wiki"
-            className="mt-4 text-[14px] text-orange font-medium tracking-body hover:text-orange-light transition-colors"
+            className="mt-4 text-[14px] text-accent-ink font-medium tracking-body hover:text-accent-ink-hover transition-colors"
           >
             Back to wiki →
           </Link>
@@ -271,7 +271,7 @@ export default function WikiInboxPage() {
                   {item.pages.map((slug) => {
                     const page = bundle ? resolveLink(bundle, slug) : null
                     return page ? (
-                      <Link key={slug} href={wikiHref(page.id)} className="text-[12px] text-orange hover:text-orange-light">
+                      <Link key={slug} href={wikiHref(page.id)} className="text-[12px] text-accent-ink hover:text-accent-ink-hover">
                         {displayTitle(String(page.frontmatter.title ?? ""))}
                       </Link>
                     ) : (

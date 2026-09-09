@@ -143,7 +143,7 @@ export function PaperSourcesCard() {
             {busy === "test" && <p role="status" className="text-[13px] text-secondary-dark">Checking a public search with your saved key. Pacing and retries can take up to 20 seconds. No AI calls.</p>}
           </form>
           <p className="text-[13px] leading-relaxed text-secondary-dark">
-            <a href="https://www.semanticscholar.org/product/api" target="_blank" rel="noopener noreferrer" className="text-orange underline underline-offset-4">Request a Semantic Scholar key</a>.
+            <a href="https://www.semanticscholar.org/product/api" target="_blank" rel="noopener noreferrer" className="text-accent-ink underline underline-offset-4">Request a Semantic Scholar key</a>.
             <span className="block">Optional. Other paper sources work without it.</span>
           </p>
         </div>

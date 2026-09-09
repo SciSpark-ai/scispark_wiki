@@ -68,7 +68,7 @@ export default function AskPanel({ selectionText, state, onAsk }: AskPanelProps)
           <button
             type="submit"
             disabled={!selectionText || state.status === "loading"}
-            className="self-start text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium disabled:opacity-50"
+            className="self-start text-[13px] text-on-accent bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium disabled:opacity-50"
           >
             {state.status === "loading" ? "Asking…" : "Ask"}
           </button>
@@ -86,7 +86,7 @@ export default function AskPanel({ selectionText, state, onAsk }: AskPanelProps)
                 <ul className="mt-1 space-y-0.5">
                   {state.citedPageIds.map((id) => (
                     <li key={id}>
-                      <Link href={wikiHref(id)} className="text-[13px] text-orange hover:text-orange-light">
+                      <Link href={wikiHref(id)} className="text-[13px] text-accent-ink hover:text-accent-ink-hover">
                         {id}
                       </Link>
                     </li>

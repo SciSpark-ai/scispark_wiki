@@ -106,7 +106,7 @@ export function CompanionMascot() {
           onClick={handleMascotClick}
           aria-label={current ? "Toggle companion message" : "Companion"}
           data-companion-toggle
-          className="flex h-12 w-12 items-center justify-center rounded-pill bg-orange text-white shadow-md cursor-pointer"
+          className="flex h-12 w-12 items-center justify-center rounded-pill bg-orange text-on-accent shadow-md cursor-pointer"
           animate={
             reducedMotion
               ? undefined

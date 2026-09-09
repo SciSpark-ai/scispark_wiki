@@ -3,7 +3,7 @@ import { cn } from "./cn"
 
 const TONE = {
   neutral: "bg-card-surface text-secondary-dark",
-  accent: "bg-orange/10 text-orange",
+  accent: "bg-orange/10 text-accent-ink",
 } as const
 
 export interface ChipProps extends HTMLAttributes<HTMLSpanElement> {

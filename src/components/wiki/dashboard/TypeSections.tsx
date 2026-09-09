@@ -25,7 +25,7 @@ export function TypeSections({ sections }: TypeSectionsProps) {
             <h2 className="text-[13px] font-medium text-espresso tracking-body">
               {section.label} <span className="text-muted-text">({section.total})</span>
             </h2>
-            <Link href="/wiki?view=all" className="shrink-0 text-[12px] text-orange hover:underline">
+            <Link href="/wiki?view=all" className="shrink-0 text-[12px] text-accent-ink hover:underline">
               All →
             </Link>
           </div>
@@ -34,7 +34,7 @@ export function TypeSections({ sections }: TypeSectionsProps) {
               <li key={entry.id}>
                 <Link
                   href={wikiHref(entry.id)}
-                  className="block truncate text-[13px] text-espresso hover:text-orange"
+                  className="block truncate text-[13px] text-espresso hover:text-accent-ink"
                 >
                   {displayTitle(entry.title)}
                 </Link>

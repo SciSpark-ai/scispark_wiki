@@ -8,7 +8,7 @@ import { loadOnboarding, sendOnboarding } from "@/lib/onboarding/client"
 import type { OnboardingAnswers } from "@/lib/usermodel/pages"
 
 function SparkyMark() {
-  return <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange text-white"><Sparkles size={17} aria-hidden="true" /></span>
+  return <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange text-on-accent"><Sparkles size={17} aria-hidden="true" /></span>
 }
 
 const fields = [
@@ -129,21 +129,21 @@ export function OnboardingFlow({ initial, onComplete }: { initial: OnboardingSta
               onChange={(event) => setAnswers((previous) => ({ ...previous, recommendations: { ...previous.recommendations, learnFromFeedback: event.target.checked } }))}
               className="mt-0.5 accent-orange" />Remember my feedback for future recommendations</label>
             <p className="text-[12px] leading-relaxed text-muted-text">Your original answers and confirmed profile stay in this vault. You can edit your profile and feedback preferences later.</p>
-            <button type="submit" className="rounded-pill bg-orange px-4 py-2.5 text-[14px] font-medium text-white hover:bg-orange/90">Confirm profile & find papers</button>
+            <button type="submit" className="rounded-pill bg-orange px-4 py-2.5 text-[14px] font-medium text-on-accent hover:bg-orange/90">Confirm profile & find papers</button>
           </form>}
         </div>
       </div>
       <div className="shrink-0 border-t border-border-warm/70 px-4 py-3 sm:px-7">
-        {error && <p role="alert" className="mb-2 max-h-20 overflow-auto text-[13px] text-espresso">{error} <Link href="/settings" className="text-orange underline">AI settings</Link></p>}
+        {error && <p role="alert" className="mb-2 max-h-20 overflow-auto text-[13px] text-espresso">{error} <Link href="/settings" className="text-accent-ink underline">AI settings</Link></p>}
         {warning && <p role="status" className="mb-2 max-h-16 overflow-auto text-[12px] text-muted-text">{warning}</p>}
-        {state.pending && !busy ? <button type="button" onClick={() => void perform({ action: "retry", revision: state.revision })} className="rounded-pill bg-orange px-4 py-2 text-[14px] text-white">Retry Sparky’s response</button> : (
+        {state.pending && !busy ? <button type="button" onClick={() => void perform({ action: "retry", revision: state.revision })} className="rounded-pill bg-orange px-4 py-2 text-[14px] text-on-accent">Retry Sparky’s response</button> : (
           <div className="flex items-end gap-2 rounded-[18px] border border-border-warm bg-light-surface p-2 focus-within:border-orange">
             <textarea aria-label="Your reply to Sparky" autoFocus value={input} maxLength={4000} rows={2} disabled={busy}
               onChange={(event) => setInput(event.target.value)} onKeyDown={handleKeyDown}
               placeholder={state.messages.length === 1 ? "Your name" : ready ? "Anything to change?" : "Tell me in your own words"}
               className="min-w-0 flex-1 resize-none bg-transparent px-2 py-2 text-[15px] leading-6 text-espresso outline-none placeholder:text-muted-text disabled:opacity-60" />
             <button type="button" aria-label="Send answer" onClick={() => send()} disabled={!input.trim() || busy}
-              className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange text-white focus-visible:ring-2 focus-visible:ring-orange disabled:opacity-40">
+              className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange text-on-accent focus-visible:ring-2 focus-visible:ring-orange disabled:opacity-40">
               {busy ? <Loader2 size={16} className="animate-spin" /> : <ArrowUp size={16} />}
             </button>
           </div>

@@ -148,7 +148,7 @@ export default function VizWorkspace({
             type="button"
             onClick={onRecompute}
             disabled={busy || !bundle}
-            className="text-[13px] text-espresso hover:text-orange disabled:opacity-50 rounded-pill border border-border-warm px-3 py-1.5 transition-colors shrink-0"
+            className="text-[13px] text-espresso hover:text-accent-ink disabled:opacity-50 rounded-pill border border-border-warm px-3 py-1.5 transition-colors shrink-0"
           >
             {busy ? "Recomputing…" : "Recompute"}
           </button>
@@ -167,7 +167,7 @@ export default function VizWorkspace({
               </p>
               <Link
                 href="/papers"
-                className="mt-3 inline-block text-[13px] text-orange hover:text-orange-light font-medium"
+                className="mt-3 inline-block text-[13px] text-accent-ink hover:text-accent-ink-hover font-medium"
               >
                 Go to Papers
               </Link>
@@ -181,7 +181,7 @@ export default function VizWorkspace({
               <button
                 type="button"
                 onClick={() => setFilters(EMPTY_FILTERS)}
-                className="mt-3 text-[13px] text-orange hover:text-orange-light font-medium"
+                className="mt-3 text-[13px] text-accent-ink hover:text-accent-ink-hover font-medium"
               >
                 Clear filters
               </button>

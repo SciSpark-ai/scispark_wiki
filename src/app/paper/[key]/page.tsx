@@ -383,7 +383,7 @@ function PaperPageContent() {
           action={
             // A forward action, not a back one — the hint tells the user to
             // go search for this paper, so it must not wear a "← Back" label.
-            <Link href="/papers" className="text-[13px] text-orange hover:text-orange-light">
+            <Link href="/papers" className="text-[13px] text-accent-ink hover:text-accent-ink-hover">
               Search papers →
             </Link>
           }

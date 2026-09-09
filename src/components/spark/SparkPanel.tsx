@@ -155,7 +155,7 @@ export function SparkPanel({ clusterPageIds, onIdeaSaved }: SparkPanelProps) {
           type="button"
           onClick={handleQuickSpark}
           disabled={!canRun}
-          className="text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium disabled:opacity-50"
+          className="text-[13px] text-on-accent bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium disabled:opacity-50"
         >
           {quickBusy ? "Sparking…" : "Quick Spark"}
         </button>
@@ -220,7 +220,7 @@ function DeepOutcomeCard({ outcome, costUsd }: { outcome: DeepSparkOutcome; cost
       {outcome.kind === "idea" && (
         <Link
           href={wikiHref(outcome.ideaPageId)}
-          className="mt-2 inline-block text-[13px] text-orange hover:text-orange-light font-medium"
+          className="mt-2 inline-block text-[13px] text-accent-ink hover:text-accent-ink-hover font-medium"
         >
           View idea page →
         </Link>

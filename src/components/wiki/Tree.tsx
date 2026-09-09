@@ -58,7 +58,7 @@ export function Tree({ bundle }: TreeProps) {
                   <li key={row.id}>
                     <Link
                       href={hrefFor(type, row.id)}
-                      className="text-[13px] text-orange hover:underline truncate block"
+                      className="text-[13px] text-accent-ink hover:underline truncate block"
                     >
                       {displayTitle(String(row.title ?? ""))}
                     </Link>

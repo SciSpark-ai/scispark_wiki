@@ -51,6 +51,17 @@ CI/unit tests. See `CLAUDE.md` and the relevant milestone plan for the exact gat
 - Do not expose stored LLM keys to the client. The settings API redacts key values,
   and the generic vault-file API must keep `.scispark/settings.json` inaccessible.
 
+## Design System
+
+Read `design.md` before making visual or UI decisions. It is the canonical
+SciSpark brand contract derived from the user's sheets in `design/` and covers
+all product surfaces, fonts, colors, spacing, motion and logo usage. Preserve
+the current real UI; the editorial mockup is superseded. Use its
+semantic tokens and acceptance criteria; flag deviations during UI review.
+Changes to the approved direction require explicit user approval. Check its
+implementation status: a documented target does not mean every existing screen
+has migrated. Preserve the original design sheets and research interactions.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

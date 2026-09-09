@@ -56,12 +56,12 @@ export function RecommendationCard() {
     {loading ? <p className="text-muted-text">Loading preferences…</p> : profile && <>
       <RecommendationControls value={draft} onChange={setDraft} disabled={saving} allowReset />
       <div className="flex flex-wrap gap-3">
-        <button type="button" onClick={() => void save()} disabled={saving || JSON.stringify(draft) === JSON.stringify(profile.recommendations ?? DEFAULT_RECOMMENDATION_PREFERENCES)} className="rounded-pill bg-orange px-4 py-2 text-[13px] text-white disabled:opacity-40">{saving ? "Saving…" : "Save preferences"}</button>
+        <button type="button" onClick={() => void save()} disabled={saving || JSON.stringify(draft) === JSON.stringify(profile.recommendations ?? DEFAULT_RECOMMENDATION_PREFERENCES)} className="rounded-pill bg-orange px-4 py-2 text-[13px] text-on-accent disabled:opacity-40">{saving ? "Saving…" : "Save preferences"}</button>
         <button type="button" onClick={() => setDraft(profile.recommendations ?? DEFAULT_RECOMMENDATION_PREFERENCES)} disabled={saving} className="text-[13px] text-espresso">Cancel</button>
       </div>
     </>}
     {message && <p role="status" className="text-[13px] text-espresso">{message}</p>}
-    <button type="button" onClick={() => void reload()} disabled={saving} className="text-[12px] text-orange underline">Reload preferences</button>
+    <button type="button" onClick={() => void reload()} disabled={saving} className="text-[12px] text-accent-ink underline">Reload preferences</button>
     <section className="space-y-3 border-t border-border-warm pt-4" aria-label="Saved feed memory">
       <h3 className="font-heading text-[20px]">Your feed memory</h3>
       <p className="text-[12px] leading-relaxed text-muted-text">Your feedback stays in your vault. The next feed checks related papers against these preferences. Influence fades with time; it never rewrites your profile. History can undo a saved response.</p>

@@ -1,5 +1,10 @@
 # Frontend Design (Layer 5)
 
+**Brand integration, 2026-09-09:** [design.md](../../design.md) is the visual
+contract. Preserve the current real product UI and the reuse choices below;
+integrate the supplied logo and audit consistency/accessibility in place. The
+separate editorial-journal mockup was rejected as a redesign and is superseded.
+
 *Status: approved 2026-07-11; runtime model **superseded 2026-07-14 (M11, "local-runtime pivot")** — the frontend is now strictly **UI-only**. It reads/writes the vault through `RemoteVaultStorage` (`fetch` against `/api/vault/*`), runs every agent skill by calling `/api/skills/*` (NDJSON-streamed for long runs, plain JSON for short ones), and reads/writes provider keys and budget through `/api/settings` (GET redacts key values to presence flags) and spend data through `/api/usage`. It never runs an orchestrator, resolves a tool, or holds a provider key — that boundary is enforced by a browser-purity test (`src/lib/__tests__/browser-purity.test.ts`), not just convention. M12 (2026-07-14) adds the Lint UI (inbox `lint-finding` cards + "Lint vault"/"Run deep lint" controls) and the spend panel. See `docs/superpowers/specs/2026-07-14-m11-local-runtime-design.md` and `docs/superpowers/specs/2026-07-14-m12-lint-spend-hardening-design.md`, and [02-system](02-system.md)/[03-backend](03-backend.md)/[04-agent-harness](04-agent-harness.md) for the server side of every call this doc describes. Deliberately the lightest design layer: we fork the existing prototype, and the UI is expected to evolve once the product solidifies. This doc records the reuse strategy and the three component commitments.*
 
 ## Reuse strategy

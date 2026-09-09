@@ -46,7 +46,7 @@ export function CompanionBubble({ utterance, onDismiss, onAction, streaming = fa
           <Link
             href={utterance.action.href}
             onClick={onAction}
-            className="mt-3 inline-flex items-center rounded-pill bg-orange px-3 py-1.5 text-[12px] font-medium text-white hover:bg-orange/90 transition-colors"
+            className="mt-3 inline-flex items-center rounded-pill bg-orange px-3 py-1.5 text-[12px] font-medium text-on-accent hover:bg-orange/90 transition-colors"
           >
             {utterance.action.label}
           </Link>

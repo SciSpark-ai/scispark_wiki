@@ -124,7 +124,7 @@ export default function HomePage() {
           </p>
           <Link
             href="/setup"
-            className="mt-4 inline-block text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium"
+            className="mt-4 inline-block text-[13px] text-on-accent bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium"
           >
             Set up my profile →
           </Link>

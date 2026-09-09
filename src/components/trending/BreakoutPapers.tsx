@@ -36,13 +36,13 @@ export function BreakoutPapers({ breakouts, generatedAt }: BreakoutPapersProps) 
       <ul className="mt-4 divide-y divide-border-warm">
         {breakouts.map((b) => (
           <li key={paperSlug(b.record)} className="py-4 first:pt-0">
-            <Link href={`/paper/${paperSlug(b.record)}`} className="block rounded text-[14px] font-medium leading-relaxed text-espresso hover:text-orange focus-visible:outline-2 focus-visible:outline-orange">
+            <Link href={`/paper/${paperSlug(b.record)}`} className="block rounded text-[14px] font-medium leading-relaxed text-espresso hover:text-accent-ink focus-visible:outline-2 focus-visible:outline-orange">
               {displayTitle(b.record.title)}
             </Link>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-[12px] text-muted-text">
               <span>{b.citationCount.toLocaleString("en-US")} citations</span>
               {b.wikiPageId !== null && (
-                <Link href={wikiHref(b.wikiPageId)} className="shrink-0 text-muted-text hover:text-orange">
+                <Link href={wikiHref(b.wikiPageId)} className="shrink-0 text-muted-text hover:text-accent-ink">
                   In Wiki
                 </Link>
               )}

@@ -33,11 +33,11 @@ export function ResearchSearchResultItem({
     >
       <span className="pt-1 font-heading text-[17px] text-muted-text">{String(index + 1).padStart(2, "0")}</span>
       <div className="min-w-0">
-        <span className="block font-heading text-[20px] leading-[1.2] tracking-heading-card text-espresso transition-colors group-hover:text-orange sm:text-[23px]">
+        <span className="block font-heading text-[20px] leading-[1.2] tracking-heading-card text-espresso transition-colors group-hover:text-accent-ink sm:text-[23px]">
           {displayTitle(paper.title)}
         </span>
         <span className="mt-2 flex items-start gap-2 text-[13px] leading-relaxed text-secondary-dark">
-          <Sparkles size={14} className="mt-0.5 shrink-0 text-orange" aria-hidden="true" />
+          <Sparkles size={14} className="mt-0.5 shrink-0 text-accent-ink" aria-hidden="true" />
           <span>{item.whyMatch}</span>
         </span>
         {paper.abstract && (

@@ -192,7 +192,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Open original paper in a new tab"
-                className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-pill bg-orange px-5 py-2.5 text-[14px] font-medium text-white transition-colors hover:bg-orange/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange focus-visible:ring-offset-2"
+                className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-pill bg-orange px-5 py-2.5 text-[14px] font-medium text-on-accent transition-colors hover:bg-orange/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange focus-visible:ring-offset-2"
               >
                 Open original paper
               </a>
@@ -202,7 +202,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
                 search-only, so return to the paper detail rather than /papers. */}
             <Link
               href={`/paper/${paperSlug(paper)}`}
-              className="text-[13px] text-muted-text underline decoration-border-warm underline-offset-4 transition-colors hover:text-orange"
+              className="text-[13px] text-muted-text underline decoration-border-warm underline-offset-4 transition-colors hover:text-accent-ink"
             >
               Back to paper details
             </Link>

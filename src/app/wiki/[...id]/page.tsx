@@ -114,7 +114,7 @@ export default function WikiPageDetail() {
       <div className="p-7">
         <p className="text-[14px] text-espresso">Page not found: {id}</p>
         {error && <p className="mt-2 text-[13px] text-red-600">Error: {error}</p>}
-        <Link href="/wiki" className="mt-3 inline-block text-[14px] text-orange hover:underline">
+        <Link href="/wiki" className="mt-3 inline-block text-[14px] text-accent-ink hover:underline">
           ← Back to wiki
         </Link>
       </div>
@@ -133,16 +133,16 @@ export default function WikiPageDetail() {
             ← Wiki
           </Link>
           <div className="flex items-center gap-3">
-            {status && <span className="text-[13px] text-orange">{status}</span>}
+            {status && <span className="text-[13px] text-accent-ink">{status}</span>}
             {error && <span className="text-[13px] text-red-600">{error}</span>}
             {fm.type === "paper" && (
-              <Link href={`/paper/${slug}`} className="text-[13px] text-orange hover:underline">
+              <Link href={`/paper/${slug}`} className="text-[13px] text-accent-ink hover:underline">
                 Open paper page →
               </Link>
             )}
             <button
               onClick={handleSave}
-              className="text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium transition-colors"
+              className="text-[13px] text-on-accent bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium transition-colors"
             >
               Save
             </button>

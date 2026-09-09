@@ -30,7 +30,7 @@ export function RecentStrip({ recent }: RecentStripProps) {
     <ul className="space-y-1.5">
       {recent.map((entry) => (
         <li key={entry.id} className="flex items-center justify-between gap-3 text-[13px]">
-          <Link href={hrefFor(entry)} className="min-w-0 truncate text-espresso hover:text-orange">
+          <Link href={hrefFor(entry)} className="min-w-0 truncate text-espresso hover:text-accent-ink">
             Updated {displayTitle(entry.title)}
           </Link>
           <span className="shrink-0 text-[12px] text-muted-text tracking-body">{entry.updated}</span>

@@ -120,7 +120,7 @@ export default function Inspector({ bundle, id, neighbors, onSelect, onClose }: 
                   <button
                     type="button"
                     onClick={() => onSelect(neighborId)}
-                    className="w-full truncate text-left text-[13px] text-orange hover:text-orange-light hover:underline"
+                    className="w-full truncate text-left text-[13px] text-accent-ink hover:text-accent-ink-hover hover:underline"
                   >
                     {displayTitle(neighborPage?.frontmatter.title ?? neighborId)}
                   </button>
@@ -132,11 +132,11 @@ export default function Inspector({ bundle, id, neighbors, onSelect, onClose }: 
       </div>
 
       <div className="mt-5 flex flex-col gap-1.5 border-t border-border-warm pt-3">
-        <Link href={wikiHref(id)} className="text-[13px] text-orange hover:underline">
+        <Link href={wikiHref(id)} className="text-[13px] text-accent-ink hover:underline">
           Open wiki page →
         </Link>
         {isPaper && (
-          <Link href={`/paper/${slug}`} className="text-[13px] text-orange hover:underline">
+          <Link href={`/paper/${slug}`} className="text-[13px] text-accent-ink hover:underline">
             Open paper page →
           </Link>
         )}

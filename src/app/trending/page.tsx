@@ -159,7 +159,7 @@ export default function TrendingPage() {
           <p className="mt-2 text-[13px] text-muted-text tracking-body">
             Add broad topics to see what’s trending in them.
           </p>
-          <Link href="/settings?section=trending" className="mt-4 inline-block text-[13px] text-white bg-orange rounded-pill px-4 py-1.5 font-medium">
+          <Link href="/settings?section=trending" className="mt-4 inline-block text-[13px] text-on-accent bg-orange rounded-pill px-4 py-1.5 font-medium">
             Choose topics →
           </Link>
         </div>

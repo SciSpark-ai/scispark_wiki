@@ -98,7 +98,7 @@ export function FilterBar({ options, filters, onChange }: FilterBarProps) {
               onClick={() => toggleType(type)}
               className={`px-2.5 py-1 rounded-pill text-[12px] border transition-colors ${
                 active
-                  ? "bg-orange text-white border-orange"
+                  ? "bg-orange text-on-accent border-orange"
                   : "bg-light-surface text-muted-text border-border-warm hover:bg-card-surface"
               }`}
             >

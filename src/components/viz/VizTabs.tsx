@@ -28,7 +28,7 @@ export function VizTabs({ active, onChange }: VizTabsProps) {
           onClick={() => onChange(tab.value)}
           className={`px-4 py-1.5 rounded-pill text-[13px] font-medium border transition-colors ${
             active === tab.value
-              ? "bg-orange text-white border-orange"
+              ? "bg-orange text-on-accent border-orange"
               : "bg-light-surface text-muted-text border-border-warm hover:bg-card-surface"
           }`}
         >

@@ -15,7 +15,7 @@ export function LlmErrorMessage({ message }: { message: string }) {
       {isMissingKey && (
         <Link
           href="/settings"
-          className="mt-1.5 inline-block text-[13px] text-orange font-medium tracking-body hover:text-orange-light transition-colors"
+          className="mt-1.5 inline-block text-[13px] text-accent-ink font-medium tracking-body hover:text-accent-ink-hover transition-colors"
         >
           Connect a provider →
         </Link>

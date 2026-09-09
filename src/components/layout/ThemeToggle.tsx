@@ -48,7 +48,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       title={`Switch to ${nextLabel} mode`}
       data-theme-mode={mode}
       className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border-warm bg-light-surface text-espresso transition-colors hover:border-orange/50 hover:text-orange focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange/50",
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border-warm bg-light-surface text-espresso transition-colors hover:border-orange/50 hover:text-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ink",
         className,
       )}
     >

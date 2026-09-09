@@ -288,7 +288,7 @@ export function ConnectAiCard({
                 onClick={() => applyPreset(p)}
                 className={`px-3.5 py-2 rounded-[10px] text-[14px] transition-colors border ${
                   p.id === presetId
-                    ? "bg-orange text-white border-orange font-medium"
+                    ? "bg-orange text-on-accent border-orange font-medium"
                     : "bg-light-surface text-espresso border-border-warm/30 hover:border-orange/40"
                 }`}
               >
@@ -303,7 +303,7 @@ export function ConnectAiCard({
                 href={preset.keyUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 text-orange hover:text-orange/80"
+                className="inline-flex items-center gap-1 text-accent-ink hover:text-accent-ink/80"
               >
                 Get a key at {preset.keyLabel}
                 <ExternalLink size={12} strokeWidth={2} />
@@ -423,7 +423,7 @@ export function ConnectAiCard({
               type="button"
               onClick={handleSaveAndTest}
               disabled={saveDisabled}
-              className="px-4 py-2 rounded-pill text-[14px] font-medium bg-orange text-white hover:bg-orange/90 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2"
+              className="px-4 py-2 rounded-pill text-[14px] font-medium bg-orange text-on-accent hover:bg-orange/90 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
               {saving ? "Testing connection…" : firstRun ? "Connect & continue" : "Save & test connection"}

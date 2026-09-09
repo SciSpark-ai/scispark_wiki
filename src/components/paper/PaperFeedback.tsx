@@ -54,12 +54,12 @@ export function PaperFeedback({ paperKey, title }: { paperKey: string; title: st
         const label = direction === "up" ? "More like this" : "Less like this"
         return <button key={direction} type="button" aria-label={label} title={active ? `Clear ${label.toLowerCase()} vote` : label} aria-pressed={active}
           disabled={!state.ready || Boolean(state.error) || state.pending[paperKey]} onClick={() => void vote(direction)}
-          className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-orange disabled:opacity-40 ${active ? "bg-orange/15 text-orange" : "text-muted-text hover:bg-card-surface hover:text-espresso"}`}>
+          className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-orange disabled:opacity-40 ${active ? "bg-orange/15 text-accent-ink" : "text-muted-text hover:bg-card-surface hover:text-espresso"}`}>
           <Icon size={17} fill={active ? "currentColor" : "none"} aria-hidden="true" />
         </button>
       })}
     </div>
     <span role="status" className="sr-only">{announcement}</span>
-    {(error || state.error) && <p role="alert" className="mt-2 max-w-xs text-[12px] text-espresso">{error || state.error}{state.error && <button type="button" className="ml-2 text-orange underline" onClick={() => void state.reload()}>Retry</button>}</p>}
+    {(error || state.error) && <p role="alert" className="mt-2 max-w-xs text-[12px] text-espresso">{error || state.error}{state.error && <button type="button" className="ml-2 text-accent-ink underline" onClick={() => void state.reload()}>Retry</button>}</p>}
   </div>
 }

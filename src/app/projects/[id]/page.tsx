@@ -262,7 +262,7 @@ export default function ProjectDetailPage() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 p-7">
         <p className="text-[16px] text-espresso">Project not found.</p>
-        <Link href="/projects" className="flex items-center gap-1.5 text-[14px] text-orange hover:text-orange-light"><ChevronLeft size={16} />Back to Projects</Link>
+        <Link href="/projects" className="flex items-center gap-1.5 text-[14px] text-accent-ink hover:text-accent-ink-hover"><ChevronLeft size={16} />Back to Projects</Link>
       </div>
     )
   }
@@ -271,7 +271,7 @@ export default function ProjectDetailPage() {
     return (
       <div className="p-7">
         <p className="text-[14px] text-espresso">Project could not be loaded: {load.message}</p>
-        <button type="button" onClick={() => void reload()} className="mt-3 text-[13px] text-orange hover:text-orange-light">Try again</button>
+        <button type="button" onClick={() => void reload()} className="mt-3 text-[13px] text-accent-ink hover:text-accent-ink-hover">Try again</button>
       </div>
     )
   }
@@ -288,7 +288,7 @@ export default function ProjectDetailPage() {
       <Link href="/projects" className="mb-5 flex items-center gap-1.5 text-[14px] text-muted-text hover:text-espresso"><ChevronLeft size={16} />Projects</Link>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-4">
-          <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-orange/10 text-orange"><FolderOpen size={22} /></span>
+          <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-orange/10 text-accent-ink"><FolderOpen size={22} /></span>
           <div className="min-w-0">
             <h1 className="font-heading text-[26px] leading-[1.2] tracking-heading text-espresso">{project.title}</h1>
             <p className="mt-1 text-[14px] tracking-body text-muted-text">{project.description || "No description yet."}</p>
@@ -318,7 +318,7 @@ export default function ProjectDetailPage() {
       {project.overview.trim() && <p className="mt-5 whitespace-pre-wrap text-[14px] leading-relaxed text-espresso">{project.overview}</p>}
 
       {warnings.length > 0 && <div className="mt-4 rounded-card border border-border-warm bg-card-surface p-3 text-[13px] text-espresso">The vault change succeeded, with a derived-data warning: {warnings.map((warning) => warning.message).join(" ")}</div>}
-      {conflict && <div role="alert" className="mt-4 rounded-card border border-border-warm bg-light-surface p-3 text-[13px] text-red-700">{conflict} <button type="button" onClick={() => void reload()} className="ml-2 text-orange">Reload</button></div>}
+      {conflict && <div role="alert" className="mt-4 rounded-card border border-border-warm bg-light-surface p-3 text-[13px] text-red-700">{conflict} <button type="button" onClick={() => void reload()} className="ml-2 text-accent-ink">Reload</button></div>}
 
       <div className="mt-6 flex items-center gap-1 border-b border-border-warm/30">
         {tabs.map((tab) => {
@@ -330,7 +330,7 @@ export default function ProjectDetailPage() {
             </button>
           )
         })}
-        {activeTab === "notes" && <button type="button" onClick={() => setNoteDraft({ id: null, revision: null, title: "", content: "", originalTitle: "", originalContent: "" })} className="ml-auto flex items-center gap-1.5 px-3 py-2 text-[13px] text-orange hover:text-orange-light"><Plus size={14} />New note</button>}
+        {activeTab === "notes" && <button type="button" onClick={() => setNoteDraft({ id: null, revision: null, title: "", content: "", originalTitle: "", originalContent: "" })} className="ml-auto flex items-center gap-1.5 px-3 py-2 text-[13px] text-accent-ink hover:text-accent-ink-hover"><Plus size={14} />New note</button>}
       </div>
 
       <div className="mt-4">
@@ -397,7 +397,7 @@ export default function ProjectDetailPage() {
               <label className="block text-[13px] font-medium text-espresso">Overview<textarea value={projectDraft.overview} onChange={(event) => setProjectDraft((current) => ({ ...current, overview: event.target.value }))} rows={5} className="mt-1.5 w-full rounded-[9px] border border-border-warm bg-light-surface px-3 py-2.5 text-[14px] font-normal focus:outline-none" /></label>
               {conflict && <p className="text-[13px] text-red-700">{conflict}</p>}
             </div>
-            <div className="flex justify-end gap-2 border-t border-border-warm/30 px-6 py-4"><button type="button" onClick={() => setProjectEditor(false)} className="rounded-pill border border-border-warm px-4 py-2 text-[13px] text-espresso">Cancel</button><button type="submit" disabled={saving} className="rounded-pill bg-orange px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button></div>
+            <div className="flex justify-end gap-2 border-t border-border-warm/30 px-6 py-4"><button type="button" onClick={() => setProjectEditor(false)} className="rounded-pill border border-border-warm px-4 py-2 text-[13px] text-espresso">Cancel</button><button type="submit" disabled={saving} className="rounded-pill bg-orange px-4 py-2 text-[13px] font-medium text-on-accent disabled:opacity-50">{saving ? "Saving…" : "Save"}</button></div>
           </form>
         </div>
       )}
@@ -407,7 +407,7 @@ export default function ProjectDetailPage() {
           <form onSubmit={saveNote} className="w-full max-w-2xl rounded-[18px] border border-border-warm bg-page-bg shadow-xl">
             <div className="flex items-center justify-between border-b border-border-warm/30 px-6 py-4"><h2 className="font-heading text-[20px] text-espresso">{noteDraft.id ? "Edit note" : "New note"}</h2><button type="button" aria-label="Cancel note edit" onClick={cancelNote} className="p-1.5 text-muted-text hover:text-espresso"><X size={17} /></button></div>
             <div className="space-y-4 px-6 py-5"><input autoFocus required placeholder="Note title" value={noteDraft.title} onChange={(event) => setNoteDraft((current) => current ? { ...current, title: event.target.value } : current)} className="w-full bg-transparent font-heading text-[22px] text-espresso placeholder:text-muted-text/50 focus:outline-none" /><textarea placeholder="Write your note…" value={noteDraft.content} onChange={(event) => setNoteDraft((current) => current ? { ...current, content: event.target.value } : current)} rows={10} className="w-full resize-y rounded-[9px] border border-border-warm bg-light-surface px-3 py-2.5 text-[14px] leading-relaxed text-espresso focus:outline-none" />{conflict && <p className="text-[13px] text-red-700">{conflict}</p>}</div>
-            <div className="flex items-center justify-between border-t border-border-warm/30 px-6 py-4"><span className="text-[12px] text-muted-text">Changes are written only when you choose Save.</span><div className="flex gap-2"><button type="button" onClick={cancelNote} className="rounded-pill border border-border-warm px-4 py-2 text-[13px] text-espresso">Cancel</button><button type="submit" disabled={saving} className="rounded-pill bg-orange px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button></div></div>
+            <div className="flex items-center justify-between border-t border-border-warm/30 px-6 py-4"><span className="text-[12px] text-muted-text">Changes are written only when you choose Save.</span><div className="flex gap-2"><button type="button" onClick={cancelNote} className="rounded-pill border border-border-warm px-4 py-2 text-[13px] text-espresso">Cancel</button><button type="submit" disabled={saving} className="rounded-pill bg-orange px-4 py-2 text-[13px] font-medium text-on-accent disabled:opacity-50">{saving ? "Saving…" : "Save"}</button></div></div>
           </form>
         </div>
       )}
@@ -417,7 +417,7 @@ export default function ProjectDetailPage() {
           <div className="w-full max-w-xl rounded-[18px] border border-border-warm bg-page-bg shadow-xl">
             <div className="flex items-center justify-between border-b border-border-warm/30 px-6 py-4"><h2 className="font-heading text-[20px] text-espresso">Delete project</h2><button type="button" aria-label="Close deletion preview" onClick={() => { setDeletePreview(null); setDeleteError(null) }} className="p-1.5 text-muted-text hover:text-espresso"><X size={17} /></button></div>
             <div className="px-6 py-5">{deleteLoading && !deletePreview && <p className="text-[14px] text-muted-text">Building deletion preview…</p>}{deleteError && <p className="text-[13px] text-red-700">{deleteError}</p>}{deletePreview && <><p className="text-[14px] text-espresso">This removes the project and unlinks its stable ID from {Math.max(0, deletePreview.files.length - 1)} member page{deletePreview.files.length === 2 ? "" : "s"}. The single changeset can be recovered from History.</p><ul className="mt-3 max-h-56 space-y-1 overflow-y-auto text-[12px] text-muted-text">{deletePreview.files.map((file) => <li key={file.path}>{file.operation}: {file.path}</li>)}</ul></>}</div>
-            <div className="flex justify-end gap-2 border-t border-border-warm/30 px-6 py-4"><button type="button" onClick={() => { setDeletePreview(null); setDeleteError(null) }} className="rounded-pill border border-border-warm px-4 py-2 text-[13px] text-espresso">Cancel</button>{deletePreview && <button type="button" disabled={deleteLoading} onClick={() => void confirmDelete()} className="rounded-pill bg-orange px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50">{deleteLoading ? "Deleting…" : "Delete project"}</button>}</div>
+            <div className="flex justify-end gap-2 border-t border-border-warm/30 px-6 py-4"><button type="button" onClick={() => { setDeletePreview(null); setDeleteError(null) }} className="rounded-pill border border-border-warm px-4 py-2 text-[13px] text-espresso">Cancel</button>{deletePreview && <button type="button" disabled={deleteLoading} onClick={() => void confirmDelete()} className="rounded-pill bg-orange px-4 py-2 text-[13px] font-medium text-on-accent disabled:opacity-50">{deleteLoading ? "Deleting…" : "Delete project"}</button>}</div>
           </div>
         </div>
       )}

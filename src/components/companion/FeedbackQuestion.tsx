@@ -60,7 +60,7 @@ export function FeedbackQuestion({ question }: { question: CompanionStore["feedb
     <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted-text" title={question.title}>{question.title}</p>
     {saved ? <>
       <p role="status" className="mt-4 text-[14px] leading-relaxed">{saved}</p>
-      <button type="button" onClick={close} className="mt-4 rounded-pill bg-orange px-4 py-2 text-[13px] text-white">Done</button>
+      <button type="button" onClick={close} className="mt-4 rounded-pill bg-orange px-4 py-2 text-[13px] text-on-accent">Done</button>
     </> : <form onSubmit={(event) => { event.preventDefault(); void save() }} className="mt-4 space-y-3">
       <fieldset disabled={saving} className="space-y-2">
         <legend className="mb-3 font-heading text-[22px] leading-tight">What missed the mark?</legend>
@@ -76,7 +76,7 @@ export function FeedbackQuestion({ question }: { question: CompanionStore["feedb
       </label>
       {error && <p role="alert" className="text-[12px] leading-relaxed">{error}</p>}
       <div className="flex items-center gap-4">
-        <button type="submit" disabled={!reason || saving || (reason === "other" && !note.trim())} className="rounded-pill bg-orange px-4 py-2 text-[13px] text-white disabled:opacity-40">{saving ? "Saving…" : "Save preference"}</button>
+        <button type="submit" disabled={!reason || saving || (reason === "other" && !note.trim())} className="rounded-pill bg-orange px-4 py-2 text-[13px] text-on-accent disabled:opacity-40">{saving ? "Saving…" : "Save preference"}</button>
         <button type="button" disabled={saving} onClick={close} className="text-[13px] text-muted-text">Skip</button>
       </div>
       <p className="text-[11px] leading-relaxed text-muted-text">Your thumbs down is already saved. A reason is optional.</p>

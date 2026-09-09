@@ -109,7 +109,7 @@ export function FeedRefreshBar({
     return (
       <section className="rounded-[18px] border border-border-warm bg-light-surface p-6 sm:p-8" aria-live="polite">
         <div className="flex items-start gap-4">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange text-white">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange text-on-accent">
             {state.status === "done" ? <Check size={20} aria-hidden="true" /> : <Loader2 size={20} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
           </span>
           <div>
@@ -128,7 +128,7 @@ export function FeedRefreshBar({
             const active = activeIndex === index && state.status === "running"
             return (
               <li key={label} className="flex items-center gap-3 text-[13px]">
-                <span className={`flex h-5 w-5 items-center justify-center rounded-full border ${complete ? "border-orange bg-orange text-white" : active ? "border-orange text-orange" : "border-border-warm text-muted-text"}`}>
+                <span className={`flex h-5 w-5 items-center justify-center rounded-full border ${complete ? "border-orange bg-orange text-on-accent" : active ? "border-orange text-accent-ink" : "border-border-warm text-muted-text"}`}>
                   {complete ? <Check size={12} aria-hidden="true" /> : <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-orange" : "bg-border-warm"}`} />}
                 </span>
                 <span className={complete || active ? "text-espresso" : "text-muted-text"}>{label}</span>
@@ -145,7 +145,7 @@ export function FeedRefreshBar({
         {state.status === "error" && (
           <div className="mt-5">
             <LlmErrorMessage message={state.message} />
-            <button type="button" onClick={() => void handleRefresh()} className="mt-3 rounded-pill bg-orange px-4 py-2 text-[13px] font-medium text-white hover:bg-orange/90">
+            <button type="button" onClick={() => void handleRefresh()} className="mt-3 rounded-pill bg-orange px-4 py-2 text-[13px] font-medium text-on-accent hover:bg-orange/90">
               Try initialization again
             </button>
           </div>
@@ -161,7 +161,7 @@ export function FeedRefreshBar({
           type="button"
           onClick={handleRefresh}
           disabled={running}
-          className="text-[13px] text-white bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium disabled:opacity-50"
+          className="text-[13px] text-on-accent bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium disabled:opacity-50"
         >
           {running ? "Refreshing…" : "Refresh feed"}
         </button>

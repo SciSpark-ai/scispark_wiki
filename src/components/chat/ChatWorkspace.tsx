@@ -196,23 +196,23 @@ export function ChatWorkspace({ sessionId, fresh = false, initialMode = "chat" }
     <header className="mb-4 flex shrink-0 flex-col items-start justify-between gap-3 border-b border-border-warm pb-4 sm:flex-row sm:gap-4">
       <div className="min-w-0"><h1 className="font-heading text-[28px] leading-tight text-espresso sm:text-[34px]">{reportId ? "Review conversation" : session?.title ?? "Sparky"}</h1>
         <p className="mt-1 text-sm text-muted-text">{reportId ? "Ask questions. Refine your draft." : session?.projectId ? `Project conversation · ${session.projectTitle}. Scoped to current members.` : "Find papers. Discuss findings. Continue anytime."}</p></div>
-      <nav className="flex shrink-0 flex-wrap gap-3 text-sm text-orange"><Link href="/history?tab=conversations">History</Link><Link href="/chat?new=1">New chat</Link></nav>
+      <nav className="flex shrink-0 flex-wrap gap-3 text-sm text-accent-ink"><Link href="/history?tab=conversations">History</Link><Link href="/chat?new=1">New chat</Link></nav>
     </header>
     <div ref={scroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1" aria-label="Conversation">
       {loading ? <LoadingState label="Loading conversation…" /> : session ? <MessageList messages={session.messages} pageTitleById={titles} onSaveMessage={save} savingIndex={savingIndex} /> : <div className="flex min-h-full flex-col justify-center py-6">
         <h2 className="font-heading text-[28px] text-espresso">What would you like to explore?</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-text">Search scholarly sources or discuss your saved research. Every conversation stays in History.</p>
-        {recent.length > 0 && <section className="mt-8"><h3 className="text-sm text-muted-text">Recent conversations</h3><ul className="mt-2 divide-y divide-border-warm">{recent.map((s) => <li key={s.id}><Link className="block py-3 text-sm text-espresso hover:text-orange" href={`/chat/${s.id}`}>{s.title}</Link></li>)}</ul></section>}
+        {recent.length > 0 && <section className="mt-8"><h3 className="text-sm text-muted-text">Recent conversations</h3><ul className="mt-2 divide-y divide-border-warm">{recent.map((s) => <li key={s.id}><Link className="block py-3 text-sm text-espresso hover:text-accent-ink" href={`/chat/${s.id}`}>{s.title}</Link></li>)}</ul></section>}
       </div>}
       {busy && <div className="mt-4"><StreamingReply text={draft} label={stage ? STAGE_LABELS[stage] : "Thinking…"} /></div>}
     </div>
     <footer className="mt-4 shrink-0 border-t border-border-warm pt-3">
       {scopeError && <p role="alert" className="mb-2 text-sm text-espresso">{scopeError}</p>}
       {error && <LlmErrorMessage message={error} />}
-      {savedPage && <p className="mb-2 text-sm text-muted-text">Added to your knowledge base. <Link className="text-orange" href={wikiHref(savedPage)}>View page</Link></p>}
+      {savedPage && <p className="mb-2 text-sm text-muted-text">Added to your knowledge base. <Link className="text-accent-ink" href={wikiHref(savedPage)}>View page</Link></p>}
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <label className="text-sm text-muted-text">Mode <select aria-label="Chat mode" disabled={busy} value={mode} onChange={(e) => { const next = e.target.value as "chat" | "search" | "review"; setMode(next); setReadSourcesOnly(false); saveDraftOptions({ mode: next, readSourcesOnly: false }) }} className="ml-2 rounded-pill border border-border-warm bg-light-surface px-3 py-1.5 text-espresso"><option value="chat">Discuss research</option><option value="search">Find papers</option><option value="review">Deep literature review</option></select></label>
-        {mode !== "chat" ? <><button type="button" className="text-sm text-muted-text hover:text-orange" aria-expanded={showSources} onClick={() => setShowSources(!showSources)}>Search scope</button><button type="button" onClick={() => openSettings("sources")} className="text-sm text-orange">Manage sources</button></> : <SourcesToggle value={readSourcesOnly} onChange={(value) => { setReadSourcesOnly(value); saveDraftOptions({ readSourcesOnly: value }) }} />}
+        {mode !== "chat" ? <><button type="button" className="text-sm text-muted-text hover:text-accent-ink" aria-expanded={showSources} onClick={() => setShowSources(!showSources)}>Search scope</button><button type="button" onClick={() => openSettings("sources")} className="text-sm text-accent-ink">Manage sources</button></> : <SourcesToggle value={readSourcesOnly} onChange={(value) => { setReadSourcesOnly(value); saveDraftOptions({ readSourcesOnly: value }) }} />}
       </div>
       {mode !== "chat" && showSources && <div className="mb-3 flex flex-wrap gap-3">{enabledSources.map((s) => <label key={s} className="flex items-center gap-1.5 text-sm text-espresso"><input type="checkbox" disabled={busy} checked={sources.includes(s)} onChange={() => { const next = sources.includes(s) ? sources.filter((p) => p !== s) : [...sources, s]; setSources(next); saveDraftOptions({ sources: next }) }} />{SOURCE_LABELS[s]}</label>)}</div>}
       {mode !== "chat" && sourcesError && <p role="alert" className="mb-2 text-sm text-espresso">{sourcesError}</p>}

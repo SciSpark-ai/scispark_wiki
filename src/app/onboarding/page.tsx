@@ -28,12 +28,12 @@ export default function OnboardingPage() {
 
   return <div className={`${styles.page} bg-page-warm px-3 sm:px-8`}>
     {error ? <div role="alert" className="text-center text-[14px] text-espresso">
-      <p>{error}</p><button type="button" onClick={() => window.location.reload()} className="mt-3 text-orange underline">Reload conversation</button>
-      <Link href="/settings" className="ml-4 text-orange underline">AI settings</Link>
+      <p>{error}</p><button type="button" onClick={() => window.location.reload()} className="mt-3 text-accent-ink underline">Reload conversation</button>
+      <Link href="/settings" className="ml-4 text-accent-ink underline">AI settings</Link>
     </div> : !state ? <p role="status" className="text-center text-[14px] text-muted-text">Opening your conversation…</p> : (
       <div className={styles.content}>
         <header className={`${styles.intro} text-center`}>
-          <p className="text-[13px] font-medium text-orange">Welcome to SciSpark</p>
+          <p className="text-[13px] font-medium text-accent-ink">Welcome to SciSpark</p>
           <h1 className={`${styles.title} font-heading text-[28px] leading-tight tracking-heading text-espresso sm:text-[38px]`}>Let’s find the work worth your attention.</h1>
           <p className={`${styles.description} text-[14px] leading-relaxed text-muted-text`}>Tell Sparky about your research. We’ll shape your first feed together.</p>
         </header>

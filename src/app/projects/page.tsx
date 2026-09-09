@@ -80,7 +80,7 @@ export default function ProjectsPage() {
             setCreating(true)
             setFormError(null)
           }}
-          className="flex items-center gap-2 rounded-[10px] bg-orange px-4 py-2.5 text-[14px] font-medium text-white hover:bg-orange/90"
+          className="flex items-center gap-2 rounded-[10px] bg-orange px-4 py-2.5 text-[14px] font-medium text-on-accent hover:bg-orange/90"
         >
           <Plus size={16} />
           New project
@@ -111,7 +111,7 @@ export default function ProjectsPage() {
       {load.status === "error" && (
         <div className="mt-8 rounded-card border border-border-warm bg-light-surface p-5">
           <p className="text-[14px] text-espresso">Projects could not be loaded: {load.message}</p>
-          <button type="button" onClick={() => void reload()} className="mt-3 text-[13px] text-orange hover:text-orange-light">
+          <button type="button" onClick={() => void reload()} className="mt-3 text-[13px] text-accent-ink hover:text-accent-ink-hover">
             Try again
           </button>
         </div>
@@ -141,7 +141,7 @@ export default function ProjectsPage() {
               className="group rounded-[14px] border border-border-warm/30 bg-light-surface p-5 text-left transition-all hover:border-orange/40 hover:shadow-sm"
             >
               <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-orange/10 text-orange">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-orange/10 text-accent-ink">
                   <FolderOpen size={18} />
                 </span>
                 <h2 className="line-clamp-2 font-heading text-[16px] leading-[1.35] tracking-heading-card text-espresso">
@@ -190,7 +190,7 @@ export default function ProjectsPage() {
             </div>
             <div className="flex justify-end gap-2 border-t border-border-warm/30 px-6 py-4">
               <button type="button" onClick={() => setCreating(false)} className="rounded-pill border border-border-warm px-4 py-2 text-[13px] text-espresso hover:bg-page-warm">Cancel</button>
-              <button type="submit" disabled={submitting} className="rounded-pill bg-orange px-4 py-2 text-[13px] font-medium text-white hover:bg-orange/90 disabled:opacity-50">
+              <button type="submit" disabled={submitting} className="rounded-pill bg-orange px-4 py-2 text-[13px] font-medium text-on-accent hover:bg-orange/90 disabled:opacity-50">
                 {submitting ? "Creating…" : "Create project"}
               </button>
             </div>

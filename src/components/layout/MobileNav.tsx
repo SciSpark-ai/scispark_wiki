@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useUIStore } from "@/stores/ui-store";
 import { Sidebar } from "./Sidebar";
 import { ThemeToggle } from "./ThemeToggle";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 export function MobileNav() {
   const { sidebarOpen, setSidebarOpen } = useUIStore();
@@ -20,8 +21,8 @@ export function MobileNav() {
         >
           <Menu size={22} strokeWidth={1.8} />
         </button>
-        <span className="flex-1 text-center font-heading text-[18px] text-espresso tracking-heading">
-          SciSpark
+        <span className="flex-1 flex items-center justify-center">
+          <BrandLogo />
         </span>
         <ThemeToggle />
       </div>

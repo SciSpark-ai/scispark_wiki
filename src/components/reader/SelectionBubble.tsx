@@ -104,7 +104,7 @@ export default function SelectionBubble({ selection, onAsk, onHighlight, onCaptu
       <button
         type="button"
         onClick={onCapture}
-        className="text-[12px] font-medium tracking-body text-orange-light px-2.5 py-1 rounded-pill hover:bg-card-surface transition-colors"
+        className="text-[12px] font-medium tracking-body text-accent-ink-hover px-2.5 py-1 rounded-pill hover:bg-card-surface transition-colors"
       >
         Capture idea
       </button>

@@ -159,7 +159,7 @@ export function PaperActions({
               <ul className="mt-1 space-y-0.5">
                 {ingestState.output.pages.created.map((path) => (
                   <li key={path}>
-                    <Link href={wikiHref(path)} className="text-[13px] text-orange hover:text-orange-light">
+                    <Link href={wikiHref(path)} className="text-[13px] text-accent-ink hover:text-accent-ink-hover">
                       {path}
                     </Link>
                   </li>
@@ -174,7 +174,7 @@ export function PaperActions({
               <ul className="mt-1 space-y-0.5">
                 {ingestState.output.pages.updated.map((path) => (
                   <li key={path}>
-                    <Link href={wikiHref(path)} className="text-[13px] text-orange hover:text-orange-light">
+                    <Link href={wikiHref(path)} className="text-[13px] text-accent-ink hover:text-accent-ink-hover">
                       {path}
                     </Link>
                   </li>
@@ -185,7 +185,7 @@ export function PaperActions({
 
           <div className="mt-2 text-[12px] text-muted-text tracking-body">
             {ingestState.output.reviews} review item{ingestState.output.reviews === 1 ? "" : "s"} flagged —{" "}
-            <Link href="/wiki/inbox" className="text-orange hover:text-orange-light">
+            <Link href="/wiki/inbox" className="text-accent-ink hover:text-accent-ink-hover">
               view inbox
             </Link>
           </div>

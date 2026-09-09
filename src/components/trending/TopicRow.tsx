@@ -22,7 +22,7 @@ import { TrendBars } from "./TrendBars"
 function GrowthBadge({ growth }: { growth: number | null }) {
   if (growth === null) {
     return (
-      <span className="text-[15px] font-medium text-orange">
+      <span className="text-[15px] font-medium text-accent-ink">
         new
       </span>
     )
@@ -33,7 +33,7 @@ function GrowthBadge({ growth }: { growth: number | null }) {
     <span
       className={
         positive
-          ? "text-[15px] font-medium tabular-nums text-orange"
+          ? "text-[15px] font-medium tabular-nums text-accent-ink"
           : "text-[15px] font-medium tabular-nums text-secondary-dark"
       }
     >
@@ -74,7 +74,7 @@ export function TopicRow({
           <span className="block text-pretty text-[15px] font-medium leading-relaxed text-espresso">{topic.label}</span>
           <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[12px] leading-relaxed text-secondary-dark">
             <span>{topic.discipline}</span>
-            {topic.relevant && <span className="text-orange">Matches your interests</span>}
+            {topic.relevant && <span className="text-accent-ink">Matches your interests</span>}
           </span>
         </span>
         <span className="col-start-1 row-start-2 flex items-baseline gap-1.5 text-[14px] tabular-nums text-secondary-dark md:col-start-auto md:row-start-auto md:block md:text-right">
@@ -111,11 +111,11 @@ export function TopicRow({
             <ul aria-label="Papers in this topic" className="mt-4 divide-y divide-border-warm">
               {topic.papers.map((p) => (
                 <li key={paperSlug(p.record)} className="flex items-start gap-3 py-3 text-[13px]">
-                  <Link href={`/paper/${paperSlug(p.record)}`} className="flex min-w-0 flex-1 items-start justify-between gap-3 rounded leading-relaxed text-espresso hover:text-orange focus-visible:outline-2 focus-visible:outline-orange">
+                  <Link href={`/paper/${paperSlug(p.record)}`} className="flex min-w-0 flex-1 items-start justify-between gap-3 rounded leading-relaxed text-espresso hover:text-accent-ink focus-visible:outline-2 focus-visible:outline-orange">
                     <span>{displayTitle(p.record.title)}</span><ArrowUpRight size={15} aria-hidden="true" className="mt-0.5 shrink-0" />
                   </Link>
                   {p.wikiPageId !== null && (
-                    <Link href={wikiHref(p.wikiPageId)} className="shrink-0 text-muted-text hover:text-orange">
+                    <Link href={wikiHref(p.wikiPageId)} className="shrink-0 text-muted-text hover:text-accent-ink">
                       In Wiki
                     </Link>
                   )}

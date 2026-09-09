@@ -165,7 +165,7 @@ export function HistoryPageClient() {
           ) : sessions === null ? <LoadingState label="Loading conversations…" /> : conversationGroups.length === 0 ? (
             <div className="rounded-card border border-dashed border-border-warm px-6 py-10 text-center">
               <p className="text-[14px] text-espresso">No conversations yet</p>
-              <Link href="/chat" className="mt-2 inline-block text-[13px] text-orange">Start a chat →</Link>
+              <Link href="/chat" className="mt-2 inline-block text-[13px] text-accent-ink">Start a chat →</Link>
             </div>
           ) : conversationGroups.map(([month, items]) => (
             <div key={month} className="mb-6">

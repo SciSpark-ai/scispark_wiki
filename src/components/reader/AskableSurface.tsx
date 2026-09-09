@@ -255,7 +255,7 @@ export default function AskableSurface({
       {captureNotice && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 border border-border-warm rounded-pill bg-espresso text-white px-4 py-2 text-[13px] shadow-lg flex items-center gap-2 z-50">
           Idea captured.
-          <Link href={wikiHref(captureNotice.path)} className="text-orange-light font-medium">
+          <Link href={wikiHref(captureNotice.path)} className="text-accent-ink-hover font-medium">
             View note
           </Link>
         </div>

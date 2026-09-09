@@ -1,0 +1,24 @@
+/* Frame the transparent asset's safety margin, retaining the existing header
+ * dimensions. The bitmap itself has real alpha, including letter counters. */
+.logo {
+  position: relative;
+  display: inline-block;
+  width: 108px;
+  height: calc(108px * 612 / 1690);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.artwork {
+  position: absolute;
+  width: calc(1774 / 1690 * 100%);
+  height: auto;
+  max-width: none;
+  left: calc(-42 / 1690 * 100%);
+  top: calc(-148 / 612 * 100%);
+  pointer-events: none;
+}
+
+:global([data-theme="dark"]) .artwork {
+  filter: invert(1);
+}

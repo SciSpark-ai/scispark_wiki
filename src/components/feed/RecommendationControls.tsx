@@ -29,7 +29,7 @@ export function RecommendationControls({ value, onChange, disabled = false, allo
         <input type="checkbox" checked={value.learnFromFeedback} onChange={(event) => onChange({ ...value, learnFromFeedback: event.target.checked })} className="mt-0.5 accent-orange" />
         <span>Learn from my explicit paper feedback<span className="mt-1 block text-[12px] text-muted-text">Remember likes, dislikes and your reasons.</span><span className="block text-[12px] text-muted-text">Your profile answers stay yours.</span></span>
       </label>
-      {allowReset && <button type="button" onClick={() => onChange({ ...value, resetAt: new Date().toISOString() })} className="text-[12px] text-orange underline underline-offset-4">Reset learned preferences on Save</button>}
+      {allowReset && <button type="button" onClick={() => onChange({ ...value, resetAt: new Date().toISOString() })} className="text-[12px] text-accent-ink underline underline-offset-4">Reset learned preferences on Save</button>}
       {allowReset && value.resetAt && <p className="text-[12px] text-muted-text">Feedback before {new Date(value.resetAt).toLocaleString()} will not influence ranking. History keeps the original records.</p>}
     </fieldset>
   )

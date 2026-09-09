@@ -65,11 +65,11 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
       }
       nodes.push(
         href.startsWith("/") ? (
-          <Link key={key} href={href} className="text-orange hover:underline">
+          <Link key={key} href={href} className="text-accent-ink hover:underline">
             {m[2]}
           </Link>
         ) : (
-          <a key={key} href={href} target={href.startsWith("#") ? undefined : "_blank"} rel="noreferrer" className="text-orange hover:underline">
+          <a key={key} href={href} target={href.startsWith("#") ? undefined : "_blank"} rel="noreferrer" className="text-accent-ink hover:underline">
             {m[2]}
           </a>
         ),

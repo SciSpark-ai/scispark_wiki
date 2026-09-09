@@ -21,7 +21,7 @@ export function PaperResultsBlock({ result, citationsOnly = false }: { result: R
     } catch { setError("Could not open this paper. Please try again.") }
   }
   if (citationsOnly) return <div aria-label="Cited papers" className="mt-3 flex flex-wrap gap-2">
-    {result.items.map(({ paper }) => <button key={paperKey(paper)} type="button" onClick={() => void open(paper)} className="rounded-pill border border-border-warm px-3 py-1 text-left text-xs text-orange hover:bg-card-surface">{paper.title}</button>)}
+    {result.items.map(({ paper }) => <button key={paperKey(paper)} type="button" onClick={() => void open(paper)} className="rounded-pill border border-border-warm px-3 py-1 text-left text-xs text-accent-ink hover:bg-card-surface">{paper.title}</button>)}
     {error && <p role="alert">{error}</p>}
   </div>
   return <section aria-label="Saved paper results" className="mt-4 min-w-0">

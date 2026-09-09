@@ -60,7 +60,7 @@ export function TrendingWorkspace({ board }: { board: TrendingBoard }) {
               <h3 className="text-[15px] font-medium text-espresso">No {selected.label} topics in this ranked selection</h3>
               <p className="mt-2 text-[13px] leading-relaxed text-secondary-dark">This update shows the top {board.topics.length} topics across your fields. It does not mean this field has no activity.</p>
               {board.dataError && <p className="mt-2 text-[13px] text-secondary-dark">Some activity data is also unavailable for this update.</p>}
-              <button type="button" onClick={() => chooseField(null)} className="mt-4 rounded text-[13px] font-medium text-orange underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-orange">Show all topics</button>
+              <button type="button" onClick={() => chooseField(null)} className="mt-4 rounded text-[13px] font-medium text-accent-ink underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-orange">Show all topics</button>
             </div>
           ) : (
             <Leaderboard board={{ ...board, topics }} expandedKey={expandedKey} onToggle={(key) => setExpandedKey((current) => current === key ? null : key)} />

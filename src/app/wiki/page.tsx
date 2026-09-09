@@ -166,7 +166,7 @@ function WikiIndexPageContent() {
                   href="/wiki"
                   className={cn(
                     "rounded-pill px-3 py-1 text-[13px] tracking-body transition-colors",
-                    view === "dashboard" ? "bg-orange text-white" : "text-muted-text hover:text-espresso",
+                    view === "dashboard" ? "bg-orange text-on-accent" : "text-muted-text hover:text-espresso",
                   )}
                 >
                   Dashboard
@@ -175,7 +175,7 @@ function WikiIndexPageContent() {
                   href="/wiki?view=all"
                   className={cn(
                     "rounded-pill px-3 py-1 text-[13px] tracking-body transition-colors",
-                    view === "all" ? "bg-orange text-white" : "text-muted-text hover:text-espresso",
+                    view === "all" ? "bg-orange text-on-accent" : "text-muted-text hover:text-espresso",
                   )}
                 >
                   All pages
@@ -206,7 +206,7 @@ function WikiIndexPageContent() {
           title="Your wiki is empty"
           hint="Search for papers to start building your knowledge base."
           action={
-            <Link href="/papers" className="text-[13px] text-orange hover:text-orange-light">
+            <Link href="/papers" className="text-[13px] text-accent-ink hover:text-accent-ink-hover">
               Search for papers →
             </Link>
           }
@@ -225,7 +225,7 @@ function WikiIndexPageContent() {
                 <button
                   type="button"
                   onClick={() => setViewAllShelf(null)}
-                  className="mb-3 text-[13px] text-orange hover:underline"
+                  className="mb-3 text-[13px] text-accent-ink hover:underline"
                 >
                   ← Back to dashboard
                 </button>

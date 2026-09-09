@@ -10,7 +10,10 @@
   --surface-light: #faf6f2;
   --text-primary: #2b180a;
   --text-secondary: #3e2407;
-  --text-muted: #94877c;
+  --text-muted: #716559;
+  --accent-ink: #a64717;
+  --accent-ink-hover: #87380e;
+  --on-accent: #2b180a;
   --accent: #f97316;
   --accent-light: #fb923c;
   --tan: #dab697;
@@ -53,6 +56,9 @@
   --text-primary: #f4ead9;
   --text-secondary: #e6d6c0;
   --text-muted: #a09080;
+  --accent-ink: #fb923c;
+  --accent-ink-hover: #fdba74;
+  --on-accent: #2b180a;
   --accent: #f97316;
   --accent-light: #fb923c;
   --tan: #8a6b4f;
@@ -96,6 +102,9 @@
   --color-muted-text: var(--text-muted);
   --color-orange: var(--accent);
   --color-orange-light: var(--accent-light);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-ink-hover: var(--accent-ink-hover);
+  --color-on-accent: var(--on-accent);
   --color-warm-tan: var(--tan);
   --color-border-warm: var(--border);
   --color-gold: var(--gold);

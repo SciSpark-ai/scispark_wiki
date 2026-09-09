@@ -165,7 +165,7 @@ export default function CitationFlowView({
           type="button"
           onClick={onFetch}
           disabled={fetchState === "fetching"}
-          className="text-[13px] text-espresso hover:text-orange disabled:opacity-50 rounded-pill border border-border-warm px-3 py-1.5 transition-colors"
+          className="text-[13px] text-espresso hover:text-accent-ink disabled:opacity-50 rounded-pill border border-border-warm px-3 py-1.5 transition-colors"
         >
           {buttonLabel}
         </button>
@@ -286,7 +286,7 @@ export default function CitationFlowView({
                         type="button"
                         onClick={() => selectPaper(p.id)}
                         data-selected={isSelected ? "true" : undefined}
-                        className={`w-full rounded-[6px] px-1.5 py-0.5 text-[12px] text-espresso hover:text-orange text-left tracking-body transition-colors ${
+                        className={`w-full rounded-[6px] px-1.5 py-0.5 text-[12px] text-espresso hover:text-accent-ink text-left tracking-body transition-colors ${
                           isSelected ? SELECTED_LIST_ITEM_CLASS : ""
                         }`}
                       >

@@ -331,11 +331,11 @@ export function SpendPanel() {
               <button
                 onClick={handleSaveBudget}
                 disabled={saving}
-                className="text-[13px] text-white bg-orange hover:bg-orange/90 disabled:opacity-50 rounded-pill px-4 py-2 font-medium transition-colors"
+                className="text-[13px] text-on-accent bg-orange hover:bg-orange/90 disabled:opacity-50 rounded-pill px-4 py-2 font-medium transition-colors"
               >
                 {saving ? "Saving…" : "Save"}
               </button>
-              {saveStatus && <span className="text-[13px] text-orange">{saveStatus}</span>}
+              {saveStatus && <span className="text-[13px] text-accent-ink">{saveStatus}</span>}
             </div>
             {error && summary && <p className="mt-2 text-[13px] text-red-600">{error}</p>}
           </div>
