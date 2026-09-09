@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  outputFileTracingIncludes: { "/api/reviews/*/pdf": ["./scripts/review-pdf-worker.mjs", "./node_modules/pdfjs-dist/**", "./node_modules/@napi-rs/canvas*/**"], "/api/reviews/*": ["./scripts/review-pdf-worker.mjs", "./node_modules/pdfjs-dist/**", "./node_modules/@napi-rs/canvas*/**"] },
   // The local app is also the human-test preview. Do not cover its controls
   // with the development badge; compile/runtime error overlays remain enabled.
   devIndicators: false,

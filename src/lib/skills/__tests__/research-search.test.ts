@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { DEFAULT_SETTINGS } from "../../llm/settings"
 import { MockProvider } from "../../llm/mock-provider"
 import type { LLMResult } from "../../llm/types"
@@ -92,6 +92,56 @@ describe("research-search schemas", () => {
 })
 
 describe("runResearchSearch", () => {
+  it("keeps successful source results when another source fails and records the incomplete coverage", async () => {
+    const storage = await seededVault()
+    const provider = new MockProvider([
+      structured({ interpretation: "Attention", sort: "relevance", fromDate: null, queries: [
+        { source: "s2", query: "attention", rationale: "cross-check" },
+        { source: "openalex", query: "attention", rationale: "broader index" },
+      ] }), structured({ items: [] }),
+    ])
+    const searchFn: SearchFn = async (source) => {
+      if (source === "s2") throw new Error("429")
+      return [paper("Attention", "10.1/test", "openalex")]
+    }
+    const result = await runResearchSearch(storage, { query: "attention" }, { settings: SETTINGS, searchFn, providerOverride: { fast: provider }, now: NOW })
+    expect(result.items).toHaveLength(1)
+    expect(result.warnings[0]).toContain("s2")
+  })
+  it("does not append fallback candidates beyond a complete 15-paper ranking", async () => {
+    const storage = await seededVault()
+    const papers = Array.from({ length: 20 }, (_, i) => paper(`Study ${i}`, `10.1/${i}`, "openalex"))
+    const provider = new MockProvider([
+      structured({ interpretation: "Attention", sort: "relevance", fromDate: null, queries: [{ source: "openalex", query: "attention", rationale: "methods" }] }),
+      structured({ items: papers.slice(0, 15).map((p) => ({ key: `doi:${p.ids.doi}`, score: 90, whyMatch: "Relevant method." })) }),
+    ])
+    const result = await runResearchSearch(storage, { query: "attention" }, { settings: SETTINGS, searchFn: async () => papers, providerOverride: { fast: provider }, now: NOW })
+    expect(result.items).toHaveLength(15)
+  })
+  it("intersects requested and model-generated sources with saved preferences", async () => {
+    const storage = await seededVault()
+    await storage.write(".scispark/settings.json", JSON.stringify({ paperSources: { enabledSources: ["pubmed", "openalex"] } }))
+    const provider = new MockProvider([
+      structured({ interpretation: "Attention", sort: "relevance", fromDate: null, queries: [
+        { source: "arxiv", query: "attention", rationale: "not enabled" },
+        { source: "openalex", query: "attention", rationale: "enabled" },
+      ] }), structured({ items: [] }),
+    ])
+    const searchFn = vi.fn<SearchFn>().mockResolvedValue([paper("Attention", "10.1/test", "openalex")])
+    const result = await runResearchSearch(storage, { query: "attention", sources: ["arxiv", "openalex"] }, { settings: SETTINGS, searchFn, providerOverride: { fast: provider }, now: NOW })
+    expect(searchFn).toHaveBeenCalledTimes(1)
+    expect(searchFn.mock.calls[0][0]).toBe("openalex")
+    expect(result.plan.queries).toHaveLength(1)
+    expect(provider.calls[0].req.messages[1].content).toContain("ALLOWED-SOURCES: openalex")
+  })
+  it("rejects a disabled-only scope before spending or retrieving", async () => {
+    const storage = await seededVault()
+    await storage.write(".scispark/settings.json", JSON.stringify({ paperSources: { enabledSources: ["pubmed"] } }))
+    const searchFn = vi.fn<SearchFn>(), provider = new MockProvider([])
+    await expect(runResearchSearch(storage, { query: "attention", sources: ["arxiv"] }, { settings: SETTINGS, searchFn, providerOverride: { fast: provider } })).rejects.toThrow("enabled paper source")
+    expect(searchFn).not.toHaveBeenCalled()
+    expect(provider.calls).toHaveLength(0)
+  })
   it("plans across sources, interleaves and deduplicates retrieval, then returns AI-ranked explanations", async () => {
     const storage = await seededVault()
     const paperA = paper("Attention decoding A", "10.1/a", "arxiv")

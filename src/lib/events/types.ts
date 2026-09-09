@@ -1,4 +1,5 @@
 export type SciSparkEvent =
+  | { type: "literature_review_ready"; reviewId: string; sessionId: string; title: string }
   | { type: "onboarding_completed" }
   | { type: "search"; source: string; query: string; sort?: "relevance" | "date" }
   | { type: "paper_view"; paperKey: string; title: string }

@@ -8,6 +8,8 @@ import { completeStructured, StructuredOutputError } from "../llm/structured"
 import { estimateCostUsd } from "../llm/pricing"
 import type { SkillContext, SkillDefinition, SkillRunResult } from "./types"
 
+import { withVaultExclusive } from "../vault/exclusive"
+
 function makeRunId(now: () => Date): string {
   const hex = Math.floor(Math.random() * 0x10000)
     .toString(16)
@@ -32,6 +34,10 @@ export async function runSkill<I, O>(opts: {
   /** Passed through to every `withRetry` call (both `ctx.llm` and `ctx.llmStructured`). Tests use this to shrink backoff delays. */
   retryOpts?: { retries?: number; baseDelayMs?: number; sleep?: (ms: number) => Promise<void> }
 }): Promise<SkillRunResult<O>> {
+  return withVaultExclusive(opts.storage, "ai-spend", () => runSkillLocked(opts))
+}
+
+async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]): Promise<SkillRunResult<O>> {
   const now = opts.now ?? (() => new Date())
   const settings = opts.settings ?? (await loadSettings(opts.storage))
   const meter = new Meter(opts.storage, now)

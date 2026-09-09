@@ -3,6 +3,7 @@ import { z } from "zod"
 import type { VaultStorage } from "../vault/storage"
 import type { FeedResult } from "./feed"
 import { ScoreBreakdownSchema, RecommendationRunSchema } from "../recommendation/contract"
+import { feedExclusionReason } from "../papers/eligibility"
 export type { FeedResult, FeedItem } from "./feed"
 export const FEED_CACHE_PATH = ".scispark/feed/latest.json"
 
@@ -58,6 +59,8 @@ const PaperAuthorCacheSchema = z.object({
 })
 
 const PaperRecordCacheSchema = z.object({
+  publicationTypes: z.array(z.string()).optional(),
+  isRetracted: z.boolean().optional(),
   ids: PaperIdsCacheSchema,
   title: z.string(),
   abstract: z.string().optional(),
@@ -118,6 +121,6 @@ export async function loadFeed(storage: VaultStorage): Promise<FeedResult | null
   // a real FeedBadge (or none).
   return {
     ...result.data,
-    items: result.data.items.map((item) => ({ ...item, badge: normalizeFeedBadge(item.badge) })),
+    items: result.data.items.filter((item) => !feedExclusionReason(item.paper)).map((item) => ({ ...item, badge: normalizeFeedBadge(item.badge) })),
   }
 }

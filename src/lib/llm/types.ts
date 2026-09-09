@@ -22,11 +22,19 @@ export interface LLMRequest {
   /** JSON Schema — when set, the provider must use its native structured-output mechanism. */
   jsonSchema?: Record<string, unknown>
   schemaName?: string
+  /** Budgeted jobs own retries; do not issue an unreserved provider-side fallback. */
+  singleAttempt?: boolean
 }
 
 export interface LLMUsage {
+  /** Total input, including cache reads (not an additional token category). */
   inputTokens: number
+  /** Total billed completion, including reasoning when supplied by the API. */
   outputTokens: number
+  cachedInputTokens?: number
+  reasoningTokens?: number
+  /** Explicitly false when the provider omitted usage; never infer free work. */
+  reported?: boolean
 }
 
 export interface LLMResult {

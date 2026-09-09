@@ -65,6 +65,8 @@ export function paperRecordFromFrontmatter(fm: Frontmatter): PaperRecord {
     year: typeof fm.year === "number" ? fm.year : undefined,
     venue: typeof fm.venue === "string" ? fm.venue : undefined,
     fields: [],
+    publicationTypes: Array.isArray(fm.publication_types) ? fm.publication_types.filter((type): type is string => typeof type === "string") : undefined,
+    isRetracted: fm.is_retracted === true || undefined,
     source: arxiv ? "arxiv" : pmid ? "pubmed" : openalex ? "openalex" : "s2",
   }
 }

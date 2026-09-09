@@ -1,5 +1,6 @@
 import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
+import { nodeResearchSearchFn } from "@/lib/papers/node-search"
 import {
   askChat,
   parseAskChatInput,
@@ -35,6 +36,7 @@ export const POST = ndjsonSkillRoute<unknown>(async (rawInput, vault, emit) => {
     input,
     settings,
     providerOverride: overrides.providerOverride,
+    searchFn: overrides.searchFn ?? nodeResearchSearchFn({ reportErrors: true }),
     onProgress: (stage) => emit({ type: "progress", stage }),
     onText: (text) => emit({ type: "text", text }),
   })

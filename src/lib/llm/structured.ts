@@ -36,6 +36,11 @@ function sumUsage(a: LLMUsage, b: LLMUsage): LLMUsage {
   return {
     inputTokens: a.inputTokens + b.inputTokens,
     outputTokens: a.outputTokens + b.outputTokens,
+    ...(a.cachedInputTokens !== undefined || b.cachedInputTokens !== undefined
+      ? { cachedInputTokens: (a.cachedInputTokens ?? 0) + (b.cachedInputTokens ?? 0) } : {}),
+    ...(a.reasoningTokens !== undefined || b.reasoningTokens !== undefined
+      ? { reasoningTokens: (a.reasoningTokens ?? 0) + (b.reasoningTokens ?? 0) } : {}),
+    ...(a.reported === false || b.reported === false ? { reported: false } : {}),
   }
 }
 

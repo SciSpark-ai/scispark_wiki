@@ -187,6 +187,7 @@ function mapEntry(entry: ArxivEntry): PaperRecord {
     pdfUrl: nonEmpty(findLink(entry.link, (l) => l["@_title"] === "pdf" || (l["@_rel"] === "related" && l["@_type"] === "application/pdf"))),
     fields: mapFields(entry.category),
     source: "arxiv",
+    publicationTypes: ["preprint"],
   }
 }
 

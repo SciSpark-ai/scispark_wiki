@@ -1,4 +1,5 @@
 import { mergeRecords, paperKey, type PaperRecord } from "../papers/types"
+import { feedExclusionReason } from "../papers/eligibility"
 import type { FeedPreferenceMemory } from "../usermodel/feed-memory"
 import { FEEDBACK_LIMIT, preferenceEffects } from "./preference-effects"
 import type { SearchFn, FeedStrategy } from "../skills/feed"
@@ -71,6 +72,7 @@ export function interleaveCandidates(groups: Candidate[][], excluded: Set<string
     }
   }
   return result.filter(({ paper }) => {
+    if (feedExclusionReason(paper)) return false
     const aliases = Object.entries(paper.ids).map(([kind, id]) => `${kind}:${fold(id!)}`)
     return ![paperKey(paper), ...aliases, `title:${fold(paper.title)}`].some((key) => excluded.has(key))
   })
@@ -219,6 +221,7 @@ export async function retrieveRecommendationCandidates(
       try {
         const papers = await withDeadline(search(query.source, query.query, 25, { fromDate: from, sort: "relevance" }), opts.timeoutMs ?? 20_000)
         const eligible = papers.filter((paper) => {
+          if (feedExclusionReason(paper)) return false
           const date = publicationDate(paper)
           // Unknown dates remain inspectable, never described as inside the window.
           if (date) return date >= from && date <= toDate

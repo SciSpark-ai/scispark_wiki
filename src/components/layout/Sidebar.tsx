@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Home,
-  Search as SearchIcon,
   TrendingUp,
   BookOpen,
   Network,
@@ -60,7 +59,7 @@ const NAV_GROUPS: NavGroup[] = [
     heading: "Discover",
     items: [
       { key: "home", label: "Home", href: "/", icon: Home },
-      { key: "search", label: "Search", href: "/papers", icon: SearchIcon },
+      { key: "chat", label: "Sparky", href: "/chat", icon: MessageSquarePlus },
       { key: "trending", label: "Trending", href: "/trending", icon: TrendingUp },
     ],
   },
@@ -76,7 +75,6 @@ const NAV_GROUPS: NavGroup[] = [
     heading: "Tools",
     items: [
       { key: "spark", label: "Spark", href: "/spark", icon: Sparkles },
-      { key: "chat", label: "Chat", href: "/chat", icon: MessageSquarePlus },
     ],
   },
 ];
@@ -88,6 +86,7 @@ interface SidebarProps {
 }
 
 function isItemActive(pathname: string, href: string): boolean {
+  if (href === "/chat" && pathname.startsWith("/papers")) return true;
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 

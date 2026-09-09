@@ -157,7 +157,7 @@ test.describe.serial("SP6 developer preview", () => {
 
     await page.goto(chatPath)
     await expect(page.getByText(ANSWER)).toBeVisible()
-    await expect(page.getByText(/This project was deleted\. The transcript is preserved/)).toBeVisible()
+    await expect(page.getByText(/This project's scope is unavailable\. The transcript is preserved/)).toBeVisible()
 
     await page.goto("/history?tab=changes")
     const deletion = page.locator("article").filter({ hasText: "project-delete" })

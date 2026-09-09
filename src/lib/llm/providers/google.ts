@@ -76,6 +76,7 @@ export class GoogleProvider implements LLMProvider {
       usage: {
         inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
         outputTokens: (data.usageMetadata?.candidatesTokenCount ?? 0) + (data.usageMetadata?.thoughtsTokenCount ?? 0),
+        ...(!data.usageMetadata || data.usageMetadata.promptTokenCount == null || data.usageMetadata.candidatesTokenCount == null ? { reported: false } : {}),
       },
       model: data.modelVersion ?? model,
       provider: this.id,

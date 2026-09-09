@@ -50,7 +50,7 @@ export function AppShell({ children }: AppShellProps) {
       </div>
       <SelectionToNoteBubble />
       {/* Sparky is already in the onboarding panel; avoid covering its composer. */}
-      {pathname !== "/onboarding" && <CompanionMascot />}
+      {pathname !== "/onboarding" && !pathname.startsWith("/chat") && pathname !== "/papers" && <CompanionMascot />}
       <SettingsModal />
       <ThemeApplier />
       <NavHistoryTracker />

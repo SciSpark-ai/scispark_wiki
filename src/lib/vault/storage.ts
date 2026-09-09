@@ -1,4 +1,8 @@
 export interface VaultStorage {
+  /** Same local directory across separately bundled server routes/instances. */
+  readonly coordinationKey?: string
+  /** Server backends provide cross-process exclusion; browser proxies never execute jobs. */
+  exclusive?<T>(name: string, work: () => Promise<T>): Promise<T>
   read(path: string): Promise<string | null>
   write(path: string, content: string): Promise<void>
   /** Reads raw bytes. Works for paths written via either write() or writeBinary() —

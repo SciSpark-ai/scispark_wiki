@@ -8,10 +8,12 @@ import { SpendPanel } from "./SpendPanel"
 import { AppearanceCard } from "./AppearanceCard"
 import { TrendingFieldsCard } from "./TrendingFieldsCard"
 import { RecommendationCard } from "./RecommendationCard"
+import { PaperSourcesCard } from "./PaperSourcesCard"
 import { cn } from "@/components/ui/cn"
 
 const SECTIONS = [
   { id: "ai", label: "Connect your AI", body: <ConnectAiCard /> },
+  { id: "sources", label: "Paper sources", body: <PaperSourcesCard /> },
   { id: "spend", label: "Spend & budget", body: <SpendPanel /> },
   { id: "companion", label: "Companion", body: <CompanionCard /> },
   { id: "appearance", label: "Appearance", body: <AppearanceCard /> },

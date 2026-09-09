@@ -1,6 +1,7 @@
 import { TtlCache } from "../server/ttl-cache"
 import { TokenBucket } from "../server/rate-limit"
 import { PaperSourceError, normalizeDoi, type PaperIds } from "./types"
+import { sourceFetch, withSourceDeadline } from "./source-requests"
 
 // S2 Graph API /paper/{id}/references — same host/auth/timeout discipline as
 // the existing searchS2 adapter (src/lib/papers/s2.ts), reused here rather
@@ -75,7 +76,14 @@ export async function fetchReferences(
   externalId: string,
   opts: { fetchFn?: typeof fetch; apiKey?: string } = {},
 ): Promise<CitationRef[]> {
-  const fetchFn = opts.fetchFn ?? fetch
+  return withSourceDeadline(undefined, (signal) => fetchReferencesWithSignal(externalId, { ...opts, signal }))
+}
+
+async function fetchReferencesWithSignal(
+  externalId: string,
+  opts: { fetchFn?: typeof fetch; apiKey?: string; signal: AbortSignal },
+): Promise<CitationRef[]> {
+  const fetchFn = opts.fetchFn ?? sourceFetch("s2")
   const headers: Record<string, string> = {}
   if (opts.apiKey) {
     headers["x-api-key"] = opts.apiKey
@@ -83,7 +91,7 @@ export async function fetchReferences(
 
   let response: Response
   try {
-    response = await fetchFn(buildReferencesUrl(externalId), { headers })
+    response = await fetchFn(buildReferencesUrl(externalId), { headers, signal: opts.signal, redirect: "error" })
   } catch (err) {
     throw new PaperSourceError(err instanceof Error ? err.message : "Semantic Scholar references request failed")
   }

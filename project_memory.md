@@ -26,6 +26,23 @@
 
 # Current Release/Session State
 
+- September 9: user authorized commit and push. Isolated review commit candidate
+  passed 2,356 tests / 17 gated skips, production build, TypeScript, targeted lint
+  and six Chromium tests. Includes required chat/source/billing dependencies;
+  unrelated local work remains unstaged. Live scientific acceptance remains open.
+
+- September 9 general review coverage fix: question-specific requirements now
+  drive search, gap retrieval and synthesis; coverage is assessed independently
+  from claim grounding. Grounded but incomplete answers remain partial and reject
+  claim-only retries. Edits invalidate generated coverage assessments. Bounded
+  public PDF and exact-DOI Europe PMC XML recovery distinguish local relay blocks
+  from publisher restrictions. Source-only live checks recovered two of three
+  cited papers, both explicitly truncated; no model spending. Full suite: 2,487
+  passed / 17 skipped; targeted lint and production compilation/TypeScript passed.
+  Production review and restart browser regressions passed. New live synthesis
+  acceptance remains open; existing report/ledger preserved with $0.603068 left.
+  No commit/push. See `docs/testing/2026-09-09-deep-review-coverage.md`.
+
 - Production browser/server import boundary fixed 2026-09-05. Trending's
   cache-loading/freshness/scope helpers now live in `trending/cache.ts`, and its
   shared interfaces in `trending/types.ts`. Browser imports no longer pull in

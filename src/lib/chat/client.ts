@@ -16,9 +16,9 @@ import type { AskChatInput, AskChatResult } from "./orchestrator"
  * pulled in: the types are erased at compile time.
  */
 
-export type ChatStage = "selecting" | "answering"
+export type ChatStage = "selecting" | "answering" | "planning" | "searching" | "ranking"
 
-const CHAT_STAGES: readonly string[] = ["selecting", "answering"]
+const CHAT_STAGES: readonly string[] = ["selecting", "answering", "planning", "searching", "ranking"]
 
 function isChatStage(value: unknown): value is ChatStage {
   return typeof value === "string" && CHAT_STAGES.includes(value)

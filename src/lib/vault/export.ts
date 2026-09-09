@@ -11,7 +11,8 @@ import { isSafeVaultRelativePath } from "./safe-path"
 const SENSITIVE_PATHS = new Set([".scispark/settings.json"])
 
 function isSensitivePath(path: string): boolean {
-  return SENSITIVE_PATHS.has(path.toLowerCase())
+  return SENSITIVE_PATHS.has(path.toLowerCase()) || path.toLowerCase().startsWith(".scispark/locks/")
+    || path.toLowerCase() === ".scispark/reviews/active.json"
 }
 
 export async function exportVaultZip(storage: VaultStorage): Promise<Uint8Array> {

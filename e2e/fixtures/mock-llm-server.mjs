@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createServer } from "node:http"
+import { reviewResponse } from "./review-responses.mjs"
 
 const port = Number(process.env.SCISPARK_E2E_LLM_PORT)
 if (!Number.isInteger(port)) throw new Error("SCISPARK_E2E_LLM_PORT is required")
@@ -31,14 +32,14 @@ const server = createServer((request, response) => {
       const prompt = Array.isArray(body.messages)
         ? body.messages.map((message) => String(message?.content ?? "")).join("\n")
         : ""
-      const output = prompt.includes("You select which pages")
+      const output = reviewResponse(body.messages) ?? (prompt.includes("You select which pages")
         ? { pageIds: ["e2e-grounding-paper"] }
         : prompt.includes("exactly ONE short")
           ? { utterance: "Your research space is ready." }
         : {
             answer: "The disposable paper supports this project-scoped answer.",
             citedPageIds: ["wiki/papers/e2e-grounding-paper"],
-          }
+          })
 
       if (body.stream) {
         response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" })

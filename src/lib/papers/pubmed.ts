@@ -1,5 +1,7 @@
 import { XMLParser } from "fast-xml-parser"
 import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
+import { sourceFetch, withSourceDeadline } from "./source-requests"
+import { pubmedOrderedText } from "./pubmed-text"
 
 // Drift-verified 2026-07-12 against the live E-utilities "in-depth" manual
 // (https://www.ncbi.nlm.nih.gov/books/NBK25499/) plus live esearch/efetch
@@ -11,11 +13,9 @@ const MIN_LIMIT = 1
 const MAX_LIMIT = 50
 const DEFAULT_LIMIT = 20
 const MAX_FIELDS = 5
-// isArray forces these five tags to arrays even when only one element is
-// present, per the task contract -- this lets mapping code treat
-// AbstractText/Author/ArticleId/MeshHeading/PubmedArticle uniformly instead
-// of branching on "was there exactly one".
-const ARRAY_TAGS = new Set(["PubmedArticle", "Author", "AbstractText", "ArticleId", "MeshHeading"])
+// Repeated metadata stays uniform even when only one element is present.
+// Abstract/title mixed content is handled separately in reading order.
+const ARRAY_TAGS = new Set(["PubmedArticle", "Author", "ArticleId", "MeshHeading", "PublicationType"])
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -67,10 +67,6 @@ interface PubmedAuthor {
   CollectiveName?: XmlText
 }
 
-interface PubmedAbstractText extends XmlTextNode {
-  "@_Label"?: string
-}
-
 interface PubmedMeshDescriptor extends XmlTextNode {
   "@_MajorTopicYN"?: string
 }
@@ -87,8 +83,7 @@ interface PubmedJournal {
 }
 
 interface PubmedArticleBody {
-  ArticleTitle?: MaybeTextNode
-  Abstract?: { AbstractText?: (XmlText | PubmedAbstractText)[] }
+  PublicationTypeList?: { PublicationType?: MaybeTextNode[] }
   AuthorList?: { Author?: PubmedAuthor[] }
   Journal?: PubmedJournal
   ArticleDate?: PubmedDate
@@ -120,8 +115,10 @@ export interface PubmedQuery {
 }
 
 export interface PubmedDeps {
+  /** Complete transport override for offline fixtures; default is shared pacing. */
   fetchFn?: typeof fetch
   apiKey?: string
+  signal?: AbortSignal
 }
 
 /**
@@ -138,40 +135,6 @@ function textOf(node: MaybeTextNode): string | undefined {
     return String(node["#text"])
   }
   return undefined
-}
-
-/**
- * Flattens a possibly mixed-content XML node (e.g. an ArticleTitle with
- * nested <i>/<sub> markup) down to plain text. fast-xml-parser (without
- * preserveOrder) collapses interleaved text runs into a single "#text" key
- * and lists child elements as sibling keys, losing the original reading
- * order -- this walks every non-attribute value (text first, then child
- * elements in their parsed key order) and joins them with a space, which
- * recovers all the text even though exact interleaving order isn't
- * guaranteed to match the source markup.
- */
-function flattenText(node: unknown): string {
-  if (node == null) return ""
-  if (typeof node === "string") return node
-  if (typeof node === "number") return String(node)
-  if (Array.isArray(node)) return node.map(flattenText).join(" ")
-  if (typeof node === "object") {
-    const parts: string[] = []
-    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-      if (key.startsWith("@_")) continue
-      const text = flattenText(value)
-      if (text !== "") parts.push(text)
-    }
-    return parts.join(" ")
-  }
-  return ""
-}
-
-/**
- * Collapses whitespace runs (including newlines) to single spaces and trims.
- */
-function collapseWhitespace(text: string): string {
-  return text.replace(/\s+/g, " ").trim()
 }
 
 function extractPmid(pmid: MaybeTextNode): string | undefined {
@@ -196,24 +159,6 @@ function mapAuthors(authors: PubmedAuthor[] | null | undefined): PaperAuthor[] {
     result.push({ name })
   }
   return result
-}
-
-/**
- * Joins AbstractText sections into a single abstract string, separated by
- * blank lines, prefixing each section's Label (e.g. "BACKGROUND: ...") when
- * present. AbstractText is forced to an array by ARRAY_TAGS, so a
- * single-section abstract still goes through this same path.
- */
-function mapAbstract(sections: (XmlText | PubmedAbstractText)[] | null | undefined): string | undefined {
-  if (!sections || sections.length === 0) return undefined
-  const parts: string[] = []
-  for (const section of sections) {
-    const text = textOf(section)
-    if (text == null || text.trim() === "") continue
-    const label = typeof section === "object" ? nonEmpty(section["@_Label"]) : undefined
-    parts.push(label ? `${label}: ${text}` : text)
-  }
-  return nonEmpty(parts.join("\n\n"))
 }
 
 /**
@@ -268,12 +213,9 @@ function mapFields(headings: PubmedMeshHeading[] | null | undefined): string[] {
   return [...major, ...minor].slice(0, MAX_FIELDS).map((d) => d.name)
 }
 
-function mapArticle(entry: PubmedArticleEntry): PaperRecord {
+function mapArticle(entry: PubmedArticleEntry, readable: { title: string; abstract?: string }): PaperRecord {
   const citation = entry.MedlineCitation
   const article = citation?.Article
-
-  const titleText = flattenText(article?.ArticleTitle)
-  const title = collapseWhitespace(titleText)
 
   // ArticleDate is preferred over the (coarser, journal-issue-level) PubDate
   // when both are present, per the task contract.
@@ -286,8 +228,8 @@ function mapArticle(entry: PubmedArticleEntry): PaperRecord {
       pmid: extractPmid(citation?.PMID),
       doi: extractDoi(entry.PubmedData?.ArticleIdList?.ArticleId),
     },
-    title,
-    abstract: mapAbstract(article?.Abstract?.AbstractText),
+    title: readable.title,
+    abstract: readable.abstract,
     authors: mapAuthors(article?.AuthorList?.Author),
     year: dateParts.year,
     date: dateParts.date,
@@ -295,6 +237,7 @@ function mapArticle(entry: PubmedArticleEntry): PaperRecord {
     citationCount: undefined,
     fields: mapFields(citation?.MeshHeadingList?.MeshHeading),
     source: "pubmed",
+    publicationTypes: article?.PublicationTypeList?.PublicationType?.map(textOf).filter((type): type is string => Boolean(type)),
   }
 }
 
@@ -335,12 +278,17 @@ function buildEfetchUrl(pmids: string[], apiKey: string | undefined): string {
  * esearch returns no pmids, efetch is skipped entirely and [] is returned.
  */
 export async function searchPubmed(q: PubmedQuery, deps: PubmedDeps = {}): Promise<PaperRecord[]> {
-  const fetchFn = deps.fetchFn ?? fetch
+  return withSourceDeadline(deps.signal, (signal) => searchPubmedRecords(q, { ...deps, signal }))
+}
+
+async function searchPubmedRecords(q: PubmedQuery, deps: PubmedDeps): Promise<PaperRecord[]> {
+  const fetchFn = deps.fetchFn ?? sourceFetch("pubmed")
 
   let esearchResponse: Response
   try {
-    esearchResponse = await fetchFn(buildEsearchUrl(q, deps.apiKey))
+    esearchResponse = await fetchFn(buildEsearchUrl(q, deps.apiKey), { signal: deps.signal })
   } catch (err) {
+    deps.signal?.throwIfAborted()
     throw new PaperSourceError(err instanceof Error ? err.message : "PubMed esearch request failed")
   }
   if (!esearchResponse.ok) {
@@ -352,8 +300,9 @@ export async function searchPubmed(q: PubmedQuery, deps: PubmedDeps = {}): Promi
 
   let efetchResponse: Response
   try {
-    efetchResponse = await fetchFn(buildEfetchUrl(pmids, deps.apiKey))
+    efetchResponse = await fetchFn(buildEfetchUrl(pmids, deps.apiKey), { signal: deps.signal })
   } catch (err) {
+    deps.signal?.throwIfAborted()
     throw new PaperSourceError(err instanceof Error ? err.message : "PubMed efetch request failed")
   }
   if (!efetchResponse.ok) {
@@ -362,5 +311,7 @@ export async function searchPubmed(q: PubmedQuery, deps: PubmedDeps = {}): Promi
   const xml = await efetchResponse.text()
   const parsed = xmlParser.parse(xml) as PubmedArticleSetResponse
   const articles = parsed.PubmedArticleSet?.PubmedArticle ?? []
-  return articles.map(mapArticle)
+  const readable = pubmedOrderedText(xml)
+  if (readable.length !== articles.length) throw new PaperSourceError("PubMed text and metadata records do not align")
+  return articles.map((entry, index) => mapArticle(entry, readable[index]))
 }

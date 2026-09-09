@@ -39,12 +39,12 @@ export class Meter {
     private now: () => Date = () => new Date(),
   ) {}
 
-  async record(r: Omit<UsageRecord, "ts" | "costUsd">): Promise<UsageRecord> {
+  async record(r: Omit<UsageRecord, "ts" | "costUsd">, scopedCostUsd?: number | null): Promise<UsageRecord> {
     const nowDate = this.now()
     const rec: UsageRecord = {
       ...r,
       ts: nowDate.toISOString(),
-      costUsd: estimateCostUsd(r.model, r.usage),
+      costUsd: scopedCostUsd === undefined ? estimateCostUsd(r.model, r.usage) : scopedCostUsd,
     }
 
     const path = dayFilePath(utcDateString(nowDate))
@@ -95,9 +95,28 @@ export class Meter {
     return records
   }
 
-  async spentTodayUsd(): Promise<number> {
+  async spendingToday(): Promise<{ totalUsd: number | null; knownUsd: number; unpricedCount: number }> {
     const records = await this.recordsForDay(utcDateString(this.now()))
-    return records.reduce((sum, r) => sum + (r.costUsd ?? 0), 0)
+    const knownUsd = records.reduce((sum, r) => sum + (typeof r.costUsd === "number" && Number.isFinite(r.costUsd) ? r.costUsd : 0), 0)
+    const unpricedCount = records.filter((r) => typeof r.costUsd !== "number" || !Number.isFinite(r.costUsd)).length
+    return { totalUsd: unpricedCount ? null : knownUsd, knownUsd, unpricedCount }
+  }
+
+  async spentTodayUsd(): Promise<number> {
+    return (await this.spendingToday()).knownUsd
+  }
+
+  async reviewReservationsToday(): Promise<number> {
+    const raw = await this.storage.read(".scispark/usage/review-attempts.json")
+    if (raw === null) return 0
+    const records = JSON.parse(raw) as Array<{ day: string; state: string; reservedUsd: number; metered?: boolean; costUsd?: number | null }>
+    if (!Array.isArray(records)) throw new Error("Unreadable review billing record")
+    return records.filter((r) => r.day === utcDateString(this.now()) && !r.metered)
+      .reduce((sum, r) => {
+        const cost = r.costUsd ?? r.reservedUsd
+        if (!Number.isFinite(cost) || cost < 0) throw new Error("Invalid review reservation")
+        return sum + cost
+      }, 0)
   }
 }
 
@@ -116,9 +135,12 @@ export async function checkBudget(
   meter: Meter,
   settings: LLMSettings,
   estimatedNextCallUsd?: number,
+  onWarning?: (message: string) => void,
 ): Promise<void> {
-  const spentUsd = await meter.spentTodayUsd()
-  const projected = spentUsd + (estimatedNextCallUsd ?? 0)
+  const spending = await meter.spendingToday()
+  const spentUsd = spending.knownUsd
+  if (spending.unpricedCount) onWarning?.("Budget coverage is incomplete: unpriced calls are recorded, but only known costs count toward the local limit. Check your provider’s spending limit.")
+  const projected = spentUsd + await meter.reviewReservationsToday() + (estimatedNextCallUsd ?? 0)
   if (projected >= settings.dailyBudgetUsd) {
     throw new BudgetExceededError(spentUsd, settings.dailyBudgetUsd)
   }

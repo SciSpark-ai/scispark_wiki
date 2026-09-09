@@ -47,7 +47,7 @@ export class OpenAICompatProvider implements LLMProvider {
     try {
       return await this.send(model, req, "native")
     } catch (e) {
-      if (e instanceof LLMBadRequestError && isStructuredOutputRejection(e.message)) {
+      if (!req.singleAttempt && e instanceof LLMBadRequestError && isStructuredOutputRejection(e.message)) {
         fallbackStats.promptJsonFallbacks++
         console.warn(
           `[openai-compat] structured-output fallback fired (provider=${this.id}, model=${model}): ${e.message}`,
@@ -165,6 +165,11 @@ export class OpenAICompatProvider implements LLMProvider {
         usage: {
           inputTokens: data.usage?.prompt_tokens ?? 0,
           outputTokens: data.usage?.completion_tokens ?? 0,
+          ...(data.usage?.prompt_tokens_details?.cached_tokens != null
+            ? { cachedInputTokens: data.usage.prompt_tokens_details.cached_tokens } : {}),
+          ...(data.usage?.completion_tokens_details?.reasoning_tokens != null
+            ? { reasoningTokens: data.usage.completion_tokens_details.reasoning_tokens } : {}),
+          ...(data.usage?.prompt_tokens == null || data.usage?.completion_tokens == null ? { reported: false } : {}),
         },
         model: data.model ?? model,
         provider: this.id,
@@ -255,7 +260,12 @@ interface ChatCompletionResponse {
     message?: { content?: string }
     finish_reason?: string
   }>
-  usage?: { prompt_tokens?: number; completion_tokens?: number }
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+    prompt_tokens_details?: { cached_tokens?: number }
+    completion_tokens_details?: { reasoning_tokens?: number }
+  }
 }
 
 async function readChatStream(res: Response, onText: (text: string) => void): Promise<ChatCompletionResponse> {

@@ -8,6 +8,7 @@ export interface ComposerProps {
   onChange: (value: string) => void
   onSubmit: () => void
   busy: boolean
+  placeholder?: string
 }
 
 /**
@@ -28,7 +29,7 @@ export interface ComposerProps {
  * CaptureIdeaCard's implicit form submit) — fixed here only; worth a
  * dedicated pass to close it everywhere.
  */
-export function Composer({ value, onChange, onSubmit, busy }: ComposerProps) {
+export function Composer({ value, onChange, onSubmit, busy, placeholder = "Ask about your knowledge base…" }: ComposerProps) {
   const canSubmit = !busy && value.trim() !== ""
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -46,7 +47,8 @@ export function Composer({ value, onChange, onSubmit, busy }: ComposerProps) {
         onKeyDown={handleKeyDown}
         disabled={busy}
         rows={2}
-        placeholder="Ask about your knowledge base…"
+        placeholder={placeholder}
+        aria-label="Message Sparky"
         className="flex-1 resize-none rounded-card border border-border-warm bg-light-surface px-3 py-2 text-[14px] text-espresso tracking-body disabled:opacity-50"
       />
       <Button onClick={onSubmit} disabled={!canSubmit}>

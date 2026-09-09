@@ -1,5 +1,14 @@
 import type { LLMUsage } from "./types"
 
+/** A sum is unknown if any billed call has no known price. Zero means no cost. */
+export function addCosts(...amounts: Array<number | null>): number | null {
+  return amounts.some((amount) => amount === null) ? null : (amounts as number[]).reduce((sum, amount) => sum + amount, 0)
+}
+
+export function formatCost(cost: number | null | undefined, digits = 2): string {
+  return cost == null ? "Cost unavailable" : `≈ $${cost.toFixed(digits)}`
+}
+
 /**
  * USD per million tokens. Verified 2026-07-12 against official pricing pages:
  * - Anthropic: https://www.anthropic.com/pricing (rates supplied pre-verified by task spec)
@@ -21,6 +30,8 @@ export const PRICES: Record<string, { inPerM: number; outPerM: number }> = {
 }
 
 export function estimateCostUsd(model: string, usage: LLMUsage): number | null {
+  if (usage.reported === false || !Number.isSafeInteger(usage.inputTokens) || usage.inputTokens < 0
+    || !Number.isSafeInteger(usage.outputTokens) || usage.outputTokens < 0) return null
   const key = model in PRICES ? model : model.split("/").pop() ?? model
   const p = PRICES[key]
   if (!p) return null

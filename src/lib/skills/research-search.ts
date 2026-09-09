@@ -1,9 +1,11 @@
+import { addCosts } from "../llm/pricing"
 import { z } from "zod"
 import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
 import type { PaperRecord, SourceId } from "../papers/types"
 import { mergeRecords, paperKey } from "../papers/types"
+import { readEnabledPaperSources } from "../papers/source-preferences"
 import { buildUserContext } from "../usermodel/context"
 import { neutralizeFenceMarkers } from "./ingest-analysis"
 import { runSkill } from "./runner"
@@ -152,14 +154,16 @@ export interface ResearchSearchDeps {
   providerOverride?: Partial<Record<Tier, LLMProvider>>
   onStage?: (stage: ResearchSearchStage) => void
   now?: () => Date
+  /** Server-selected conversation/project context. Never accepted from clients. */
+  contextText?: string
 }
 
-function allowedSources(input: SourceId[] | undefined): SourceId[] {
-  const requested = input ?? [...RESEARCH_SEARCH_SOURCES]
+function allowedSources(input: SourceId[] | undefined, enabled: SourceId[]): SourceId[] {
+  const requested = input ?? enabled
   const valid = requested.filter((source, index) =>
-    (RESEARCH_SEARCH_SOURCES as readonly string[]).includes(source) && requested.indexOf(source) === index,
+    enabled.includes(source) && requested.indexOf(source) === index,
   )
-  if (valid.length === 0) throw new Error("Choose at least one paper source")
+  if (valid.length === 0) throw new Error("Choose at least one enabled paper source. Check Paper sources in Settings.")
   return valid
 }
 
@@ -242,16 +246,16 @@ export async function runResearchSearch(
   if (!query) throw new Error("Enter a research question")
   if (query.length > 512) throw new Error("Keep the research question under 512 characters")
 
-  const sources = allowedSources(input.sources)
+  const sources = allowedSources(input.sources, await readEnabledPaperSources(storage))
   const now = deps.now ?? (() => new Date())
-  const userContext = await buildUserContext(storage, { eventLimit: 40 })
+  const contextText = deps.contextText ?? (await buildUserContext(storage, { eventLimit: 40 })).compactText
 
   deps.onStage?.("planning")
   const planRun = await runSkill({
     skill: researchSearchPlanSkill,
     input: {
       query,
-      userContextText: userContext.compactText,
+      userContextText: contextText,
       allowedSources: sources,
       currentDate: now().toISOString().slice(0, 10),
     },
@@ -266,18 +270,24 @@ export async function runResearchSearch(
   const plan = cleanPlan(planRun.output, sources)
 
   deps.onStage?.("searching")
-  const batches = await Promise.all(plan.queries.map(async (plannedQuery) => ({
-    query: plannedQuery,
-    papers: await deps.searchFn(plannedQuery.source, plannedQuery.query, 12, {
-      fromDate: plan.fromDate ?? undefined,
-      sort: plan.sort,
-    }),
-  })))
+  const outcomes = await Promise.allSettled(plan.queries.map(async (plannedQuery) => ({
+      query: plannedQuery,
+      papers: await deps.searchFn(plannedQuery.source, plannedQuery.query, 12, {
+        fromDate: plan.fromDate ?? undefined, sort: plan.sort,
+      }),
+    })))
+  const warnings: string[] = []
+  const batches = outcomes.flatMap((outcome, index) => {
+    if (outcome.status === "fulfilled") return [outcome.value]
+    warnings.push(`${plan.queries[index].source}: the source request failed. Results from other sources are retained.`)
+    return []
+  })
+  if (!batches.length) throw new Error("The paper sources could not be reached. Your search is saved; this does not mean no literature exists.")
   const merged = mergeSearchBatches(batches)
   let candidates = merged.candidates
   if (plan.sort === "date") candidates = candidates.sort((a, b) => dateValue(b.paper) - dateValue(a.paper))
   candidates = candidates.slice(0, 40)
-  if (candidates.length === 0) throw new Error("No papers matched this search plan. Try broadening the question or source scope.")
+  if (candidates.length === 0) throw new Error(warnings.length ? "Some paper sources failed, and the others returned no matches. Try again or broaden the source scope." : "No papers matched this search plan. Try broadening the question or source scope.")
 
   deps.onStage?.("ranking")
   const rankRun = await runSkill({
@@ -285,7 +295,7 @@ export async function runResearchSearch(
     input: {
       query,
       interpretation: plan.interpretation,
-      userContextText: userContext.compactText,
+      userContextText: contextText,
       candidates: serializeCandidates(candidates),
     },
     storage,
@@ -297,7 +307,6 @@ export async function runResearchSearch(
   const candidateByKey = new Map(candidates.map((candidate) => [paperKey(candidate.paper), candidate]))
   const selected = new Set<string>()
   const items: ResearchSearchItem[] = []
-  const warnings: string[] = []
 
   if (rankRun.status === "ok" && rankRun.output) {
     for (const ranked of rankRun.output.items) {
@@ -312,6 +321,7 @@ export async function runResearchSearch(
   }
 
   for (const candidate of candidates) {
+    if (items.length >= 15) break
     const key = paperKey(candidate.paper)
     if (selected.has(key)) continue
     items.push({ ...candidate, score: 0, whyMatch: fallbackWhy(candidate) })
@@ -323,7 +333,7 @@ export async function runResearchSearch(
     plan,
     items,
     stats: { retrieved: merged.retrieved, deduplicated: merged.candidates.length },
-    costUsd: planRun.costUsd + rankRun.costUsd,
+    costUsd: addCosts(planRun.costUsd, rankRun.costUsd),
     warnings,
   }
 }

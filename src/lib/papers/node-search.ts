@@ -1,6 +1,7 @@
 import { searchArxiv } from "./arxiv"
 import { searchS2 } from "./s2"
 import { searchPubmed } from "./pubmed"
+import { getServerS2Key } from "../server/paper-source-settings"
 import {
   searchOpenAlex,
   searchTopCitedWorks,
@@ -60,7 +61,7 @@ export function nodeFeedSearchFn(): SearchFn {
         { query, limit, fromDate: opts?.fromDate, sort: opts?.sort },
         { mailto: process.env.OPENALEX_MAILTO, apiKey: process.env.OPENALEX_API_KEY },
       )
-      case "s2": return searchS2({ query, limit, fromDate: opts?.fromDate }, { apiKey: process.env.S2_API_KEY })
+      case "s2": return searchS2({ query, limit, fromDate: opts?.fromDate }, { apiKey: await getServerS2Key() })
       case "pubmed": return searchPubmed({ query, limit, fromDate: opts?.fromDate }, { apiKey: process.env.NCBI_API_KEY })
       default: throw new Error("Unsupported paper source")
     }
@@ -72,10 +73,9 @@ export function nodeFeedSearchFn(): SearchFn {
  * of remapping Semantic Scholar and PubMed through OpenAlex. Individual source
  * failures contribute no papers so one rate-limited index cannot erase results
  * returned by the others. */
-export function nodeResearchSearchFn(): SearchFn {
+export function nodeResearchSearchFn(options: { reportErrors?: boolean } = {}): SearchFn {
   const openAlexMailto = process.env.OPENALEX_MAILTO
   const openAlexApiKey = process.env.OPENALEX_API_KEY
-  const s2ApiKey = process.env.S2_API_KEY
   const ncbiApiKey = process.env.NCBI_API_KEY
 
   return async (source, query, limit, opts) => {
@@ -89,13 +89,14 @@ export function nodeResearchSearchFn(): SearchFn {
             { mailto: openAlexMailto, apiKey: openAlexApiKey },
           )
         case "s2":
-          return await searchS2({ query, limit }, { apiKey: s2ApiKey })
+          return await searchS2({ query, limit }, { apiKey: await getServerS2Key() })
         case "pubmed":
           return await searchPubmed({ query, limit }, { apiKey: ncbiApiKey })
       }
       return []
     } catch (err) {
       console.warn(`[research-search] source failed for source=${source}:`, err)
+      if (options.reportErrors) throw err
       return []
     }
   }

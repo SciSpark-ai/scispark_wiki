@@ -18,6 +18,8 @@ export interface ResearchSearchPlan {
 export interface ResearchSearchInput {
   query: string
   sources?: SourceId[]
+  sessionId?: string | null
+  operationId?: string
 }
 
 export type ResearchSearchStage = "planning" | "searching" | "ranking"
@@ -34,6 +36,6 @@ export interface ResearchSearchResult {
   plan: ResearchSearchPlan
   items: ResearchSearchItem[]
   stats: { retrieved: number; deduplicated: number }
-  costUsd: number
+  costUsd: number | null
   warnings: string[]
 }

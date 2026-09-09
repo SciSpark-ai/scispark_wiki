@@ -48,6 +48,23 @@ describe("OpenAICompatProvider", () => {
     resetFallbackStats()
   })
 
+  it("retains cache and reasoning subsets without double-counting totals", async () => {
+    const { fn } = fakeFetch(200, { ...OK_RESPONSE, usage: {
+      prompt_tokens: 100, completion_tokens: 50,
+      prompt_tokens_details: { cached_tokens: 80 }, completion_tokens_details: { reasoning_tokens: 30 },
+    } })
+    const result = await new OpenAICompatProvider("openai", "test", "https://example.test/v1", fn)
+      .complete("model", { messages: [] })
+    expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 50, cachedInputTokens: 80, reasoningTokens: 30 })
+  })
+
+  it("marks omitted billing usage as unknown rather than free", async () => {
+    const { fn } = fakeFetch(200, { ...OK_RESPONSE, usage: undefined })
+    const result = await new OpenAICompatProvider("openai", "test", "https://example.test/v1", fn)
+      .complete("model", { messages: [] })
+    expect(result.usage.reported).toBe(false)
+  })
+
   it("sends a chat/completions request with bearer auth and system in-array, and maps the result", async () => {
     const { fn, captured } = fakeFetch(200, OK_RESPONSE)
     const p = new OpenAICompatProvider("openai", "sk-test", "https://api.openai.com/v1", fn)
@@ -282,6 +299,17 @@ describe("OpenAICompatProvider", () => {
     expect(p.id).toBe("openai")
     await p.complete("gpt-4o", { messages: [{ role: "user", content: "hi" }] })
     expect(captured.url).toBe("https://api.openai.com/v1/chat/completions")
+  })
+
+  it("does not hide an extra HTTP attempt inside a budgeted completion", async () => {
+    const { fn, calls } = sequencedFetch([
+      { status: 400, body: { error: { message: "output_config.format: Extra inputs are not permitted" } } },
+      { status: 200, body: OK_RESPONSE },
+    ])
+    const provider = new OpenAICompatProvider("openai", "test", "https://example.test/v1", fn)
+    await expect(provider.complete("test", { messages: [{ role: "user", content: "fixture" }], jsonSchema: { type: "object" }, singleAttempt: true })).rejects.toThrow()
+    expect(calls).toHaveLength(1)
+    expect(getFallbackStats().promptJsonFallbacks).toBe(0)
   })
 
   it("GMI FLAKE FALLBACK: on an output_config.format 400, retries with prompt-embedded JSON (no response_format) and parses the result", async () => {

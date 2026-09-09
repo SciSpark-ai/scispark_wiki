@@ -62,6 +62,8 @@ export interface HandleFetchRelayDeps {
   ipBuckets?: TokenBucket
   /** Byte cap for the relayed body; defaults to 50 MB. Injectable for tests. */
   maxBytes?: number
+  /** Per-hop timeout also bounds consumption of the upstream response body. */
+  timeoutMs?: number
 }
 
 function jsonResponse(status: number, body: unknown, headers?: Record<string, string>): Response {
@@ -96,7 +98,10 @@ function rejectionStatus(url: URL): number | null {
   const isHttpException = url.protocol === "http:" && url.hostname === HTTP_EXCEPTION_HOST
   if (!isHttps && !isHttpException) return 403
   if (url.username || url.password) return 403
-  if (!isAllowedHost(url.hostname)) return 403
+  // Europe PMC's documented OA lookup/XML API only; not arbitrary EBI paths.
+  const europePmcApi = url.hostname === "www.ebi.ac.uk"
+    && /^\/europepmc\/webservices\/rest\/(?:search|PMC\d+\/fullTextXML)$/.test(url.pathname)
+  if (!isAllowedHost(url.hostname) && !europePmcApi) return 403
   if (url.port !== "") return 403
   return null
 }
@@ -169,7 +174,7 @@ export async function handleFetchRelay(
   let hops = 0
   for (;;) {
     try {
-      response = await fetchFn(url.toString(), { redirect: "manual" })
+      response = await fetchFn(url.toString(), { redirect: "manual", signal: AbortSignal.timeout(deps.timeoutMs ?? 20_000) })
     } catch {
       // Network failure talking to an already-allowlisted host: generic
       // 502, no upstream error message or URL leaked to the caller.

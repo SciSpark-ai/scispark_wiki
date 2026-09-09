@@ -1,4 +1,4 @@
-import { handleFetchRelay } from "./fetch-relay"
+import { handleFetchRelay, type HandleFetchRelayDeps } from "./fetch-relay"
 import { handleResolve } from "../papers/resolve-core"
 
 /**
@@ -26,13 +26,13 @@ import { handleResolve } from "../papers/resolve-core"
  * rate-limit bucket instead of colliding with (or being starved by) real
  * browser-originated relay traffic.
  */
-export function serverRelayFetch(clientKey: string): typeof fetch {
+export function serverRelayFetch(clientKey: string, deps?: HandleFetchRelayDeps): typeof fetch {
   return (async (input: RequestInfo | URL) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
     const url = new URL(raw, "http://localhost")
 
     if (url.pathname === "/api/fetch") {
-      return handleFetchRelay(url.searchParams.get("url"), clientKey)
+      return handleFetchRelay(url.searchParams.get("url"), clientKey, deps)
     }
 
     if (url.pathname === "/api/resolve") {
