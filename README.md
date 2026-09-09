@@ -8,6 +8,7 @@
 
 A personal workspace to **discover papers, build knowledge, and explore ideas**.
 
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
 [![Status: Developer preview](https://img.shields.io/badge/status-developer_preview-EA6B28?style=flat-square)](#current-preview)
 [![Local-first](https://img.shields.io/badge/storage-local_first-496D59?style=flat-square)](#your-data-and-your-models)
 [![Bring your own AI](https://img.shields.io/badge/AI-bring_your_own_provider-84664C?style=flat-square)](#configure-your-workspace)
@@ -481,6 +482,20 @@ We also thank the maintainers of Next.js, React, TypeScript, Tailwind CSS, Zod,
 Zustand, Sigma.js, Graphology, D3, pdf.js, DOMPurify, Vitest, and Playwright, and
 the teams behind arXiv, OpenAlex, Semantic Scholar, and PubMed for the software
 and scholarly infrastructure this workspace uses.
+
+## License
+
+Copyright 2026 SciSpark contributors.
+
+SciSpark's original code and documentation are licensed under the
+[Apache License, Version 2.0](LICENSE), except where otherwise noted.
+
+Third-party components retain their own licenses and attribution notices:
+
+- The ScholarQA adaptation retains its [Apache-2.0 license](third_party/scholarqa/LICENSE)
+  and [attribution notice](third_party/scholarqa/NOTICE).
+- The bundled ResearchStudio pattern cards retain their [MIT license](src/lib/spark/pattern-cards/LICENSE)
+  and [attribution notice](src/lib/spark/pattern-cards/NOTICE.md).
 
 ## Documentation and contributing
 
