@@ -60,6 +60,9 @@ export function OnboardingFlow({ initial, onComplete }: { initial: OnboardingSta
       try {
         const recovered = await loadOnboarding()
         setState(recovered)
+        // A recovered reply may complete the draft. Failed confirmation must
+        // retain manual form edits that have not yet been saved on the server.
+        if (request.action !== "confirm") setAnswers(draftAnswers(recovered.draft))
         if (recovered.onboarded && recovered.confirmedAnswers) onComplete(recovered.confirmedAnswers.name)
         else if (!recovered.pending && request.action === "message" && recovered.messages.length === state.messages.length) setInput(request.message)
       } catch {

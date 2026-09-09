@@ -12,10 +12,9 @@ export interface ReviewItem {
   id: string
   createdAt: string // ISO 8601 timestamp
   /**
-   * The changeset that produced this item (ingest items only — the changeset
-   * that ingested the paper this review item flags). Lint findings have no
-   * producing changeset (the finding exists whether or not its fix is ever
-   * applied), so this is absent for kind "lint-finding".
+   * The ingest changeset that produced this item, including automatic
+   * post-ingest lint findings. Independent manual/scheduled lint has no
+   * producing changeset. This is not the changeset for applying a lint fix.
    */
   changesetId?: string
   kind: "contradiction" | "duplicate" | "missing-page" | "suggestion" | "lint-finding"

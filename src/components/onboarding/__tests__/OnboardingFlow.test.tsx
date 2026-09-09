@@ -110,4 +110,34 @@ describe("AI onboarding conversation", () => {
     expect(sendMock.mock.calls[1][0]).toEqual({ action: "retry", revision: saved.revision })
     cleanup()
   })
+  it("refreshes every editable answer when a completed response is recovered", async () => {
+    const recovered: OnboardingState = { ...initial(), revision: "c".repeat(64), question: "review",
+      draft: { name: "Ada", role: "Postdoc", fields: "Hearing", topics: "EEG", feedPrefs: "Methods", diversity: "exploratory", diversityNote: "Nearby fields", learnFromFeedback: true } }
+    sendMock.mockRejectedValueOnce(new Error("Connection interrupted"))
+    loadMock.mockResolvedValue(recovered)
+    const { host, cleanup } = mount()
+    compose(host, "Yes, remember my feedback")
+    await act(async () => enter(host))
+    const form = host.querySelector("form")!
+    expect([...form.querySelectorAll("textarea")].map((field) => field.value)).toEqual(["Ada", "Postdoc", "Hearing", "EEG", "Methods"])
+    expect(form.querySelector("select")?.value).toBe("exploratory")
+    expect(form.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(true)
+    await act(async () => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })))
+    expect(sendMock.mock.calls[1][0]).toMatchObject({ action: "confirm", revision: recovered.revision,
+      answers: { name: "Ada", recommendations: { diversity: "exploratory", learnFromFeedback: true } } })
+    cleanup()
+  })
+  it("preserves manual edits when confirmation fails before being saved", async () => {
+    const state: OnboardingState = { ...initial(), question: "review",
+      draft: { name: "Ada", role: "Postdoc", fields: "Hearing", topics: "EEG", feedPrefs: "Methods", diversity: "focused", diversityNote: "", learnFromFeedback: false } }
+    sendMock.mockRejectedValueOnce(new Error("Save failed"))
+    loadMock.mockResolvedValue(state)
+    const { host, cleanup } = mount(state)
+    const form = host.querySelector("form")!
+    const name = form.querySelector("textarea")!
+    act(() => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(name, "Ada Lovelace"); name.dispatchEvent(new Event("input", { bubbles: true })) })
+    await act(async () => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })))
+    expect(name.value).toBe("Ada Lovelace")
+    cleanup()
+  })
 })

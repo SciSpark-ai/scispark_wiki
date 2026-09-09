@@ -83,15 +83,19 @@ async function writeFindingsAsReviews(
   storage: VaultStorage,
   findings: LintFinding[],
   now: () => Date,
+  changesetId?: string,
 ): Promise<string[]> {
   const nowIso = now().toISOString()
   const reviewIds: string[] = []
 
   for (let i = 0; i < findings.length; i++) {
     const finding = findings[i]
-    const id = makeReviewId(now, i)
+    const lintId = makeReviewId(now, i)
+    // Use the ingest review namespace so Undo archives these derived items too.
+    const id = changesetId ? `${changesetId}-${lintId}` : lintId
     const item: ReviewItem = {
       id,
+      ...(changesetId ? { changesetId } : {}),
       createdAt: nowIso,
       kind: "lint-finding",
       lintKind: finding.lintKind,
@@ -188,6 +192,7 @@ export async function runLintDeterministic(
 
 export interface RunPostIngestLintOptions {
   now?: () => Date
+  changesetId?: string
 }
 
 /**
@@ -227,7 +232,7 @@ export async function runPostIngestLint(
   )
 
   const toWrite = await dropFindingsAlreadyOpen(storage, findings)
-  const reviewIds = await writeFindingsAsReviews(storage, toWrite, now)
+  const reviewIds = await writeFindingsAsReviews(storage, toWrite, now, opts.changesetId)
 
   return { findings, reviewIds }
 }

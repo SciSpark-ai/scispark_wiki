@@ -52,7 +52,13 @@ for (const viewport of viewports) {
       ]
       for (const [index, answer] of answers.entries()) {
         await composer.fill(answer)
-        const turn = page.waitForResponse((response) => response.url().endsWith("/api/onboarding") && response.request().method() === "POST")
+        // Let the final answer persist, then lose its response. The normal GET
+        // recovery must populate the form without replaying the paid turn.
+        if (index === 4) await page.route("**/api/onboarding", async (route) => {
+          await route.fetch()
+          await route.abort("failed")
+        }, { times: 1 })
+        const turn = index === 4 ? null : page.waitForResponse((response) => response.url().endsWith("/api/onboarding") && response.request().method() === "POST")
         await composer.press("Enter")
         if (index === 0) {
           // The local provider holds its completion open. Visible partial text
@@ -60,7 +66,8 @@ for (const viewport of viewports) {
           await expect(card.getByRole("log")).toContainText("What research")
           await expect(composer).toBeDisabled()
         }
-        await (await turn).finished()
+        if (turn) await (await turn).finished()
+        else await expect(page.getByRole("form", { name: "Review your research profile" })).toBeVisible()
         await expect(composer).toBeEnabled()
         await expectContainedChat(page)
         const current = (await card.boundingBox())!
@@ -69,6 +76,8 @@ for (const viewport of viewports) {
       }
       const review = page.getByRole("form", { name: "Review your research profile" })
       await expect(review).toBeVisible()
+      await expect(review.getByRole("textbox", { name: "Your name", exact: true })).toHaveValue("Ada")
+      await expect(review.getByRole("checkbox", { name: "Remember my feedback for future recommendations" })).toBeChecked()
       await expect(page.getByRole("dialog")).toHaveCount(0)
       expect((await request.get("/api/profile")).status()).toBe(404)
       await expect.poll(() => history.evaluate((log) => log.scrollHeight - log.clientHeight)).toBeGreaterThan(100)

@@ -704,6 +704,27 @@ describe("ingestSkill deterministic-page ownership", () => {
 })
 
 describe("undoIngest", () => {
+  it("archives post-ingest lint findings without removing pre-existing reviews", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedVault(storage)
+    const priorPath = ".scispark/review/lint-prior.json"
+    const prior = JSON.stringify({ id: "lint-prior", createdAt: NOW().toISOString(), kind: "lint-finding",
+      lintKind: "orphan", title: "Existing warning", description: "Already open", pages: ["wiki/concepts/unrelated"] })
+    await storage.write(priorPath, prior)
+    const generation = sampleGeneration()
+    generation.files[0].body = "# Sparse Attention\n\nSee [[does-not-exist]].\n"
+    const run = await runIngest(storage, new MockProvider([llmResult(SAMPLE_ANALYSIS), llmResult(generation)]))
+    expectOk(run.output)
+    const findings = (await listReviews(storage)).filter((item) => item.kind === "lint-finding" && item.id !== "lint-prior")
+    expect(findings.some((item) => item.lintKind === "broken-link")).toBe(true)
+    await undoIngest(storage, run.output.changesetId, { now: NOW })
+    expect((await listReviews(storage)).map((item) => item.id)).toEqual(["lint-prior"])
+    expect(await storage.read(priorPath)).toBe(prior)
+    for (const finding of findings) {
+      expect(finding.changesetId).toBe(run.output.changesetId)
+      expect(await storage.read(`.scispark/review/archived/${finding.id}.json`)).not.toBeNull()
+    }
+  })
   it("restores the wiki byte-identically, archives reviews, and logs the undo", async () => {
     const storage = new MemoryVaultStorage()
     await seedVault(storage)

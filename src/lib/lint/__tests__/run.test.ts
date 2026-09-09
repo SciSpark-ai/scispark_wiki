@@ -272,11 +272,12 @@ describe("runPostIngestLint", () => {
     const before = await listReviews(s)
     expect(before.filter((r) => r.lintKind === "broken-link")).toHaveLength(1)
 
-    const result = await runPostIngestLint(s, ["wiki/concepts/new"], { now: NOW })
+    const result = await runPostIngestLint(s, ["wiki/concepts/new"], { now: NOW, changesetId: "cs-later-ingest" })
     expect(result.reviewIds).toHaveLength(0)
 
     const after = await listReviews(s)
     expect(after.filter((r) => r.lintKind === "broken-link")).toHaveLength(1)
+    expect(after).toEqual(before) // Existing warnings must not become owned by the later ingest.
   })
 })
 

@@ -86,6 +86,28 @@ describe("consolidationDue", () => {
 })
 
 describe("runConsolidation", () => {
+  it("rechecks due-ness under shared ownership before a concurrent caller spends", async () => {
+    const storage = await seededStorage()
+    await logManyEvents(storage, CONSOLIDATION_MIN_EVENTS)
+    const before = await readUserModel(storage)
+    const output = structuredResult({ profile: before.profile!, interests: before.interests!, feedback: before.feedback! })
+    const provider = new MockProvider([output, output])
+    const opts = { settings: settingsWithKeys(), providerOverride: { fast: provider }, now: NOW }
+    const results = await Promise.all([runConsolidation(storage, opts), runConsolidation(storage, opts)])
+    expect(provider.calls).toHaveLength(1)
+    expect(results.map((result) => result.status)).toEqual(["unchanged", "skipped"])
+  })
+
+  it("releases ownership after failure so a later caller can retry", async () => {
+    const storage = await seededStorage()
+    await logManyEvents(storage, CONSOLIDATION_MIN_EVENTS)
+    const before = await readUserModel(storage)
+    const provider = new MockProvider([new Error("provider exploded"), structuredResult({ profile: before.profile!, interests: before.interests!, feedback: before.feedback! })])
+    const opts = { settings: settingsWithKeys(), providerOverride: { fast: provider }, now: NOW }
+    await expect(runConsolidation(storage, opts)).rejects.toThrow("provider exploded")
+    expect((await runConsolidation(storage, opts)).status).toBe("unchanged")
+    expect(provider.calls).toHaveLength(2)
+  })
   it("returns skipped when below threshold and not forced — no LLM call made", async () => {
     const storage = await seededStorage()
     await logManyEvents(storage, 5)

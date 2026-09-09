@@ -567,7 +567,7 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
       .filter((p) => p.endsWith(".md") && !p.startsWith("."))
       .map((p) => p.slice(0, -3))
     try {
-      await runPostIngestLint(storage, touched, { now: () => new Date(nowIso) })
+      await runPostIngestLint(storage, touched, { now: () => new Date(nowIso), changesetId: changeset.id })
     } catch (err) {
       ctx.log(`post-ingest lint failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`)
     }
