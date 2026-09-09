@@ -97,9 +97,10 @@ describe("feedStrategySkill", () => {
     expect(run.status).toBe("ok")
     expect(run.output).toEqual(output)
     expect(provider.calls).toHaveLength(1)
-    expect(provider.calls[0].req.maxTokens).toBe(4096)
+    expect(provider.calls[0].req.maxTokens).toBe(2048)
     expect(provider.calls[0].req.messages[0].role).toBe("system")
     expect(provider.calls[0].req.messages[1].content).toContain("PhD student")
+    expect(provider.calls[0].req.messages[1].content).toMatch(/\/no_think\s*$/)
   })
 })
 

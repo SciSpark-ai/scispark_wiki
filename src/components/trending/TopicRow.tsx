@@ -5,7 +5,7 @@ import { Chip } from "@/components/ui/Chip"
 import { displayTitle } from "@/lib/papers/title"
 import { wikiHref } from "@/lib/wiki/href"
 import { paperSlug } from "@/lib/wiki/authoring"
-import type { BoardTopic } from "@/lib/trending/dashboard"
+import type { BoardTopic } from "@/lib/trending/types"
 import { TrendBars } from "./TrendBars"
 
 /**
@@ -47,10 +47,19 @@ export interface TopicRowProps {
   rank: number
   expanded: boolean
   onToggle: () => void
+  recentWindowLabel?: string
+  priorWindowLabel?: string
 }
 
 /** One dense leaderboard row. Expands in place to show the LLM why-brief (or an honest unavailable note) plus representative papers. */
-export function TopicRow({ topic, rank, expanded, onToggle }: TopicRowProps) {
+export function TopicRow({
+  topic,
+  rank,
+  expanded,
+  onToggle,
+  recentWindowLabel = "the latest complete two-week period",
+  priorWindowLabel = "the preceding complete two-week period",
+}: TopicRowProps) {
   return (
     <div className="border-b border-border-warm last:border-b-0">
       <button
@@ -67,6 +76,8 @@ export function TopicRow({ topic, rank, expanded, onToggle }: TopicRowProps) {
           recentShare={topic.recentShare}
           priorCount={topic.priorCount}
           recentCount={topic.recentCount}
+          priorWindowLabel={priorWindowLabel}
+          recentWindowLabel={recentWindowLabel}
         />
         <Chip>{topic.discipline}</Chip>
         {topic.relevant && (
@@ -81,7 +92,7 @@ export function TopicRow({ topic, rank, expanded, onToggle }: TopicRowProps) {
           {/* Absolute volume in words: the badge and bars are both share-based,
               so the honest raw counts live here rather than being drawn. */}
           <p className="mb-1 text-[12px] text-muted-text tracking-body">
-            {topic.recentCount} papers this window · {topic.priorCount} in the prior window
+            {topic.recentCount} papers from {recentWindowLabel} · {topic.priorCount} from {priorWindowLabel}
           </p>
           {topic.why !== null ? (
             <p className="text-[13px] leading-[1.5] text-muted-text tracking-body">{topic.why}</p>

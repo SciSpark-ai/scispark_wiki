@@ -7,14 +7,18 @@ import { CompanionCard } from "./CompanionCard"
 import { SpendPanel } from "./SpendPanel"
 import { AppearanceCard } from "./AppearanceCard"
 import { TrendingFieldsCard } from "./TrendingFieldsCard"
+import { RecommendationCard } from "./RecommendationCard"
+import { PaperSourcesCard } from "./PaperSourcesCard"
 import { cn } from "@/components/ui/cn"
 
 const SECTIONS = [
   { id: "ai", label: "Connect your AI", body: <ConnectAiCard /> },
+  { id: "sources", label: "Paper sources", body: <PaperSourcesCard /> },
   { id: "spend", label: "Spend & budget", body: <SpendPanel /> },
   { id: "companion", label: "Companion", body: <CompanionCard /> },
   { id: "appearance", label: "Appearance", body: <AppearanceCard /> },
   { id: "trending", label: "Trending fields", body: <TrendingFieldsCard /> },
+  { id: "recommendations", label: "Recommendations", body: <RecommendationCard /> },
 ] as const
 
 export default function SettingsModal() {
@@ -54,17 +58,17 @@ export default function SettingsModal() {
         role="dialog"
         aria-label="Settings"
         tabIndex={-1}
-        className="flex h-[min(640px,90vh)] w-[min(880px,95vw)] overflow-hidden rounded-card border border-border-warm bg-page-bg shadow-xl"
+        className="flex h-[min(640px,90vh)] w-[min(880px,95vw)] flex-col overflow-hidden rounded-card border border-border-warm bg-page-bg shadow-xl sm:flex-row"
       >
-        <nav className="w-52 shrink-0 border-r border-border-warm bg-light-surface p-3">
-          <div className="px-2 pb-2 text-[11px] uppercase tracking-wide text-muted-text">Settings</div>
+        <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-border-warm bg-light-surface p-3 sm:block sm:w-52 sm:border-b-0 sm:border-r">
+          <div className="hidden px-2 pb-2 text-[11px] uppercase tracking-wide text-muted-text sm:block">Settings</div>
           {SECTIONS.map((s) => (
             <button
               key={s.id}
               type="button"
               onClick={() => open(s.id)}
               className={cn(
-                "block w-full rounded-btn px-3 py-2 text-left text-[13px]",
+                "block shrink-0 rounded-btn px-3 py-2 text-left text-[13px] sm:w-full",
                 s.id === active.id ? "bg-card-surface text-espresso" : "text-secondary-dark hover:bg-card-surface/60",
               )}
             >
@@ -72,7 +76,7 @@ export default function SettingsModal() {
             </button>
           ))}
         </nav>
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="flex items-start justify-end">
             <button type="button" onClick={close} aria-label="Close settings" className="text-muted-text hover:text-espresso">
               ✕

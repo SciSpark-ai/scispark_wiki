@@ -61,7 +61,7 @@ describe("handleFetchRelay", () => {
     expect(res.status).toBe(200)
     expect(await readAll(res.body)).toBe("hello world")
     expect(fetchFn).toHaveBeenCalledTimes(1)
-    expect(fetchFn).toHaveBeenCalledWith("https://arxiv.org/abs/1234.5678", { redirect: "manual" })
+    expect(fetchFn).toHaveBeenCalledWith("https://arxiv.org/abs/1234.5678", { redirect: "manual", signal: expect.any(AbortSignal) })
   })
 
   it("allows a subdomain of an allowlisted host", async () => {
@@ -451,7 +451,7 @@ describe("handleFetchRelay - SSRF regression vectors", () => {
       ipBuckets: freshBucket(),
     })
     expect(res.status).toBe(200)
-    expect(fetchFn).toHaveBeenCalledWith("https://arxiv.org/x", { redirect: "manual" })
+    expect(fetchFn).toHaveBeenCalledWith("https://arxiv.org/x", { redirect: "manual", signal: expect.any(AbortSignal) })
   })
 
   it("SAFE: rejects real userinfo pointed at a non-allowlisted host (arxiv.org@evil.com) with 403", async () => {
@@ -538,4 +538,12 @@ describe("handleFetchRelay - SSRF regression vectors", () => {
     expect(res.status).toBe(200)
     expect(fetchFn).toHaveBeenCalledTimes(1)
   })
+})
+
+it("aborts a stalled upstream request at the configured timeout", async () => {
+  const fetchFn: typeof fetch = async (_url, init) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(new Error("timed out")), { once: true })
+  })
+  const result = await handleFetchRelay("https://arxiv.org/abs/fixture", "timeout-fixture", { fetchFn, timeoutMs: 5 })
+  expect(result.status).toBe(502)
 })

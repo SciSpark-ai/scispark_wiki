@@ -98,10 +98,10 @@ describe("saveCompanionSettings", () => {
 })
 
 describe("companionName (M7 addendum: user-renamable companion)", () => {
-  it("defaults to Ember when absent", async () => {
+  it("defaults to Sparky when absent", async () => {
     const storage = new MemoryVaultStorage()
     const settings = await loadCompanionSettings(storage)
-    expect(settings.companionName).toBe("Ember")
+    expect(settings.companionName).toBe("Sparky")
   })
 
   it("round-trips a custom name through save/load", async () => {
@@ -118,7 +118,7 @@ describe("companionName (M7 addendum: user-renamable companion)", () => {
       JSON.stringify({ companion: { chattiness: "medium", companionName: "   " } }),
     )
     const settings = await loadCompanionSettings(storage)
-    expect(settings.companionName).toBe("Ember")
+    expect(settings.companionName).toBe("Sparky")
   })
 
   it(">40-char companionName falls back to the default name", async () => {
@@ -129,7 +129,7 @@ describe("companionName (M7 addendum: user-renamable companion)", () => {
       JSON.stringify({ companion: { chattiness: "medium", companionName: tooLong } }),
     )
     const settings = await loadCompanionSettings(storage)
-    expect(settings.companionName).toBe("Ember")
+    expect(settings.companionName).toBe("Sparky")
   })
 
   it("a 40-char companionName (boundary) is accepted as-is", async () => {

@@ -85,7 +85,7 @@ describe("GoogleProvider", () => {
     const p = new GoogleProvider("key-test", fn)
     const result = await p.complete("gemini-test", { messages: [{ role: "user", content: "hi" }] })
     expect(result.text).toBe("")
-    expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0 })
+    expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0, reported: false })
     expect(result.stopReason).toBe("unknown")
   })
 

@@ -50,8 +50,8 @@ describe("personaFragment (user-renamable companion, M7 addendum)", () => {
     expect(personaFragment("Fizz")).toContain("Accuracy and grounding always come first")
   })
 
-  it("defaults to the default name (Ember) when called with no argument", () => {
-    expect(personaFragment()).toContain("Ember")
+  it("defaults to the default name (Sparky) when called with no argument", () => {
+    expect(personaFragment()).toContain("Sparky")
   })
 })
 
@@ -63,7 +63,7 @@ describe("withPersona with a custom name", () => {
     expect(result).toContain("Accuracy and grounding always come first")
   })
 
-  it("withPersona(sys) with no name still defaults to Ember", () => {
-    expect(withPersona("Substantive rules go here.")).toContain("Ember")
+  it("withPersona(sys) with no name still defaults to Sparky", () => {
+    expect(withPersona("Substantive rules go here.")).toContain("Sparky")
   })
 })

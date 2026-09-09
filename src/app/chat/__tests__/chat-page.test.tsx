@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { createRoot } from "react-dom/client"
 import { act } from "react"
 import type { ChatSession } from "@/lib/chat/session"
@@ -16,6 +16,8 @@ const askChatRemoteMock = vi.fn()
 const saveAnswerAsQueryRemoteMock = vi.fn()
 const getProjectRemoteMock = vi.fn()
 const routerPushMock = vi.fn()
+const routerMock = { push: routerPushMock, replace: vi.fn() }
+let searchParamsValue = new URLSearchParams("new=1")
 let paramsValue: { id?: string } = {}
 
 vi.mock("@/lib/vault/get-vault", () => ({
@@ -45,8 +47,9 @@ vi.mock("@/lib/projects/client", () => ({
   },
 }))
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: routerPushMock }),
+  useRouter: () => routerMock,
   useParams: () => paramsValue,
+  useSearchParams: () => searchParamsValue,
 }))
 
 import ChatEntryPage from "../page"
@@ -98,12 +101,16 @@ function findByText(container: HTMLElement, selector: string, text: string): HTM
 beforeEach(() => {
   vi.clearAllMocks()
   paramsValue = {}
+  searchParamsValue = new URLSearchParams("new=1")
+  sessionStorage.clear()
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ enabledSources: ["openalex"] })))
   getOpenVaultMock.mockResolvedValue({})
   listSessionsMock.mockResolvedValue([])
   loadSessionMock.mockResolvedValue(null)
   loadBundleMock.mockResolvedValue(emptyBundle())
   getProjectRemoteMock.mockResolvedValue({ id: "auditory-biomarkers" })
 })
+afterEach(() => vi.unstubAllGlobals())
 
 describe("ChatEntryPage (/chat)", () => {
   it("renders the composer and no clinical suggestion chips", async () => {
@@ -159,7 +166,7 @@ describe("ChatEntryPage (/chat)", () => {
 
     expect(askChatRemoteMock).toHaveBeenCalledTimes(1)
     const [input] = askChatRemoteMock.mock.calls[0]
-    expect(input).toMatchObject({ sessionId: null, question: "What is a TRF?", readSourcesOnly: false })
+    expect(input).toMatchObject({ sessionId: expect.stringMatching(/^chat_/), operationId: expect.any(String), question: "What is a TRF?", readSourcesOnly: false })
     expect(routerPushMock).toHaveBeenCalledWith("/chat/chat_42")
 
     cleanup()
@@ -191,6 +198,33 @@ describe("ChatEntryPage (/chat)", () => {
 })
 
 describe("ChatSessionPage (/chat/[id])", () => {
+  it("restores the draft and Read Sources Only choice without widening its context", async () => {
+    paramsValue = { id: "chat_1" }
+    loadSessionMock.mockResolvedValue(session())
+    sessionStorage.setItem("scispark:chat-draft:chat_1", "Compare the papers")
+    sessionStorage.setItem("scispark:chat-draft:chat_1:options", JSON.stringify({ mode: "chat", readSourcesOnly: true }))
+    const { container, cleanup } = await renderPage(<ChatSessionPage />)
+    expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("Compare the papers")
+    expect(container.querySelector<HTMLInputElement>('[role="switch"]')?.checked).toBe(true)
+    expect(askChatRemoteMock).not.toHaveBeenCalled()
+    cleanup()
+  })
+
+  it("restores search mode but never replaces a disabled draft source with broader indexes", async () => {
+    paramsValue = { id: "chat_1" }
+    loadSessionMock.mockResolvedValue(session())
+    // Only OpenAlex is currently enabled. The draft requested PubMed alone.
+    sessionStorage.setItem("scispark:chat-draft:chat_1", "Find adult EEG studies")
+    sessionStorage.setItem("scispark:chat-draft:chat_1:options", JSON.stringify({ mode: "search", readSourcesOnly: false, sources: ["pubmed"] }))
+    const { container, cleanup } = await renderPage(<ChatSessionPage />)
+    expect(container.querySelector<HTMLSelectElement>('[aria-label="Chat mode"]')?.value).toBe("search")
+    expect((findByText(container, "button", "Send") as HTMLButtonElement).disabled).toBe(true)
+    await act(async () => findByText(container, "button", "Search scope")!.click())
+    expect(container.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(false)
+    expect(askChatRemoteMock).not.toHaveBeenCalled()
+    cleanup()
+  })
+
   it("renders a persisted session's turns", async () => {
     paramsValue = { id: "chat_1" }
     loadSessionMock.mockResolvedValue(session())

@@ -25,9 +25,12 @@ async function withChangesetMutation<T>(
 function findProtectedPaths(changes: FileChange[]): string[] {
   const protectedPaths = new Set<string>()
   for (const ch of changes) {
+    // macOS vaults are commonly case-insensitive: mixed-case aliases must not
+    // bypass the server-owned settings, billing and review-job boundary.
+    const normalized = ch.path.toLowerCase()
     if (
-      (RESERVED_FILES as readonly string[]).includes(ch.path) ||
-      ch.path.startsWith(".scispark/")
+      (RESERVED_FILES as readonly string[]).some((path) => path.toLowerCase() === normalized) ||
+      normalized === ".scispark" || normalized.startsWith(".scispark/")
     ) {
       protectedPaths.add(ch.path)
     }

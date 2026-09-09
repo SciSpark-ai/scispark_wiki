@@ -10,6 +10,7 @@ import type { PaperRecord } from "../../papers/types"
 import type { AnalysisResult } from "../../skills/ingest-analysis"
 import type { GenerationResult } from "../../skills/ingest"
 import { parseDocument } from "../../vault/frontmatter"
+import { paperSlug } from "../../wiki/authoring"
 import * as digestRoute from "../../../app/api/skills/digest/route"
 import * as ingestRoute from "../../../app/api/skills/ingest/route"
 import * as ingestUndoRoute from "../../../app/api/skills/ingest/undo/route"
@@ -126,6 +127,37 @@ describe("digest + ingest + undo skill routes", () => {
       expect(result2.digest).toEqual(SAMPLE_DIGEST)
       expect(result2.fromCache).toBe(true)
       expect(provider.calls).toHaveLength(1) // no second LLM call
+    })
+  })
+
+  describe("GET /api/skills/digest", () => {
+    it("returns a cached digest without invoking a provider", async () => {
+      const provider = new MockProvider([])
+      setSkillTestOverrides({ providerOverride: { strong: provider } })
+      await storage.write(`.scispark/digests/${paperSlug(PAPER)}.json`, JSON.stringify(SAMPLE_DIGEST))
+
+      const res = await digestRoute.GET(
+        new Request(`http://x/api/skills/digest?slug=${encodeURIComponent(paperSlug(PAPER))}`),
+      )
+
+      expect(res.status).toBe(200)
+      await expect(jsonResult<{ digest: typeof SAMPLE_DIGEST | null }>(res)).resolves.toEqual({
+        digest: SAMPLE_DIGEST,
+      })
+      expect(provider.calls).toHaveLength(0)
+    })
+
+    it("returns digest:null for a miss and rejects traversal-like slugs", async () => {
+      const miss = await digestRoute.GET(
+        new Request(`http://x/api/skills/digest?slug=${encodeURIComponent(paperSlug(PAPER))}`),
+      )
+      expect(miss.status).toBe(200)
+      await expect(jsonResult<{ digest: null }>(miss)).resolves.toEqual({ digest: null })
+
+      const traversal = await digestRoute.GET(
+        new Request("http://x/api/skills/digest?slug=..%2F..%2F.scispark%2Fsettings"),
+      )
+      expect(traversal.status).toBe(400)
     })
   })
 

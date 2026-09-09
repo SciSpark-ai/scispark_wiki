@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Home,
-  Search as SearchIcon,
   TrendingUp,
   BookOpen,
   Network,
@@ -23,6 +22,7 @@ import { reviewCount } from "@/lib/wiki/review-queue";
 import { listSessions } from "@/lib/chat/session";
 import type { ChatSession } from "@/lib/chat/session";
 import { Chip } from "@/components/ui/Chip";
+import { ThemeToggle } from "./ThemeToggle";
 
 /** A nav aid, not a second inbox — just enough recent conversations to jump
  * back into one, no badges/counts. */
@@ -32,8 +32,12 @@ function UserAvatar() {
   const user = useUserStore((s) => s.user);
   const initial = user?.name?.charAt(0).toUpperCase() ?? "U";
   return (
-    <div className="w-9 h-9 rounded-full bg-orange text-white flex items-center justify-center text-[14px] font-medium flex-shrink-0">
-      {initial}
+    <div className="w-9 h-9 rounded-full bg-orange text-white flex items-center justify-center text-[14px] font-medium flex-shrink-0 overflow-hidden">
+      {user?.avatar ? (
+        // The image is a validated local data URL loaded from the user's vault.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={user.avatar} alt="" className="h-full w-full object-cover" />
+      ) : initial}
     </div>
   );
 }
@@ -55,7 +59,7 @@ const NAV_GROUPS: NavGroup[] = [
     heading: "Discover",
     items: [
       { key: "home", label: "Home", href: "/", icon: Home },
-      { key: "search", label: "Search", href: "/papers", icon: SearchIcon },
+      { key: "chat", label: "Sparky", href: "/chat", icon: MessageSquarePlus },
       { key: "trending", label: "Trending", href: "/trending", icon: TrendingUp },
     ],
   },
@@ -71,7 +75,6 @@ const NAV_GROUPS: NavGroup[] = [
     heading: "Tools",
     items: [
       { key: "spark", label: "Spark", href: "/spark", icon: Sparkles },
-      { key: "chat", label: "Chat", href: "/chat", icon: MessageSquarePlus },
     ],
   },
 ];
@@ -83,16 +86,18 @@ interface SidebarProps {
 }
 
 function isItemActive(pathname: string, href: string): boolean {
+  if (href === "/chat" && pathname.startsWith("/papers")) return true;
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
 export function Sidebar({ collapsed = false }: SidebarProps) {
   const pathname = usePathname();
+  const user = useUserStore((s) => s.user);
   const onboardingComplete = useUserStore((s) => s.onboardingComplete);
   const toggleDesktopSidebar = useUIStore((s) => s.toggleDesktopSidebar);
   const openSettingsModal = useUIStore((s) => s.openSettingsModal);
-  const isOnboarding = pathname === "/onboarding";
-  const disabled = isOnboarding && !onboardingComplete;
+  const isFirstRun = pathname === "/onboarding" || pathname === "/setup";
+  const disabled = isFirstRun && !onboardingComplete;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -201,6 +206,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
         >
           SciSpark
         </span>
+        <ThemeToggle className={collapsed ? "invisible" : "ml-auto"} />
       </div>
 
       {/* Grouped nav — icons always at same position */}
@@ -265,10 +271,10 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
             <UserAvatar />
             <div className="flex-1 min-w-0">
               <p className="text-[14px] text-espresso font-medium truncate tracking-body">
-                {useUserStore.getState().user?.name ?? "User"}
+                {user?.name ?? "Set up profile"}
               </p>
               <p className="text-[12px] text-muted-text truncate tracking-body">
-                {useUserStore.getState().user?.email ?? ""}
+                {user ? "Local profile" : ""}
               </p>
             </div>
           </button>

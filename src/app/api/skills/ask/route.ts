@@ -1,11 +1,13 @@
-import { jsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
+import { streamingSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
 import { runSkill } from "@/lib/skills/runner"
 import { readingCompanionSkill, type ReadingCompanionInput, type ReadingAnswer } from "@/lib/skills/reading-companion"
 
 /**
  * POST /api/skills/ask — body `ReadingCompanionInput` (`{selection, surrounding,
- * paperMeta, wikiNeighborhood, userQuestion, companionName?}`), JSON result
+ * paperMeta, wikiNeighborhood, userQuestion, companionName?}`). Chat clients
+ * request NDJSON: provisional `{type:"text", text}` snapshots followed by the
+ * validated result. Existing JSON clients still receive the same
  * `ReadingAnswer` (`{answer, citedPageIds}`) — the same shape `ReaderView` used
  * to get back from calling `runSkill(readingCompanionSkill, ...)` directly.
  *
@@ -22,12 +24,13 @@ import { readingCompanionSkill, type ReadingCompanionInput, type ReadingAnswer }
  * `getServerVault()` via `jsonSkillRoute`, `loadSettings(vault)`, and
  * `setSkillTestOverrides` for injecting a MockProvider in tests.
  */
-export const POST = jsonSkillRoute<ReadingCompanionInput, ReadingAnswer>(async (input, vault) => {
+export const POST = streamingSkillRoute<ReadingCompanionInput, ReadingAnswer>(async (input, vault, emit) => {
   const settings = await loadSettings(vault)
   const overrides = getSkillTestOverrides()
 
   const run = await runSkill({
     skill: readingCompanionSkill,
+    onText: emit ? (text) => emit({ type: "text", text }) : undefined,
     input,
     storage: vault,
     settings,

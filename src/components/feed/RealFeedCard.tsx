@@ -1,6 +1,8 @@
 "use client"
 
-import type { KeyboardEvent, MouseEvent } from "react"
+import { useState, type KeyboardEvent, type MouseEvent } from "react"
+import { ThumbsDown, ThumbsUp } from "lucide-react"
+import { useCompanionStore } from "@/stores/companion-store"
 import { useRouter } from "next/navigation"
 import type { FeedBadge, FeedItem } from "@/lib/skills/feed"
 import type { VaultStorage } from "@/lib/vault/storage"
@@ -9,7 +11,9 @@ import { paperSlug } from "@/lib/wiki/authoring"
 import { displayTitle } from "@/lib/papers/title"
 import { venueYearLine } from "@/lib/papers/venue"
 import { savePaper } from "@/lib/papers/save-client"
-import { logEvent } from "@/lib/events/log"
+import { sendRecommendationFeedback } from "@/lib/recommendation/client"
+import { FEEDBACK_LABELS, type FeedbackReason } from "@/lib/recommendation/contract"
+import { RecommendationDetails } from "./RecommendationDetails"
 import { Card } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Chip } from "@/components/ui/Chip"
@@ -59,9 +63,12 @@ export function RealFeedCard({
   storage: VaultStorage
   saved: boolean
   onSave: (key: string) => void
-  onDismiss: (key: string) => void
+  onDismiss: (key: string, notice?: string) => void
 }) {
   const router = useRouter()
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackPending, setFeedbackPending] = useState(false)
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null)
   const { paper } = item
   const key = paperKey(paper)
   const href = `/paper/${paperSlug(paper)}`
@@ -81,6 +88,7 @@ export function RealFeedCard({
   }
 
   function handleCardKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.target !== e.currentTarget) return
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault()
       goToPaper()
@@ -96,10 +104,21 @@ export function RealFeedCard({
     onSave(key)
   }
 
-  function handleDismiss(e: MouseEvent) {
-    e.stopPropagation()
-    void logEvent(storage, { type: "feed_dismiss", paperKey: key, title: paper.title })
-    onDismiss(key)
+  async function handleFeedback(reason: FeedbackReason) {
+    if (feedbackPending) return
+    setFeedbackPending(true)
+    setFeedbackMessage(null)
+    try {
+      const result = await sendRecommendationFeedback(key, reason)
+      setFeedbackOpen(false)
+      const notice = result.warnings.length ? "Feedback saved. History refresh reported a warning; do not submit again." : "Feedback saved. You can undo it in History."
+      setFeedbackMessage(notice)
+      if (reason === "less_like_this") useCompanionStore.getState().askFeedback({ paperKey: key, title: displayTitle(paper.title), revision: result.revision })
+      // Preference feedback changes future recommendations, not the current feed.
+      if (reason === "dismiss") onDismiss(key, notice)
+    } catch (error) {
+      setFeedbackMessage(error instanceof Error ? error.message : String(error))
+    } finally { setFeedbackPending(false) }
   }
 
   return (
@@ -121,6 +140,11 @@ export function RealFeedCard({
 
         {tldr && <p className="text-[13px] leading-[1.5] text-espresso tracking-body line-clamp-3">{tldr}</p>}
 
+        {item.ranking && <>
+          <p className="text-[11px] text-muted-text">{item.ranking.dateStatus === "unknown" ? "Publication date unavailable" : `Published ${paper.date?.slice(0, 10)}`}</p>
+          <RecommendationDetails ranking={item.ranking} />
+        </>}
+
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {tags.map((tag) => (
@@ -137,11 +161,17 @@ export function RealFeedCard({
             <Button variant="secondary" size="sm" onClick={handleSave} disabled={saved}>
               {saved ? "Saved" : "Save"}
             </Button>
-            <Button variant="secondary" size="sm" onClick={handleDismiss}>
-              Dismiss
+            <button type="button" aria-label="More like this" title="More like this" disabled={feedbackPending} onClick={() => void handleFeedback("more_like_this")} className="rounded-full p-2 text-muted-text hover:text-orange focus-visible:ring-2 focus-visible:ring-orange disabled:opacity-40"><ThumbsUp size={16} /></button>
+            <button type="button" aria-label="Less like this" title="Less like this" disabled={feedbackPending} onClick={() => void handleFeedback("less_like_this")} className="rounded-full p-2 text-muted-text hover:text-orange focus-visible:ring-2 focus-visible:ring-orange disabled:opacity-40"><ThumbsDown size={16} /></button>
+            <Button variant="secondary" size="sm" onClick={(event) => { event.stopPropagation(); setFeedbackOpen(!feedbackOpen) }} disabled={feedbackPending}>
+              Feedback
             </Button>
           </div>
         </div>
+        {feedbackOpen && <div className="flex flex-wrap gap-2 border-t border-border-warm pt-3" onClick={(event) => event.stopPropagation()}>
+          {(["too_old", "already_know", "dismiss"] as FeedbackReason[]).map((reason) => <button key={reason} type="button" disabled={feedbackPending} onClick={() => void handleFeedback(reason)} className="rounded-pill border border-border-warm px-3 py-1.5 text-[12px] text-espresso hover:bg-card-surface disabled:opacity-50">{FEEDBACK_LABELS[reason]}</button>)}
+        </div>}
+        {feedbackMessage && <p role="status" className="text-[12px] text-muted-text">{feedbackMessage}</p>}
       </div>
     </Card>
   )

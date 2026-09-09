@@ -60,13 +60,16 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
       )
     } else if (m[2] !== undefined) {
       const href = m[3]
+      if (!/^(?:https?:\/\/|\/(?!\/)|#)/i.test(href)) {
+        nodes.push(m[2]); lastIndex = m.index + m[0].length; continue
+      }
       nodes.push(
         href.startsWith("/") ? (
           <Link key={key} href={href} className="text-orange hover:underline">
             {m[2]}
           </Link>
         ) : (
-          <a key={key} href={href} target="_blank" rel="noreferrer" className="text-orange hover:underline">
+          <a key={key} href={href} target={href.startsWith("#") ? undefined : "_blank"} rel="noreferrer" className="text-orange hover:underline">
             {m[2]}
           </a>
         ),
@@ -111,6 +114,17 @@ export function renderMarkdown(markdown: string): ReactNode {
 
     if (line.trim() === "") {
       i++
+      continue
+    }
+
+    if (line.startsWith("|") && /^\|[\s:|-]+\|\s*$/.test(lines[i + 1] ?? "")) {
+      const cells = (s: string) => s.trim().slice(1, -1).split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"))
+      const headings = cells(line)
+      i += 2
+      const rows: string[][] = []
+      while (i < lines.length && lines[i].startsWith("|")) rows.push(cells(lines[i++]))
+      const k = key++
+      blocks.push(<div key={`b-${k}`} className="my-4 overflow-x-auto"><table className="min-w-[640px] border-collapse text-left text-xs leading-relaxed text-espresso"><thead><tr>{headings.map((h, j) => <th key={j} className="border-b border-border-warm px-3 py-2 font-medium">{renderInline(h, `th-${k}-${j}`)}</th>)}</tr></thead><tbody>{rows.map((row, j) => <tr key={j}>{row.map((c, n) => <td key={n} className="min-w-[110px] max-w-[280px] border-b border-border-warm px-3 py-3 align-top">{renderInline(c, `td-${k}-${j}-${n}`)}</td>)}</tr>)}</tbody></table></div>)
       continue
     }
 

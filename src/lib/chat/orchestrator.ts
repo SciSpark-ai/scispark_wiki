@@ -26,6 +26,17 @@ import {
   ProjectValidationError,
 } from "../projects/repository"
 import type { ProjectDetail } from "../projects/types"
+import type { SourceId } from "../papers/types"
+import { runResearchSearch } from "../skills/research-search"
+import type { SearchFn } from "../skills/feed"
+import type { ResearchSearchStage } from "../skills/research-search-contract"
+import { loadSettings } from "../llm/settings"
+import { neutralizeFenceMarkers } from "../skills/ingest-analysis"
+import { SearchResultSchema } from "./blocks"
+import { buildUserContext } from "../usermodel/context"
+import { withVaultExclusive } from "../vault/exclusive"
+import { loadReview } from "../review/store"
+import { contextOverlap } from "../review/context"
 
 /** How many prior turns travel verbatim with each question (SP5 §1). Earlier
  * turns are dropped, never summarized. */
@@ -42,6 +53,9 @@ export interface AskChatInput {
   readSourcesOnly: boolean
   /** Stable project slug for a new scoped session. Existing sessions own their scope. */
   projectId?: string
+  mode?: "chat" | "search"
+  sources?: SourceId[]
+  operationId?: string
 }
 
 export interface AskChatResult {
@@ -55,7 +69,10 @@ export interface AskChatOpts {
   settings?: LLMSettings
   providerOverride?: Partial<Record<Tier, LLMProvider>>
   now?: () => Date
-  onProgress?: (stage: "selecting" | "answering") => void
+  onProgress?: (stage: "selecting" | "answering" | ResearchSearchStage) => void
+  onText?: (text: string) => void
+  onSession?: (sessionId: string) => void
+  searchFn?: SearchFn
 }
 
 /** Strict runtime parser for the public chat request. The API route receives
@@ -66,7 +83,7 @@ export function parseAskChatInput(value: unknown): AskChatInput {
     throw new Error("chat input must be an object")
   }
   const record = value as Record<string, unknown>
-  const allowed = new Set(["sessionId", "question", "readSourcesOnly", "projectId"])
+  const allowed = new Set(["sessionId", "question", "readSourcesOnly", "projectId", "mode", "sources", "operationId"])
   if (Object.keys(record).some((key) => !allowed.has(key))) {
     throw new Error("chat input contains unsupported fields")
   }
@@ -80,6 +97,11 @@ export function parseAskChatInput(value: unknown): AskChatInput {
     throw new Error("question must not be empty")
   }
   if (record.question.length > 20_000) throw new Error("question is too long")
+  if (record.mode !== undefined && record.mode !== "chat" && record.mode !== "search") throw new Error("Unsupported chat mode")
+  if (record.mode === "search" && record.question.length > 512) throw new Error("Keep the research question under 512 characters")
+  if (record.mode === "search" && record.readSourcesOnly === true) throw new Error("Online search is unavailable in read-sources-only mode")
+  if (record.sources !== undefined && (!Array.isArray(record.sources) || record.sources.length > 4 || record.sources.length === 0 || record.sources.some((s) => !["arxiv", "openalex", "s2", "pubmed"].includes(s)))) throw new Error("Invalid paper sources")
+  if (record.operationId !== undefined && (typeof record.operationId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(record.operationId))) throw new Error("Invalid operation id")
   if (typeof record.readSourcesOnly !== "boolean") {
     throw new Error("readSourcesOnly must be a boolean")
   }
@@ -94,6 +116,9 @@ export function parseAskChatInput(value: unknown): AskChatInput {
     question: record.question,
     readSourcesOnly: record.readSourcesOnly,
     ...(typeof record.projectId === "string" ? { projectId: record.projectId } : {}),
+    ...(record.mode ? { mode: record.mode } : {}),
+    ...(record.sources ? { sources: record.sources as SourceId[] } : {}),
+    ...(record.operationId ? { operationId: record.operationId as string } : {}),
   }
 }
 
@@ -135,16 +160,57 @@ export async function askChat(storage: VaultStorage, opts: AskChatOpts): Promise
   // never overwrite the other. New sessions already receive unique ids from
   // `mintSessionId`, so they do not share a transcript and need no queue.
   if (input.sessionId !== null) {
-    return withSessionTurnQueue(storage, input.sessionId, () => askChatTurn(storage, validatedOpts))
+    return withVaultExclusive(storage, `chat-${input.sessionId}`, () => withSessionTurnQueue(storage, input.sessionId!, () => askChatTurn(storage, validatedOpts)))
   }
   return askChatTurn(storage, validatedOpts)
+}
+
+async function answerFromReview(storage: VaultStorage, opts: AskChatOpts,
+  history: Array<{ role: "user" | "assistant"; content: string }>, project?: ProjectDetail, session?: ChatSession): Promise<ChatMessage | null> {
+  const { input } = opts
+
+  const latestMaterial = session?.messages.toReversed().flatMap((m) => m.blocks ?? []).find((b) => b.type === "review" || b.type === "review-citations" || b.type === "paper-results")
+  if (latestMaterial?.type === "review" || latestMaterial?.type === "review-citations") {
+    try {
+      const review = await loadReview(storage, latestMaterial.runId)
+      if (review.sessionId !== session?.id || review.brief.projectId !== project?.id) throw new Error("This review belongs to a different conversation scope")
+      const version = latestMaterial.type === "review-citations" ? review.versions.find((v) => v.id === latestMaterial.versionId) : review.versions.at(-1)
+      if (!version) return { role: "assistant", content: "This review is still in progress. You can inspect its saved sources or wait for the checked draft.", blocks: [{ type: "review", runId: review.id }] }
+      // Only this saved version, never a sweep over other review histories.
+      const evidence = [...(version.evidence ?? review.evidence)].sort((a, b) => contextOverlap(input.question, `${b.title} ${b.text}`) - contextOverlap(input.question, `${a.title} ${a.text}`)).slice(0, 8)
+      let context = "Review source excerpts (not personal memory). Answer from these passages only. Access labels and truncation matter.\n"
+      const included: string[] = []
+      for (const e of evidence) {
+        const block = `[${e.id}] ${e.title}\nAccess: ${e.access}\n${e.text.slice(0, 6000)}${e.text.length > 6000 ? "\n[Excerpt shortened; later text not supplied to this answer.]" : ""}\n\n`
+        if (context.length + block.length > MAX_CONTEXT_CHARS_TOTAL) break
+        included.push(e.id); context += block
+      }
+      if (!included.length) throw new Error("No source text remains in this report version")
+      opts.onProgress?.("answering")
+      const answer = await runSkill({ skill: chatAnswerSkill, storage, settings: opts.settings, providerOverride: opts.providerOverride, now: opts.now, onText: opts.onText,
+        input: { question: input.question, context, history, readSourcesOnly: true, projectInstructions: project?.instructions } })
+      if (answer.status !== "ok" || !answer.output) throw new Error(answer.error ?? "Review answer unavailable")
+      if (answer.output.citedPageIds.some((p) => !included.includes(p)) || [...answer.output.answer.matchAll(/\[(P\d+)\]/g)].some((m) => !included.includes(m[1]))) throw new Error("The answer introduced a reference outside this report's source excerpts")
+      return { role: "assistant", content: answer.output.answer, blocks: [{ type: "review-citations", runId: review.id, versionId: version.id, sourceIds: answer.output.citedPageIds }] }
+    } catch (e) { return { role: "assistant", content: "I couldn't answer from this saved review. Your question is retained in History.", error: e instanceof Error ? e.message : "Review unavailable" } }
+  }
+
+  return null
 }
 
 async function askChatTurn(storage: VaultStorage, opts: AskChatOpts): Promise<AskChatResult> {
   const now = opts.now ?? (() => new Date())
   const { input } = opts
-
   const { session, project } = await loadOrCreateSession(storage, input, now)
+  const requestSignature = JSON.stringify({ mode: input.mode ?? "chat", readSourcesOnly: input.readSourcesOnly, sources: input.sources ? [...new Set(input.sources)].sort() : null })
+  if (input.operationId && session.messages.some((m) => m.operationId === input.operationId)) {
+    const question = session.messages.find((m) => m.operationId === input.operationId && m.role === "user")
+    if (question?.content !== input.question) throw new Error("This operation already belongs to a different question")
+    if (question.requestSignature && question.requestSignature !== requestSignature) throw new Error("This operation already belongs to different search options")
+    const previous = session.messages.find((m) => m.operationId === input.operationId && m.role === "assistant")
+    if (!previous) throw new Error("This turn was interrupted. Your question is in History; send a new message to retry.")
+    return { sessionId: session.id, message: previous }
+  }
 
   // The history the skills see: prior turns only (the current question travels
   // in its own field), oldest→newest, trimmed to the last MAX_HISTORY_TURNS.
@@ -161,19 +227,45 @@ async function askChatTurn(storage: VaultStorage, opts: AskChatOpts): Promise<As
     .slice(-MAX_HISTORY_TURNS)
     .map((m) => ({ role: m.role, content: m.content }))
 
-  session.messages.push({ role: "user", content: input.question })
+  session.messages.push({ role: "user", content: input.question, ...(input.operationId ? { operationId: input.operationId, requestSignature } : {}) })
   session.updatedAt = now().toISOString()
   // Persisted BEFORE any LLM call: everything below can fail, and when it does
   // the user must still find their question in the transcript.
   await saveSession(storage, session)
+  opts.onSession?.(session.id)
 
-  const message = await answerQuestion(storage, opts, history, project)
+  const message = input.mode === "search"
+    ? await searchQuestion(storage, opts, session, project)
+    : await answerQuestion(storage, opts, history, project, session)
+  if (input.operationId) message.operationId = input.operationId
 
   session.messages.push(message)
   session.updatedAt = now().toISOString()
   await saveSession(storage, session)
 
   return { sessionId: session.id, message }
+}
+
+async function searchQuestion(storage: VaultStorage, opts: AskChatOpts, session: ChatSession, project?: ProjectDetail): Promise<ChatMessage> {
+  try {
+    if (!opts.searchFn) throw new Error("Paper search is not configured")
+    const prior = session.messages.filter((m) => !m.error).slice(-6).map((m) => `${m.role}: ${m.content.slice(0, 2000)}\n${m.blocks?.flatMap((b) => b.type === "paper-results" ? b.result.items.map((i) => i.paper.title) : []).join("\n") ?? ""}`).join("\n").slice(0, 16_000)
+    // Scope-specific context contains no unrelated private library material.
+    const personalContext = project
+      ? `<<<PROJECT>>>\n${neutralizeFenceMarkers(`${project.title}\n${project.instructions}`)}\n<<<END-PROJECT>>>`
+      : (await buildUserContext(storage, { eventLimit: 40 })).compactText
+    const contextText = `${personalContext}\n<<<CONVERSATION>>>\n${neutralizeFenceMarkers(prior)}\n<<<END-CONVERSATION>>>`
+    const result = SearchResultSchema.parse(await runResearchSearch(storage, { query: opts.input.question, sources: opts.input.sources }, {
+      settings: opts.settings ?? await loadSettings(storage), searchFn: opts.searchFn,
+      providerOverride: opts.providerOverride, now: opts.now, onStage: opts.onProgress, contextText,
+    }))
+    return {
+      role: "assistant", content: `Found ${result.items.length} papers for ${result.plan.interpretation}.`,
+      blocks: [{ type: "paper-results", retrievedAt: (opts.now?.() ?? new Date()).toISOString(), result }],
+    }
+  } catch (error) {
+    return { role: "assistant", content: "The search did not finish. Your question is saved in History; you can try again.", error: error instanceof Error ? error.message : String(error) }
+  }
 }
 
 // One queue per storage/session pair. This protects the local single-process
@@ -309,8 +401,33 @@ async function answerQuestion(
   opts: AskChatOpts,
   history: Array<{ role: "user" | "assistant"; content: string }>,
   project?: ProjectDetail,
+  session?: ChatSession,
 ): Promise<ChatMessage> {
   const { input } = opts
+
+  const reviewAnswer = await answerFromReview(storage, opts, history, project, session)
+  if (reviewAnswer) return reviewAnswer
+
+  // A follow-up can read saved online results without fetching them again.
+  // Read-sources-only retains its existing, narrower knowledge-base semantics.
+  const searchBlock = input.readSourcesOnly ? undefined : session?.messages.toReversed().flatMap((m) => m.blocks ?? []).find((b) => b.type === "paper-results")
+  if (searchBlock?.type === "paper-results") {
+    const items = searchBlock.result.items
+    const selected: typeof items = []
+    let context = ""
+    for (const item of items) {
+      const block = `[search-paper-${selected.length + 1}] ${item.paper.title}\nAbstract (not full text): ${(item.paper.abstract ?? "Not available").slice(0, 6000)}\n\n`
+      if (context.length + block.length > MAX_CONTEXT_CHARS_TOTAL) break
+      selected.push(item); context += block
+    }
+    opts.onProgress?.("answering")
+    const run = await runSkill({ skill: chatAnswerSkill, storage, settings: opts.settings, providerOverride: opts.providerOverride, now: opts.now, onText: opts.onText,
+      input: { question: input.question, context, history, readSourcesOnly: true, projectInstructions: project?.instructions } })
+    if (run.status !== "ok" || !run.output) return { role: "assistant", content: "I couldn't answer from the saved paper results. Your question is saved.", error: run.error ?? "Answer unavailable" }
+    const cited = new Set(run.output.citedPageIds)
+    const papers = selected.filter((_, i) => cited.has(`search-paper-${i + 1}`)).map((item) => item.paper)
+    return { role: "assistant", content: run.output.answer, blocks: [{ type: "paper-citations", papers }] }
+  }
 
   // A vault-wide read failure is degraded like any other layer rather than
   // rejecting: the user's question is already persisted, so the transcript must
@@ -354,6 +471,7 @@ async function answerQuestion(
   const companionName = await resolveCompanionName(storage)
   const run = await runSkill({
     skill: chatAnswerSkill,
+    onText: opts.onText,
     input: {
       question: input.question,
       context,

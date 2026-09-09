@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { LLMError, type LLMProvider, type LLMRequest, type LLMUsage } from "./types"
+import { streamedStringField } from "./streamed-field"
 
 export class StructuredOutputError extends LLMError {
   constructor(
@@ -18,10 +19,28 @@ export class StructuredOutputError extends LLMError {
   }
 }
 
+export interface StructuredOutputOptions {
+  streamField?: string
+  onText?: (text: string) => void
+  schemaName?: string
+  /**
+   * Narrow compatibility hook applied before strict schema validation. It may
+   * normalize a known provider wire quirk, but the normalized value must still
+   * pass the original zod schema. The provider always receives that original
+   * schema; this hook never weakens or changes the advertised JSON contract.
+   */
+  normalizeCandidate?: (candidate: unknown) => unknown
+}
+
 function sumUsage(a: LLMUsage, b: LLMUsage): LLMUsage {
   return {
     inputTokens: a.inputTokens + b.inputTokens,
     outputTokens: a.outputTokens + b.outputTokens,
+    ...(a.cachedInputTokens !== undefined || b.cachedInputTokens !== undefined
+      ? { cachedInputTokens: (a.cachedInputTokens ?? 0) + (b.cachedInputTokens ?? 0) } : {}),
+    ...(a.reasoningTokens !== undefined || b.reasoningTokens !== undefined
+      ? { reasoningTokens: (a.reasoningTokens ?? 0) + (b.reasoningTokens ?? 0) } : {}),
+    ...(a.reported === false || b.reported === false ? { reported: false } : {}),
   }
 }
 
@@ -36,7 +55,7 @@ export async function completeStructured<T>(
   model: string,
   req: Omit<LLMRequest, "jsonSchema" | "schemaName">,
   schema: z.ZodType<T>,
-  opts?: { schemaName?: string },
+  opts?: StructuredOutputOptions,
 ): Promise<{ value: T; usage: LLMUsage }> {
   const jsonSchema = z.toJSONSchema(schema)
   const attempts: string[] = []
@@ -44,11 +63,20 @@ export async function completeStructured<T>(
   let messages = req.messages
 
   for (let attempt = 0; attempt < 2; attempt++) {
+    let previousPreview: string | undefined
     const result = await provider.complete(model, {
       ...req,
       messages,
       jsonSchema,
       schemaName: opts?.schemaName,
+      ...(opts?.streamField && opts.onText ? {
+        onText: (raw: string) => {
+          const preview = streamedStringField(raw, opts.streamField!)
+          if (preview === previousPreview) return
+          previousPreview = preview
+          opts.onText!(preview)
+        },
+      } : {}),
     })
     usage = usage ? sumUsage(usage, result.usage) : result.usage
     attempts.push(result.text)
@@ -66,6 +94,7 @@ export async function completeStructured<T>(
     }
 
     if (parseError === undefined) {
+      if (opts?.normalizeCandidate) candidate = opts.normalizeCandidate(candidate)
       const parsed = schema.safeParse(candidate)
       if (parsed.success) {
         return { value: parsed.data, usage: usage! }

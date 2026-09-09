@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process"
-import { mkdtempSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { basename, dirname, join, resolve } from "node:path"
@@ -9,8 +9,15 @@ import { fileURLToPath } from "node:url"
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(SCRIPT_DIR, "..")
-const RUN_DIR = mkdtempSync(join(tmpdir(), "scispark-e2e-"))
 const DIST_DIR = ".next-e2e"
+// Optionally test an already-built production artifact with the same disposable
+// vault/ports. Never reuse the human-test server or delete the supplied build.
+const productionDist = process.env.SCISPARK_E2E_PRODUCTION_DIST_DIR
+if (productionDist && (!/^\.next-[a-zA-Z0-9_-]+$/.test(productionDist)
+  || !existsSync(join(REPO_ROOT, productionDist, "BUILD_ID")))) {
+  throw new Error("SCISPARK_E2E_PRODUCTION_DIST_DIR must name an existing .next-* production build in this repository.")
+}
+const RUN_DIR = mkdtempSync(join(tmpdir(), "scispark-e2e-"))
 const PLAYWRIGHT_CLI = join(REPO_ROOT, "node_modules", "@playwright", "test", "cli.js")
 
 function findFreePort() {
@@ -46,7 +53,7 @@ function cleanup() {
   }
 
   rmSync(RUN_DIR, { recursive: true, force: true })
-  rmSync(distPath, { recursive: true, force: true })
+  if (!productionDist) rmSync(distPath, { recursive: true, force: true })
 }
 
 const [appPort, llmPort] = await Promise.all([findFreePort(), findFreePort()])
@@ -58,7 +65,8 @@ const child = spawn(process.execPath, [PLAYWRIGHT_CLI, "test", ...process.argv.s
     SCISPARK_E2E_RUN_DIR: RUN_DIR,
     SCISPARK_E2E_APP_PORT: String(appPort),
     SCISPARK_E2E_LLM_PORT: String(llmPort),
-    SCISPARK_E2E_DIST_DIR: DIST_DIR,
+    SCISPARK_E2E_DIST_DIR: productionDist ?? DIST_DIR,
+    SCISPARK_E2E_SERVER_MODE: productionDist ? "start" : "dev",
   },
 })
 

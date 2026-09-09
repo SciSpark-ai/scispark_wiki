@@ -42,6 +42,8 @@ interface OpenAlexIds {
 }
 
 interface OpenAlexWork {
+  type?: string | null
+  is_retracted?: boolean
   id?: string | null
   doi?: string | null
   display_name?: string | null
@@ -212,6 +214,8 @@ function mapWork(work: OpenAlexWork): PaperRecord {
     pdfUrl: nonEmpty(work.primary_location?.pdf_url),
     fields: mapFields(work.topics),
     source: "openalex",
+    publicationTypes: work.type ? [work.type] : undefined,
+    isRetracted: work.is_retracted,
   }
 }
 

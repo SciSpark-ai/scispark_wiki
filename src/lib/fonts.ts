@@ -1,17 +1,33 @@
-import { Geist, Geist_Mono, Halant } from "next/font/google";
+import localFont from "next/font/local";
 
-export const geistSans = Geist({
+// Vendored with licenses in src/assets/fonts. Builds and browser font loading
+// must not depend on Google Fonts or any other external font service.
+export const geistSans = localFont({
+  src: "../assets/fonts/Geist-Variable.ttf",
   variable: "--font-geist-sans",
-  subsets: ["latin"],
+  weight: "100 900",
+  style: "normal",
+  display: "swap",
+  fallback: ["system-ui", "sans-serif"],
 });
 
-export const geistMono = Geist_Mono({
+export const geistMono = localFont({
+  src: "../assets/fonts/GeistMono-Variable.ttf",
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: "100 900",
+  style: "normal",
+  display: "swap",
+  fallback: ["monospace"],
+  adjustFontFallback: false,
 });
 
-export const halant = Halant({
+export const halant = localFont({
+  src: [
+    { path: "../assets/fonts/Halant-Regular.ttf", weight: "400", style: "normal" },
+    { path: "../assets/fonts/Halant-Bold.ttf", weight: "700", style: "normal" },
+  ],
   variable: "--font-halant",
-  subsets: ["latin"],
-  weight: ["400", "700"],
+  display: "swap",
+  fallback: ["Georgia", "serif"],
+  adjustFontFallback: "Times New Roman",
 });

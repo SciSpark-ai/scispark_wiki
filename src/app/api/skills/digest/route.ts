@@ -1,7 +1,13 @@
 import { jsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
+import { getServerVault } from "@/lib/server/vault"
 import { loadSettings } from "@/lib/llm/settings"
 import { acquireFullText } from "@/lib/wiki/acquire"
-import { generateDigest, type DigestResult } from "@/lib/skills/digest"
+import {
+  generateDigest,
+  isDigestCacheSlug,
+  loadCachedDigestBySlug,
+  type DigestResult,
+} from "@/lib/skills/digest"
 import { serverRelayFetch } from "@/lib/server/relay-fetch"
 import type { PaperRecord } from "@/lib/papers/types"
 
@@ -9,6 +15,32 @@ export interface DigestRouteResult {
   digest: DigestResult
   fromCache: boolean
   costUsd?: number
+}
+
+export interface CachedDigestRouteResult {
+  digest: DigestResult | null
+}
+
+function jsonResponse(status: number, body: unknown): Response {
+  return Response.json(body, { status })
+}
+
+/**
+ * GET /api/skills/digest?slug=... — read-only cache lookup used when a paper
+ * page opens. A miss returns `{digest:null}` and, critically, never acquires
+ * full text, loads provider settings, or invokes the LLM.
+ */
+export async function GET(request: Request): Promise<Response> {
+  const slug = new URL(request.url).searchParams.get("slug")
+  if (!slug) return jsonResponse(400, { error: "slug is required" })
+  if (!isDigestCacheSlug(slug)) return jsonResponse(400, { error: "slug must be a canonical paper slug" })
+
+  try {
+    const digest = await loadCachedDigestBySlug(await getServerVault(), slug)
+    return jsonResponse(200, { result: { digest } satisfies CachedDigestRouteResult })
+  } catch (error) {
+    return jsonResponse(500, { error: error instanceof Error ? error.message : String(error) })
+  }
 }
 
 /**

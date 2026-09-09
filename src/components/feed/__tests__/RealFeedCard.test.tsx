@@ -13,6 +13,8 @@ import { MemoryVaultStorage } from "@/lib/vault/memory-storage"
 import { paperSlug } from "@/lib/wiki/authoring"
 import type { FeedItem } from "@/lib/skills/feed"
 import type { PaperRecord } from "@/lib/papers/types"
+import { useCompanionStore } from "@/stores/companion-store"
+import { sendRecommendationFeedback } from "@/lib/recommendation/client"
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -29,6 +31,7 @@ vi.mock("@/lib/papers/save-client", () => ({
 }))
 
 import { RealFeedCard } from "../RealFeedCard"
+vi.mock("@/lib/recommendation/client", () => ({ sendRecommendationFeedback: vi.fn(async () => ({ changesetId: "cs-test", revision: "a".repeat(64), warnings: [] })) }))
 
 const PAPER: PaperRecord = {
   ids: { arxiv: "2409.08710" },
@@ -63,6 +66,8 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
   beforeEach(() => {
     pushMock.mockClear()
     mockSavePaper.mockClear()
+    vi.mocked(sendRecommendationFeedback).mockClear()
+    useCompanionStore.setState({ feedbackQuestions: [] })
   })
 
   it("shows displayTitle, venue·year, tldr, and tag chips — no score, no why-lines", async () => {
@@ -277,6 +282,37 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
     host.remove()
   })
 
+  it.each([
+    ["More like this", "more_like_this", false],
+    ["Less like this", "less_like_this", false],
+    ["Too old", "too_old", true],
+    ["Already read this", "already_know", true],
+  ] as const)("%s saves feedback without dismissing the paper or navigating", async (label, reason, inMenu) => {
+    const onDismiss = vi.fn()
+    const { host, root } = mount()
+    try {
+      await act(async () => root.render(
+        <RealFeedCard item={itemFor()} storage={new MemoryVaultStorage()} saved={false} onSave={() => {}} onDismiss={onDismiss} />,
+      ))
+      if (inMenu) await act(async () => {
+        Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Feedback")!.click()
+      })
+      await act(async () => {
+        Array.from(host.querySelectorAll("button")).find((button) => button.getAttribute("aria-label") === label || button.textContent === label)!.click()
+      })
+      expect(sendRecommendationFeedback).toHaveBeenCalledWith("arxiv:2409.08710", reason)
+      expect(onDismiss).not.toHaveBeenCalled()
+      expect(pushMock).not.toHaveBeenCalled()
+      expect(host.textContent).toContain("Feedback saved.")
+      expect(useCompanionStore.getState().feedbackQuestions).toEqual(reason === "less_like_this"
+        ? [{ paperKey: "arxiv:2409.08710", title: "Ear-EEG for Auditory Attention Decoding", revision: "a".repeat(64) }]
+        : [])
+    } finally {
+      act(() => root.unmount())
+      host.remove()
+    }
+  })
+
   it("Dismiss calls onDismiss and does not navigate (footer stops propagation)", async () => {
     const storage = new MemoryVaultStorage()
     const item = itemFor({ tldr: "A tldr.", tags: ["tag-a"] })
@@ -289,6 +325,9 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
       )
     })
 
+    await act(async () => {
+      Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Feedback")!.click()
+    })
     const dismissButton = Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Dismiss")
     expect(dismissButton, "Dismiss button should be present").toBeTruthy()
 
@@ -296,7 +335,7 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
       dismissButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }))
     })
 
-    expect(onDismiss).toHaveBeenCalledWith(expect.any(String))
+    expect(onDismiss).toHaveBeenCalledWith(expect.any(String), expect.stringContaining("undo it in History"))
     expect(pushMock).not.toHaveBeenCalled()
 
     act(() => root.unmount())

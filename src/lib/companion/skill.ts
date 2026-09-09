@@ -13,7 +13,7 @@ export interface CompanionSkillInput {
   triggerContext: string
   /** feedback.md body ("" if absent) — standing instructions/tone prefs. */
   feedback: string
-  /** User-chosen companion name (M7 addendum) — defaults to Ember when absent. */
+  /** User-chosen companion name (M7 addendum) — defaults to Sparky when absent. */
   companionName?: string
 }
 
@@ -64,6 +64,7 @@ export const companionSkill = defineSkill<CompanionSkillInput, Utterance>({
         maxTokens: 256,
       },
       UtteranceSchema,
+      { streamField: "utterance" },
     )
   },
 })

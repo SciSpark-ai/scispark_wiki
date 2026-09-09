@@ -1,10 +1,16 @@
 import type { VaultStorage } from "../vault/storage"
+import { ChatBlockSchema, type ChatBlock } from "./blocks"
 
 export const CHATS_DIR = ".scispark/chats"
 
 export interface ChatMessage {
   role: "user" | "assistant"
   content: string
+  /** Rich server-owned results travel with the transcript, not a feed cache. */
+  blocks?: ChatBlock[]
+  operationId?: string
+  /** Server-owned normalized options used to reject mismatched retries. */
+  requestSignature?: string
   /** Assistant only: FULL bundle ids the answer leaned on — `wiki/papers/x`,
    * not the bare slug `x`. That is the form `wikiHref`/`resolveWikiRouteId`
    * resolve against, and the orchestrator canonicalizes every model-written
@@ -116,6 +122,9 @@ function isChatMessageShape(value: unknown): value is ChatMessage {
   return (
     (v.role === "user" || v.role === "assistant") &&
     typeof v.content === "string" &&
+    (v.blocks === undefined || (Array.isArray(v.blocks) && v.blocks.every((block) => ChatBlockSchema.safeParse(block).success))) &&
+    isOptionalString(v.operationId) &&
+    isOptionalString(v.requestSignature) &&
     (v.citedPageIds === undefined || isStringArray(v.citedPageIds)) &&
     isOptionalBoolean(v.readSourcesOnly) &&
     isOptionalBoolean(v.selectionFallback) &&

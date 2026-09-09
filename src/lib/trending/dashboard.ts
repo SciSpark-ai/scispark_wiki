@@ -10,7 +10,6 @@ import { loadBundle, type Bundle } from "../vault/bundle"
 import { runSkill } from "../skills/runner"
 import { logEvent } from "../events/log"
 import type { TrackedField } from "./fields"
-import type { Cadence } from "./settings"
 import { loadTrendingSettings, saveDerivedAnchors } from "./settings"
 import type { AnchorDiscipline } from "./anchors"
 import { deriveAnchorDisciplines, openAlexFieldId, MAX_ANCHORS } from "./anchors"
@@ -26,107 +25,14 @@ import {
 import { topicLens } from "./lens"
 import type { CountFn } from "./counts"
 import { trendingSkill } from "../skills/trending"
+import { DASHBOARD_CACHE_PATH, TRENDING_BOARD_VERSION } from "./cache"
+import type { BoardTopic, TrendingBoard } from "./types"
 
-/**
- * Structure version of the cached board (`.scispark/trending/dashboard.json`).
- * Bumped whenever the persisted shape changes; `loadBoard` treats any other
- * version — including the M10/v1.1 shape, which carried no `version` at all —
- * as a cold start rather than parsing it into the wrong type.
- *
- * 3: `weekly` (the sparkline series) replaced by `priorCount` (the before/after
- * bars). A v2 board carries no `priorCount`, so rendering one would size the
- * bars off `undefined` — the bump makes it a cold start instead.
- * 4: growth is a ratio of SHARES of the discipline corpus, and the bars are
- * drawn from `recentShare`/`priorShare`. A v3 board carries neither field, so
- * rendering one would size every bar off `undefined`; cold-start instead.
- */
-export const TRENDING_BOARD_VERSION = 4
-
-export interface BoardPaper {
-  record: PaperRecord
-  /** Wiki page id when this paper already exists in the vault; null otherwise. Never a count — the KB connection is a link or nothing (SP4 §4). */
-  wikiPageId: string | null
-}
-
-export interface BoardTopic {
-  key: string
-  label: string
-  /** The anchor discipline this topic was ranked within (an `AnchorDiscipline.label`). */
-  discipline: string
-  /**
-   * Change in the topic's SHARE of its discipline: (recentShare − priorShare) /
-   * priorShare. Null when the prior count is too small to divide by (zero, or
-   * under `MIN_PRIOR_COUNT`) — rendered as "new", never ∞.
-   * Share-based because OpenAlex's indexing lag shrinks the recent window's
-   * corpus for every topic alike, which raw counts would read as a board-wide
-   * decline (see `rankHeatingTopics` for the measured figures).
-   */
-  growth: number | null
-  recentCount: number
-  /**
-   * The topic's TRUE prior-window count (`lookupPriorCounts`). Kept alongside
-   * `recentCount` as honest ABSOLUTE volume — rendered as text on the expanded
-   * row, never drawn to scale (bars are share-scaled, below).
-   */
-  priorCount: number
-  /**
-   * The two shares `growth` is computed from: `recentCount / discipline's
-   * recent-window corpus` and `priorCount / its prior-window corpus`. The row's
-   * before/after bars are drawn from THESE, so a row's chart can never
-   * contradict its badge — a topic whose raw count fell while its share rose
-   * must not show a shrinking bar beside a positive percentage. `priorShare: 0`
-   * is the "new" case (a prior of zero, or one under `MIN_PRIOR_COUNT`) and
-   * draws an empty prior bar; `priorCount` still carries the honest raw figure.
-   */
-  recentShare: number
-  priorShare: number
-  papers: BoardPaper[]
-  /** LLM-written; null when the skill failed for this topic's discipline, or when the model returned no brief whose `key` matched this topic verbatim. */
-  why: string | null
-  relevant: boolean
-}
-
-export interface BoardOverview {
-  /** Real OpenAlex work count over the complete recent window, summed across the anchor disciplines (a work matching two anchors is counted twice). */
-  totalRecent: number
-  topTopicLabel: string | null
-  topTopicGrowth: number | null
-  relevantCount: number
-}
-
-export interface TrendingBoard {
-  version: number
-  anchors: AnchorDiscipline[]
-  overview: BoardOverview
-  topics: BoardTopic[]
-  breakouts: Array<{ record: PaperRecord; citationCount: number; wikiPageId: string | null }>
-  crossDisciplineNote: string | null
-  /**
-   * Present iff at least one discipline's qualitative survey failed. Carries
-   * the real reason(s) so the failure is surfaced instead of a silent set of
-   * null `why`s — the M10 failure-honesty rule (a survey that fails quietly
-   * while still billing was a real bug). Failed structured calls stay metered:
-   * their spend is still accumulated into the `trending_refresh` event.
-   */
-  surveyError?: string
-  /**
-   * Present iff a DETERMINISTIC retrieval step failed: a discipline's topic
-   * grouping, a corpus-size count, or a candidate's prior-count lookup. Those
-   * failures correctly DROP the affected rows (never falling back to raw
-   * counts), which means they can silently empty the whole leaderboard — and an
-   * empty leaderboard renders "No topic cleared the activity threshold", a
-   * confident statement about the data when the truth is a failed fetch.
-   * Carrying the reason applies the same failure-honesty rule the LLM layer
-   * already follows via `surveyError`.
-   */
-  dataError?: string
-  generatedAt: string
-}
-
-export const DASHBOARD_CACHE_PATH = ".scispark/trending/dashboard.json"
+// Server orchestration. Browser consumers must use ./cache and ./types.
+export { DASHBOARD_CACHE_PATH, TRENDING_BOARD_VERSION, loadBoard, isStale, anchorsMatchBoard } from "./cache"
+export type { BoardPaper, BoardTopic, BoardOverview, TrendingBoard } from "./types"
 
 const DAY_MS = 24 * 60 * 60 * 1000
-const CADENCE_MS: Record<Cadence, number> = { daily: DAY_MS, weekly: 7 * DAY_MS }
 
 /** Representative papers fetched (and rendered) per leaderboard topic. */
 const MAX_TOPIC_PAPERS = 3
@@ -210,17 +116,17 @@ export interface RunTrendingBoardOpts {
  * carried on the board as `dataError` so an emptied leaderboard never reads as
  * "nothing is trending".
  *
- * Concurrency: home's fire-and-forget auto-refresh (`maybeAutoRefreshTrending`)
- * and /trending's own mount-time refresh can both observe a stale/missing
- * cache and fire at once for the same vault. Concurrent calls for the SAME
+ * Concurrency: a scheduler/automation (`maybeAutoRefreshTrending`) and a
+ * manual /trending refresh can both observe a stale/missing cache and fire at
+ * once for the same vault. Concurrent calls for the SAME
  * `storage` share one in-flight run — every caller gets the same
  * `TrendingBoard` promise/object, and the strong-tier skill runs (and the
  * `trending_refresh` event logs) only once, not once per caller. A call made
  * AFTER the shared run has settled starts a fresh run (so the manual Refresh
  * button still works). Note: the shared run uses only the FIRST caller's
  * `opts` — a second concurrent caller's opts are ignored. This is safe today
- * because both call sites (home auto-refresh, /trending mount) derive
- * identical effective fields from the same trending settings; if a future
+ * because current call sites derive identical effective fields from the same
+ * trending settings; if a future
  * caller needs guaranteed-distinct opts honored concurrently, it must key the
  * in-flight map on more than just `storage`.
  */
@@ -655,49 +561,4 @@ function resolveWikiPageId(bundle: Bundle, record: PaperRecord): string | null {
   } catch {
     return null
   }
-}
-
-/**
- * Reads the cached board. Returns null — a cold start, never a crash — when the
- * file is missing, unparseable, or written by a different structure version
- * (notably the M10/v1.1 `{panels}` shape, which has no `version` field at all
- * and is still sitting on real users' disks).
- */
-export async function loadBoard(storage: VaultStorage): Promise<TrendingBoard | null> {
-  const raw = await storage.read(DASHBOARD_CACHE_PATH)
-  if (raw == null) return null
-  try {
-    const parsed = JSON.parse(raw)
-    if (parsed === null || typeof parsed !== "object") return null
-    if (parsed.version !== TRENDING_BOARD_VERSION) return null
-    if (!Array.isArray(parsed.topics) || typeof parsed.generatedAt !== "string") return null
-    return parsed as TrendingBoard
-  } catch {
-    return null
-  }
-}
-
-export function isStale(board: TrendingBoard | null, cadence: Cadence, now: Date): boolean {
-  if (board == null) return true
-  const gen = new Date(board.generatedAt).getTime()
-  if (Number.isNaN(gen)) return true
-  return now.getTime() - gen >= CADENCE_MS[cadence]
-}
-
-/**
- * True iff `board` is non-null and the SET of its anchor ids equals the set of
- * `anchors`' ids (order-insensitive). Detects a settings change (anchor edit,
- * reset-to-auto) that rescoped the board without a corresponding refresh — a
- * cache can be time-fresh but scope-stale, and showing a board for the wrong
- * anchors is actively misleading.
- */
-export function anchorsMatchBoard(board: TrendingBoard | null, anchors: AnchorDiscipline[]): boolean {
-  if (board == null) return false
-  const boardIds = new Set(board.anchors.map((a) => a.id))
-  const ids = new Set(anchors.map((a) => a.id))
-  if (boardIds.size !== ids.size) return false
-  for (const id of ids) {
-    if (!boardIds.has(id)) return false
-  }
-  return true
 }

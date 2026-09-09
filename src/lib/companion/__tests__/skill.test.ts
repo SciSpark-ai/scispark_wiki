@@ -150,7 +150,7 @@ describe("companionSkill", () => {
     expect(systemContent).not.toContain(COMPANION.name)
   })
 
-  it("no companionName in input: system prompt defaults to the default name (Ember)", async () => {
+  it("no companionName in input: system prompt defaults to the default name (Sparky)", async () => {
     const storage = new MemoryVaultStorage()
     const provider = new MockProvider([structuredResult()])
 

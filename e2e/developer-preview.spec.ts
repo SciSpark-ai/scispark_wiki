@@ -139,6 +139,8 @@ test.describe.serial("SP6 developer preview", () => {
     await page.getByRole("switch", { name: /Read Sources Only/ }).check()
     await page.getByPlaceholder("Ask about your knowledge base…").fill(QUESTION)
     await page.getByRole("button", { name: "Send" }).click()
+    await expect(page.locator("[data-streaming-reply]")).toContainText("The disposable paper")
+    await expect(page.getByRole("button", { name: "Send" })).toBeDisabled()
     await page.waitForURL(/\/chat\/chat_[A-Za-z0-9_-]+$/)
     chatPath = new URL(page.url()).pathname
     await expect(page.getByText(ANSWER)).toBeVisible()
@@ -155,7 +157,7 @@ test.describe.serial("SP6 developer preview", () => {
 
     await page.goto(chatPath)
     await expect(page.getByText(ANSWER)).toBeVisible()
-    await expect(page.getByText(/This project was deleted\. The transcript is preserved/)).toBeVisible()
+    await expect(page.getByText(/This project's scope is unavailable\. The transcript is preserved/)).toBeVisible()
 
     await page.goto("/history?tab=changes")
     const deletion = page.locator("article").filter({ hasText: "project-delete" })

@@ -1,5 +1,6 @@
 import type { z } from "zod"
 import type { LLMRequest, LLMResult, LLMUsage, Tier } from "../llm/types"
+import type { StructuredOutputOptions } from "../llm/structured"
 
 /**
  * The interface a running skill uses to talk to the LLM harness. Skills never touch
@@ -12,6 +13,7 @@ export interface SkillContext {
     tier: Tier,
     req: Omit<LLMRequest, "jsonSchema" | "schemaName">,
     schema: z.ZodType<T>,
+    opts?: StructuredOutputOptions,
   ): Promise<T>
   log(msg: string): void
 }

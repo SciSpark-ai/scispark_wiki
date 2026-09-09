@@ -9,9 +9,9 @@ import { resolvePaperBySlug, extractAbstractFromBody } from "@/lib/papers/resolv
 import { findPaperPage, pageStateFromPage, isFullTextKnownUnavailable, type PaperPageState } from "@/lib/papers/page-state"
 import { paperKey, type PaperRecord } from "@/lib/papers/types"
 import { savePaper } from "@/lib/papers/save-client"
-import { generateDigestRemote, ingestRemote, undoIngestRemote } from "@/lib/skills/ingest-client"
+import { generateDigestRemote, ingestRemote, loadCachedDigestRemote, undoIngestRemote } from "@/lib/skills/ingest-client"
 import { enrichRemote } from "@/lib/skills/enrich-client"
-import { loadFeed, type FeedItem } from "@/lib/skills/feed"
+import { loadFeed, type FeedItem } from "@/lib/skills/feed-cache"
 import { logEvent } from "@/lib/events/log"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { rangeToOffsets, plainTextOf } from "@/lib/reader/dom-offsets"
@@ -20,6 +20,8 @@ import AskableSurface from "@/components/reader/AskableSurface"
 import { PaperHeader } from "@/components/paper/PaperHeader"
 import { PaperActions, type DigestState, type EnrichState, type IngestState, type SaveState } from "@/components/paper/PaperActions"
 import { PaperDigestView } from "@/components/paper/PaperDigestView"
+import { PaperFeedContext } from "@/components/paper/PaperFeedContext"
+import { RecommendationDetails } from "@/components/feed/RecommendationDetails"
 import { PaperMeta } from "@/components/paper/PaperMeta"
 import { PaperSynthesis } from "@/components/paper/PaperSynthesis"
 import { RelatedInWiki, resolveRelatedPages, type RelatedPageLink } from "@/components/paper/RelatedInWiki"
@@ -27,7 +29,6 @@ import { useCompanion } from "@/components/companion/useCompanion"
 import { COMPANION_CLEARANCE } from "@/components/layout/companion-clearance"
 import { BackLink } from "@/components/ui/BackLink"
 import { Button } from "@/components/ui/Button"
-import { Card } from "@/components/ui/Card"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { LoadingState } from "@/components/ui/LoadingState"
 import { ProjectMembershipControl } from "@/components/projects/ProjectMembershipControl"
@@ -222,6 +223,31 @@ function PaperPageContent() {
       setLoad(next)
       if (next.status === "ready") {
         void logEvent(storage, { type: "paper_view", paperKey: paperKey(next.paper), title: next.paper.title })
+
+        // Restore a durable digest on every page visit. This is a GET-only
+        // cache lookup; unlike the Generate action it cannot acquire full
+        // text or invoke a paid provider. Functional state updates prevent
+        // a slow lookup from overwriting a generation the user started in
+        // the meantime.
+        try {
+          const cachedDigest = await loadCachedDigestRemote(next.paper)
+          if (cancelled) return
+          if (cachedDigest !== null) {
+            setDigestState((current) =>
+              current.status === "idle"
+                ? { status: "done", digest: cachedDigest, fromCache: true }
+                : current,
+            )
+          }
+        } catch (error) {
+          if (cancelled) return
+          const message = error instanceof Error ? error.message : String(error)
+          setDigestState((current) =>
+            current.status === "idle"
+              ? { status: "error", message: `Saved digest could not be loaded: ${message}` }
+              : current,
+          )
+        }
       }
     })()
     return () => {
@@ -378,6 +404,13 @@ function PaperPageContent() {
   // paper page still resolves here too.
   const page = findPaperPage(load.bundle, slug)
   const sourcePageId = page?.id
+  // Preserve the existing saved-state product rule: personalized feed
+  // rationale appears after the paper has been saved, not while it is still a
+  // discovery-only result. The redesign changes layout, not that behavior.
+  const feedContext = load.pageState.state === "saved" ? load.feedItem : undefined
+  const hasPrimaryContent = Boolean(
+    feedContext || load.pageState.state === "ingested" || digestState.status === "done",
+  )
 
   return (
     // key={slug}: forces a fresh AskableSurface (and its internal
@@ -402,57 +435,75 @@ function PaperPageContent() {
               data-note-source-label={load.paper.title}
               onMouseUp={handleSelection}
               onKeyUp={handleSelection}
-              className={`mx-auto max-w-3xl p-7 ${COMPANION_CLEARANCE}`}
+              className={`mx-auto w-full max-w-[1320px] px-5 py-6 sm:px-8 lg:px-10 xl:px-12 ${COMPANION_CLEARANCE}`}
             >
-              <BackLink className="mb-4" />
+              <div className="max-w-[1080px]">
+                <BackLink className="mb-6" />
 
-              <PaperHeader paper={load.paper} />
+                <PaperHeader paper={load.paper} />
 
-              <PaperActions
-                pageState={load.pageState}
-                fullTextKnownFalse={load.fullTextKnownFalse}
-                saveState={saveState}
-                onSave={handleSave}
-                enrichState={enrichState}
-                digestState={digestState}
-                onGenerateDigest={handleGenerateDigest}
-                ingestState={ingestState}
-                onIngest={handleIngest}
-                onUndo={handleUndo}
-                onReadFullText={handleReadFullText}
-              />
+                <PaperActions
+                  pageState={load.pageState}
+                  fullTextKnownFalse={load.fullTextKnownFalse}
+                  saveState={saveState}
+                  onSave={handleSave}
+                  enrichState={enrichState}
+                  digestState={digestState}
+                  onGenerateDigest={handleGenerateDigest}
+                  ingestState={ingestState}
+                  onIngest={handleIngest}
+                  onUndo={handleUndo}
+                  onReadFullText={handleReadFullText}
+                />
+              </div>
 
-              {page && <ProjectMembershipControl pageId={page.id} />}
+              {(page || hasPrimaryContent) && (
+                <div
+                  className={
+                    page && hasPrimaryContent
+                      ? "mt-10 grid gap-8 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start xl:gap-10"
+                      : "mt-10 max-w-[1080px]"
+                  }
+                >
+                  {hasPrimaryContent && (
+                    <main className="min-w-0">
+                      {feedContext?.ranking && <RecommendationDetails ranking={feedContext.ranking} />}
+                      {feedContext && !feedContext.ranking && (
+                        <PaperFeedContext
+                          whyThis={feedContext.whyThis}
+                          whyYou={feedContext.whyYou}
+                          whyNow={feedContext.whyNow}
+                        />
+                      )}
 
-              {load.pageState.state === "saved" && (
-                <>
-                  <PaperMeta tldr={load.tldr} tags={load.tags} />
-                  <RelatedInWiki related={load.relatedPages} />
-                  {load.feedItem && (
-                    <Card className="mt-4 p-5">
-                      <div className="mb-2 text-[11px] uppercase tracking-wide text-muted-text">Why this is in your feed</div>
-                      <div className="space-y-2 text-[14px] leading-[1.6] text-espresso tracking-body">
-                        <p>
-                          <span className="font-medium">Why this: </span>
-                          {load.feedItem.whyThis}
-                        </p>
-                        <p>
-                          <span className="font-medium">Why you: </span>
-                          {load.feedItem.whyYou}
-                        </p>
-                        <p>
-                          <span className="font-medium">Why now: </span>
-                          {load.feedItem.whyNow}
-                        </p>
-                      </div>
-                    </Card>
+                      {load.pageState.state === "ingested" && page && <PaperSynthesis bundle={load.bundle} page={page} />}
+
+                      {digestState.status === "done" && (
+                        <PaperDigestView digest={digestState.digest} fromCache={digestState.fromCache} />
+                      )}
+                    </main>
                   )}
-                </>
+
+                  {page && (
+                    <aside
+                      aria-label="Paper context"
+                      className={
+                        hasPrimaryContent
+                          ? "space-y-4 xl:sticky xl:top-8 xl:border-l xl:border-border-warm xl:pl-8 [&>*]:mt-0"
+                          : "grid gap-4 md:grid-cols-2 [&>*]:mt-0"
+                      }
+                    >
+                      <ProjectMembershipControl pageId={page.id} />
+                      {load.pageState.state === "saved" && (
+                        <>
+                          <PaperMeta tldr={load.tldr} tags={load.tags} />
+                          <RelatedInWiki related={load.relatedPages} />
+                        </>
+                      )}
+                    </aside>
+                  )}
+                </div>
               )}
-
-              {load.pageState.state === "ingested" && page && <PaperSynthesis bundle={load.bundle} page={page} />}
-
-              {digestState.status === "done" && <PaperDigestView digest={digestState.digest} fromCache={digestState.fromCache} />}
             </div>
 
             {askOpen && (

@@ -2,7 +2,7 @@ import type { VaultStorage } from "../vault/storage"
 import { loadBundle } from "../vault/bundle"
 import type { PaperRecord } from "../papers/types"
 import { paperSlug } from "../wiki/authoring"
-import { DigestSchema } from "../skills/digest"
+import { DigestSchema } from "../skills/digest-contract"
 import type { ReadingCompanionInput } from "../skills/reading-companion"
 
 /** Minimum token length counted toward "salient terms" — short function words

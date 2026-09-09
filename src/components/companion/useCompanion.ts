@@ -36,13 +36,12 @@ import { useCompanionStore } from "@/stores/companion-store"
  */
 export function useCompanion(): () => void {
   const pathname = usePathname()
-  // Only subscribe to the stable `show` action reference — sessionShownCount
-  // and lastShownTs are read fresh via getState() inside the callback below
-  // so this hook doesn't re-render its host component on every companion
-  // event (they're only ever used inside the async callback, not render).
-  const show = useCompanionStore((s) => s.show)
-
+  // Read bookkeeping directly; only the mascot subscribes to streamed text.
+  // Store-owned stream IDs prevent overlapping requests and late replies from
+  // reopening a dismissed bubble. Budget accounting happens once per bubble.
   const reevaluate = useCallback(() => {
+    const streamId = useCompanionStore.getState().beginStream()
+    if (streamId === null) return
     void (async () => {
       try {
         const { sessionShownCount, lastShownTs } = useCompanionStore.getState()
@@ -51,14 +50,15 @@ export function useCompanion(): () => void {
           route: pathname ?? "/",
           sessionShownCount,
           lastShownTs,
-        })
+        }, undefined, (draft) => useCompanionStore.getState().updateStream(streamId, draft))
 
-        if (utterance) show(utterance)
+        useCompanionStore.getState().finishStream(streamId, utterance)
       } catch {
+        useCompanionStore.getState().finishStream(streamId, null)
         // Fire-and-forget: a companion failure must never break the host page.
       }
     })()
-  }, [pathname, show])
+  }, [pathname])
 
   useEffect(() => {
     reevaluate()

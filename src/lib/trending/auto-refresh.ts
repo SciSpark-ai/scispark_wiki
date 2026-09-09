@@ -6,15 +6,16 @@ import type { TopicGroupFn, TopWorksFn } from "../papers/node-search"
 import { readUserModel } from "../usermodel/pages"
 import { effectiveTrackedFields } from "./fields"
 import { loadTrendingSettings } from "./settings"
-import { loadBoard, isStale, anchorsMatchBoard, runTrendingBoard } from "./dashboard"
+import { loadBoard, isStale, anchorsMatchBoard } from "./cache"
+import { runTrendingBoard } from "./dashboard"
 
 /**
- * v1 "cron": on app open, refresh the trending board if it is stale for the
+ * Scheduled/manual auto-refresh helper: refresh the trending board if it is stale for the
  * user's cadence, OR if the cached board was built for a different set of
  * anchor disciplines than the settings now hold (mirrors /trending's own
- * staleness check — see dashboard.ts's anchorsMatchBoard JSDoc: a cache can be
- * time-fresh but scope-stale after an anchor edit). Fire-and-forget from the
- * home page — never blocks render.
+ * staleness check — see cache.ts's anchorsMatchBoard JSDoc: a cache can be
+ * time-fresh but scope-stale after an anchor edit). The home page does not
+ * call this automatically; opening the app must never start a paid LLM run.
  *
  * Stored anchors that are EMPTY are not used for the scope comparison: an
  * empty list means "not derived yet / derivation failed", and comparing

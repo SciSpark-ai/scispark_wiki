@@ -6,6 +6,8 @@ import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { displayTitle } from "@/lib/papers/title"
 import type { ChatMessage } from "@/lib/chat/session"
 import { CitationChips } from "./CitationChips"
+import { PaperResultsBlock } from "./PaperResultsBlock"
+import { ReviewBlock } from "./ReviewBlock"
 
 export interface MessageBubbleProps {
   message: ChatMessage
@@ -53,7 +55,7 @@ export function MessageBubble({ message, pageTitleById, onSave, saving }: Messag
   // an error-only turn (nothing was actually answered) is not saveable, so
   // writing it as a `query` page would put an empty/failed answer into the
   // knowledge base permanently.
-  const canSave = isAssistant && hasContent && !message.error
+  const canSave = isAssistant && hasContent && !message.error && !message.blocks?.length
 
   return (
     <div
@@ -69,6 +71,9 @@ export function MessageBubble({ message, pageTitleById, onSave, saving }: Messag
           {message.content}
         </p>
       )}
+      {isAssistant && message.blocks?.map((block, index) => block.type === "review-citations" ? <button key={index} className="mt-3 text-sm text-orange" onClick={() => window.dispatchEvent(new CustomEvent("open-review-report", { detail: { runId: block.runId, versionId: block.versionId } }))}>View saved review sources{block.sourceIds.length ? ` · ${block.sourceIds.join(", ")}` : ""}</button> : block.type === "review" ? <ReviewBlock key={index} id={block.runId} /> : block.type === "paper-results"
+        ? <PaperResultsBlock key={index} result={block.result} />
+        : <PaperResultsBlock key={index} result={{ query: "", plan: { interpretation: "Cited papers", sort: "relevance", fromDate: null, queries: [] }, items: block.papers.map((paper) => ({ paper, score: 0, whyMatch: "", foundBy: [] })), stats: { retrieved: 0, deduplicated: 0 }, costUsd: 0, warnings: [] }} citationsOnly />)}
 
       {isAssistant && message.error && (
         <div className="mt-2">

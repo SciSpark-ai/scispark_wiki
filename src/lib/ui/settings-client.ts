@@ -14,10 +14,14 @@ import { errorMessageFor } from "@/lib/llm/settings-client"
  * on a failed response rather than throwing — theme is a rendering nicety,
  * not something that should block the app on a transient fetch failure. */
 export async function loadUiSettingsRemote(fetchFn: typeof fetch = fetch): Promise<UiSettings> {
-  const res = await fetchFn("/api/settings", { method: "GET" })
-  if (!res.ok) return { ...DEFAULT_UI_SETTINGS }
-  const body = (await res.json()) as SettingsResponse
-  return normalizeUiSettings(body.ui)
+  try {
+    const res = await fetchFn("/api/settings", { method: "GET" })
+    if (!res.ok) return { ...DEFAULT_UI_SETTINGS }
+    const body = (await res.json()) as SettingsResponse
+    return normalizeUiSettings(body.ui)
+  } catch {
+    return { ...DEFAULT_UI_SETTINGS }
+  }
 }
 
 /** Replaces the server-held ui settings. */
@@ -34,7 +38,9 @@ export async function saveUiSettingsRemote(ui: UiSettings, fetchFn: typeof fetch
  * script (see src/app/layout.tsx's THEME_INIT_SCRIPT, which reads the same
  * localStorage key before React hydrates). */
 export function applyTheme(mode: ThemeMode): void {
-  const dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
+  const systemPrefersDark = typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-color-scheme: dark)").matches
+  const dark = mode === "dark" || (mode === "system" && systemPrefersDark)
   if (dark) document.documentElement.dataset.theme = "dark"
   else delete document.documentElement.dataset.theme
   try {

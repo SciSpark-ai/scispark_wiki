@@ -22,11 +22,11 @@ export interface CompanionPersona {
   systemFragment: string
 }
 
-// Default name chosen by Tong (2026-07-13): "Ember" — a small warm spark,
-// fitting the SciSpark theme. This is only the *fallback* — end users can
+// "Sparky" ties the companion directly to SciSpark's name and spark mark.
+// This is only the *fallback* — end users can
 // rename their own companion via settings (M7 addendum); `personaFragment`
 // substitutes whatever name the caller provides, defaulting to this constant.
-const DEFAULT_NAME = "Ember"
+const DEFAULT_NAME = "Sparky"
 
 /**
  * Builds the tone fragment for a given companion name (defaulting to
@@ -53,7 +53,7 @@ export const COMPANION: CompanionPersona = {
  * Prepends the persona tone fragment to a skill's own system prompt for
  * conversational surfaces. Tone only — the caller's grounding/analysis rules
  * follow and always win on substance. `name` defaults to `DEFAULT_NAME`
- * (Ember) when the caller has no user-chosen companion name to pass.
+ * (Sparky) when the caller has no user-chosen companion name to pass.
  */
 export function withPersona(systemPrompt: string, name?: string): string {
   return `${personaFragment(name)}\n\n${systemPrompt}`

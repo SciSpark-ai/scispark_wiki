@@ -1,5 +1,6 @@
 import type { VaultStorage } from "../vault/storage"
 import { splitTopics } from "../trending/fields"
+import { DEFAULT_RECOMMENDATION_PREFERENCES, type RecommendationPreferences } from "../recommendation/contract"
 
 export const USER_MODEL_PATHS = {
   profile: "profile.md",
@@ -27,10 +28,12 @@ export async function isOnboarded(storage: VaultStorage): Promise<boolean> {
 }
 
 export interface OnboardingAnswers {
+  name: string
   role: string
   fields: string
   topics: string
   feedPrefs: string
+  recommendations?: RecommendationPreferences
 }
 
 function formatDate(date: Date): string {
@@ -47,6 +50,10 @@ function buildProfile(answers: OnboardingAnswers, now: Date): string {
     "",
     `_Seeded by onboarding on ${formatDate(now)}. Edit freely — agents read this before every feed run._`,
     "",
+    "## Name",
+    "",
+    answers.name,
+    "",
     "## Who I am",
     "",
     answers.role,
@@ -58,6 +65,10 @@ function buildProfile(answers: OnboardingAnswers, now: Date): string {
     "## What I want from my feed",
     "",
     answers.feedPrefs,
+    "",
+    "## Recommendation settings",
+    "",
+    JSON.stringify(answers.recommendations ?? DEFAULT_RECOMMENDATION_PREFERENCES),
     "",
   ].join("\n")
 }
@@ -97,6 +108,17 @@ function buildFeedback(): string {
   ].join("\n")
 }
 
+export function buildUserModelContents(
+  answers: OnboardingAnswers,
+  now: Date,
+): { profile: string; interests: string; feedback: string } {
+  return {
+    profile: buildProfile(answers, now),
+    interests: buildInterests(answers),
+    feedback: buildFeedback(),
+  }
+}
+
 export async function seedUserModel(
   storage: VaultStorage,
   answers: OnboardingAnswers,
@@ -107,9 +129,10 @@ export async function seedUserModel(
   }
 
   const nowDate = now()
+  const contents = buildUserModelContents(answers, nowDate)
   await Promise.all([
-    storage.write(USER_MODEL_PATHS.profile, buildProfile(answers, nowDate)),
-    storage.write(USER_MODEL_PATHS.interests, buildInterests(answers)),
-    storage.write(USER_MODEL_PATHS.feedback, buildFeedback()),
+    storage.write(USER_MODEL_PATHS.profile, contents.profile),
+    storage.write(USER_MODEL_PATHS.interests, contents.interests),
+    storage.write(USER_MODEL_PATHS.feedback, contents.feedback),
   ])
 }

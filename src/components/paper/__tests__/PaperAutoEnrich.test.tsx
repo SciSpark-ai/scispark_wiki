@@ -32,6 +32,15 @@ const PAPER: PaperRecord = {
 
 const TLDR = "A wearable ear-EEG method for tracking auditory attention."
 
+const SAVED_DIGEST = {
+  summary: "The study evaluates a wearable ear-EEG system for auditory attention decoding.",
+  laySummary: "The researchers tested whether small ear sensors can tell what a listener is focusing on.",
+  keyPoints: ["Uses wearable ear-EEG", "Evaluates auditory attention decoding"],
+  methods: "The authors recorded ear-EEG while participants attended to competing sounds.",
+  limitations: "The study uses a limited participant sample.",
+  fieldContext: "This work contributes to wearable neurotechnology and auditory attention research.",
+}
+
 // getOpenVault is mocked to resolve through this box so each test can point
 // it at its own fresh storage instance (vi.mock factories are hoisted above
 // the storage a given `it` block creates).
@@ -98,6 +107,12 @@ describe("paper page automatic enrich", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
+        if (url.includes("/api/skills/digest")) {
+          return new Response(JSON.stringify({ result: { digest: null } }), { status: 200 })
+        }
+        if (url.includes("/api/projects")) {
+          return new Response(JSON.stringify({ projects: [] }), { status: 200 })
+        }
         if (url.includes("/api/skills/enrich")) {
           enrichCalls.push(String(init?.body))
           await mergeTldrIntoPage(storage, pagePath)
@@ -145,6 +160,12 @@ describe("paper page automatic enrich", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input)
+        if (url.includes("/api/skills/digest")) {
+          return new Response(JSON.stringify({ result: { digest: null } }), { status: 200 })
+        }
+        if (url.includes("/api/projects")) {
+          return new Response(JSON.stringify({ projects: [] }), { status: 200 })
+        }
         if (url.includes("/api/skills/enrich")) {
           await enrichGate
           return new Response(JSON.stringify({ result: { applied: true, tldr: TLDR } }), { status: 200 })
@@ -183,6 +204,41 @@ describe("paper page automatic enrich", () => {
     // Un-stuck: the status line cleared and the failure is visible.
     expect(host.textContent).not.toContain("Summarizing…")
     expect(host.textContent).toContain("transient vault error")
+
+    act(() => root.unmount())
+    host.remove()
+  })
+
+  it("restores a previously generated digest on page load without starting another generation", async () => {
+    const storage = new MemoryVaultStorage()
+    const pagePath = await seedSavedPage(storage)
+    await mergeTldrIntoPage(storage, pagePath)
+    vaultBox.current = async () => storage
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes("/api/skills/digest")) {
+        expect(init?.method).toBe("GET")
+        return new Response(JSON.stringify({ result: { digest: SAVED_DIGEST } }), { status: 200 })
+      }
+      if (url.includes("/api/projects")) {
+        return new Response(JSON.stringify({ projects: [] }), { status: 200 })
+      }
+      throw new Error(`unexpected fetch in test: ${url}`)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { host, root } = mount()
+    await act(async () => {
+      root.render(<PaperPage />)
+    })
+    await flush()
+
+    expect(host.textContent).toContain("Paper digest")
+    expect(host.textContent).toContain(SAVED_DIGEST.summary)
+    const digestCalls = fetchMock.mock.calls.filter(([input]) => String(input).includes("/api/skills/digest"))
+    expect(digestCalls).toHaveLength(1)
+    expect(digestCalls[0]?.[1]?.method).toBe("GET")
 
     act(() => root.unmount())
     host.remove()

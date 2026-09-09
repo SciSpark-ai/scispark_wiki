@@ -115,8 +115,15 @@ export function PaperActions({
           <Chip tone="accent">{pageState.state === "ingested" ? "In your knowledge base" : "Saved"}</Chip>
         )}
 
-        <Button onClick={onGenerateDigest} disabled={digestState.status === "loading"}>
-          {digestState.status === "loading" ? "Generating…" : "Generate digest"}
+        <Button
+          onClick={onGenerateDigest}
+          disabled={digestState.status === "loading" || digestState.status === "done"}
+        >
+          {digestState.status === "loading"
+            ? "Generating…"
+            : digestState.status === "done"
+              ? "Digest generated"
+              : "Generate digest"}
         </Button>
 
         {showIngestAction && (

@@ -1,4 +1,5 @@
 import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
+import { sourceFetch, withSourceDeadline } from "./source-requests"
 
 // Drift-verified 2026-07-12 against the live Semantic Scholar Academic Graph
 // OpenAPI spec at https://api.semanticscholar.org/graph/v1/swagger.json
@@ -26,6 +27,7 @@ const SEARCH_FIELDS = [
   "externalIds",
   "openAccessPdf",
   "fieldsOfStudy",
+  "publicationTypes",
 ]
 
 interface S2ExternalIds {
@@ -43,6 +45,7 @@ interface S2OpenAccessPdf {
 }
 
 interface S2Paper {
+  publicationTypes?: string[] | null
   paperId?: string | null
   title?: string | null
   abstract?: string | null
@@ -66,11 +69,14 @@ interface S2SearchResponse {
 export interface S2Query {
   query: string
   limit?: number
+  fromDate?: string
 }
 
 export interface S2Deps {
+  /** Complete transport override for offline fixtures; default is shared pacing. */
   fetchFn?: typeof fetch
   apiKey?: string
+  signal?: AbortSignal
 }
 
 function mapAuthors(authors: S2Author[] | null | undefined): PaperAuthor[] {
@@ -103,6 +109,7 @@ function mapPaper(paper: S2Paper): PaperRecord {
     pdfUrl: nonEmpty(paper.openAccessPdf?.url),
     fields: paper.fieldsOfStudy ?? [],
     source: "s2",
+    publicationTypes: paper.publicationTypes ?? undefined,
   }
 }
 
@@ -116,6 +123,7 @@ function buildUrl(q: S2Query): string {
   url.searchParams.set("query", q.query)
   url.searchParams.set("limit", String(clampLimit(q.limit)))
   url.searchParams.set("fields", SEARCH_FIELDS.join(","))
+  if (q.fromDate) url.searchParams.set("publicationDateOrYear", `${q.fromDate}:`)
   return url.toString()
 }
 
@@ -129,7 +137,11 @@ function buildUrl(q: S2Query): string {
  * layer is responsible for any rate-limit-specific handling of that status.
  */
 export async function searchS2(q: S2Query, deps: S2Deps = {}): Promise<PaperRecord[]> {
-  const fetchFn = deps.fetchFn ?? fetch
+  return withSourceDeadline(deps.signal, (signal) => searchS2Records(q, { ...deps, signal }))
+}
+
+async function searchS2Records(q: S2Query, deps: S2Deps): Promise<PaperRecord[]> {
+  const fetchFn = deps.fetchFn ?? sourceFetch("s2")
   const url = buildUrl(q)
   const headers: Record<string, string> = {}
   if (deps.apiKey) {
@@ -138,8 +150,9 @@ export async function searchS2(q: S2Query, deps: S2Deps = {}): Promise<PaperReco
 
   let response: Response
   try {
-    response = await fetchFn(url, { headers })
+    response = await fetchFn(url, { headers, signal: deps.signal, redirect: "error" })
   } catch (err) {
+    deps.signal?.throwIfAborted()
     throw new PaperSourceError(err instanceof Error ? err.message : "Semantic Scholar request failed")
   }
 
@@ -148,6 +161,11 @@ export async function searchS2(q: S2Query, deps: S2Deps = {}): Promise<PaperReco
   }
 
   const body = (await response.json()) as S2SearchResponse
+  if (body === null || typeof body !== "object" || Array.isArray(body)
+    || (body.data != null && !Array.isArray(body.data))
+    || (body.data == null && body.total !== 0)) {
+    throw new PaperSourceError("Semantic Scholar returned an unexpected search response")
+  }
   const results = body.data ?? []
   return results.map(mapPaper)
 }

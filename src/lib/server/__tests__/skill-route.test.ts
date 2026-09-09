@@ -54,6 +54,27 @@ describe("ndjsonSkillRoute + readNdjson", () => {
     setServerVaultForTests(null)
   })
 
+  it("safely finishes server work after a browser disconnects mid-stream", async () => {
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    let workFinished!: () => void
+    const finished = new Promise<void>((resolve) => { workFinished = resolve })
+    const route = ndjsonSkillRoute(async (_input, _vault, emit) => {
+      emit({ type: "text", text: "Partial" })
+      await pending
+      emit({ type: "text", text: "Complete" })
+      workFinished()
+      return { saved: true }
+    })
+    const res = await route(new Request("http://x/stream", { method: "POST", body: "{}" }))
+    const reader = res.body!.getReader()
+    await reader.read()
+    await reader.cancel()
+    release()
+    await finished
+    expect((await reader.read()).done).toBe(true)
+  })
+
   it("streams progress events in order, then a terminal result event", async () => {
     const route = ndjsonSkillRoute<{ items: string[] }>(async (input, vault, emit) => {
       expect(vault).toBe(storage)

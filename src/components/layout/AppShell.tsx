@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { MobileNav } from "./MobileNav";
@@ -12,6 +12,7 @@ import SettingsModal from "@/components/settings/SettingsModal";
 import ThemeApplier from "./ThemeApplier";
 import NavHistoryTracker from "./NavHistoryTracker";
 import { LegacyPrototypeWarning } from "@/components/projects/LegacyPrototypeWarning";
+import { UserIdentityHydrator } from "./UserIdentityHydrator";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -23,13 +24,8 @@ export function AppShell({ children }: AppShellProps) {
   const desktopSidebarOpen = useUIStore((s) => s.desktopSidebarOpen);
   const pathname = usePathname();
 
-  // Pages under /paper/[id], /chat/[id], /projects/[id] should still animate
-  // as a single route group rather than per-segment to avoid blinking on
-  // dynamic param changes inside the same section.
-  const routeKey = pathname?.split("/").slice(0, 3).join("/") ?? "/";
-
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-dvh flex flex-col">
       <MobileNav />
       <div className="flex flex-1 overflow-hidden lg:pt-0 pt-[50px]">
         <motion.div
@@ -41,19 +37,11 @@ export function AppShell({ children }: AppShellProps) {
           <Sidebar collapsed={!desktopSidebarOpen} />
         </motion.div>
 
-        <main className="flex-1 overflow-y-auto">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={routeKey}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-              className="h-full"
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
+        <main className="min-w-0 flex-1 overflow-y-auto">
+          {/* App Router owns page identity. A keyed exit animation can receive
+              the destination children before it exits, then mount them again,
+              erasing inputs/selections and duplicating initialization. */}
+          <div className="h-full">{children}</div>
         </main>
 
         <RightPanel show={showRightPanel}>
@@ -61,11 +49,13 @@ export function AppShell({ children }: AppShellProps) {
         </RightPanel>
       </div>
       <SelectionToNoteBubble />
-      <CompanionMascot />
+      {/* Sparky is already in the onboarding panel; avoid covering its composer. */}
+      {pathname !== "/onboarding" && !pathname.startsWith("/chat") && pathname !== "/papers" && <CompanionMascot />}
       <SettingsModal />
       <ThemeApplier />
       <NavHistoryTracker />
       <LegacyPrototypeWarning />
+      <UserIdentityHydrator />
     </div>
   );
 }

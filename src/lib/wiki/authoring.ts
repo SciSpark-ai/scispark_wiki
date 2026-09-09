@@ -148,6 +148,8 @@ export function buildPaperPage(paper: PaperRecord, opts: BuildPaperPageOpts): Pa
   if (paper.ids.openalex !== undefined) frontmatter.openalex = paper.ids.openalex
   if (paper.ids.pmid !== undefined) frontmatter.pmid = paper.ids.pmid
   if (paper.year !== undefined) frontmatter.year = paper.year
+  if (paper.publicationTypes?.length) frontmatter.publication_types = paper.publicationTypes
+  if (paper.isRetracted !== undefined) frontmatter.is_retracted = paper.isRetracted
   if (paper.venue !== undefined) frontmatter.venue = paper.venue
   if (opts.status !== undefined) frontmatter.status = opts.status
 

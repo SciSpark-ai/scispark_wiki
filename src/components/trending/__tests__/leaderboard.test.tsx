@@ -2,8 +2,8 @@
 import { describe, it, expect } from "vitest"
 import { renderToStaticMarkup } from "react-dom/server"
 import type { PaperRecord } from "@/lib/papers/types"
-import type { BoardTopic, BoardPaper, TrendingBoard } from "@/lib/trending/dashboard"
-import { TRENDING_BOARD_VERSION } from "@/lib/trending/dashboard"
+import type { BoardTopic, BoardPaper, TrendingBoard } from "@/lib/trending/types"
+import { TRENDING_BOARD_VERSION } from "@/lib/trending/cache"
 import { TrendBars } from "../TrendBars"
 import { TopicRow } from "../TopicRow"
 import { OverviewStrip } from "../OverviewStrip"
@@ -176,10 +176,13 @@ describe("TopicRow badge/bar agreement", () => {
         rank={1}
         expanded={true}
         onToggle={() => {}}
+        recentWindowLabel="Aug 10–23, 2026"
+        priorWindowLabel="Jul 27–Aug 9, 2026"
       />,
     )
-    expect(html).toMatch(/134 papers this window/)
-    expect(html).toMatch(/184 in the prior window/)
+    expect(html).toMatch(/134 papers from Aug 10–23, 2026/)
+    expect(html).toMatch(/184 from Jul 27–Aug 9, 2026/)
+    expect(html).not.toMatch(/this window|prior window/)
   })
 })
 
@@ -288,10 +291,13 @@ describe("OverviewStrip", () => {
     const html = renderToStaticMarkup(
       <OverviewStrip
         overview={{ totalRecent: 500, topTopicLabel: "Sparse Attention", topTopicGrowth: 0.5, relevantCount: 3 }}
+        generatedAt="2026-08-29T21:51:44.393Z"
       />,
     )
     expect(html).toContain("500")
     expect(html).toMatch(/across/i)
+    expect(html).toContain("Aug 10–23, 2026")
+    expect(html).not.toContain("this window")
   })
 })
 
@@ -320,7 +326,7 @@ describe("Leaderboard", () => {
     const html = renderToStaticMarkup(
       <Leaderboard board={board({ topics: [] })} expandedKey={null} onToggle={() => {}} />,
     )
-    expect(html).toMatch(/No topic cleared the activity threshold this window/)
+    expect(html).toMatch(/No topic cleared the activity threshold for Jul 6–19, 2026/)
   })
 
   it("does NOT blame the data when the board was emptied by a failed measurement", () => {

@@ -9,6 +9,7 @@ import type { LLMResult } from "../../llm/types"
 import { loadSession } from "../../chat/session"
 import type { AskChatResult } from "../../chat/orchestrator"
 import * as chatRoute from "../../../app/api/skills/chat/route"
+import { askChatRemote } from "../../chat/client"
 
 const CONCEPT_ID = "wiki/concepts/attention"
 
@@ -44,6 +45,39 @@ describe("POST /api/skills/chat", () => {
   afterEach(() => {
     setServerVaultForTests(null)
     setSkillTestOverrides()
+  })
+
+  it("delivers a live answer to the client before completion, saving only the validated turn", async () => {
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    let sawText!: () => void
+    const arrived = new Promise<void>((resolve) => { sawText = resolve })
+    setSkillTestOverrides({ providerOverride: {
+      fast: new MockProvider([structured({ pageIds: ["attention"] })]),
+      strong: { id: "anthropic", async complete(_model, input) {
+        input.onText?.('{"answer":"Attention weights')
+        await pending
+        return structured({ answer: "Attention weights token pairs.", citedPageIds: [CONCEPT_ID, "wiki/private/forged"] })
+      } },
+    } })
+    const fetchRoute: typeof fetch = async (_url, init) => chatRoute.POST(new Request("http://local/api/skills/chat", init))
+    const snapshots: string[] = []
+    let completed = false
+    const task = askChatRemote({ sessionId: null, question: "What is attention?", readSourcesOnly: false }, undefined, fetchRoute, (text) => {
+      snapshots.push(text)
+      if (text) sawText()
+    }).then((result) => { completed = true; return result })
+    try {
+      await arrived
+      expect(completed).toBe(false)
+      expect(snapshots).toEqual(["Attention weights"])
+      const files = await storage.list(".scispark/chats/")
+      const before = JSON.parse((await storage.read(files[0]))!)
+      expect(before.messages).toEqual([{ role: "user", content: "What is attention?" }])
+    } finally { release() }
+    const result = await task
+    expect(result.message.citedPageIds).toEqual([CONCEPT_ID])
+    expect((await loadSession(storage, result.sessionId))?.messages[1].content).toBe("Attention weights token pairs.")
   })
 
   it("streams both stages and returns the persisted assistant message", async () => {

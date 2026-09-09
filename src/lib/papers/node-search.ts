@@ -1,4 +1,7 @@
 import { searchArxiv } from "./arxiv"
+import { searchS2 } from "./s2"
+import { searchPubmed } from "./pubmed"
+import { getServerS2Key } from "../server/paper-source-settings"
 import {
   searchOpenAlex,
   searchTopCitedWorks,
@@ -38,11 +41,62 @@ export function nodeSearchFn(): SearchFn {
       if (effectiveSource === "arxiv") {
         // SP2.1 freshness: opts.fromDate threads to each adapter's own date
         // mechanism (arXiv submittedDate range / OpenAlex from_publication_date).
-        return await searchArxiv({ query, limit, fromDate: opts?.fromDate })
+        return await searchArxiv({ query, limit, fromDate: opts?.fromDate, sort: opts?.sort })
       }
-      return await searchOpenAlex({ query, limit, fromDate: opts?.fromDate }, { mailto, apiKey })
+      return await searchOpenAlex({ query, limit, fromDate: opts?.fromDate, sort: opts?.sort }, { mailto, apiKey })
     } catch (err) {
       console.warn(`[node-search] search failed for source=${source} query="${query}":`, err)
+      return []
+    }
+  }
+}
+
+/** Feed v2: actual source routing, native date bounds, and errors propagated to
+ * the pipeline's per-query diagnostics. Legacy Spark routing above is unchanged. */
+export function nodeFeedSearchFn(): SearchFn {
+  return async (source, query, limit, opts) => {
+    switch (source) {
+      case "arxiv": return searchArxiv({ query, limit, fromDate: opts?.fromDate, sort: opts?.sort })
+      case "openalex": return searchOpenAlex(
+        { query, limit, fromDate: opts?.fromDate, sort: opts?.sort },
+        { mailto: process.env.OPENALEX_MAILTO, apiKey: process.env.OPENALEX_API_KEY },
+      )
+      case "s2": return searchS2({ query, limit, fromDate: opts?.fromDate }, { apiKey: await getServerS2Key() })
+      case "pubmed": return searchPubmed({ query, limit, fromDate: opts?.fromDate }, { apiKey: process.env.NCBI_API_KEY })
+      default: throw new Error("Unsupported paper source")
+    }
+  }
+}
+
+/** Direct multi-source search for the user-driven Search page. Unlike the
+ * feed-oriented nodeSearchFn above, this preserves the selected source instead
+ * of remapping Semantic Scholar and PubMed through OpenAlex. Individual source
+ * failures contribute no papers so one rate-limited index cannot erase results
+ * returned by the others. */
+export function nodeResearchSearchFn(options: { reportErrors?: boolean } = {}): SearchFn {
+  const openAlexMailto = process.env.OPENALEX_MAILTO
+  const openAlexApiKey = process.env.OPENALEX_API_KEY
+  const ncbiApiKey = process.env.NCBI_API_KEY
+
+  return async (source, query, limit, opts) => {
+    try {
+      switch (source) {
+        case "arxiv":
+          return await searchArxiv({ query, limit, fromDate: opts?.fromDate, sort: opts?.sort })
+        case "openalex":
+          return await searchOpenAlex(
+            { query, limit, fromDate: opts?.fromDate, sort: opts?.sort },
+            { mailto: openAlexMailto, apiKey: openAlexApiKey },
+          )
+        case "s2":
+          return await searchS2({ query, limit }, { apiKey: await getServerS2Key() })
+        case "pubmed":
+          return await searchPubmed({ query, limit }, { apiKey: ncbiApiKey })
+      }
+      return []
+    } catch (err) {
+      console.warn(`[research-search] source failed for source=${source}:`, err)
+      if (options.reportErrors) throw err
       return []
     }
   }

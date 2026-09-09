@@ -1,0 +1,18 @@
+SciSpark's src/lib/review/scholarqa.ts is a TypeScript adaptation of
+MultiStepQAPipeline from Ai2 ScholarQA, Copyright Allen Institute for AI.
+Licensed under the Apache License, Version 2.0. See LICENSE in this directory.
+
+Upstream: https://github.com/allenai/ai2-scholarqa-lib
+Revision: a96232870bdb0bd763f0131320e8377c6deb575e
+File: api/scholarqa/rag/multi_step_qa_pipeline.py
+
+Modified by SciSpark, September 2026: storage-free host callback, typed schemas,
+serial calls, explicit section yields, exact quote validation, nonnegative and
+bounded quote indices, reference checks, and evidence-only replacement prompts.
+The upstream quote-selection, clustering and iterative-synthesis algorithm is
+retained. No upstream retrieval service, default model, fallback model, hosted
+index, or unmetered model client is included. Python is used only by the optional
+offline feasibility probe, not required for this TypeScript implementation.
+
+This component is under evaluation. Offline fixture success is not a scientific
+quality or live-provider acceptance claim.

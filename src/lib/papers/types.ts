@@ -27,6 +27,9 @@ export interface PaperRecord {
   htmlUrl?: string
   fields: string[] // topical field labels, source vocabulary
   source: SourceId // which adapter produced this record
+  /** Verbatim publication types from the source, not AI importance labels. */
+  publicationTypes?: string[]
+  isRetracted?: boolean
 }
 
 export class PaperSourceError extends Error {
@@ -130,5 +133,7 @@ export function mergeRecords(a: PaperRecord, b: PaperRecord): PaperRecord {
     htmlUrl: preferDefined(a.htmlUrl, b.htmlUrl),
     fields: unionFields(a.fields, b.fields),
     source: a.source,
+    publicationTypes: [...new Set([...(a.publicationTypes ?? []), ...(b.publicationTypes ?? [])])],
+    isRetracted: a.isRetracted || b.isRetracted || undefined,
   }
 }

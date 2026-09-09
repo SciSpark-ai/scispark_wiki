@@ -17,7 +17,7 @@ export type Chattiness = "off" | "low" | "medium" | "high"
 export interface CompanionSettings {
   chattiness: Chattiness
   /** User-chosen companion name (M7 addendum). Falls back to COMPANION.name
-   * (the default "Ember") when absent, blank, or over MAX_NAME_LENGTH. */
+   * (the default "Sparky") when absent, blank, or over MAX_NAME_LENGTH. */
   companionName: string
 }
 

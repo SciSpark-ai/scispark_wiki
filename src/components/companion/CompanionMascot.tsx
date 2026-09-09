@@ -6,6 +6,7 @@ import { useCompanionStore } from "@/stores/companion-store";
 import { getOpenVault } from "@/lib/vault/get-vault";
 import { logEvent } from "@/lib/events/log";
 import { CompanionBubble } from "./CompanionBubble";
+import { FeedbackQuestion } from "./FeedbackQuestion";
 
 /** Fire-and-forget Tier-1 companion event. Never blocks or throws into render —
  * logEvent already swallows its own storage errors. */
@@ -49,14 +50,17 @@ function usePrefersReducedMotion(): boolean {
  */
 export function CompanionMascot() {
   const current = useCompanionStore((s) => s.current);
+  const question = useCompanionStore((s) => s.feedbackQuestions[0]);
   const dismiss = useCompanionStore((s) => s.dismiss);
+  const streaming = useCompanionStore((s) => s.streamId !== null);
   const [bubbleOpen, setBubbleOpen] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
+  const hasCurrent = current !== null;
 
   // A fresh utterance always opens the bubble; dismissing/clearing closes it.
   useEffect(() => {
-    setBubbleOpen(current !== null);
-  }, [current]);
+    setBubbleOpen(hasCurrent);
+  }, [hasCurrent]);
 
   function handleMascotClick() {
     if (!current) return; // idle: clicking does nothing, per spec
@@ -86,14 +90,15 @@ export function CompanionMascot() {
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="relative">
-        {bubbleOpen && current ? (
-          <CompanionBubble utterance={current} onDismiss={handleDismiss} onAction={handleAction} />
+        {question ? <FeedbackQuestion key={question.paperKey} question={question} /> : bubbleOpen && current ? (
+          <CompanionBubble utterance={current} streaming={streaming} onDismiss={handleDismiss} onAction={handleAction} />
         ) : null}
 
         <motion.button
           type="button"
           onClick={handleMascotClick}
           aria-label={current ? "Toggle companion message" : "Companion"}
+          data-companion-toggle
           className="flex h-12 w-12 items-center justify-center rounded-pill bg-orange text-white shadow-md cursor-pointer"
           animate={
             reducedMotion

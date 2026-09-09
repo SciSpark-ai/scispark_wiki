@@ -71,6 +71,63 @@ export function completeWindows(now: Date): { recent: DateWindow; prior: DateWin
   }
 }
 
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+interface DateParts {
+  year: number
+  month: number
+  day: number
+}
+
+function dateParts(iso: string): DateParts | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(`${iso}T00:00:00.000Z`)
+  if (Number.isNaN(date.getTime())) return null
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day) return null
+  return { year, month, day }
+}
+
+/** Compact, deterministic UTC label for an inclusive date window. */
+export function formatDateWindow(window: DateWindow): string | null {
+  const from = dateParts(window.fromDate)
+  const to = dateParts(window.toDate)
+  if (!from || !to) return null
+
+  const fromMonth = MONTH_NAMES[from.month - 1]
+  const toMonth = MONTH_NAMES[to.month - 1]
+  if (from.year === to.year && from.month === to.month) {
+    return `${fromMonth} ${from.day}–${to.day}, ${to.year}`
+  }
+  if (from.year === to.year) {
+    return `${fromMonth} ${from.day}–${toMonth} ${to.day}, ${to.year}`
+  }
+  return `${fromMonth} ${from.day}, ${from.year}–${toMonth} ${to.day}, ${to.year}`
+}
+
+/**
+ * Reconstructs the exact two comparison ranges used by a cached board. Older
+ * v4 caches did not persist the ranges, but `generatedAt` plus the complete
+ * ISO-week rule determines them exactly.
+ */
+export function trendingWindowLabels(generatedAt: string): { recent: string; prior: string } {
+  const at = new Date(generatedAt)
+  if (Number.isNaN(at.getTime())) {
+    return {
+      recent: "the latest complete two-week period",
+      prior: "the preceding complete two-week period",
+    }
+  }
+  const windows = completeWindows(at)
+  return {
+    recent: formatDateWindow(windows.recent) ?? "the latest complete two-week period",
+    prior: formatDateWindow(windows.prior) ?? "the preceding complete two-week period",
+  }
+}
+
 function toIsoDate(d: Date): string {
   return d.toISOString().slice(0, 10)
 }

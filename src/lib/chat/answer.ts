@@ -150,6 +150,7 @@ export const chatAnswerSkill: SkillDefinition<ChatAnswerInput, ChatAnswer> = def
         maxTokens: 4096,
       },
       ChatAnswerSchema,
+      { streamField: "answer" },
     )
   },
 })

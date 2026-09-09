@@ -17,6 +17,7 @@ const settingsWithKeys = (overrides?: Partial<LLMSettings>): LLMSettings => ({
 })
 
 const ANSWERS = {
+  name: "Ada",
   role: "PhD student in computational biology",
   fields: "computational biology",
   topics: "protein folding",

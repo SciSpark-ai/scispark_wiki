@@ -1,4 +1,5 @@
 import type { LLMProvider, LLMRequest, LLMResult } from "../types"
+import { readSseData } from "../sse"
 import {
   LLMAuthError, LLMBadRequestError, LLMRateLimitError, LLMTransientError,
 } from "../types"
@@ -46,7 +47,7 @@ export class OpenAICompatProvider implements LLMProvider {
     try {
       return await this.send(model, req, "native")
     } catch (e) {
-      if (e instanceof LLMBadRequestError && isStructuredOutputRejection(e.message)) {
+      if (!req.singleAttempt && e instanceof LLMBadRequestError && isStructuredOutputRejection(e.message)) {
         fallbackStats.promptJsonFallbacks++
         console.warn(
           `[openai-compat] structured-output fallback fired (provider=${this.id}, model=${model}): ${e.message}`,
@@ -67,6 +68,7 @@ export class OpenAICompatProvider implements LLMProvider {
     req: LLMRequest,
     schemaMode: "none" | "native" | "prompt",
   ): Promise<LLMResult> {
+    req.onText?.("")
     const messages =
       schemaMode === "prompt" && req.jsonSchema
         ? [...req.messages, { role: "user" as const, content: buildPromptJsonInstruction(req.jsonSchema) }]
@@ -75,7 +77,9 @@ export class OpenAICompatProvider implements LLMProvider {
     const body: Record<string, unknown> = {
       model,
       messages,
+      ...(req.onText ? { stream: true, stream_options: { include_usage: true } } : {}),
       ...(req.maxTokens ? { max_completion_tokens: req.maxTokens } : {}),
+      ...qwenGenerationControls(model, req),
       ...(schemaMode === "native" && req.jsonSchema
         ? {
             response_format: {
@@ -147,7 +151,7 @@ export class OpenAICompatProvider implements LLMProvider {
 
       let data: ChatCompletionResponse
       try {
-        data = (await res.json()) as ChatCompletionResponse
+        data = req.onText ? await readChatStream(res, req.onText) : (await res.json()) as ChatCompletionResponse
       } catch (e) {
         // Only remap the timeout-abort case; a genuine malformed-body error
         // keeps its original shape/behavior (unchanged from before this guard).
@@ -161,6 +165,11 @@ export class OpenAICompatProvider implements LLMProvider {
         usage: {
           inputTokens: data.usage?.prompt_tokens ?? 0,
           outputTokens: data.usage?.completion_tokens ?? 0,
+          ...(data.usage?.prompt_tokens_details?.cached_tokens != null
+            ? { cachedInputTokens: data.usage.prompt_tokens_details.cached_tokens } : {}),
+          ...(data.usage?.completion_tokens_details?.reasoning_tokens != null
+            ? { reasoningTokens: data.usage.completion_tokens_details.reasoning_tokens } : {}),
+          ...(data.usage?.prompt_tokens == null || data.usage?.completion_tokens == null ? { reported: false } : {}),
         },
         model: data.model ?? model,
         provider: this.id,
@@ -170,6 +179,39 @@ export class OpenAICompatProvider implements LLMProvider {
       clearTimeout(timer)
     }
   }
+}
+
+/**
+ * Qwen3 hybrid-thinking models default to xhigh thinking. Qwen documents both
+ * a chat-template switch and mode-specific sampling values, plus
+ * `reasoning_effort` for bounded thinking. Only explicit Qwen requests receive
+ * these extra fields so other OpenAI-compatible payloads remain unchanged.
+ */
+function qwenGenerationControls(model: string, req: LLMRequest): Record<string, unknown> {
+  if (!model.toLowerCase().includes("qwen")) return {}
+
+  if (req.thinking === "disabled") {
+    return {
+      temperature: 0.7,
+      top_p: 0.8,
+      top_k: 20,
+      presence_penalty: 1.5,
+      chat_template_kwargs: { enable_thinking: false },
+    }
+  }
+
+  if (req.thinking === "enabled") {
+    return {
+      temperature: 1,
+      top_p: 0.95,
+      top_k: 20,
+      presence_penalty: 0,
+      chat_template_kwargs: { enable_thinking: true },
+      ...(req.reasoningEffort ? { reasoning_effort: req.reasoningEffort } : {}),
+    }
+  }
+
+  return {}
 }
 
 // Matches the GMI Bedrock-passthrough rejection of the whole structured-output
@@ -218,7 +260,41 @@ interface ChatCompletionResponse {
     message?: { content?: string }
     finish_reason?: string
   }>
-  usage?: { prompt_tokens?: number; completion_tokens?: number }
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+    prompt_tokens_details?: { cached_tokens?: number }
+    completion_tokens_details?: { reasoning_tokens?: number }
+  }
+}
+
+async function readChatStream(res: Response, onText: (text: string) => void): Promise<ChatCompletionResponse> {
+  let content = ""
+  let finished = false
+  let done = false
+  const result: ChatCompletionResponse = {}
+  for await (const data of readSseData(res)) {
+    if (data === "[DONE]") { done = true; break }
+    const chunk = JSON.parse(data) as Omit<ChatCompletionResponse, "choices"> & {
+      error?: { message?: string }
+      choices?: Array<{ index?: number; delta?: { content?: string; refusal?: string }; finish_reason?: string }>
+    }
+    if (chunk.error) throw new LLMTransientError(chunk.error.message ?? "Provider stream failed")
+    const choice = chunk.choices?.find((entry) => (entry.index ?? 0) === 0)
+    if (choice?.delta?.refusal) throw new LLMBadRequestError("Provider declined the request")
+    if (typeof choice?.delta?.content === "string") {
+      content += choice.delta.content
+      onText(content)
+    }
+    if (choice?.finish_reason) {
+      finished = true
+      result.choices = [{ message: { content }, finish_reason: choice.finish_reason }]
+    }
+    if (chunk.model) result.model = chunk.model
+    if (chunk.usage) result.usage = chunk.usage
+  }
+  if (!finished || !done) throw new LLMTransientError("Provider stream interrupted before completion")
+  return result
 }
 
 // Parses JSON from a model response. The native structured-output path returns

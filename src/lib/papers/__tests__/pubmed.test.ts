@@ -38,6 +38,16 @@ function realFixtureFetch() {
 }
 
 describe("searchPubmed", () => {
+  it("preserves interleaved symbols, qualifiers and reading order in title and abstract", async () => {
+    const xml = `<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>123</PMID><Article>
+      <ArticleTitle>Decoding <i>speech</i> from EEG.</ArticleTitle><Abstract>
+      <AbstractText Label="RESULTS">Linear models yielded the highest <i>r</i> relative to non-linear models. After converting <i>r</i> values to <i>z</i>-scores, differences were <b>not</b> significant (<i>p</i> &gt; 0.05).</AbstractText>
+      <AbstractText Label="LIMITATIONS">The result <i>may</i> reflect noise. Variance uses r<sup>2</sup>; a MathML fraction is <mml:math><mml:mfrac><mml:mi>a</mml:mi><mml:mi>b</mml:mi></mml:mfrac></mml:math>.</AbstractText>
+      </Abstract></Article></MedlineCitation></PubmedArticle></PubmedArticleSet>`
+    const [paper] = await searchPubmed({ query: "fixture" }, { fetchFn: sequencedFetch([fakeEsearch(["123"]), fakeEfetch(xml)]) })
+    expect(paper.title).toBe("Decoding speech from EEG.")
+    expect(paper.abstract).toBe("RESULTS: Linear models yielded the highest r relative to non-linear models. After converting r values to z-scores, differences were not significant (p > 0.05).\n\nLIMITATIONS: The result may reflect noise. Variance uses r^(2); a MathML fraction is (a)/(b).")
+  })
   it("returns [] and does not call efetch when esearch's idlist is empty", async () => {
     const fetchFn = sequencedFetch([fakeEsearch([])])
 

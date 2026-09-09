@@ -1,4 +1,5 @@
 import type { ReadingCompanionInput, ReadingAnswer } from "../skills/reading-companion"
+import { readNdjson } from "../server/ndjson"
 
 /**
  * Browser-side caller for the reading-companion ask skill route (M11 Task 9).
@@ -28,14 +29,20 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
 export async function askRemote(
   input: ReadingCompanionInput,
   fetchFn: typeof fetch = fetch,
+  onText?: (text: string) => void,
 ): Promise<ReadingAnswer> {
   const res = await fetchFn("/api/skills/ask", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...(onText ? { accept: "application/x-ndjson" } : {}) },
     body: JSON.stringify(input),
   })
   if (!res.ok) {
     throw new Error(await readErrorMessage(res, `ask failed (${res.status})`))
+  }
+  if (res.headers.get("content-type")?.includes("application/x-ndjson")) {
+    return readNdjson(res, (event) => {
+      if (event.type === "text" && typeof event.text === "string") onText?.(event.text)
+    }) as Promise<ReadingAnswer>
   }
   const body = (await res.json()) as { result: ReadingAnswer }
   return body.result

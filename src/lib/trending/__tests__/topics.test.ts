@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import {
   completeWindows,
+  trendingWindowLabels,
   rankHeatingTopics,
   selectTopicCandidates,
   MIN_RECENT_COUNT,
@@ -22,6 +23,22 @@ describe("completeWindows", () => {
     const a = completeWindows(new Date("2026-07-20T00:00:00Z")) // Monday
     const b = completeWindows(new Date("2026-07-26T23:59:59Z")) // Sunday
     expect(a).toEqual(b)
+  })
+})
+
+describe("trendingWindowLabels", () => {
+  it("turns the generated timestamp into the exact recent and prior date ranges", () => {
+    expect(trendingWindowLabels("2026-08-29T21:51:44.393Z")).toEqual({
+      recent: "Aug 10–23, 2026",
+      prior: "Jul 27–Aug 9, 2026",
+    })
+  })
+
+  it("falls back honestly when the cached timestamp is malformed", () => {
+    expect(trendingWindowLabels("not-a-date")).toEqual({
+      recent: "the latest complete two-week period",
+      prior: "the preceding complete two-week period",
+    })
   })
 })
 

@@ -4,10 +4,12 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { getOpenVault } from "@/lib/vault/get-vault"
-import { isOnboarded, seedUserModel, type OnboardingAnswers } from "@/lib/usermodel/pages"
-import { logEvent } from "@/lib/events/log"
+import { isOnboarded, type OnboardingAnswers } from "@/lib/usermodel/pages"
+import { createUserProfileRemote } from "@/lib/usermodel/profile-client"
 import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow"
 import type { VaultStorage } from "@/lib/vault/storage"
+import { useUserStore } from "@/stores/user-store"
+import styles from "./onboarding.module.css"
 
 type PageState =
   | { status: "checking" }
@@ -48,12 +50,13 @@ export default function OnboardingPage() {
     setSubmitting(true)
     setSubmitError(null)
     try {
-      await seedUserModel(storage, answers)
-      await logEvent(storage, { type: "onboarding_completed" })
-      router.push("/")
+      await createUserProfileRemote(answers)
+      useUserStore.getState().setUser({ name: answers.name })
+      useUserStore.getState().setOnboardingComplete(true)
+      router.push("/setup")
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      if (message === "user model already seeded") {
+      if (message.includes("already") && message.includes("profile")) {
         setState({ status: "already-onboarded" })
         setSubmitting(false)
       } else {
@@ -64,7 +67,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-7">
+    <div className={`${styles.page} bg-page-warm px-3 sm:px-8`}>
       {state.status === "checking" && <p className="text-[14px] text-muted-text">Loading…</p>}
 
       {state.status === "error" && <p className="text-[13px] text-red-600">Error: {state.message}</p>}
@@ -79,14 +82,18 @@ export default function OnboardingPage() {
       )}
 
       {state.status === "ready" && (
-        <div className="w-full">
-          <div className="text-center mb-8">
-            <h2 className="font-heading text-[15px] text-muted-text tracking-heading-card">
-              Let&apos;s set up your research profile
-            </h2>
+        <div className={styles.content}>
+          <div className={`${styles.intro} text-center`}>
+            <p className="text-[13px] font-medium text-orange">Welcome to SciSpark</p>
+            <h1 className={`${styles.title} font-heading text-[28px] leading-tight tracking-heading text-espresso sm:text-[38px]`}>
+              Let’s find the work worth your attention.
+            </h1>
+            <p className={`${styles.description} text-[14px] leading-relaxed text-muted-text`}>
+              Sparky will listen for your fields, current questions, and the kinds of papers you want to see.
+            </p>
           </div>
           <OnboardingFlow onSubmit={handleSubmit} submitting={submitting} />
-          {submitError && <p className="mt-4 text-center text-[13px] text-red-600">Error: {submitError}</p>}
+          {submitError && <p role="alert" className="max-h-20 shrink-0 overflow-y-auto text-center text-[13px] text-red-600">Error: {submitError}</p>}
         </div>
       )}
     </div>

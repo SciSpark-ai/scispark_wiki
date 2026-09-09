@@ -13,6 +13,8 @@ import { applyChangesetRemote } from "../../vault/changeset-client"
 import * as askRoute from "../../../app/api/skills/ask/route"
 import * as companionRoute from "../../../app/api/skills/companion/route"
 import * as changesetRoute from "../../../app/api/vault/changeset/route"
+import { askRemote } from "../../reader/client"
+import { companionUtteranceRemote } from "../../companion/client"
 
 // ---------------------------------------------------------------------------
 // Route-in-process fetch, mirroring src/lib/vault/__tests__/remote-storage.test.ts's
@@ -68,6 +70,19 @@ describe("reading-companion ask + companion utterance skill routes", () => {
       userQuestion: "Why does this help?",
       companionName: "Ember",
     }
+
+    it("streams readable answer snapshots through the real route and browser client", async () => {
+      const snapshots: string[] = []
+      setSkillTestOverrides({ providerOverride: { strong: { id: "anthropic", async complete(_model, req) {
+        req.onText?.('{"answer":"A sparse')
+        req.onText?.('{"answer":"A sparse gate","citedPageIds":[]}')
+        return structured({ answer: "A sparse gate", citedPageIds: [] })
+      } } } })
+      const routeFetch: typeof fetch = async (_url, init) => askRoute.POST(new Request("http://local/ask", init))
+      const answer = await askRemote(ASK_INPUT, routeFetch, (s) => snapshots.push(s))
+      expect(snapshots).toEqual(["A sparse", "A sparse gate"])
+      expect(answer).toEqual({ answer: "A sparse gate", citedPageIds: [] })
+    })
 
     it("returns the reading-companion skill's answer output", async () => {
       const answer: ReadingAnswer = { answer: "It routes tokens through a sparse gate.", citedPageIds: [] }
@@ -130,6 +145,17 @@ describe("reading-companion ask + companion utterance skill routes", () => {
       expect(result!.text).toBe(utterance.utterance)
       expect(result!.action).toEqual({ label: "Review inbox", href: "/wiki/inbox" })
       expect(provider.calls).toHaveLength(1)
+      // Reuse the eligible trigger to exercise the opt-in streaming transport.
+      setSkillTestOverrides({ providerOverride: { fast: { id: "anthropic", async complete(_m, req) {
+        req.onText?.('{"utterance":"You have')
+        return structured(utterance)
+      } } } })
+      const drafts: CompanionUtterance[] = []
+      const routeFetch: typeof fetch = async (_url, init) => companionRoute.POST(new Request("http://local/companion", init))
+      const streamed = await companionUtteranceRemote({ route: "/papers", sessionShownCount: 0, lastShownTs: {} }, routeFetch, (draft) => drafts.push(draft))
+      expect(drafts[0]).toMatchObject({ text: "You have", action: null, trigger: "review-pending" })
+      expect(streamed?.text).toBe(utterance.utterance)
+      expect(streamed?.action?.href).toBe("/wiki/inbox")
     })
 
     it("no trigger eligible: a scripted null round-trips as JSON null, not a missing field", async () => {

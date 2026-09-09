@@ -49,6 +49,8 @@ function isProtectedPath(path: string): boolean {
 function isChangesetAuditPath(path: string): boolean {
   const resolved = resolve(SENTINEL_ROOT, path).toLowerCase()
   return resolved === CHANGESETS_ABS || resolved.startsWith(`${CHANGESETS_ABS}/`)
+    || [".scispark/reviews", ".scispark/locks"].some((p) => resolved === resolve(SENTINEL_ROOT, p).toLowerCase() || resolved.startsWith(`${resolve(SENTINEL_ROOT, p).toLowerCase()}/`))
+    || resolved === resolve(SENTINEL_ROOT, ".scispark/usage/review-attempts.json").toLowerCase()
 }
 
 function jsonResponse(status: number, body: unknown): Response {
