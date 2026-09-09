@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { DEFAULT_RECOMMENDATION_PREFERENCES as prefs, type Assessment, type FeedbackEntry } from "../contract"
 import { candidateText, interleaveCandidates, learnTopicAdjustments, publicationDate, recencyScore, retrieveRecommendationCandidates, scoreCandidate, selectRecommendations, type Candidate } from "../engine"
-import type { PaperRecord } from "../../papers/types"
+import { PaperSourceError, type PaperRecord } from "../../papers/types"
 
 const now = new Date("2026-09-04T00:00:00Z")
 const make = (title = "Auditory attention study", extra: Partial<PaperRecord> = {}): Candidate => ({ paper: { ids: {}, title, abstract: "Auditory attention measured using EEG in children.", authors: [], fields: [], source: "pubmed", date: "2026-09-04", ...extra }, sources: ["pubmed"], queries: ["auditory attention"] })
@@ -45,6 +45,13 @@ describe("reusable recommendation scoring", () => {
     expect(interleaveCandidates(groups, new Set(["pmid:123"])).map((item) => item.paper.title)).toEqual(["C", "B"])
     expect(interleaveCandidates([[make("same", { ids: { doi: "10/a" } })], [make("same", { ids: { doi: "10/b" } })]], new Set())).toHaveLength(2)
   })
+  it("skips absent identifier aliases returned by source adapters without losing valid exclusions", () => {
+    const groups = [[make("PubMed result", { ids: { pmid: "123", doi: undefined, arxiv: undefined } }),
+      make("Title-only result", { ids: { doi: undefined, s2: "" } })]]
+    expect(interleaveCandidates(groups, new Set()).map(({ paper }) => paper.title)).toEqual(["PubMed result", "Title-only result"])
+    expect(interleaveCandidates(groups, new Set(["pmid:123"])).map(({ paper }) => paper.title)).toEqual(["Title-only result"])
+    expect(interleaveCandidates(groups, new Set(["doi:undefined", "s2:"]))).toHaveLength(2)
+  })
   it("makes diversity observable without selecting irrelevant items", () => {
     const a = scoreCandidate(make("Auditory attention EEG"), assessment(), context, [], now)!
     const b = scoreCandidate(make("Auditory attention EEG replication"), assessment(), context, [], now)!
@@ -70,9 +77,22 @@ describe("reusable recommendation scoring", () => {
     expect(JSON.stringify(output)).not.toContain("secret-provider-key")
   })
   it("returns from a stalled source within its deadline", async () => {
-    const output = await retrieveRecommendationCandidates({ queries: [{ source: "s2", query: "x", rationale: "core" }] }, () => new Promise(() => {}), new Set(), now, { timeoutMs: 5 })
+    const signals: AbortSignal[] = []
+    const output = await retrieveRecommendationCandidates({ queries: [{ source: "s2", query: "x", rationale: "core" }] }, (_source, _query, _limit, opts) => {
+      signals.push(opts!.signal!)
+      return new Promise(() => {})
+    }, new Set(), now, { timeoutMs: 5 })
     expect(output.candidates).toEqual([])
-    expect(output.retrieval.every((entry) => entry.error)).toBe(true)
+    expect(output.retrieval.every((entry) => entry.error === "Search timed out; some papers could not be retrieved.")).toBe(true)
+    expect(signals).toHaveLength(2)
+    expect(signals.every((signal) => signal.aborted)).toBe(true)
+  })
+  it.each([429, 403, 502])("reports safe source status %s without secrets or query URLs", async (status) => {
+    const output = await retrieveRecommendationCandidates({ queries: [{ source: "s2", query: "x", rationale: "core" }] }, async () => {
+      throw new PaperSourceError("https://example.test?api_key=secret-key", status)
+    }, new Set(), now)
+    expect(output.retrieval[0].error).toMatch(status === 429 ? /Rate limited/ : status === 403 ? /Access denied/ : /Search failed/)
+    expect(JSON.stringify(output)).not.toContain("secret-key")
   })
 })
 

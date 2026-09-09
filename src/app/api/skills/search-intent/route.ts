@@ -6,7 +6,7 @@ import { searchIntentSkill, type SearchSort } from "@/lib/skills/search-intent"
 export interface SearchIntentRouteResult {
   /** Ranking the search adapters should apply. Always defined — see below. */
   sort: SearchSort
-  costUsd: number
+  costUsd: number | null
 }
 
 /**

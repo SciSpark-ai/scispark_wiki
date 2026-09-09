@@ -61,8 +61,8 @@ export function nodeFeedSearchFn(): SearchFn {
         { query, limit, fromDate: opts?.fromDate, sort: opts?.sort },
         { mailto: process.env.OPENALEX_MAILTO, apiKey: process.env.OPENALEX_API_KEY },
       )
-      case "s2": return searchS2({ query, limit, fromDate: opts?.fromDate }, { apiKey: await getServerS2Key() })
-      case "pubmed": return searchPubmed({ query, limit, fromDate: opts?.fromDate }, { apiKey: process.env.NCBI_API_KEY })
+      case "s2": return searchS2({ query, limit, fromDate: opts?.fromDate }, { apiKey: await getServerS2Key(), signal: opts?.signal })
+      case "pubmed": return searchPubmed({ query, limit, fromDate: opts?.fromDate }, { apiKey: process.env.NCBI_API_KEY, signal: opts?.signal })
       default: throw new Error("Unsupported paper source")
     }
   }
@@ -89,7 +89,7 @@ export function nodeResearchSearchFn(options: { reportErrors?: boolean } = {}): 
             { mailto: openAlexMailto, apiKey: openAlexApiKey },
           )
         case "s2":
-          return await searchS2({ query, limit }, { apiKey: await getServerS2Key() })
+          return await searchS2({ query, limit }, { apiKey: await getServerS2Key(), signal: opts?.signal })
         case "pubmed":
           return await searchPubmed({ query, limit }, { apiKey: ncbiApiKey })
       }
@@ -147,7 +147,7 @@ export function nodeTopWorksFn(): TopWorksFn {
  * Query shape shared by the group_by-based node functions (nodeTopicGroupFn,
  * nodeTopicFieldGroupFn): a query plus a date range.
  */
-export type TopicGroupFn = (q: { query: string; fromDate: string; toDate: string }) => Promise<GroupEntry[]>
+export type TopicGroupFn = (q: { query: string; fromDate: string; toDate: string; fieldId?: string; subfieldIds?: string[] }) => Promise<GroupEntry[]>
 
 /**
  * Node TopicGroupFn for trending's "heating topics" leaderboard (SP4): calls

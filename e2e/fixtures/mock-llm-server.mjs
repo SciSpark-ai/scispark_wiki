@@ -32,10 +32,32 @@ const server = createServer((request, response) => {
       const prompt = Array.isArray(body.messages)
         ? body.messages.map((message) => String(message?.content ?? "")).join("\n")
         : ""
-      const output = reviewResponse(body.messages) ?? (prompt.includes("You select which pages")
+      const answers = (body.messages ?? []).filter((message) => message.role === "user").map((message) => message.content)
+      const onboardingDraft = {
+        name: answers[0] ?? "", role: answers.length > 1 ? "Postdoc" : "",
+        fields: answers.length > 1 ? "Auditory neuroscience" : "",
+        topics: answers.length > 2 ? "Language development and hearing" : "",
+        feedPrefs: answers.length > 3 ? answers[3] : "",
+        diversity: answers.length > 3 ? "exploratory" : null,
+        diversityNote: answers.length > 3 ? "Mostly hearing research, with nearby computational methods. Variety is a preference, not a fixed quota." : "",
+        learnFromFeedback: answers.length > 4 ? !/no|don.t|do not/i.test(answers[4]) : null,
+      }
+      const onboardingReplies = [
+        ["What research are you working on, Ada?", "research"],
+        ["What questions or methods would you like to follow?", "research"],
+        ["Should I stay close to your research, or bring in ideas from nearby fields?", "diversity"],
+        ["I’ll include nearby methods. Should I remember your thumbs-up and thumbs-down feedback for future recommendations?", "learning"],
+        ["Check the profile below and change anything I missed.", "review"],
+      ]
+      const reply = onboardingReplies[Math.min(Math.max(0, answers.length - 1), 4)]
+      const output = reviewResponse(body.messages) ?? (prompt.includes("Help this researcher shape a useful paper feed")
+        ? { message: reply[0], draft: onboardingDraft, question: reply[1] }
+        : prompt.includes("Connection test: reply with the word ready")
+        ? { message: "ready" }
+        : prompt.includes("You select which pages")
         ? { pageIds: ["e2e-grounding-paper"] }
         : prompt.includes("exactly ONE short")
-          ? { utterance: "Your research space is ready." }
+          ? { utterance: "A possible duplicate needs your review." }
         : {
             answer: "The disposable paper supports this project-scoped answer.",
             citedPageIds: ["wiki/papers/e2e-grounding-paper"],

@@ -6,7 +6,7 @@ export interface SpendBar {
   w: number
   h: number
   date: string
-  totalUsd: number
+  totalUsd: number | null
 }
 
 /**
@@ -18,21 +18,21 @@ export interface SpendBar {
  * unit-tested (M8/M10 pattern).
  */
 export function spendBarLayout(
-  days: Array<{ date: string; totalUsd: number }>,
+  days: Array<{ date: string; totalUsd: number | null }>,
   opts: { width: number; height: number; gap?: number },
 ): SpendBar[] {
   if (days.length === 0) return []
   const gap = opts.gap ?? 2
   const slot = opts.width / days.length
   const w = Math.max(0, slot - gap)
-  const maxUsd = Math.max(0, ...days.map((d) => d.totalUsd))
+  const maxUsd = Math.max(0, ...days.map((d) => d.totalUsd ?? 0))
   // Tallest bar fills `height`; the tallest is the actual max spend (not a
   // floored-to-1 count like trending, since USD maxima are typically < $1).
   // When every day is $0 the denominator is irrelevant — all bars are height 0
   // — so any positive fallback avoids a divide-by-zero → NaN.
   const y = scaleLinear().domain([0, maxUsd > 0 ? maxUsd : 1]).range([opts.height, 0])
   return days.map((d, i) => {
-    const top = y(d.totalUsd)
+    const top = y(d.totalUsd ?? 0)
     return { x: i * slot, y: top, w, h: opts.height - top, date: d.date, totalUsd: d.totalUsd }
   })
 }

@@ -24,6 +24,24 @@ const BASE_PROPS: PaperActionsProps = {
 }
 
 describe("PaperActions — Read full text (C1)", () => {
+  it("keeps feedback in the action row while status messages remain below it", () => {
+    const container = document.createElement("div")
+    container.innerHTML = renderToStaticMarkup(
+      <PaperActions
+        {...BASE_PROPS}
+        fullTextKnownFalse
+        feedback={<button aria-label="More like this">Thumbs up</button>}
+      />,
+    )
+    const row = container.querySelector('[role="group"][aria-label="Paper actions"]')!
+    const feedback = row.querySelector('[aria-label="More like this"]')!
+    expect(row.textContent).toContain("Generate digest")
+    expect(row.textContent).toContain("Read full text")
+    expect(feedback.parentElement?.classList.contains("ml-auto")).toBe(true)
+    expect(row.textContent).not.toContain("No open-access full text")
+    expect(container.textContent).toContain("No open-access full text")
+  })
+
   it("leaves Read full text enabled and shows no note when full-text availability is unknown", () => {
     const html = renderToStaticMarkup(<PaperActions {...BASE_PROPS} fullTextKnownFalse={false} />)
     const readButton = html.match(/<button[^>]*>Read full text<\/button>/)?.[0] ?? ""

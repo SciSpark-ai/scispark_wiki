@@ -9,7 +9,7 @@ import {
 
 describe("SESSION_BUDGET", () => {
   it("has the exact per-chattiness intervention caps", () => {
-    expect(SESSION_BUDGET).toEqual({ off: 0, low: 2, medium: 5, high: 10 })
+    expect(SESSION_BUDGET).toEqual({ off: 0, low: 1, medium: 2, high: 4 })
   })
 })
 

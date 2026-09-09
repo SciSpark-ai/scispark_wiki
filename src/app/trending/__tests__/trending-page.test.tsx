@@ -168,7 +168,7 @@ describe("TrendingPage — ready board (SP4 Task 9)", () => {
     // OverviewStrip figures
     expect(container.textContent).toContain("128")
     expect(container.textContent).toContain("Sparse Attention")
-    expect(container.textContent).toContain("relevant to you")
+    expect(container.textContent).toContain("1 topic matches your interests")
     expect(container.textContent).toContain("Jul 6–19, 2026")
     expect(container.textContent).not.toContain("this window")
 
@@ -182,13 +182,17 @@ describe("TrendingPage — ready board (SP4 Task 9)", () => {
     cleanup()
   })
 
-  it("shows anchor-discipline chips in the header that open the settings modal's trending section", async () => {
+  it("separates local field filtering from the Edit fields settings action", async () => {
     loadBoardMock.mockResolvedValue(board())
 
     const { container, cleanup } = await renderPage()
 
     expect(container.textContent).toContain("Machine Learning")
     clickByText(container, "Machine Learning")
+    expect(openSettingsModalMock).not.toHaveBeenCalled()
+    expect(container.querySelector('button[aria-pressed="true"]')?.textContent).toBe("Machine Learning")
+    expect(refreshTrendingDashboardMock).not.toHaveBeenCalled()
+    clickByText(container, "Edit fields")
     expect(openSettingsModalMock).toHaveBeenCalledWith("trending")
 
     cleanup()
@@ -212,19 +216,58 @@ describe("TrendingPage — ready board (SP4 Task 9)", () => {
 
     cleanup()
   })
+
+  it("filters the cached selection without changing global totals or treating an absent field as inactive", async () => {
+    const current = board()
+    current.anchors.push({ id: "neuroscience", label: "Neuroscience" })
+    loadBoardMock.mockResolvedValue(current)
+    const { container, cleanup } = await renderPage()
+    clickByText(container, "Neuroscience")
+    expect(container.textContent).not.toContain("Sparse Attention")
+    expect(container.textContent).toContain("No Neuroscience topics in this ranked selection")
+    expect(container.textContent).toContain("It does not mean this field has no activity.")
+    expect(container.textContent).toContain("128 papers across all selected fields")
+    clickByText(container, "Show all topics")
+    expect(container.textContent).toContain("Sparse Attention")
+    expect(refreshTrendingDashboardMock).not.toHaveBeenCalled()
+    expect(openSettingsModalMock).not.toHaveBeenCalled()
+    cleanup()
+  })
+
+  it("closes an expanded topic when changing the field filter", async () => {
+    loadBoardMock.mockResolvedValue(board())
+    const { container, cleanup } = await renderPage()
+    clickTopicRow(container, "Sparse Attention")
+    expect(container.textContent).toContain("Several groups converged")
+    clickByText(container, "Machine Learning")
+    expect(container.textContent).not.toContain("Several groups converged")
+    expect(container.querySelector('button[aria-expanded="true"]')).toBeNull()
+    cleanup()
+  })
 })
 
 describe("TrendingPage — empty state (SP4 Task 9)", () => {
-  it("points at settings when there are no interest labels", async () => {
-    loadTrendingSettingsRemoteMock.mockResolvedValue(trendingSettings({ fields: [] }))
+  it("points at Trending settings when neither topics nor interests exist", async () => {
+    loadTrendingSettingsRemoteMock.mockResolvedValue(trendingSettings({ fields: [], anchors: [] }))
     readUserModelMock.mockResolvedValue({ profile: null, interests: null, feedback: null })
     loadBoardMock.mockResolvedValue(null)
 
     const { container, cleanup } = await renderPage()
 
-    expect(container.textContent).toContain("No tracked fields yet")
-    expect(container.innerHTML).toMatch(/href="\/profile"/)
+    expect(container.textContent).toContain("Choose your Trending topics")
+    expect(container.querySelector("a")?.getAttribute("href")).toBe("/settings?section=trending")
 
+    cleanup()
+  })
+
+  it("loads and refreshes manual general topics without narrow interests", async () => {
+    loadTrendingSettingsRemoteMock.mockResolvedValue(trendingSettings({ fields: [], anchorsOverridden: true }))
+    loadBoardMock.mockResolvedValue(board())
+    const { container, cleanup } = await renderPage()
+    expect(container.textContent).toContain("Sparse Attention")
+    expect(refreshTrendingDashboardMock).not.toHaveBeenCalled()
+    await act(async () => { clickByText(container, "Refresh") })
+    expect(refreshTrendingDashboardMock).toHaveBeenCalledWith([], expect.any(Function))
     cleanup()
   })
 })

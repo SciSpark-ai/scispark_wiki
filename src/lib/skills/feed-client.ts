@@ -38,7 +38,7 @@ export async function refreshFeed(
 export interface ConsolidationRunResult {
   status: "skipped" | "unchanged" | "applied"
   changesetId?: string
-  costUsd?: number
+  costUsd?: number | null
   runId?: string
 }
 

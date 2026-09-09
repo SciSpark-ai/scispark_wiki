@@ -5,9 +5,8 @@ import { loadSettings, resolveTier, buildProvider, type LLMSettings } from "../l
 import { Meter, checkBudget, BudgetExceededError } from "../llm/metering"
 import { withRetry } from "../llm/retry"
 import { completeStructured, StructuredOutputError } from "../llm/structured"
-import { estimateCostUsd } from "../llm/pricing"
+import { estimateCostUsd, addCosts } from "../llm/pricing"
 import type { SkillContext, SkillDefinition, SkillRunResult } from "./types"
-
 import { withVaultExclusive } from "../vault/exclusive"
 
 function makeRunId(now: () => Date): string {
@@ -34,6 +33,8 @@ export async function runSkill<I, O>(opts: {
   /** Passed through to every `withRetry` call (both `ctx.llm` and `ctx.llmStructured`). Tests use this to shrink backoff delays. */
   retryOpts?: { retries?: number; baseDelayMs?: number; sleep?: (ms: number) => Promise<void> }
 }): Promise<SkillRunResult<O>> {
+  // The review coordinator uses this same cross-process spending lock. Existing
+  // skills cannot race a deep-review reservation against the daily allowance.
   return withVaultExclusive(opts.storage, "ai-spend", () => runSkillLocked(opts))
 }
 
@@ -44,13 +45,13 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
   const runId = makeRunId(now)
 
   const totals: LLMUsage = { inputTokens: 0, outputTokens: 0 }
-  let costUsd = 0
+  let costUsd: number | null = 0
   const logs: string[] = []
 
   function accumulate(model: string, usage: LLMUsage): void {
     totals.inputTokens += usage.inputTokens
     totals.outputTokens += usage.outputTokens
-    costUsd += estimateCostUsd(model, usage) ?? 0
+    costUsd = addCosts(costUsd, estimateCostUsd(model, usage))
   }
 
   function resolveProvider(tier: Tier): LLMProvider {
@@ -81,7 +82,7 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
 
   const ctx: SkillContext = {
     async llm(tier, req) {
-      await checkBudget(meter, settings)
+      await checkBudget(meter, settings, undefined, (message) => { if (!logs.includes(message)) logs.push(message) })
       const provider = resolveProvider(tier)
       const model = resolveTier(settings, tier).model
       const result = await withRetry(() => provider.complete(model, req), opts.retryOpts)
@@ -101,7 +102,7 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
       schema: z.ZodType<T>,
       structuredOpts?: Parameters<SkillContext["llmStructured"]>[3],
     ) {
-      await checkBudget(meter, settings)
+      await checkBudget(meter, settings, undefined, (message) => { if (!logs.includes(message)) logs.push(message) })
       // NOTE: budget is checked once here, not inside completeStructured's internal
       // validation-retry loop — a structured call can therefore spend up to ~2x a
       // single call's cost before the next budget check catches it. Accepted

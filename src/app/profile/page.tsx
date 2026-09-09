@@ -64,8 +64,8 @@ function avatarInitial(name: string): string {
   return name.trim().charAt(0).toUpperCase() || "?"
 }
 
-function Avatar({ profile, size = "large" }: { profile: EditableUserProfile; size?: "large" | "small" }) {
-  const dimensions = size === "large" ? "h-24 w-24 text-[30px]" : "h-11 w-11 text-[16px]"
+function Avatar({ profile }: { profile: EditableUserProfile }) {
+  const dimensions = "h-24 w-24 text-[30px]"
   return profile.avatarDataUrl ? (
     // The source is a locally validated image data URL stored in the user's vault.
     // eslint-disable-next-line @next/next/no-img-element
@@ -236,7 +236,29 @@ export default function ProfilePage() {
       <section className="relative mt-6 overflow-hidden rounded-[20px] border border-border-warm/40 bg-light-surface">
         <div className="h-24 bg-[linear-gradient(115deg,var(--color-card-surface),var(--color-page-warm))]" />
         <div className="flex flex-col gap-5 px-6 pb-6 sm:flex-row sm:items-end sm:px-8">
-          <div className="-mt-12"><Avatar profile={draft} /></div>
+          <div className="-mt-12 shrink-0 self-start">
+            <div className="relative w-fit" data-testid="profile-avatar">
+              <Avatar profile={draft} />
+              <button
+                type="button"
+                aria-label="Change profile photo"
+                aria-describedby="profile-photo-help"
+                title="Change profile photo"
+                disabled={saving}
+                onClick={() => { if (!editing) beginEditing(); fileInputRef.current?.click() }}
+                className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border border-border-warm bg-light-surface text-espresso shadow-sm ring-2 ring-light-surface transition-colors hover:bg-card-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange focus-visible:ring-offset-2 focus-visible:ring-offset-light-surface disabled:opacity-50"
+              >
+                <Camera size={16} aria-hidden="true" />
+              </button>
+            </div>
+            <input ref={fileInputRef} type="file" aria-label="Profile photo" accept="image/png,image/jpeg,image/webp" onChange={handleAvatar} disabled={saving} hidden />
+            <span id="profile-photo-help" className="sr-only">PNG, JPEG, or WebP, up to 1 MB. Choose a photo, then Save changes.</span>
+            {editing && draft.avatarDataUrl && (
+              <button type="button" disabled={saving} onClick={() => changeField("avatarDataUrl", null)} className="mt-2 inline-flex items-center gap-1 rounded-pill py-1 text-[12px] text-muted-text hover:text-espresso focus-visible:outline-2 focus-visible:outline-orange disabled:opacity-50">
+                <X size={12} aria-hidden="true" /> Remove photo
+              </button>
+            )}
+          </div>
           <div className="min-w-0 flex-1 sm:pb-1">
             {editing ? (
               <div>
@@ -263,24 +285,6 @@ export default function ProfilePage() {
           )}
         </div>
       </section>
-
-      {editing && (
-        <section className="mt-4 rounded-[18px] border border-border-warm/40 bg-light-surface p-6 sm:p-8">
-          <div className="flex flex-wrap items-center gap-3">
-            <Avatar profile={draft} size="small" />
-            <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleAvatar} className="sr-only" />
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-pill border border-espresso/15 px-4 py-2 text-[13px] text-espresso hover:bg-card-surface">
-              <Camera size={14} aria-hidden="true" /> {draft.avatarDataUrl ? "Change photo" : "Add photo"}
-            </button>
-            {draft.avatarDataUrl && (
-              <button type="button" onClick={() => changeField("avatarDataUrl", null)} className="inline-flex items-center gap-1.5 px-2 py-2 text-[13px] text-muted-text hover:text-espresso">
-                <X size={14} aria-hidden="true" /> Remove
-              </button>
-            )}
-            <span className="text-[12px] text-muted-text">PNG, JPEG, or WebP · up to 1 MB</span>
-          </div>
-        </section>
-      )}
 
       <section className="mt-4 rounded-[18px] border border-border-warm/40 bg-light-surface p-6 sm:p-8">
         <div className="mb-6">

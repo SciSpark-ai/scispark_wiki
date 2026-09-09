@@ -1,4 +1,5 @@
 import Link from "next/link"
+import type { ReactNode } from "react"
 import type { DigestResult } from "@/lib/skills/digest"
 import type { IngestOutput } from "@/lib/skills/ingest"
 import type { IngestPhase } from "@/lib/skills/ingest-client"
@@ -7,11 +8,12 @@ import { wikiHref } from "@/lib/wiki/href"
 import { Button } from "@/components/ui/Button"
 import { Chip } from "@/components/ui/Chip"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
+import { PaperSaveButton } from "./PaperSaveButton"
 
 export type DigestState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "done"; digest: DigestResult; fromCache: boolean; costUsd?: number }
+  | { status: "done"; digest: DigestResult; fromCache: boolean; costUsd?: number | null }
   | { status: "error"; message: string }
 
 export type IngestState =
@@ -20,7 +22,7 @@ export type IngestState =
   | {
       phase: "done"
       output: IngestOutput
-      costUsd: number
+      costUsd: number | null
       undoing?: boolean
       undone?: boolean
       undoError?: string
@@ -68,6 +70,7 @@ export interface PaperActionsProps {
   onIngest: () => void
   onUndo: () => void
   onReadFullText: () => void
+  feedback?: ReactNode
 }
 
 /**
@@ -90,6 +93,7 @@ export function PaperActions({
   onIngest,
   onUndo,
   onReadFullText,
+  feedback,
 }: PaperActionsProps) {
   const ingestBusy =
     ingestState.phase === "acquiring" ||
@@ -102,18 +106,9 @@ export function PaperActions({
 
   return (
     <div className="mt-6">
-      <div className="flex flex-wrap items-center gap-2">
-        {showSaveAction ? (
-          <Button
-            variant="secondary"
-            onClick={onSave}
-            disabled={saveState.status === "saving" || saveState.status === "done"}
-          >
-            {saveState.status === "saving" ? "Saving…" : saveState.status === "done" ? "Saved" : "Save"}
-          </Button>
-        ) : (
-          <Chip tone="accent">{pageState.state === "ingested" ? "In your knowledge base" : "Saved"}</Chip>
-        )}
+      <div role="group" aria-label="Paper actions" className="flex flex-wrap items-center gap-2">
+        <PaperSaveButton saved={!showSaveAction || saveState.status === "done"} busy={saveState.status === "saving"} onSave={onSave} />
+        {pageState.state === "ingested" && <Chip tone="accent">In your knowledge base</Chip>}
 
         <Button
           onClick={onGenerateDigest}
@@ -135,6 +130,7 @@ export function PaperActions({
         <Button variant="secondary" onClick={onReadFullText} disabled={fullTextKnownFalse}>
           Read full text
         </Button>
+        {feedback && <div className="ml-auto max-w-full">{feedback}</div>}
       </div>
 
       {saveState.status === "error" && <LlmErrorMessage message={saveState.message} />}

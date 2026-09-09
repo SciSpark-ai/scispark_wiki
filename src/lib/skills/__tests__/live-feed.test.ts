@@ -144,7 +144,7 @@ describe.skipIf(!live)("LIVE feed funnel + consolidation gate", () => {
         expect(hasId || item.paper.year !== undefined).toBe(true)
       }
 
-      console.log(`[live-feed] feed costUsd: $${feedResult.costUsd.toFixed(4)}`)
+      console.log(`[live-feed] feed costUsd: $${(feedResult.costUsd?.toFixed(4) ?? "unknown")}`)
       expect(feedResult.costUsd).toBeLessThan(1.5)
 
       // ── Cache written and round-trips ────────────────────────────────────

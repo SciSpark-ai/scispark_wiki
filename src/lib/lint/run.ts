@@ -1,3 +1,4 @@
+import { addCosts } from "../llm/pricing"
 import type { VaultStorage } from "../vault/storage"
 import { loadBundle, type Bundle } from "../vault/bundle"
 import { loadChangeset, makeChangesetId } from "../vault/changesets"
@@ -175,11 +176,11 @@ export interface RunLintLlmOptions {
 export async function runLintLlm(
   storage: VaultStorage,
   opts: RunLintLlmOptions = {},
-): Promise<{ findings: LintFinding[]; reviewIds: string[]; costUsd: number }> {
+): Promise<{ findings: LintFinding[]; reviewIds: string[]; costUsd: number | null }> {
   const now = opts.now ?? (() => new Date())
   const bundle = await loadBundle(storage)
 
-  let costUsd = 0
+  let costUsd: number | null = 0
 
   const screenRun = await runSkill({
     skill: lintScreenSkill,
@@ -189,7 +190,7 @@ export async function runLintLlm(
     providerOverride: opts.providerOverride,
     now,
   })
-  costUsd += screenRun.costUsd
+  costUsd = addCosts(costUsd, screenRun.costUsd)
 
   const pairs = screenRun.status === "ok" && screenRun.output ? screenRun.output.pairs : []
 
@@ -212,7 +213,7 @@ export async function runLintLlm(
       providerOverride: opts.providerOverride,
       now,
     })
-    costUsd += judgeRun.costUsd
+    costUsd = addCosts(costUsd, judgeRun.costUsd)
 
     if (judgeRun.status !== "ok" || !judgeRun.output) continue
     const { verdict, explanation } = judgeRun.output

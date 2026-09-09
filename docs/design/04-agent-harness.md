@@ -2,6 +2,60 @@
 
 *Status: approved 2026-07-11; runtime model **superseded 2026-07-14 (M11, "local-runtime pivot")** — skills now execute server-side, in `/api/skills/*` route handlers via `getServerVault()`/`NodeFsVaultStorage`, not in the browser. M12 (2026-07-14) adds the **Lint** skill (deterministic checks + a two-stage `fast`-screen/`strong`-judge LLM pass) and makes the usage-metering ledger visible through a spend surface. See `docs/superpowers/specs/2026-07-14-m11-local-runtime-design.md` and `docs/superpowers/specs/2026-07-14-m12-lint-spend-hardening-design.md` for the full pivots, and [02-system](02-system.md)/[03-backend](03-backend.md) for the server surface this doc assumes. Organizing principle: **one harness, N skills** — every agent behavior in the product is a versioned skill document executed by the same runtime (now server-side). (Pattern lineage: research-os `workflows/*.md` playbooks, llm_wiki skills, Claude Code skills.)*
 
+## September 7, 2026: durable quick-search conversations
+
+The unified Sparky workspace uses `askChat` for both saved-research discussion
+and quick online paper search. The orchestrator persists the user message before
+any paid work, serializes turns per session in the local process, and records
+typed paper-result/citation blocks alongside legacy text turns. A supplied
+operation ID is idempotent within that session; different questions/options
+cannot reuse it. Interrupted requests are not silently replayed. Paper snapshots
+survive feed-cache expiry and History reopening. The legacy research-search API
+also records its result in conversation History.
+
+The quick search still reuses its bounded planner/ranker and registered source
+adapters. Source failures propagate as coverage warnings or an all-source error.
+Neither page navigation nor History reopening invokes those skills again.
+Project search planning uses project title/instructions and that conversation;
+it does not forward unrelated private library context. This is not the narrower,
+query-specific personal-memory selector implemented for deep reviews.
+
+`src/lib/review/scholarqa.ts` is the **integrated-preview academic adapter**, adapted from
+Ai2 ScholarQA's Apache-2.0 multi-step pipeline at the revision in its notice.
+Every completion is host-injected. Exact quotations, outline indices and
+section citation IDs are checked, but those checks alone do not verify support.
+`grounding.ts` adds a host-injected correction stage: rewrite every paragraph into
+claim/passage mappings, lint exact quotations/numbers/significance/uncertainty,
+then audit each claim against its mapped evidence and surrounding source text.
+An omitted supported finding also triggers correction. There are at most two
+correction attempts per paragraph; remaining failures keep `needs-review` status
+and cannot render as a checked draft. Evidence gaps are disclosed as open
+questions, not invented answers or failed claims. Audit signatures bind the
+claims to their source snapshots; later claim/source edits invalidate them.
+These are conservative automated checks, not independent scientific validation.
+The normal evaluation path runs correction after its coarse audit, and cache-only
+replay can reconstruct a checked draft without additional paid calls.
+`coordinator.ts` now owns execution independently of request/tab lifetime, with
+atomic manifests/checkpoints, cross-process local-filesystem locks, one active
+research job per vault and explicit restart recovery. `budget.ts` reserves every
+completion before dispatch, shares the AI-spend exclusion with ordinary skills,
+persists response/usage before replay and holds uncertain charges. Reviews forbid
+unreserved provider-internal fallback attempts. An estimate is not guaranteed billing.
+
+`pipeline.ts` uses the selected existing academic adapters and safe acquisition,
+coverage-guided follow-up retrieval, study comparison, synthesis and grounding.
+`context.ts` selects relevant canonical profile/preferences/project material and
+current-conversation turns without searching old transcripts. Notes are not source
+evidence; personal interpretation is a separate section. `pdf.ts` runs bounded
+pdf.js extraction in a child process without provider credentials.
+
+`/api/reviews/*` exposes approval, snapshots, cancel/resume, versioned edits,
+revision, exports and PDF input. Conversations retain report links automatically;
+KB insertion is a separate undoable mutation. No implicit user-memory writes occur.
+See the [plan](../superpowers/plans/2026-09-07-personalized-literature-review.md),
+[historical feasibility record](../testing/2026-09-07-literature-review-foundation.md)
+and [current verification](../testing/2026-09-07-deep-review-integration.md).
+
 ## Skills
 
 A skill is a versioned document + manifest defining: purpose, workflow steps, context-assembly recipe, tool allowlist, model tier per step, output contract (JSON schema where structured), and budget class.
@@ -28,7 +82,7 @@ A skill is a versioned document + manifest defining: purpose, workflow steps, co
 **The Companion is not a skill like the others** — it is the *presentation layer* of the whole skill system plus a **proactivity engine**:
 - **Triggers are deterministic and free** (no LLM): app-open + fresh feed, digest-open + vault-relevance hit, post-ingest completion, review-queue items pending, idle-in-reader, vault milestones, sparkable-cluster detection (N recent ingests sharing concepts without a linked `idea` page).
 - **Utterances are fast-tier** one-liners in persona, generated with trigger context + `feedback.md`; below-budget fallback = static templates.
-- **Anti-Clippy contract (harness-enforced):** proactivity budget (max interventions/session, per-trigger cooldowns), chattiness setting, always dismissible, dismissals logged as Tier-1 events → Memory-Consolidation learns what not to suggest. The companion proposes; it never runs vault-mutating or expensive skills without an explicit user click.
+- **Anti-Clippy contract (harness-enforced):** only concrete, new events with live action destinations qualify. No app-open/Home greeting. Before AI generation, a server-owned per-vault ledger atomically claims each event and enforces a rolling 24-hour budget plus cooldowns across tabs/reloads/restarts (default: two messages, 30 minutes apart). Viewed destinations consume their events without interrupting. Claimed events are not retried after dismissal or delivery failure; stale events and corrupt bookkeeping fail quiet. Bubbles expire after 60 seconds and clear on navigation, Settings, typing or hidden tabs. User-initiated feedback questions bypass this proactive budget. Dismissals/actions remain Tier-1 audit events. The companion proposes; it never runs vault-mutating or expensive skills without an explicit user click.
 
 The Research Feed Skill is the reference implementation ("Agentic Research Feed Skill") — the standard for how skills encode traditional-workflow structure (RecSys funnel) executed by LLM reasoning. **No trained ML models, no third-party embeddings** anywhere in the system; a small on-device embedding model is the only permitted fallback if agentic retrieval proves insufficient.
 

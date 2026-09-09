@@ -13,7 +13,7 @@ export interface LintDeterministicRouteResult {
 }
 
 export interface LintLlmRouteResult extends LintDeterministicRouteResult {
-  costUsd: number
+  costUsd: number | null
 }
 
 /**

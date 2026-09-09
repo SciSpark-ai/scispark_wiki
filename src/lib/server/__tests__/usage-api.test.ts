@@ -48,7 +48,7 @@ describe("usage API", () => {
       rec({ ts: `${today}T01:00:00.000Z`, skill: "digest", costUsd: 1 }),
       rec({ ts: `${today}T02:00:00.000Z`, skill: "digest", costUsd: 2 }),
       rec({ ts: `${today}T03:00:00.000Z`, skill: "feed", costUsd: 5 }),
-      // a null-cost record: counted in unpricedCount, contributes 0 to totals
+      // A billed unpriced call makes the total unknown, not zero.
       rec({ ts: `${today}T04:00:00.000Z`, skill: "ingest", costUsd: null }),
     ]
     await storage.write(`.scispark/usage/${today}.jsonl`, jsonlWithCorruptLine(records))
@@ -60,11 +60,11 @@ describe("usage API", () => {
 
     expect(body.budgetUsd).toBe(9.5)
     // corrupt line skipped; the four valid records aggregate correctly
-    expect(body.summary.today.totalUsd).toBeCloseTo(8, 6)
+    expect(body.summary.today.totalUsd).toBeNull()
     expect(body.summary.today.bySkill).toEqual([
       { skill: "feed", totalUsd: 5 },
       { skill: "digest", totalUsd: 3 },
-      { skill: "ingest", totalUsd: 0 },
+      { skill: "ingest", totalUsd: null },
     ])
     expect(body.summary.unpricedCount).toBe(1)
     expect(body.summary.days).toHaveLength(7)

@@ -72,6 +72,14 @@ describe("maybeAutoRefreshTrending", () => {
     expect(await loadBoard(storage)).not.toBeNull()
   })
 
+  it("refreshes for manual general topics even without narrow interests", async () => {
+    const storage = new MemoryVaultStorage()
+    await saveTrendingSettings(storage, { fields: [], cadence: "weekly", anchors: [NEURO], anchorsOverridden: true })
+    const provider = new MockProvider([structured(BRIEFS)])
+    expect(await maybeAutoRefreshTrending(storage, { ...deps, providerOverride: { strong: provider } })).toBe("refreshed")
+    expect((await loadBoard(storage))?.anchors).toEqual([NEURO])
+  })
+
   it("returns 'fresh' when a recent board already exists for the same anchors", async () => {
     const storage = new MemoryVaultStorage()
     await saveTrendingSettings(storage, {

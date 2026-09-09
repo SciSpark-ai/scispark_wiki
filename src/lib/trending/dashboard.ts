@@ -1,3 +1,4 @@
+import { addCosts } from "../llm/pricing"
 import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
@@ -12,7 +13,7 @@ import { logEvent } from "../events/log"
 import type { TrackedField } from "./fields"
 import { loadTrendingSettings, saveDerivedAnchors } from "./settings"
 import type { AnchorDiscipline } from "./anchors"
-import { deriveAnchorDisciplines, openAlexFieldId, MAX_ANCHORS } from "./anchors"
+import { deriveAnchorDisciplines, openAlexFieldId, manualAnchorError } from "./anchors"
 import {
   completeWindows,
   rankHeatingTopics,
@@ -50,7 +51,7 @@ const MAX_BREAKOUTS = 5
 const BREAKOUT_WINDOW_DAYS = 90
 
 export interface RunTrendingBoardOpts {
-  /** The user's narrow interest labels (the LENS, and the fallback scope when anchor derivation fails). */
+  /** Narrow interest labels highlight matches and can suggest canonical fields. */
   fields: TrackedField[]
   /**
    * OpenAlex works, entity-scoped and citation-ranked (`searchTopCitedWorks`).
@@ -85,7 +86,7 @@ export interface RunTrendingBoardOpts {
  * (src/lib/skills/trending.ts) stays a pure LLM unit.
  *
  * Per refresh: resolve anchor disciplines (a non-empty stored list, else
- * derived and persisted, else the narrow interest labels) → `completeWindows(now)` → ONE
+ * derived and persisted; never a free-text fallback) → `completeWindows(now)` → ONE
  * recent-window `topicGroupFn` call per anchor → each anchor's corpus size in
  * BOTH windows (`measureCorpusTotals`, two counts per anchor — the share
  * denominators) → a prior-count lookup per candidate (`lookupPriorCounts`) →
@@ -161,12 +162,13 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
   // is unknown, never zero), so without this sink a fetch outage renders as a
   // confident "nothing is trending" — see `TrendingBoard.dataError`.
   const dataErrors: string[] = []
+  const scopes = new Map(anchors.map((anchor) => [anchor.label, anchor]))
 
   const perDiscipline: DisciplineBuckets[] = []
   for (const anchor of anchors) {
     opts.onProgress?.(anchor.label)
     try {
-      const recent = await opts.topicGroupFn({ query: anchor.label, ...windows.recent })
+      const recent = await opts.topicGroupFn({ ...fieldScope(scopes, anchor.label), ...windows.recent })
       perDiscipline.push({ discipline: anchor.label, recent })
     } catch (err) {
       console.warn(`[trending] topic grouping failed for "${anchor.label}":`, err)
@@ -175,15 +177,15 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
   }
   // Each anchor's corpus size in BOTH windows (one count request each): the
   // denominators every growth figure and every bar is scaled by.
-  const recentTotals = await measureCorpusTotals(opts, perDiscipline, windows.recent, dataErrors)
-  const priorTotals = await measureCorpusTotals(opts, perDiscipline, windows.prior, dataErrors)
+  const recentTotals = await measureCorpusTotals(opts, perDiscipline, windows.recent, dataErrors, scopes)
+  const priorTotals = await measureCorpusTotals(opts, perDiscipline, windows.prior, dataErrors, scopes)
   const corpusTotals = new Map<string, CorpusTotals>(
     perDiscipline.map(({ discipline }) => [
       discipline,
       { recent: recentTotals.get(discipline) ?? null, prior: priorTotals.get(discipline) ?? null },
     ]),
   )
-  const priorCounts = await lookupPriorCounts(opts, perDiscipline, windows.prior, dataErrors)
+  const priorCounts = await lookupPriorCounts(opts, perDiscipline, windows.prior, dataErrors, scopes)
   const ranked = rankHeatingTopics(perDiscipline, priorCounts, corpusTotals)
   const totalRecent = sumRecentWorks(perDiscipline, recentTotals)
 
@@ -192,7 +194,7 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
   // is credit-priced and rate-limited — bounded, predictable load beats speed.
   const enriched: Array<{ topic: RankedTopic; papers: PaperRecord[] }> = []
   for (const topic of ranked) {
-    const papers = await fetchTopicPapers(opts, topic, windows.recent)
+    const papers = await fetchTopicPapers(opts, topic, windows.recent, scopes)
     enriched.push({ topic, papers })
   }
 
@@ -203,7 +205,7 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
   const whyByKey = new Map<string, string>()
   const surveyErrors: string[] = []
   let crossDisciplineNote: string | null = null
-  let costUsd = 0
+  let costUsd: number | null = 0
 
   for (const anchor of anchors) {
     const forDiscipline = enriched.filter((e) => e.topic.discipline === anchor.label)
@@ -228,7 +230,7 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
     })
     // A failed structured call is still metered by the harness, so its spend
     // counts toward this refresh either way.
-    costUsd += run.costUsd
+    costUsd = addCosts(costUsd, run.costUsd)
 
     if (run.status === "ok" && run.output !== undefined) {
       const knownKeys = new Set(forDiscipline.map((e) => e.topic.key))
@@ -310,16 +312,11 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
 
 /**
  * A NON-EMPTY stored list is authoritative — hand-set or already-derived, it is
- * never silently recomputed. An EMPTY list means "derive", *regardless of
- * `anchorsOverridden`*: the settings editor produces `{anchors: [], overridden:
- * true}` when the user removes the last anchor chip, and honoring the flag
- * there would leave the board silently scoped by the narrow interest labels —
- * exactly the scoping SP4 exists to replace — with nothing to show for it.
+ * never silently recomputed. An empty automatic list means derive. An empty
+ * manual list is invalid and requires an explicit edit/reset in Settings.
  *
- * Only when derivation itself yields nothing (every lookup failed, or there are
- * no labels) does the board fall back to the narrow labels as anchors, so the
- * page still renders. That fallback is NOT persisted: the next refresh retries
- * the real derivation.
+ * If derivation yields no recognized fields, ask the user to choose fields.
+ * Never substitute arbitrary text queries for a canonical taxonomy scope.
  */
 async function resolveAnchors(
   storage: VaultStorage,
@@ -327,6 +324,8 @@ async function resolveAnchors(
   recentWindow: { fromDate: string; toDate: string },
 ): Promise<AnchorDiscipline[]> {
   const settings = await loadTrendingSettings(storage).catch(() => null)
+  const scopeError = manualAnchorError(settings)
+  if (scopeError) throw new Error(scopeError)
   if (settings && settings.anchors.length > 0) return settings.anchors
 
   const derived = await deriveAnchorDisciplines(
@@ -337,13 +336,27 @@ async function resolveAnchors(
   if (derived.length > 0) {
     // Patched inside the settings write-lock (never a snapshot-then-overwrite):
     // a cadence/fields edit made while derivation was in flight must survive.
-    await saveDerivedAnchors(storage, derived).catch((err) => {
+    try { return await saveDerivedAnchors(storage, derived) } catch (err) {
       console.warn("[trending] persisting derived anchors failed:", err)
-    })
-    return derived
+    }
   }
 
-  return opts.fields.slice(0, MAX_ANCHORS).map((f) => ({ id: f.slug, label: f.label }))
+  // A user can choose topics while the network derivation is in flight.
+  const latest = await loadTrendingSettings(storage)
+  const latestError = manualAnchorError(latest)
+  if (latestError) throw new Error(latestError)
+  if (latest.anchors.length) return latest.anchors
+  if (derived.length) return derived
+
+  throw new Error("Could not suggest general fields. Choose your fields in Settings → Trending fields.")
+}
+
+/** One canonical field scope for all metrics and papers. Never a label search. */
+function fieldScope(scopes: Map<string, AnchorDiscipline>, discipline: string) {
+  const anchor = scopes.get(discipline)
+  const fieldId = anchor && openAlexFieldId(anchor)
+  if (!fieldId) throw new Error("A valid OpenAlex field is required for Trending.")
+  return { query: "", fieldId, ...(anchor?.subfieldIds?.length ? { subfieldIds: anchor.subfieldIds } : {}) }
 }
 
 /**
@@ -355,8 +368,8 @@ async function resolveAnchors(
  * second `group_by` list scored every mid-sized topic as `prior: 0` → "new".
  * A count request has no such horizon.
  *
- * Each lookup carries the SAME `query` (the discipline label) as the grouped
- * call its recent count came from — the count is `search`-scoped too, and an
+ * Each lookup carries the SAME canonical field ID as the grouped
+ * call its recent count came from — the count is field-scoped too, and an
  * unscoped lookup would return the corpus-wide figure and invent a decline.
  *
  * Sequential and pool-bounded (CANDIDATE_POOL requests per refresh, not one
@@ -369,13 +382,14 @@ async function lookupPriorCounts(
   perDiscipline: DisciplineBuckets[],
   priorWindow: { fromDate: string; toDate: string },
   dataErrors: string[],
+  scopes: Map<string, AnchorDiscipline>,
 ): Promise<Map<string, number>> {
   const priorCounts = new Map<string, number>()
   for (const candidate of selectTopicCandidates(perDiscipline)) {
     try {
       priorCounts.set(
         candidate.key,
-        await opts.countFn({ query: candidate.discipline, topicId: candidate.key, ...priorWindow }),
+        await opts.countFn({ ...fieldScope(scopes, candidate.discipline), topicId: candidate.key, ...priorWindow }),
       )
     } catch (err) {
       console.warn(`[trending] prior-count lookup failed for "${candidate.label}":`, err)
@@ -407,11 +421,12 @@ async function measureCorpusTotals(
   perDiscipline: DisciplineBuckets[],
   window: { fromDate: string; toDate: string },
   dataErrors: string[],
+  scopes: Map<string, AnchorDiscipline>,
 ): Promise<Map<string, number>> {
   const totals = new Map<string, number>()
   for (const { discipline } of perDiscipline) {
     try {
-      totals.set(discipline, await opts.countFn({ query: discipline, ...window }))
+      totals.set(discipline, await opts.countFn({ ...fieldScope(scopes, discipline), ...window }))
     } catch (err) {
       console.warn(`[trending] corpus count failed for "${discipline}" (${window.fromDate}..${window.toDate}):`, err)
       dataErrors.push(
@@ -430,9 +445,8 @@ function describeError(err: unknown): string {
 /**
  * "New papers this window" across the anchor disciplines.
  *
- * CAVEAT (carried into the UI label): a work matching two anchors' searches is
- * counted once per anchor, so overlapping disciplines can double-count. An
- * anchor whose count failed falls back to its summed buckets — a low-but-honest
+ * Each work has one primary field, so distinct canonical field scopes do not
+ * overlap. An anchor whose count failed falls back to its summed buckets — a low-but-honest
  * number beats a missing figure. That fallback is display-only and deliberately
  * NOT reused as a share denominator (see `measureCorpusTotals`).
  */
@@ -465,9 +479,13 @@ async function fetchTopicPapers(
   opts: RunTrendingBoardOpts,
   topic: RankedTopic,
   window: DateWindow,
+  scopes: Map<string, AnchorDiscipline>,
 ): Promise<PaperRecord[]> {
   try {
+    const scope = fieldScope(scopes, topic.discipline)
     const papers = await opts.topWorksFn({
+      fieldId: scope.fieldId,
+      ...(scope.subfieldIds ? { subfieldIds: scope.subfieldIds } : {}),
       topicId: topic.key,
       fromDate: window.fromDate,
       toDate: window.toDate,
@@ -485,31 +503,10 @@ async function fetchTopicPapers(
  * disciplines in the last BREAKOUT_WINDOW_DAYS — one request per anchor,
  * merged, deduped and re-ranked.
  *
- * REPLACES an intersection that could never produce anything (the live board
- * reported `breakouts: 0` on every single run). It took `retrieveFieldCandidates`'
- * citation-sorted `movers` and kept only records also present in its
- * date-filtered `recent` list, but the two lists come from disjoint sources by
- * construction: the OpenAlex half is a relevance-ranked, undated search whose
- * results are field classics (searching "Computer Science" live on 2026-07-25
- * returned 25 works dated 1975–2020, zero inside a two-week window), while the
- * arXiv half is genuinely recent but the arXiv API returns no citation counts
- * at all (`citationCount: undefined` in the adapter), so every arXiv record
- * failed the `citationCount > 0` test. Recent ∧ cited was therefore empty for
- * reasons that had nothing to do with the arXiv timeouts seen in the live runs.
- *
- * Scoping: the anchor's label as the text scope, PLUS `primary_topic.field.id`
- * when the anchor carries a real OpenAlex field key (a fallback anchor's id is
- * an interest slug, which is no filter value at all). Both, not either —
- * measured live 2026-07-25 over a 90-day window, dropping the text scope let
- * re-dated classics and preprint-farm records top the strip ("Givenness,
- * Contrastiveness, Definiteness…", a 1976 linguistics paper carrying 1843
- * citations, headlined Computer Science; Neuroscience returned "Shakti: A
- * Trauma-Informed Trilingual Women's Safety AI"), while keeping it returned
- * recognisable recent work in both (connectome control circuits, precision fMRI
- * / M2SNet, HuntGPT). It also matches how every other figure on the board is
- * scoped: the discipline's corpus counts are `search`-scoped too.
- * `is_paratext:false` inside `searchTopCitedWorks` keeps journal-level records
- * off the strip.
+ * Uses the same canonical primary-field filter as the counts and topic groups,
+ * without additionally requiring the field name to appear in the paper text.
+ * All three paths exclude paratext. OpenAlex's classification and publication
+ * dates can still contain errors; citation ordering is not a quality guarantee.
  *
  * A record with no positive citation count is still dropped — "breakout" has to
  * mean something — and an empty strip remains an honest outcome (the component
@@ -527,8 +524,8 @@ async function retrieveBreakouts(
     const fieldId = openAlexFieldId(anchor)
     try {
       const records = await opts.topWorksFn({
-        query: anchor.label,
         fieldId,
+        ...(anchor.subfieldIds?.length ? { subfieldIds: anchor.subfieldIds } : {}),
         fromDate,
         toDate: recentWindow.toDate,
         limit: MAX_BREAKOUTS,

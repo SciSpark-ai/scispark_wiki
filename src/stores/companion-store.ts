@@ -2,12 +2,10 @@ import { create } from "zustand";
 import type { CompanionUtterance } from "@/lib/companion/run";
 
 /**
- * Companion UI + anti-Clippy session state (M7 Task 6). This is the
- * caller-owned bookkeeping `runCompanion` (src/lib/companion/run.ts) expects:
- * it only *reads* `sessionShownCount`/`lastShownTs` to decide whether to
- * speak — this store is what persists those between calls for the life of
- * the tab. Deliberately NOT persisted to localStorage: "session" here means
- * "this browser session," so a reload starting fresh is correct.
+ * Companion UI state and legacy page-lifetime counters. Counters no longer
+ * control proactive delivery: event claims and frequency limits are persisted
+ * by the server in companion-delivery.json. Stream identities here guard
+ * against late replies reopening bubbles after dismissal or navigation.
  */
 export interface CompanionStore {
   feedbackQuestions: Array<{ paperKey: string; title: string; revision: string }>;
@@ -48,6 +46,7 @@ export const useCompanionStore = create<CompanionStore>((set, get) => ({
   },
   updateStream: (id, u) => set((s) => {
     if (s.streamId !== id) return s;
+    if (u.expiresAt && Date.parse(u.expiresAt) <= Date.now()) return s;
     const first = !s.streamShown && u.text.length > 0;
     return {
       current: u.text ? u : null,
@@ -58,6 +57,7 @@ export const useCompanionStore = create<CompanionStore>((set, get) => ({
   }),
   finishStream: (id, u) => {
     if (get().streamId !== id) return;
+    if (u?.expiresAt && Date.parse(u.expiresAt) <= Date.now()) u = null;
     if (u) get().updateStream(id, u);
     set({ streamId: null, streamShown: false, current: u });
   },

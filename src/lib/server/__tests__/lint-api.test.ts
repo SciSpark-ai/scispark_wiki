@@ -5,6 +5,7 @@ import { setServerVaultForTests } from "../vault"
 import { setSkillTestOverrides } from "../skill-route"
 import { readNdjson } from "../ndjson"
 import { MockProvider } from "../../llm/mock-provider"
+import { DEFAULT_SETTINGS, saveSettings } from "../../llm/settings"
 import type { LLMResult } from "../../llm/types"
 import type { Frontmatter } from "../../vault/types"
 import { listReviews } from "../../wiki/review-queue"
@@ -130,6 +131,14 @@ describe("lint skill routes", () => {
   })
 
   describe("POST /api/skills/lint/estimate", () => {
+    it("does not substitute default pricing when the selected model is unpriced", async () => {
+      await saveSettings(storage, { ...DEFAULT_SETTINGS, tierModels: {
+        ...DEFAULT_SETTINGS.tierModels, fast: { provider: "openai", model: "google/gemini-3.8-flash" },
+      } })
+      const res = await lintEstimateRoute.POST(new Request("http://x/api/skills/lint/estimate", { method: "POST", body: "{}" }))
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ result: { costUsd: null } })
+    })
     it("returns a positive static costUsd with no vault content and no provider needed", async () => {
       const res = await lintEstimateRoute.POST(
         new Request("http://x/api/skills/lint/estimate", { method: "POST", body: JSON.stringify({}) }),

@@ -14,7 +14,8 @@ import { paperSlug } from "@/lib/wiki/authoring"
 import type { FeedItem } from "@/lib/skills/feed"
 import type { PaperRecord } from "@/lib/papers/types"
 import { useCompanionStore } from "@/stores/companion-store"
-import { sendRecommendationFeedback } from "@/lib/recommendation/client"
+import { sendRecommendationFeedback, loadRecommendationFeedback, clearRecommendationFeedbackRemote } from "@/lib/recommendation/client"
+import { usePaperFeedbackStore } from "@/stores/paper-feedback-store"
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -31,7 +32,12 @@ vi.mock("@/lib/papers/save-client", () => ({
 }))
 
 import { RealFeedCard } from "../RealFeedCard"
-vi.mock("@/lib/recommendation/client", () => ({ sendRecommendationFeedback: vi.fn(async () => ({ changesetId: "cs-test", revision: "a".repeat(64), warnings: [] })) }))
+vi.mock("@/lib/recommendation/client", () => ({
+  FEEDBACK_CHANGED_EVENT: "scispark:feedback-changed",
+  loadRecommendationFeedback: vi.fn(async () => ({ entries: [], warning: null })),
+  clearRecommendationFeedbackRemote: vi.fn(async () => ({ result: null, changesetId: "cs-clear", warnings: [] })),
+  sendRecommendationFeedback: vi.fn(async (paperKey, reason) => ({ result: { paperKey, reason, title: "Paper", topics: [], at: "2026-09-06T00:00:00.000Z" }, changesetId: "cs-test", revision: "a".repeat(64), warnings: [] })),
+}))
 
 const PAPER: PaperRecord = {
   ids: { arxiv: "2409.08710" },
@@ -67,6 +73,9 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
     pushMock.mockClear()
     mockSavePaper.mockClear()
     vi.mocked(sendRecommendationFeedback).mockClear()
+    vi.mocked(loadRecommendationFeedback).mockReset().mockResolvedValue({ entries: [], warning: null })
+    vi.mocked(clearRecommendationFeedbackRemote).mockClear()
+    usePaperFeedbackStore.setState({ entries: {}, ready: false, error: null, pending: {} })
     useCompanionStore.setState({ feedbackQuestions: [] })
   })
 
@@ -112,7 +121,7 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
     host.remove()
   })
 
-  it("renders the why-badge as the colored header band (SP2.1)", async () => {
+  it("uses content categories instead of unverified high-impact badges", async () => {
     const storage = new MemoryVaultStorage()
     const item = itemFor({ tldr: "A tldr.", tags: ["ear-eeg"], badge: "high-impact" })
     const { host, root } = mount()
@@ -127,14 +136,23 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
     // token-backed color class (Tong 2026-07-19: the why-reason IS the band,
     // not a category strip).
     const band = (host.firstElementChild as HTMLElement).firstElementChild as HTMLElement
-    expect(band.textContent).toBe("High impact")
-    expect(band.className).toContain("bg-band-impact")
+    expect(band.textContent).toContain("Research findings")
+    expect(band.textContent).toContain("Preprint")
+    expect(band.textContent).not.toContain("High impact")
+    expect(band.className).toContain("bg-band-evidence")
+    expect(band.className).not.toContain("border-t-")
+    const texture = band.querySelector('[aria-hidden="true"]') as HTMLElement
+    expect(texture).not.toBeNull()
+    expect(texture.style.backgroundImage).toContain("/textures/grain.png")
+    expect(texture.className).toContain("pointer-events-none")
+    expect(band.className).toContain("relative")
+    expect(band.className).toContain("overflow-hidden")
 
     act(() => root.unmount())
     host.remove()
   })
 
-  it("band degrades to a neutral first-tag strip when the item has no badge (old cache)", async () => {
+  it("keeps topics below the category on old cached cards", async () => {
     const storage = new MemoryVaultStorage()
     const item = itemFor({ tldr: "A tldr.", tags: ["ear-eeg", "attention"] })
     const { host, root } = mount()
@@ -146,8 +164,9 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
     })
 
     const band = (host.firstElementChild as HTMLElement).firstElementChild as HTMLElement
-    expect(band.textContent).toBe("ear-eeg")
-    expect(band.className).toContain("bg-warm-tan")
+    expect(band.textContent).not.toContain("ear-eeg")
+    expect(host.textContent).toContain("ear-eeg")
+    expect(band.className).toContain("bg-band-evidence")
 
     act(() => root.unmount())
     host.remove()
@@ -172,7 +191,7 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
     expect(host.textContent).not.toContain("More detail follows")
 
     // fallback tags: [source, year]
-    expect(host.textContent).toContain("arxiv")
+    expect(host.textContent).toContain("Preprint")
     expect(host.textContent).toContain("2024")
 
     act(() => root.unmount())
@@ -265,7 +284,7 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
       )
     })
 
-    const saveButton = Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Save")
+    const saveButton = host.querySelector('button[aria-label="Save"]')
     expect(saveButton, "Save button should be present").toBeTruthy()
 
     await act(async () => {
@@ -285,8 +304,6 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
   it.each([
     ["More like this", "more_like_this", false],
     ["Less like this", "less_like_this", false],
-    ["Too old", "too_old", true],
-    ["Already read this", "already_know", true],
   ] as const)("%s saves feedback without dismissing the paper or navigating", async (label, reason, inMenu) => {
     const onDismiss = vi.fn()
     const { host, root } = mount()
@@ -300,10 +317,12 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
       await act(async () => {
         Array.from(host.querySelectorAll("button")).find((button) => button.getAttribute("aria-label") === label || button.textContent === label)!.click()
       })
-      expect(sendRecommendationFeedback).toHaveBeenCalledWith("arxiv:2409.08710", reason)
+      expect(sendRecommendationFeedback).toHaveBeenCalledWith("arxiv:2409.08710", reason, { expectedRevision: null })
       expect(onDismiss).not.toHaveBeenCalled()
       expect(pushMock).not.toHaveBeenCalled()
-      expect(host.textContent).toContain("Feedback saved.")
+      expect(host.querySelector(`button[aria-label="${label}"]`)?.getAttribute("aria-pressed")).toBe("true")
+      expect(host.querySelector(`button[aria-label="${label}"] svg`)?.getAttribute("fill")).toBe("currentColor")
+      expect(host.textContent).not.toContain("Feedback saved.")
       expect(useCompanionStore.getState().feedbackQuestions).toEqual(reason === "less_like_this"
         ? [{ paperKey: "arxiv:2409.08710", title: "Ear-EEG for Auditory Attention Decoding", revision: "a".repeat(64) }]
         : [])
@@ -313,31 +332,39 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
     }
   })
 
-  it("Dismiss calls onDismiss and does not navigate (footer stops propagation)", async () => {
-    const storage = new MemoryVaultStorage()
-    const item = itemFor({ tldr: "A tldr.", tags: ["tag-a"] })
-    const onDismiss = vi.fn()
+  it("removes the Feedback menu and switches and clears thumbs without hiding cards", async () => {
     const { host, root } = mount()
-
-    await act(async () => {
-      root.render(
-        <RealFeedCard item={item} storage={storage} saved={false} onSave={() => {}} onDismiss={onDismiss} />,
-      )
-    })
-
-    await act(async () => {
-      Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Feedback")!.click()
-    })
-    const dismissButton = Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Dismiss")
-    expect(dismissButton, "Dismiss button should be present").toBeTruthy()
-
-    await act(async () => {
-      dismissButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }))
-    })
-
-    expect(onDismiss).toHaveBeenCalledWith(expect.any(String), expect.stringContaining("undo it in History"))
+    const onDismiss = vi.fn()
+    await act(async () => root.render(<RealFeedCard item={itemFor()} storage={new MemoryVaultStorage()} saved={false} onSave={() => {}} onDismiss={onDismiss} />))
+    expect([...host.querySelectorAll("button")].some((button) => button.textContent === "Feedback")).toBe(false)
+    const up = host.querySelector('button[aria-label="More like this"]') as HTMLButtonElement
+    const down = host.querySelector('button[aria-label="Less like this"]') as HTMLButtonElement
+    await act(async () => up.click())
+    expect(up.getAttribute("aria-pressed")).toBe("true")
+    await act(async () => down.click())
+    expect(up.getAttribute("aria-pressed")).toBe("false")
+    expect(down.getAttribute("aria-pressed")).toBe("true")
+    await act(async () => down.click())
+    expect(clearRecommendationFeedbackRemote).toHaveBeenCalledWith("arxiv:2409.08710", "a".repeat(64))
+    expect(down.getAttribute("aria-pressed")).toBe("false")
+    expect(onDismiss).not.toHaveBeenCalled()
     expect(pushMock).not.toHaveBeenCalled()
+    expect(host.querySelector('[role="link"]')).not.toBeNull()
+    act(() => root.unmount())
+    host.remove()
+  })
 
+  it("loads persisted votes on mount and shows the saved bookmark as filled", async () => {
+    vi.mocked(loadRecommendationFeedback).mockResolvedValue({ entries: [{ paperKey: "arxiv:2409.08710", title: "Paper", topics: [], reason: "wrong_method", at: "2026-09-06T00:00:00.000Z", revision: "b".repeat(64) }], warning: null })
+    const { host, root } = mount()
+    await act(async () => root.render(<RealFeedCard item={itemFor()} storage={new MemoryVaultStorage()} saved onSave={() => {}} />))
+    expect(host.querySelector('button[aria-label="Less like this"]')?.getAttribute("aria-pressed")).toBe("true")
+    expect(host.querySelector('button[aria-label="Saved"] svg')?.getAttribute("fill")).toBe("currentColor")
+    await act(async () => {
+      vi.mocked(loadRecommendationFeedback).mockResolvedValue({ entries: [], warning: null })
+      window.dispatchEvent(new Event("scispark:feedback-changed"))
+    })
+    expect(host.querySelector('button[aria-label="Less like this"]')?.getAttribute("aria-pressed")).toBe("false")
     act(() => root.unmount())
     host.remove()
   })

@@ -34,6 +34,15 @@ it("does not resurrect a bubble dismissed during a stream", () => {
   expect(state().sessionShownCount).toBe(1)
 })
 
+it("drops expired drafts and completions", () => {
+  const id = state().beginStream()!
+  const expired = { ...draft, expiresAt: new Date(Date.now() - 1).toISOString() }
+  state().updateStream(id, expired)
+  state().finishStream(id, expired)
+  expect(state().current).toBeNull()
+  expect(state().sessionShownCount).toBe(0)
+})
+
 it("prioritizes and queues user feedback without late proactive replies replacing it", () => {
   const id = state().beginStream()!
   const question = { paperKey: "one", title: "First paper", revision: "abc" }

@@ -130,7 +130,7 @@ describe.skipIf(!live)("LIVE lint gate (deep lint vs planted contradiction)", ()
 
       console.log(`[live-lint] findings: ${JSON.stringify(result.findings, null, 2)}`)
       console.log(`[live-lint] reviewIds: ${JSON.stringify(result.reviewIds)}`)
-      console.log(`[live-lint] costUsd: $${result.costUsd.toFixed(4)}`)
+      console.log(`[live-lint] costUsd: $${(result.costUsd?.toFixed(4) ?? "unknown")}`)
 
       expect(result.findings.length).toBeGreaterThanOrEqual(1)
 

@@ -10,9 +10,9 @@ import { FeedbackQuestion } from "./FeedbackQuestion";
 
 /** Fire-and-forget Tier-1 companion event. Never blocks or throws into render —
  * logEvent already swallows its own storage errors. */
-function logCompanionEvent(type: "companion_dismiss" | "companion_action", trigger: string) {
+function logCompanionEvent(type: "companion_dismiss" | "companion_action", trigger: string, eventId?: string) {
   void getOpenVault()
-    .then((storage) => logEvent(storage, { type, trigger }))
+    .then((storage) => logEvent(storage, { type, trigger, eventId }))
     .catch(() => undefined);
 }
 
@@ -62,6 +62,13 @@ export function CompanionMascot() {
     setBubbleOpen(hasCurrent);
   }, [hasCurrent]);
 
+  useEffect(() => {
+    if (!current?.expiresAt) return;
+    const delay = Math.max(0, Date.parse(current.expiresAt) - Date.now());
+    const timeout = window.setTimeout(dismiss, delay);
+    return () => window.clearTimeout(timeout);
+  }, [current?.expiresAt, dismiss]);
+
   function handleMascotClick() {
     if (!current) return; // idle: clicking does nothing, per spec
     setBubbleOpen((open) => !open);
@@ -70,7 +77,7 @@ export function CompanionMascot() {
   // Dismiss (x) clears the store and logs a `companion_dismiss` Tier-1 event so
   // Memory-Consolidation can learn what to stop suggesting (anti-Clippy loop).
   function handleDismiss() {
-    if (current) logCompanionEvent("companion_dismiss", current.trigger);
+    if (current) logCompanionEvent("companion_dismiss", current.trigger, current.eventId);
     setBubbleOpen(false);
     dismiss();
   }
@@ -78,7 +85,7 @@ export function CompanionMascot() {
   // Action click logs `companion_action` (positive signal), then the bubble's
   // next/link navigates and this closes the bubble.
   function handleAction() {
-    if (current) logCompanionEvent("companion_action", current.trigger);
+    if (current) logCompanionEvent("companion_action", current.trigger, current.eventId);
     setBubbleOpen(false);
     dismiss();
   }

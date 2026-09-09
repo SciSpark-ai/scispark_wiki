@@ -102,8 +102,8 @@ export class Meter {
     return { totalUsd: unpricedCount ? null : knownUsd, knownUsd, unpricedCount }
   }
 
-  async spentTodayUsd(): Promise<number> {
-    return (await this.spendingToday()).knownUsd
+  async spentTodayUsd(): Promise<number | null> {
+    return (await this.spendingToday()).totalUsd
   }
 
   async reviewReservationsToday(): Promise<number> {

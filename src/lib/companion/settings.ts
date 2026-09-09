@@ -35,12 +35,17 @@ function isChattiness(v: unknown): v is Chattiness {
   return typeof v === "string" && (CHATTINESS_VALUES as readonly string[]).includes(v)
 }
 
-/** Max proactive interventions allowed per session for a chattiness level. */
-export const SESSION_BUDGET: Record<Chattiness, number> = {
+/** Rolling 24-hour budget shared by every tab using this vault. */
+export const DAILY_BUDGET: Record<Chattiness, number> = {
   off: 0,
-  low: 2,
-  medium: 5,
-  high: 10,
+  low: 1,
+  medium: 2,
+  high: 4,
+}
+/** Compatibility ceiling for older clients; not the authoritative budget. */
+export const SESSION_BUDGET = DAILY_BUDGET
+export const MIN_GAP_MS: Record<Chattiness, number> = {
+  off: Infinity, low: 60 * 60_000, medium: 30 * 60_000, high: 15 * 60_000,
 }
 
 async function readJsonFile(storage: VaultStorage): Promise<Record<string, unknown>> {

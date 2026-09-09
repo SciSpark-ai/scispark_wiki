@@ -123,7 +123,7 @@ describe.skipIf(!live)("LIVE reading-companion gate", () => {
       // Loose grounding check: the answer should reference the passage's subject matter.
       expect(output.answer.toLowerCase()).toContain("attention")
 
-      console.log(`[live-reading-companion] costUsd: $${run.costUsd.toFixed(4)}`)
+      console.log(`[live-reading-companion] costUsd: $${(run.costUsd?.toFixed(4) ?? "unknown")}`)
       expect(run.costUsd).toBeLessThan(0.2)
     },
   )

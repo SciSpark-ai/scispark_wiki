@@ -18,6 +18,11 @@ import type { TrendingBoard } from "../dashboard"
 import { completeWindows } from "../topics"
 import { loadTrendingSettings, saveTrendingSettings } from "../settings"
 import type { CountFn } from "../counts"
+import { openAlexField } from "../openalex-fields"
+
+function scopeLabel(q: { query?: string; fieldId?: string }): string {
+  return (q.fieldId ? openAlexField(q.fieldId)?.label : undefined) ?? q.query ?? ""
+}
 
 const NOW = () => new Date("2026-07-14T00:00:00.000Z")
 const WINDOWS = completeWindows(NOW())
@@ -41,8 +46,9 @@ const CS = { id: "https://openalex.org/fields/17", label: "Computer Science" }
 type GroupSpec = Record<string, { recent: GroupEntry[]; prior: Record<string, number> }>
 
 function topicGroupFnFor(spec: GroupSpec): TopicGroupFn {
-  return async ({ query, fromDate }) => {
-    const entry = spec[query]
+  return async (q) => {
+    const { fromDate } = q
+    const entry = spec[scopeLabel(q)]
     if (!entry) return []
     // Only the recent window is ever grouped; anything else is a bug.
     return fromDate === WINDOWS.recent.fromDate ? entry.recent : []
@@ -60,9 +66,10 @@ function topicGroupFnFor(spec: GroupSpec): TopicGroupFn {
  * corpus-shrinkage cases pass a smaller recent total explicitly.
  */
 function countFnFor(spec: GroupSpec, other = 4, priorTotal = other): CountFn {
-  return async ({ query, fromDate, toDate, topicId }) => {
+  return async (q) => {
+    const { fromDate, toDate, topicId } = q
     if (isPriorLookup({ fromDate, toDate, topicId })) {
-      const prior = spec[query]?.prior ?? {}
+      const prior = spec[scopeLabel(q)]?.prior ?? {}
       return prior[topicId!] ?? 0
     }
     return fromDate === WINDOWS.prior.fromDate ? priorTotal : other
@@ -281,9 +288,9 @@ describe("runTrendingBoard", () => {
   it("issues NO per-topic series requests — every topic-scoped count is a prior lookup", async () => {
     const storage = new MemoryVaultStorage()
     await seedAnchors(storage, [NEURO])
-    const seen: Array<{ query: string; fromDate: string; toDate: string; topicId?: string }> = []
+    const seen: Array<{ query: string; fromDate: string; toDate: string; topicId?: string; fieldId?: string }> = []
     const spyCount: CountFn = async (q) => {
-      seen.push({ query: q.query, fromDate: q.fromDate, toDate: q.toDate, topicId: q.topicId })
+      seen.push({ fieldId: q.fieldId, query: q.query, fromDate: q.fromDate, toDate: q.toDate, topicId: q.topicId })
       return countFn(q)
     }
     const provider = new MockProvider([structured(BRIEFS_ONE)])
@@ -297,13 +304,13 @@ describe("runTrendingBoard", () => {
     const topicScoped = seen.filter((s) => s.topicId !== undefined)
     expect(topicScoped.length).toBe(2) // T1 and T2 (T3 is under the floor)
     expect(topicScoped.every((s) => isPriorLookup(s))).toBe(true)
-    expect(topicScoped.every((s) => s.query === "Neuroscience")).toBe(true)
+    expect(topicScoped.every((s) => s.query === "" && s.fieldId === NEURO.id)).toBe(true)
     expect(new Set(topicScoped.map((s) => s.topicId))).toEqual(new Set(["T1", "T2"]))
     // Plus exactly TWO anchor-wide corpus totals — this discipline's size in
     // each window, the share denominators. Nothing else.
     const corpusTotals = seen.filter((s) => s.topicId === undefined)
     expect(corpusTotals).toHaveLength(2)
-    expect(corpusTotals.every((s) => s.query === "Neuroscience")).toBe(true)
+    expect(corpusTotals.every((s) => s.query === "" && s.fieldId === NEURO.id)).toBe(true)
     expect(new Set(corpusTotals.map((s) => s.fromDate))).toEqual(
       new Set([WINDOWS.recent.fromDate, WINDOWS.prior.fromDate]),
     )
@@ -421,7 +428,7 @@ describe("runTrendingBoard", () => {
       // Computer Science throws on every window request.
     }
     const topicGroupFn: TopicGroupFn = async (q) => {
-      if (q.query === "Computer Science") throw new Error("openalex 500")
+      if (scopeLabel(q) === "Computer Science") throw new Error("openalex 500")
       return topicGroupFnFor(spec)(q)
     }
     // Only the surviving discipline runs a skill call.
@@ -552,23 +559,55 @@ describe("runTrendingBoard", () => {
     expect(board.anchors).toEqual([CS])
   })
 
-  it("re-derives when the user removed the last anchor chip (empty list, override flag still set)", async () => {
+  it("does not silently replace an invalid legacy manual topic list with suggestions", async () => {
     const storage = new MemoryVaultStorage()
-    // Exactly the state the settings editor leaves behind when the last chip is
-    // removed. Honoring the flag here would silently scope the board by the
-    // narrow interest labels — the scoping SP4 exists to replace.
-    await saveTrendingSettings(storage, {
+    await storage.write(".scispark/settings.json", JSON.stringify({ trending: {
       fields: [{ slug: "auditory-attention", label: "auditory attention decoding" }],
       cadence: "weekly",
       anchors: [],
       anchorsOverridden: true,
-    })
+    } }))
     const provider = new MockProvider([structured(BRIEFS_ONE)])
-    const board = await runTrendingBoard(storage, baseOpts({ providerOverride: { strong: provider } }))
-    expect(board.anchors).toEqual([NEURO])
-    const settings = await loadTrendingSettings(storage)
-    expect(settings.anchors).toEqual([NEURO])
-    expect(settings.anchorsOverridden).toBe(true) // a re-derivation never un-sets the user's intent
+    await expect(runTrendingBoard(storage, baseOpts({ providerOverride: { strong: provider } }))).rejects.toThrow("Choose 1–3")
+    expect(provider.calls).toHaveLength(0)
+    expect((await loadTrendingSettings(storage)).anchors).toEqual([])
+  })
+
+  it("uses canonical general fields without requiring narrow interests", async () => {
+    const storage = new MemoryVaultStorage()
+    const anchor = NEURO
+    await saveTrendingSettings(storage, { fields: [], cadence: "weekly", anchors: [anchor], anchorsOverridden: true })
+    const groups: Parameters<TopicGroupFn>[0][] = []
+    const searches: Parameters<TopWorksFn>[0][] = []
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    const board = await runTrendingBoard(storage, baseOpts({
+      fields: [],
+      fieldGroupFn: async () => { throw new Error("must not derive manual topics") },
+      topicGroupFn: async (query) => { groups.push(query); return ONE_DISCIPLINE.Neuroscience.recent },
+      topWorksFn: async (query) => { searches.push(query); return [] },
+      providerOverride: { strong: provider },
+    }))
+    expect(board.anchors).toEqual([anchor])
+    expect(board.topics.length).toBeGreaterThan(0)
+    expect(groups.every((query) => query.query === "" && query.fieldId === NEURO.id)).toBe(true)
+    expect(searches.every((query) => !query.query && query.fieldId === NEURO.id)).toBe(true)
+  })
+
+  it("uses the user's manual topics if they save while suggestions are being fetched", async () => {
+    const storage = new MemoryVaultStorage()
+    const chosen = { fields: [], cadence: "daily" as const, anchors: [CS], anchorsOverridden: true }
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    const board = await runTrendingBoard(storage, baseOpts({
+      fieldGroupFn: async (query) => {
+        await saveTrendingSettings(storage, chosen)
+        return fieldGroupFn(query)
+      },
+      topicGroupFn: topicGroupFnFor({ "Computer Science": ONE_DISCIPLINE.Neuroscience }),
+      providerOverride: { strong: provider },
+    }))
+    expect(board.anchors).toEqual([CS])
+    expect(board.topics.length).toBeGreaterThan(0)
+    expect(await loadTrendingSettings(storage)).toEqual(chosen)
   })
 
   it("persisting derived anchors does not revert a settings edit made during derivation", async () => {
@@ -589,23 +628,14 @@ describe("runTrendingBoard", () => {
     expect(settings.anchors).toEqual([NEURO])
   })
 
-  it("falls back to the narrow field labels as anchors when derivation fails", async () => {
+  it("does not replace unavailable field suggestions with a keyword scope", async () => {
     const storage = new MemoryVaultStorage()
-    const failingFieldGroup: TopicGroupFn = async () => {
-      throw new Error("openalex 429")
-    }
-    const provider = new MockProvider([structured({ topics: [{ key: "T1", why: "w" }], crossDisciplineNote: "n" })])
-    const board = await runTrendingBoard(
-      storage,
-      baseOpts({
-        fieldGroupFn: failingFieldGroup,
-        topicGroupFn: topicGroupFnFor({ "auditory attention decoding": ONE_DISCIPLINE.Neuroscience }),
-        providerOverride: { strong: provider },
-      }),
-    )
-    expect(board.anchors).toEqual([{ id: "auditory-attention", label: "auditory attention decoding" }])
-    expect(board.topics.map((t) => t.key)).toEqual(["T1", "T2"])
-    // A fallback scope is not a user-visible derivation result — nothing persisted.
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    await expect(runTrendingBoard(storage, baseOpts({
+      fieldGroupFn: async () => { throw new Error("OpenAlex unavailable") },
+      providerOverride: { strong: provider },
+    }))).rejects.toThrow("Choose your fields")
+    expect(provider.calls).toHaveLength(0)
     expect((await loadTrendingSettings(storage)).anchors).toEqual([])
   })
 
@@ -632,7 +662,7 @@ describe("runTrendingBoard", () => {
     await seedAnchors(storage, [NEURO, CS])
     const spec: GroupSpec = { ...ONE_DISCIPLINE, "Computer Science": ONE_DISCIPLINE.Neuroscience }
     // Prior lookups keep answering from the spec; only the anchor-wide totals differ.
-    const perAnchor: CountFn = async (q) => (isPriorLookup(q) ? countFn(q) : q.query === "Neuroscience" ? 1000 : 300)
+    const perAnchor: CountFn = async (q) => (isPriorLookup(q) ? countFn(q) : scopeLabel(q) === "Neuroscience" ? 1000 : 300)
     const provider = new MockProvider([structured(BRIEFS_ONE), structured(BRIEFS_ONE)])
     const board = await runTrendingBoard(
       storage,
@@ -712,7 +742,7 @@ describe("runTrendingBoard", () => {
     expect(board.topics.map((t) => t.key)).toEqual(["T2"])
   })
 
-  it("breakouts are scoped to the anchor (field id + label), over their own wider window, ranked by citations", async () => {
+  it("breakouts are scoped to the anchor (field ID only), over their own wider window, ranked by citations", async () => {
     const storage = new MemoryVaultStorage()
     await seedAnchors(storage, [NEURO])
     const requests: Array<Parameters<TopWorksFn>[0]> = []
@@ -730,42 +760,29 @@ describe("runTrendingBoard", () => {
     expect(board.breakouts.map((b) => b.record.title)).toEqual([
       "Cortical mapping in neuroscience",
       "Neuroscience methods roundup",
+      "Attention decoding at scale",
+      "Speech processing survey",
     ])
     expect(board.breakouts[0].citationCount).toBe(9)
 
     // Scope + window of the request itself: the anchor's OpenAlex field id AND
     // its label, over a window that starts well before the leaderboard's.
-    const breakoutRequest = requests.find((q) => q.fieldId !== undefined)!
+    const breakoutRequest = requests.find((q) => q.topicId === undefined)!
     expect(breakoutRequest.fieldId).toBe(NEURO.id)
-    expect(breakoutRequest.query).toBe("Neuroscience")
+    expect(breakoutRequest.query).toBeUndefined()
     expect(breakoutRequest.topicId).toBeUndefined()
     expect(breakoutRequest.toDate).toBe(WINDOWS.recent.toDate)
     expect(breakoutRequest.fromDate < WINDOWS.recent.fromDate).toBe(true)
   })
 
-  it("a fallback anchor (an interest slug, not an OpenAlex field key) is scoped by label alone — never by a bogus filter", async () => {
+  it("refuses an old custom scope instead of silently mapping it to a field", async () => {
     const storage = new MemoryVaultStorage()
-    // No stored anchors and a derivation that yields nothing → the board falls
-    // back to the interest label itself, whose "id" is a slug.
-    const requests: Array<Parameters<TopWorksFn>[0]> = []
-    const recording: TopWorksFn = async (q) => {
-      requests.push(q)
-      return []
-    }
-    const provider = new MockProvider([structured({ topics: [], crossDisciplineNote: null })])
-    await runTrendingBoard(
-      storage,
-      baseOpts({
-        fieldGroupFn: async () => [],
-        topicGroupFn: topicGroupFnFor({ "auditory attention decoding": ONE_DISCIPLINE.Neuroscience }),
-        countFn: countFnFor({ "auditory attention decoding": ONE_DISCIPLINE.Neuroscience }),
-        topWorksFn: recording,
-        providerOverride: { strong: provider },
-      }),
-    )
-    const breakoutRequest = requests.find((q) => q.topicId === undefined)!
-    expect(breakoutRequest.query).toBe("auditory attention decoding")
-    expect(breakoutRequest.fieldId).toBeUndefined()
+    await storage.write(".scispark/settings.json", JSON.stringify({ trending: {
+      anchors: [{ id: "custom:neuroscience", label: "Neuroscience" }], anchorsOverridden: true,
+    } }))
+    const provider = new MockProvider([structured(BRIEFS_ONE)])
+    await expect(runTrendingBoard(storage, baseOpts({ providerOverride: { strong: provider } }))).rejects.toThrow("Replace custom topics")
+    expect(provider.calls).toHaveLength(0)
   })
 
   it("breakouts exclude other fields, uncited papers, and anything older than the breakout window", async () => {

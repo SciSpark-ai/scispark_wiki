@@ -5,12 +5,14 @@ import { runSkill } from "../skills/runner"
 import { readUserModel } from "../usermodel/pages"
 import { logEvent } from "../events/log"
 import { loadCompanionSettings, SESSION_BUDGET } from "./settings"
-import { evaluateTriggers, type TriggerState } from "./triggers"
+import type { TriggerState } from "./triggers"
 import { companionSkill } from "./skill"
+import { claimCompanionEvent } from "./delivery"
+import { createHash } from "node:crypto"
 
 /**
  * Companion orchestrator (M7 Task 5): ties the trigger engine (T4), the
- * anti-Clippy session budget (T2), and the utterance skill (T3) together, and
+ * persisted delivery gate, and the utterance skill (T3) together, and
  * owns all storage access — the skill itself stays a pure LLM-calling unit
  * (blessed orchestrator-owns-storage pattern, docs/design/04-agent-harness.md).
  */
@@ -19,14 +21,17 @@ export interface CompanionUtterance {
   trigger: string
   text: string
   action: { label: string; href: string } | null
-  costUsd: number
+  costUsd: number | null
   fromTemplate: boolean
+  eventId?: string
+  originRoute?: string
+  expiresAt?: string
 }
 
 export interface RunCompanionArgs {
   storage: VaultStorage
   state: Omit<TriggerState, "nowMs">
-  /** Interventions already shown this session — the caller (UI store) tracks this. */
+  /** Optional legacy callers' session ceiling; normal UI sends zero. */
   sessionShownCount: number
   settings?: LLMSettings
   providerOverride?: Partial<Record<Tier, LLMProvider>>
@@ -36,10 +41,10 @@ export interface RunCompanionArgs {
 
 /**
  * Returns an utterance to show, or null when the companion should stay quiet
- * (chattiness off, session budget exhausted, no trigger, or all on cooldown).
+ * (chattiness off, delivery budget exhausted, no new trigger, or cooldown).
  * On a shown utterance, logs `companion_shown`. Does NOT itself run any
- * suggested action, and does NOT persist `lastShownTs`/session-count
- * bookkeeping — that's the caller's job (it only reads `state.lastShownTs`).
+ * suggested action. Event claims and frequency limits are persisted per vault
+ * before generating text, so reloads and concurrent tabs cannot repeat them.
  *
  * Never throws: a companion failure must never break the app's render, so the
  * entire body is wrapped and any unexpected error resolves to null.
@@ -54,18 +59,23 @@ export async function runCompanion(args: RunCompanionArgs): Promise<CompanionUtt
       return null
     }
 
-    const fired = evaluateTriggers({ ...args.state, nowMs: now().getTime() })
+    const fired = await claimCompanionEvent(args.storage, { ...args.state, nowMs: now().getTime() }, settings.chattiness)
     if (fired === null) return null
+    const context = {
+      eventId: createHash("sha256").update(fired.eventKey).digest("hex"),
+      originRoute: args.state.route,
+      expiresAt: new Date(now().getTime() + 60_000).toISOString(),
+    }
 
     const userModel = await readUserModel(args.storage)
 
     const run = await runSkill({
       skill: companionSkill,
       onText: args.onText ? (text) => args.onText!({
-        trigger: fired.id, text, action: null, costUsd: 0, fromTemplate: false,
+        ...context, trigger: fired.id, text, action: null, costUsd: 0, fromTemplate: false,
       }) : undefined,
       input: {
-        triggerContext: fired.contextBlurb,
+        triggerContext: fired.contextBlurb + (fired.action ? ` Suggested action: ${fired.action.label}.` : ""),
         feedback: userModel.feedback ?? "",
         companionName: settings.companionName,
       },
@@ -79,9 +89,10 @@ export async function runCompanion(args: RunCompanionArgs): Promise<CompanionUtt
     const fromTemplate = !(run.status === "ok" && run.output !== undefined)
     const costUsd = fromTemplate ? 0 : run.costUsd
 
-    await logEvent(args.storage, { type: "companion_shown", trigger: fired.id }, now)
+    await logEvent(args.storage, { type: "companion_shown", trigger: fired.id, eventId: context.eventId }, now)
 
     return {
+      ...context,
       trigger: fired.id,
       text,
       action: fired.action,

@@ -14,7 +14,7 @@ import { findPaperPage } from "@/lib/papers/page-state"
 
 export interface EnrichRouteResult {
   applied: boolean
-  costUsd: number
+  costUsd: number | null
   tldr?: string
   tags?: string[]
   warnings?: MutationWarning[]

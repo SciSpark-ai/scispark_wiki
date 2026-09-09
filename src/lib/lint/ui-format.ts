@@ -9,8 +9,8 @@ import type { LintKind } from "./types"
 /** "~$0.12 — proceed?" — the deep-lint confirm-dialog prompt. Matches
  * formatDeepSparkConfirm's wording contract exactly (M9 Task 8), per this
  * task's brief ("same estimate→confirm idiom as Deep Spark"). */
-export function formatDeepLintConfirm(costUsd: number): string {
-  return `~$${costUsd.toFixed(2)} — proceed?`
+export function formatDeepLintConfirm(costUsd: number | null): string {
+  return costUsd === null ? "Cost unavailable for this model — proceed with provider charges?" : `~$${costUsd.toFixed(2)} — proceed?`
 }
 
 /** "3 findings" / "1 finding" / "no findings" — summary shown after a lint

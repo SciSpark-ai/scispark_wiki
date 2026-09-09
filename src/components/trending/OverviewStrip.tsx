@@ -1,43 +1,20 @@
-import { Card } from "@/components/ui/Card"
 import type { BoardOverview } from "@/lib/trending/types"
 import { trendingWindowLabels } from "@/lib/trending/topics"
 
-/** Same null-means-"new" rule as TopicRow's growth badge — see that file's doc comment. */
-function growthLabel(growth: number | null): string {
-  if (growth === null) return "new"
-  const pct = Math.round(growth * 100)
-  return pct >= 0 ? `+${pct}%` : `${pct}%`
-}
-
-/**
- * Three headline figures for the board. `totalRecent` is a cross-anchor sum
- * that can double-count a work matching two anchor disciplines (see
- * `BoardOverview.totalRecent`'s JSDoc) — the label is phrased as an
- * approximate count across the user's disciplines, never as an exact
- * deduplicated total.
- */
+/** Board-wide totals stay separate from the locally filtered topic list. */
 export function OverviewStrip({ overview, generatedAt }: { overview: BoardOverview; generatedAt?: string }) {
-  const recentWindow = trendingWindowLabels(generatedAt ?? "").recent
+  const windows = trendingWindowLabels(generatedAt ?? "")
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <Card className="p-3">
-        <div className="font-heading text-[22px] text-espresso tracking-heading-card">{overview.totalRecent}</div>
-        <div className="text-[12px] text-muted-text tracking-body">
-          papers published across your disciplines from {recentWindow}
-        </div>
-      </Card>
-      <Card className="p-3">
-        <div className="font-heading text-[16px] text-espresso tracking-heading-card truncate">
-          {overview.topTopicLabel ?? "—"}
-        </div>
-        <div className="text-[12px] text-muted-text tracking-body">
-          top topic <span className="text-orange">{growthLabel(overview.topTopicGrowth)}</span>
-        </div>
-      </Card>
-      <Card className="p-3">
-        <div className="font-heading text-[22px] text-espresso tracking-heading-card">{overview.relevantCount}</div>
-        <div className="text-[12px] text-muted-text tracking-body">relevant to you</div>
-      </Card>
-    </div>
+    <section aria-label="Publication overview" className="flex flex-col justify-between gap-3 border-b border-border-warm pb-4 sm:gap-4 sm:pb-6 lg:flex-row lg:items-end">
+      <div>
+        <p className="text-[13px] text-secondary-dark">Publication window</p>
+        <h2 className="mt-1 font-heading text-[24px] leading-tight text-espresso tracking-heading-card">{windows.recent}</h2>
+        <p className="mt-2 text-[13px] text-muted-text">Compared with {windows.prior}</p>
+      </div>
+      <div className="text-[13px] leading-relaxed text-secondary-dark lg:text-right">
+        <p><strong className="font-semibold tabular-nums text-espresso">{overview.totalRecent.toLocaleString("en-US")}</strong> papers across all selected fields</p>
+        <p className="text-muted-text">{overview.relevantCount} {overview.relevantCount === 1 ? "topic matches" : "topics match"} your interests</p>
+      </div>
+    </section>
   )
 }

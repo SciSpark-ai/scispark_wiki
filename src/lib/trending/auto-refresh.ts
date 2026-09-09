@@ -43,7 +43,7 @@ export async function maybeAutoRefreshTrending(
     loadBoard(storage),
   ])
   const fields = effectiveTrackedFields(tSettings.fields, userModel.interests)
-  if (fields.length === 0) return "no-fields"
+  if (fields.length === 0 && tSettings.anchors.length === 0) return "no-fields"
   const scopeStale = tSettings.anchors.length > 0 && !anchorsMatchBoard(cached, tSettings.anchors)
   if (!isStale(cached, tSettings.cadence, now()) && !scopeStale) return "fresh"
   await runTrendingBoard(storage, {

@@ -70,17 +70,17 @@ describe("summarizeUsage", () => {
     ])
   })
 
-  it("counts null costUsd as 0 in sums and tallies it in unpricedCount", () => {
+  it("keeps affected totals unknown when any billed call is unpriced", () => {
     const records = [
       rec({ ts: "2026-07-12T01:00:00.000Z", skill: "digest", costUsd: null }),
       rec({ ts: "2026-07-12T02:00:00.000Z", skill: "digest", costUsd: 4 }),
     ]
     const summary = summarizeUsage(records, now)
-    expect(summary.today.totalUsd).toBe(4)
-    expect(summary.today.bySkill).toEqual([{ skill: "digest", totalUsd: 4 }])
+    expect(summary.today.totalUsd).toBeNull()
+    expect(summary.today.bySkill).toEqual([{ skill: "digest", totalUsd: null }])
     expect(summary.unpricedCount).toBe(1)
     const byDate = Object.fromEntries(summary.days.map((d) => [d.date, d.totalUsd]))
-    expect(byDate["2026-07-12"]).toBe(4)
+    expect(byDate["2026-07-12"]).toBeNull()
   })
 
   it("excludes records outside the days window from the daily series but still tallies their unpriced cost", () => {
@@ -94,7 +94,7 @@ describe("summarizeUsage", () => {
     const summary = summarizeUsage(records, now)
     const byDate = Object.fromEntries(summary.days.map((d) => [d.date, d.totalUsd]))
     expect(byDate["2026-06-01"]).toBeUndefined()
-    expect(summary.days.reduce((sum, d) => sum + d.totalUsd, 0)).toBe(1)
+    expect(summary.days.reduce((sum, d) => sum + (d.totalUsd ?? 0), 0)).toBe(1)
     expect(summary.unpricedCount).toBe(1)
   })
 

@@ -10,7 +10,7 @@ import { paperKey, type PaperRecord } from "@/lib/papers/types"
 
 export interface IngestRouteResult {
   output: IngestOutput
-  costUsd: number
+  costUsd: number | null
 }
 
 /**

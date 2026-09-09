@@ -22,10 +22,11 @@ import { PaperActions, type DigestState, type EnrichState, type IngestState, typ
 import { PaperDigestView } from "@/components/paper/PaperDigestView"
 import { PaperFeedContext } from "@/components/paper/PaperFeedContext"
 import { RecommendationDetails } from "@/components/feed/RecommendationDetails"
+import { PaperFeedback } from "@/components/paper/PaperFeedback"
 import { PaperMeta } from "@/components/paper/PaperMeta"
 import { PaperSynthesis } from "@/components/paper/PaperSynthesis"
 import { RelatedInWiki, resolveRelatedPages, type RelatedPageLink } from "@/components/paper/RelatedInWiki"
-import { useCompanion } from "@/components/companion/useCompanion"
+import { requestCompanionCheck as reevaluateCompanion } from "@/components/companion/useCompanion"
 import { COMPANION_CLEARANCE } from "@/components/layout/companion-clearance"
 import { BackLink } from "@/components/ui/BackLink"
 import { Button } from "@/components/ui/Button"
@@ -111,10 +112,6 @@ async function loadReadyState(storage: VaultStorage, slug: string): Promise<Load
 function PaperPageContent() {
   const params = useParams()
   const router = useRouter()
-  // Post-ingest celebration (M7), same as /papers — re-evaluate the
-  // companion right after a successful ingest without waiting for a route change.
-  const reevaluateCompanion = useCompanion()
-
   const rawKey = params?.key
   const slug = Array.isArray(rawKey) ? (rawKey[0] ?? "") : (rawKey ?? "")
 
@@ -454,6 +451,7 @@ function PaperPageContent() {
                   onIngest={handleIngest}
                   onUndo={handleUndo}
                   onReadFullText={handleReadFullText}
+                  feedback={<PaperFeedback paperKey={paperKey(load.paper)} title={load.paper.title} />}
                 />
               </div>
 

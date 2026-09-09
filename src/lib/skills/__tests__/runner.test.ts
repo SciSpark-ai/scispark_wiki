@@ -410,6 +410,24 @@ describe("runSkill", () => {
     expect(await meter.spentTodayUsd()).toBeGreaterThan(0)
   })
 
+  it("retains unknown pricing in the run, ledger, and budget coverage instead of recording a zero total", async () => {
+    const storage = new MemoryVaultStorage()
+    const settings = settingsWithKeys({ tierModels: { fast: { provider: "anthropic", model: "unpriced-model" }, strong: DEFAULT_SETTINGS.tierModels.strong } })
+    const provider = new MockProvider([result({ text: "first" }), result({ text: "second" })])
+    const skill = defineSkill<void, string>({ name: "unknown-price", version: "1", async run(ctx) {
+      await ctx.llm("fast", { messages: [{ role: "user", content: "first" }] })
+      return (await ctx.llm("strong", { messages: [{ role: "user", content: "second" }] })).text
+    } })
+    const run = await runSkill({ skill, input: undefined, storage, settings, now: NOW, providerOverride: { fast: provider, strong: provider } })
+    expect(run.status).toBe("ok")
+    expect(run.costUsd).toBeNull()
+    expect(run.logs.join(" ")).toContain("Budget coverage is incomplete")
+    expect(JSON.parse((await storage.read(`.scispark/runs/${run.runId}.json`))!).costUsd).toBeNull()
+    const meter = new Meter(storage, NOW)
+    expect(await meter.spentTodayUsd()).toBeNull()
+    expect((await meter.spendingToday()).knownUsd).toBeGreaterThan(0)
+  })
+
   it("ctx.llmStructured retries a transient provider error, same as ctx.llm (retry parity)", async () => {
     const storage = new MemoryVaultStorage()
     const provider = new MockProvider([

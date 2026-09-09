@@ -40,7 +40,7 @@ export function CompanionBubble({ utterance, onDismiss, onAction, streaming = fa
           <X size={14} />
         </button>
 
-        <p className="pr-5 text-[13px] leading-snug text-espresso">{utterance.text}{streaming && <span aria-hidden="true" className="ml-1 inline-block h-3 w-1 rounded-full bg-orange motion-safe:animate-pulse" />}</p>
+        <p className="pr-5 text-[13px] leading-snug text-pretty text-espresso">{utterance.text}{streaming && <span aria-hidden="true" className="ml-1 inline-block h-3 w-1 rounded-full bg-orange motion-safe:animate-pulse" />}</p>
 
         {utterance.action ? (
           <Link

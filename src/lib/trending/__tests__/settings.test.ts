@@ -23,7 +23,7 @@ describe("trending settings", () => {
     const next = {
       fields: [{ slug: "nlp", label: "NLP" }],
       cadence: "daily" as const,
-      anchors: [{ id: "field123", label: "Neuroscience" }],
+      anchors: [{ id: "https://openalex.org/fields/28", label: "Neuroscience" }],
       anchorsOverridden: true,
     }
     await saveTrendingSettings(storage, next)

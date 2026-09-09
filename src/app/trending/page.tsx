@@ -15,13 +15,10 @@ import type { TrendingBoard } from "@/lib/trending/types"
 import { refreshTrendingDashboard } from "@/lib/trending/client"
 import { useUIStore } from "@/stores/ui-store"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
-import { PageHeader } from "@/components/ui/PageHeader"
 import { Button } from "@/components/ui/Button"
 import { LoadingState } from "@/components/ui/LoadingState"
-import { Chip } from "@/components/ui/Chip"
 import { OverviewStrip } from "@/components/trending/OverviewStrip"
-import { Leaderboard } from "@/components/trending/Leaderboard"
-import { BreakoutPapers } from "@/components/trending/BreakoutPapers"
+import { TrendingWorkspace } from "@/components/trending/TrendingWorkspace"
 
 type State =
   | { status: "loading" }
@@ -31,7 +28,7 @@ type State =
 
 function formatUpdated(iso: string): string {
   try {
-    return new Date(iso).toLocaleString()
+    return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
   } catch {
     return iso
   }
@@ -48,13 +45,8 @@ export default function TrendingPage() {
   // Fires with each anchor DISCIPLINE's label (not the user's narrow
   // interest fields — SP4 scopes retrieval to broad anchor disciplines).
   const [refreshingDiscipline, setRefreshingDiscipline] = useState<string | null>(null)
-  const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const started = useRef(false)
   const openSettingsModal = useUIStore((s) => s.openSettingsModal)
-
-  const toggleTopic = useCallback((key: string) => {
-    setExpandedKey((prev) => (prev === key ? null : key))
-  }, [])
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
@@ -66,7 +58,7 @@ export default function TrendingPage() {
         readUserModel(vault),
       ])
       const fields = effectiveTrackedFields(tSettings.fields, userModel.interests)
-      if (fields.length === 0) {
+      if (fields.length === 0 && tSettings.anchors.length === 0) {
         setState({ status: "empty" })
         return
       }
@@ -98,7 +90,7 @@ export default function TrendingPage() {
           loadBoard(vault),
         ])
         const fields = effectiveTrackedFields(tSettings.fields, userModel.interests)
-        if (fields.length === 0) {
+        if (fields.length === 0 && tSettings.anchors.length === 0) {
           setState({ status: "empty" })
           return
         }
@@ -130,39 +122,25 @@ export default function TrendingPage() {
   }, [refresh])
 
   return (
-    <div className="p-7">
-      <PageHeader
-        title="Trending in your fields"
-        actions={
-          state.status === "ready" ? (
-            <>
-              {refreshing && refreshingDiscipline && (
-                <span className="text-[12px] text-muted-text">Gathering trends… ({refreshingDiscipline})</span>
-              )}
-              <span className="text-[12px] text-muted-text">Updated {formatUpdated(state.dashboard.generatedAt)}</span>
+    <div className="px-4 py-6 pb-24 sm:p-7 sm:pb-24 lg:px-9">
+      <header className="mb-6 flex flex-col justify-between gap-4 sm:mb-8 sm:flex-row sm:items-start">
+        <div>
+          <h1 className="font-heading text-[32px] leading-tight text-espresso tracking-heading">Trending in your fields</h1>
+          <p className="mt-2 text-[14px] text-secondary-dark">Research activity across the fields you follow.</p>
+        </div>
+        {state.status === "ready" && (
+          <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" onClick={() => openSettingsModal("trending")}>Edit fields</Button>
               <Button onClick={refresh} disabled={refreshing}>
                 {refreshing ? "Refreshing…" : "Refresh"}
               </Button>
-            </>
-          ) : undefined
-        }
-      />
-
-      {state.status === "ready" && state.dashboard.anchors.length > 0 && (
-        <div className="mb-6 -mt-2 flex flex-wrap gap-1.5">
-          {state.dashboard.anchors.map((anchor) => (
-            <button
-              key={anchor.id}
-              type="button"
-              onClick={() => openSettingsModal("trending")}
-              title="Edit your trending disciplines"
-              aria-label="Edit your trending disciplines"
-            >
-              <Chip tone="accent">{anchor.label}</Chip>
-            </button>
-          ))}
-        </div>
-      )}
+            </div>
+            <span className="text-[12px] text-muted-text">Updated {formatUpdated(state.dashboard.generatedAt)}</span>
+            {refreshing && refreshingDiscipline && <span role="status" className="text-[12px] text-secondary-dark">Gathering trends… ({refreshingDiscipline})</span>}
+          </div>
+        )}
+      </header>
 
       {state.status === "loading" && (
         <LoadingState
@@ -177,12 +155,12 @@ export default function TrendingPage() {
       )}
       {state.status === "empty" && (
         <div className="mt-8 border border-border-warm rounded-card px-5 py-6 bg-light-surface max-w-lg">
-          <h2 className="font-heading text-[18px] text-espresso tracking-heading-card">No tracked fields yet</h2>
+          <h2 className="font-heading text-[18px] text-espresso tracking-heading-card">Choose your Trending topics</h2>
           <p className="mt-2 text-[13px] text-muted-text tracking-body">
-            Set your research areas to see what’s trending in them.
+            Add broad topics to see what’s trending in them.
           </p>
-          <Link href="/profile" className="mt-4 inline-block text-[13px] text-white bg-orange rounded-pill px-4 py-1.5 font-medium">
-            Set my fields →
+          <Link href="/settings?section=trending" className="mt-4 inline-block text-[13px] text-white bg-orange rounded-pill px-4 py-1.5 font-medium">
+            Choose topics →
           </Link>
         </div>
       )}
@@ -192,6 +170,7 @@ export default function TrendingPage() {
           <Button onClick={refresh} disabled={refreshing} className="mt-3">
             {refreshing ? "Retrying…" : "Retry"}
           </Button>
+          <Button variant="quiet" onClick={() => openSettingsModal("trending")} className="mt-3">Choose fields</Button>
         </div>
       )}
       {state.status === "ready" && (
@@ -213,11 +192,8 @@ export default function TrendingPage() {
               {state.dashboard.dataError}
             </p>
           )}
-          <div className="flex flex-col gap-5">
-            <OverviewStrip overview={state.dashboard.overview} generatedAt={state.dashboard.generatedAt} />
-            <Leaderboard board={state.dashboard} expandedKey={expandedKey} onToggle={toggleTopic} />
-            <BreakoutPapers breakouts={state.dashboard.breakouts} />
-          </div>
+          <OverviewStrip overview={state.dashboard.overview} generatedAt={state.dashboard.generatedAt} />
+          <TrendingWorkspace board={state.dashboard} />
         </>
       )}
     </div>

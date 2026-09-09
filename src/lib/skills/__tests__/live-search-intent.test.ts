@@ -44,7 +44,7 @@ async function classify(query: string): Promise<SearchIntent> {
     storage: new MemoryVaultStorage(),
     settings: liveSettings(),
   })
-  console.log(`[live-search-intent] "${query}" -> status=${run.status} out=${JSON.stringify(run.output)} cost=$${run.costUsd.toFixed(5)}`)
+  console.log(`[live-search-intent] "${query}" -> status=${run.status} out=${JSON.stringify(run.output)} cost=$${(run.costUsd?.toFixed(5) ?? "unknown")}`)
   if (run.status !== "ok") console.log(`[live-search-intent] error: ${run.error}`)
   expect(run.status).toBe("ok")
   return run.output as SearchIntent

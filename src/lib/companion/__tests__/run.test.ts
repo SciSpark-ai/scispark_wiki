@@ -30,7 +30,7 @@ async function seededStorage(): Promise<MemoryVaultStorage> {
   return storage
 }
 
-const SAMPLE_UTTERANCE = { utterance: "Your feed's ready — want to see what's new?" }
+const SAMPLE_UTTERANCE = { utterance: "A possible duplicate needs your review." }
 
 function structuredResult(overrides?: Partial<LLMResult>): LLMResult {
   return {
@@ -44,19 +44,20 @@ function structuredResult(overrides?: Partial<LLMResult>): LLMResult {
   }
 }
 
-// A TriggerState (minus nowMs) that makes app-open fire.
-const APP_OPEN_STATE: Omit<TriggerState, "nowMs"> = {
+// A concrete, fresh review item with a live destination.
+const REVIEW_STATE: Omit<TriggerState, "nowMs"> = {
   route: "/",
   hasFeedCache: true,
   recentEvents: [],
-  reviewCount: 0,
+  reviewCount: 1,
+  reviews: [{ id: "rev-1", createdAt: NOW().toISOString(), title: "Possible duplicate" }],
   bundle: null,
   lastShownTs: {},
 }
 
 // A TriggerState (minus nowMs) that makes nothing fire.
 const NO_TRIGGER_STATE: Omit<TriggerState, "nowMs"> = {
-  route: "/papers",
+  route: "/wiki",
   hasFeedCache: false,
   recentEvents: [],
   reviewCount: 0,
@@ -77,7 +78,7 @@ async function readEventsThisMonth(storage: MemoryVaultStorage): Promise<Array<R
 function baseArgs(storage: MemoryVaultStorage, overrides?: Partial<RunCompanionArgs>): RunCompanionArgs {
   return {
     storage,
-    state: APP_OPEN_STATE,
+    state: REVIEW_STATE,
     sessionShownCount: 0,
     settings: settingsWithKeys(),
     now: NOW,
@@ -134,17 +135,17 @@ describe("runCompanion", () => {
     const result = await runCompanion(baseArgs(storage, { providerOverride: { fast: provider } }))
 
     expect(result).not.toBeNull()
-    expect(result!.trigger).toBe("app-open")
+    expect(result!.trigger).toBe("review-pending")
     expect(result!.text).toBe(SAMPLE_UTTERANCE.utterance)
     expect(result!.fromTemplate).toBe(false)
     expect(result!.costUsd).toBeGreaterThan(0)
-    expect(result!.action).toEqual({ label: "Home", href: "/" })
+    expect(result!.action).toEqual({ label: "Review inbox", href: "/wiki/inbox" })
     expect(provider.calls).toHaveLength(1)
 
     const events = await readEventsThisMonth(storage)
     const shown = events.filter((e) => e.type === "companion_shown")
     expect(shown).toHaveLength(1)
-    expect(shown[0].trigger).toBe("app-open")
+    expect(shown[0].trigger).toBe("review-pending")
   })
 
   it("passes triggerContext and feedback.md body to the skill", async () => {
@@ -155,7 +156,7 @@ describe("runCompanion", () => {
     await runCompanion(baseArgs(storage, { providerOverride: { fast: provider } }))
 
     const userMessage = provider.calls[0].req.messages[1].content
-    expect(userMessage).toContain("opened the app")
+    expect(userMessage).toContain("Possible duplicate")
     expect(userMessage).toContain("Standing instructions")
   })
 
@@ -167,11 +168,11 @@ describe("runCompanion", () => {
     const result = await runCompanion(baseArgs(storage, { providerOverride: { fast: provider } }))
 
     expect(result).not.toBeNull()
-    expect(result!.trigger).toBe("app-open")
+    expect(result!.trigger).toBe("review-pending")
     expect(result!.fromTemplate).toBe(true)
     expect(result!.costUsd).toBe(0)
-    expect(result!.text).toBe("Your feed's ready — want to see what's new?")
-    expect(result!.action).toEqual({ label: "Home", href: "/" })
+    expect(result!.text).toBe("An item needs your review: Possible duplicate")
+    expect(result!.action).toEqual({ label: "Review inbox", href: "/wiki/inbox" })
 
     const events = await readEventsThisMonth(storage)
     const shown = events.filter((e) => e.type === "companion_shown")

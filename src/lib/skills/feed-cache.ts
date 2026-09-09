@@ -93,7 +93,7 @@ const FeedResultCacheSchema = z.object({
   recommendation: RecommendationRunSchema.optional(),
   generatedAt: z.string(),
   items: z.array(FeedItemCacheSchema),
-  costUsd: z.number(),
+  costUsd: z.number().nullable(),
   strategy: StrategySchema,
   stats: z.object({ retrieved: z.number(), ranked: z.number() }),
 })

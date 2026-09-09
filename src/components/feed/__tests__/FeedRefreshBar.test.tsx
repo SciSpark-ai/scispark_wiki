@@ -34,6 +34,16 @@ function mount(): { host: HTMLDivElement; root: Root } {
 }
 
 describe("FeedRefreshBar first-run initialization", () => {
+  it("does not describe an unpriced refresh as zero dollars", async () => {
+    refreshFeedMock.mockResolvedValue({ ...FEED, costUsd: null })
+    const { host, root } = mount()
+    await act(async () => root.render(<FeedRefreshBar autoStart onUpdated={vi.fn()} />))
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)) })
+    expect(host.textContent).toContain("cost unavailable")
+    expect(host.textContent).not.toContain("$0.00")
+    act(() => root.unmount())
+    host.remove()
+  })
   beforeEach(() => {
     consolidateMock.mockReset().mockResolvedValue({ status: "skipped", costUsd: 0 })
     refreshFeedMock.mockReset().mockImplementation(async (onStage: (stage: string) => void) => {

@@ -1,5 +1,7 @@
 "use client"
 
+import { formatCost } from "@/lib/llm/pricing"
+
 import { useState } from "react"
 import Link from "next/link"
 import type { Seed } from "@/lib/spark/quick"
@@ -14,13 +16,13 @@ import { wikiHref } from "@/lib/wiki/href"
 type QuickState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "done"; seeds: Seed[]; costUsd: number }
+  | { status: "done"; seeds: Seed[]; costUsd: number | null }
   | { status: "error"; message: string }
 
 type DeepRunState =
   | { status: "idle" }
   | { status: "running"; phase: string | null; seedIndex?: number }
-  | { status: "done"; outcome: DeepSparkOutcome; costUsd: number; seedIndex?: number }
+  | { status: "done"; outcome: DeepSparkOutcome; costUsd: number | null; seedIndex?: number }
   | { status: "error"; message: string; seedIndex?: number }
 
 interface SparkPanelProps {
@@ -177,8 +179,7 @@ export function SparkPanel({ clusterPageIds, onIdeaSaved }: SparkPanelProps) {
       {quickState.status === "done" && (
         <div className="mt-4 flex flex-col gap-3">
           <div className="text-[12px] text-muted-text tracking-body">
-            {quickState.seeds.length} seed{quickState.seeds.length === 1 ? "" : "s"} · cost ≈ $
-            {quickState.costUsd.toFixed(4)}
+            {quickState.seeds.length} seed{quickState.seeds.length === 1 ? "" : "s"} · {formatCost(quickState.costUsd, 4)}
           </div>
           {quickState.seeds.map((seed, i) => (
             <SeedCard
@@ -210,7 +211,7 @@ export function SparkPanel({ clusterPageIds, onIdeaSaved }: SparkPanelProps) {
   )
 }
 
-function DeepOutcomeCard({ outcome, costUsd }: { outcome: DeepSparkOutcome; costUsd: number }) {
+function DeepOutcomeCard({ outcome, costUsd }: { outcome: DeepSparkOutcome; costUsd: number | null }) {
   const display = describeDeepOutcome(outcome)
   return (
     <div className="mt-4 border border-border-warm rounded-card px-4 py-3 bg-light-surface">
@@ -224,7 +225,7 @@ function DeepOutcomeCard({ outcome, costUsd }: { outcome: DeepSparkOutcome; cost
           View idea page →
         </Link>
       )}
-      <div className="mt-2 text-[12px] text-muted-text tracking-body">cost ≈ ${costUsd.toFixed(2)}</div>
+      <div className="mt-2 text-[12px] text-muted-text tracking-body">{formatCost(costUsd)}</div>
     </div>
   )
 }

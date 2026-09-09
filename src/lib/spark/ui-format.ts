@@ -18,8 +18,8 @@ export function formatGroundingCount(count: number): string {
 
 /** "~$1.23 — proceed?" — the Deep Spark confirm-dialog prompt, matching the
  * M9 task-8 brief's wording contract exactly. */
-export function formatDeepSparkConfirm(costUsd: number): string {
-  return `~$${costUsd.toFixed(2)} — proceed?`
+export function formatDeepSparkConfirm(costUsd: number | null): string {
+  return costUsd === null ? "Cost unavailable for this model — proceed with provider charges?" : `~$${costUsd.toFixed(2)} — proceed?`
 }
 
 /** Ordered Deep Spark phases as surfaced by `runDeepSpark`'s `onPhase`

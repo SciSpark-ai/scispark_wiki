@@ -1,4 +1,3 @@
-import { Card } from "@/components/ui/Card"
 import { EmptyState } from "@/components/ui/EmptyState"
 import type { TrendingBoard } from "@/lib/trending/types"
 import { trendingWindowLabels } from "@/lib/trending/topics"
@@ -29,7 +28,10 @@ export function Leaderboard({ board, expandedKey, onToggle }: LeaderboardProps) 
   }
 
   return (
-    <Card>
+    <div className="overflow-hidden rounded-btn border border-border-warm bg-light-surface">
+      <div aria-hidden="true" className="hidden grid-cols-[minmax(0,1fr)_4.5rem_6rem_1rem] items-center gap-4 border-b border-border-warm bg-page-warm px-5 py-3 text-[12px] text-secondary-dark md:grid">
+        <span>Research topic</span><span className="text-right">Papers</span><span className="text-right">Share growth</span><span />
+      </div>
       {board.topics.map((topic, i) => (
         <TopicRow
           key={topic.key}
@@ -41,6 +43,6 @@ export function Leaderboard({ board, expandedKey, onToggle }: LeaderboardProps) 
           priorWindowLabel={windows.prior}
         />
       ))}
-    </Card>
+    </div>
   )
 }

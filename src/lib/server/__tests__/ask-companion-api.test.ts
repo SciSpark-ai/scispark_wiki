@@ -118,7 +118,7 @@ describe("reading-companion ask + companion utterance skill routes", () => {
         ".scispark/review/rev-1.json",
         JSON.stringify({
           id: "rev-1",
-          createdAt: "2026-07-14T00:00:00.000Z",
+          createdAt: new Date().toISOString(),
           changesetId: "cs-1",
           kind: "suggestion",
           title: "Possible duplicate",
@@ -134,7 +134,7 @@ describe("reading-companion ask + companion utterance skill routes", () => {
       const res = await companionRoute.POST(
         new Request("http://x/api/skills/companion", {
           method: "POST",
-          body: JSON.stringify({ route: "/papers", sessionShownCount: 0, lastShownTs: {} }),
+          body: JSON.stringify({ route: "/wiki", sessionShownCount: 0, lastShownTs: {} }),
         }),
       )
 
@@ -145,14 +145,16 @@ describe("reading-companion ask + companion utterance skill routes", () => {
       expect(result!.text).toBe(utterance.utterance)
       expect(result!.action).toEqual({ label: "Review inbox", href: "/wiki/inbox" })
       expect(provider.calls).toHaveLength(1)
-      // Reuse the eligible trigger to exercise the opt-in streaming transport.
+      // Reset only this isolated test's delivery claim to independently exercise
+      // the streaming transport. Production reloads never reset this ledger.
+      await storage.delete(".scispark/companion-delivery.json")
       setSkillTestOverrides({ providerOverride: { fast: { id: "anthropic", async complete(_m, req) {
         req.onText?.('{"utterance":"You have')
         return structured(utterance)
       } } } })
       const drafts: CompanionUtterance[] = []
       const routeFetch: typeof fetch = async (_url, init) => companionRoute.POST(new Request("http://local/companion", init))
-      const streamed = await companionUtteranceRemote({ route: "/papers", sessionShownCount: 0, lastShownTs: {} }, routeFetch, (draft) => drafts.push(draft))
+      const streamed = await companionUtteranceRemote({ route: "/wiki", sessionShownCount: 0, lastShownTs: {} }, routeFetch, (draft) => drafts.push(draft))
       expect(drafts[0]).toMatchObject({ text: "You have", action: null, trigger: "review-pending" })
       expect(streamed?.text).toBe(utterance.utterance)
       expect(streamed?.action?.href).toBe("/wiki/inbox")
@@ -162,7 +164,7 @@ describe("reading-companion ask + companion utterance skill routes", () => {
       const res = await companionRoute.POST(
         new Request("http://x/api/skills/companion", {
           method: "POST",
-          body: JSON.stringify({ route: "/papers", sessionShownCount: 0, lastShownTs: {} }),
+          body: JSON.stringify({ route: "/wiki", sessionShownCount: 0, lastShownTs: {} }),
         }),
       )
 

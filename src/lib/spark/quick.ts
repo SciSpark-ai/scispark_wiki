@@ -198,7 +198,7 @@ async function assembleVaultContext(
 
 export interface QuickSparkResult {
   seeds: Seed[]
-  costUsd: number
+  costUsd: number | null
   runId?: string
 }
 

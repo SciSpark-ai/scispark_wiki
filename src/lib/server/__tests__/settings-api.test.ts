@@ -4,6 +4,8 @@ import { setServerVaultForTests } from "../vault"
 import { loadSettings, saveSettings, DEFAULT_SETTINGS } from "../../llm/settings"
 import { loadCompanionSettings, DEFAULT_COMPANION_SETTINGS } from "../../companion/settings"
 import { loadTrendingSettings } from "../../trending/settings"
+import { customAnchor } from "../../trending/anchors"
+import { canonicalAnchor } from "../../trending/openalex-fields"
 import * as settingsRoute from "../../../app/api/settings/route"
 
 const SECRET_KEY = "sk-ant-secret-abc123"
@@ -206,6 +208,36 @@ describe("settings API", () => {
   })
 
   // ---- companion + trending sub-objects (M12 follow-up) ----
+  it("saves multiple general topics without changing stored provider keys", async () => {
+    await saveSettings(storage, { ...DEFAULT_SETTINGS, keys: { anthropic: SECRET_KEY } })
+    const trending = { fields: [], cadence: "weekly", anchors: [canonicalAnchor("28"), canonicalAnchor("32")], anchorsOverridden: true }
+    const res = await settingsRoute.PUT(new Request("http://x/api/settings", {
+      method: "PUT", body: JSON.stringify({ trending }),
+    }))
+    expect(res.status).toBe(200)
+    expect(await loadTrendingSettings(storage)).toEqual(trending)
+    expect((await loadSettings(storage)).keys.anthropic).toBe(SECRET_KEY)
+    expect(await res.text()).not.toContain(SECRET_KEY)
+  })
+
+  it.each([
+    [],
+    [customAnchor("")],
+    [customAnchor("Neuroscience"), customAnchor("NEUROSCIENCE")],
+    [customAnchor("a"), customAnchor("b"), customAnchor("c"), customAnchor("d")],
+    [customAnchor("a".repeat(121))],
+  ])("rejects invalid manual topics atomically: %j", async (...args) => {
+    const anchors = args
+    await saveSettings(storage, { ...DEFAULT_SETTINGS, keys: { anthropic: SECRET_KEY } })
+    const before = await storage.read(".scispark/settings.json")
+    const res = await settingsRoute.PUT(new Request("http://x/api/settings", {
+      method: "PUT", body: JSON.stringify({ patch: { dailyBudgetUsd: 8 }, trending: {
+        fields: [], cadence: "weekly", anchors, anchorsOverridden: true,
+      } }),
+    }))
+    expect(res.status).toBe(400)
+    expect(await storage.read(".scispark/settings.json")).toBe(before)
+  })
   // The vault-file route 403s .scispark/settings.json, so /api/settings is the
   // ONLY browser path to companion/trending settings. These cover the GET view
   // and PUT round-trips the profile / debug-llm pages now depend on.

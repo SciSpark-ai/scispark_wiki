@@ -9,7 +9,8 @@ import { spendBarLayout } from "./spend-chart"
 const CHART_WIDTH = 280
 const CHART_HEIGHT = 64
 
-function usd(n: number): string {
+function usd(n: number | null): string {
+  if (n === null) return "Unknown"
   return `$${n.toFixed(n < 1 ? 4 : 2)}`
 }
 
@@ -98,9 +99,9 @@ export function SpendPanel() {
     }
   }
 
-  const todayUsd = summary?.today.totalUsd ?? 0
-  const overBudget = budgetUsd > 0 && todayUsd > budgetUsd
-  const pct = budgetUsd > 0 ? Math.min(100, (todayUsd / budgetUsd) * 100) : 0
+  const todayUsd = summary ? summary.today.totalUsd : null
+  const overBudget = todayUsd !== null && budgetUsd > 0 && todayUsd > budgetUsd
+  const pct = todayUsd !== null && budgetUsd > 0 ? Math.min(100, (todayUsd / budgetUsd) * 100) : 0
 
   return (
     <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6">
@@ -131,12 +132,13 @@ export function SpendPanel() {
                 {usd(todayUsd)} / {usd(budgetUsd)}
               </span>
             </div>
-            <div className="h-2.5 w-full rounded-pill bg-card-surface overflow-hidden">
+            {todayUsd !== null && <div className="h-2.5 w-full rounded-pill bg-card-surface overflow-hidden">
               <div
                 className={`h-full rounded-pill ${overBudget ? "bg-red-600" : "bg-orange"}`}
                 style={{ width: `${overBudget ? 100 : pct}%` }}
               />
-            </div>
+            </div>}
+            {todayUsd === null && <p className="text-[12px] text-muted-text">Some calls have no known price. The local budget covers known costs only; check your provider’s spending limit.</p>}
             {overBudget && (
               <p className="mt-1.5 text-[12px] text-red-600">Over daily budget.</p>
             )}
@@ -148,6 +150,7 @@ export function SpendPanel() {
               Last 7 days
             </span>
             <SpendBarChart days={summary!.days} />
+            {summary!.days.some((day) => day.totalUsd === null) && <p className="mt-2 text-[12px] text-muted-text">Unpriced days are not plotted.</p>}
           </div>
 
           {/* Per-skill breakdown for today */}
@@ -172,7 +175,7 @@ export function SpendPanel() {
             {summary!.unpricedCount > 0 && (
               <p className="mt-2 text-[12px] text-muted-text">
                 {summary!.unpricedCount} record{summary!.unpricedCount === 1 ? "" : "s"} without a known
-                price (excluded from totals).
+                price. Affected totals remain unknown, not zero.
               </p>
             )}
           </div>

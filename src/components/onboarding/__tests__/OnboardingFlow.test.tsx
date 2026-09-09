@@ -1,165 +1,113 @@
 // @vitest-environment jsdom
 import { act } from "react"
-import { createRoot, type Root } from "react-dom/client"
-import { describe, expect, it, vi } from "vitest"
+import { createRoot } from "react-dom/client"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { initialRecord, type OnboardingState } from "@/lib/onboarding/contract"
 import { OnboardingFlow } from "../OnboardingFlow"
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-
-function mount(onSubmit = vi.fn()) {
+const { sendMock, loadMock } = vi.hoisted(() => ({ sendMock: vi.fn(), loadMock: vi.fn() }))
+vi.mock("@/lib/onboarding/client", () => ({ sendOnboarding: sendMock, loadOnboarding: loadMock }))
+function initial(): OnboardingState { return { ...initialRecord(), revision: null, connected: true, onboarded: false } }
+function mount(state = initial()) {
   const host = document.createElement("div")
-  document.body.appendChild(host)
-  const root: Root = createRoot(host)
-  act(() => root.render(<OnboardingFlow onSubmit={onSubmit} />))
-  return { host, root, onSubmit }
+  document.body.append(host)
+  const root = createRoot(host)
+  const onComplete = vi.fn()
+  act(() => root.render(<OnboardingFlow initial={state} onComplete={onComplete} />))
+  return { host, root, onComplete, cleanup: () => { act(() => root.unmount()); host.remove() } }
 }
-
-function setComposer(host: HTMLElement, value: string) {
-  const field = host.querySelector('input:not([type="radio"]):not([type="checkbox"]), textarea') as HTMLInputElement | HTMLTextAreaElement
-  const prototype = field instanceof HTMLTextAreaElement
-    ? HTMLTextAreaElement.prototype
-    : HTMLInputElement.prototype
-  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set
-  act(() => {
-    setter?.call(field, value)
-    field.dispatchEvent(new Event("input", { bubbles: true }))
-  })
+function compose(host: HTMLElement, value: string) {
+  const field = host.querySelector('[aria-label="Your reply to Sparky"]') as HTMLTextAreaElement
+  act(() => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, value); field.dispatchEvent(new Event("input", { bubbles: true })) })
 }
-
-function send(host: HTMLElement) {
-  const button = host.querySelector('button[aria-label="Send answer"], button[aria-label="Create my research space"]')
-  act(() => button?.dispatchEvent(new MouseEvent("click", { bubbles: true })))
-}
-
-function pressEnter(host: HTMLElement, options: KeyboardEventInit = {}) {
-  const field = host.querySelector('input:not([type="radio"]):not([type="checkbox"]), textarea') as HTMLInputElement | HTMLTextAreaElement
+function enter(host: HTMLElement, options: KeyboardEventInit = {}) {
   const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, ...options })
-  act(() => field.dispatchEvent(event))
+  act(() => host.querySelector('[aria-label="Your reply to Sparky"]')!.dispatchEvent(event))
   return event
 }
-
-describe("OnboardingFlow", () => {
-  it("scrolls only the transcript when advancing and leaves scrollback alone while typing", () => {
-    const { host, root } = mount()
-    const history = host.querySelector('[role="log"]') as HTMLDivElement
-    Object.defineProperty(history, "scrollHeight", { configurable: true, value: 900 })
-
-    setComposer(host, "Ada")
-    send(host)
-    expect(history.scrollTop).toBe(900)
-
-    history.scrollTop = 100
-    setComposer(host, "Postdoc")
-    expect(history.scrollTop).toBe(100)
-    send(host)
-    expect(history.scrollTop).toBe(900)
-
-    act(() => root.unmount())
-    host.remove()
+describe("AI onboarding conversation", () => {
+  beforeEach(() => {
+    sendMock.mockReset().mockImplementation(async (input) => ({ state: { ...initial(), revision: "a".repeat(64), question: "research", messages: [...initial().messages, { role: "user", content: input.message }, { role: "assistant", content: "Which research do you follow?" }] }, warnings: [] }))
+    loadMock.mockReset().mockResolvedValue(initial())
   })
-
-  it("opens in Sparky's voice and asks for the user's name first", () => {
-    const { host, root } = mount()
-
-    expect(host.textContent).toContain("Sparky")
+  it("asks name first without making a paid call on mount", () => {
+    const { host, cleanup } = mount()
     expect(host.textContent).toContain("What should I call you?")
-    expect((host.querySelector("input") as HTMLInputElement).placeholder).toBe("Your name")
-    expect(host.textContent).not.toContain("What kind of researcher are you?")
-
-    act(() => root.unmount())
-    host.remove()
+    expect(host.querySelector("textarea")?.placeholder).toBe("Your name")
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(host.querySelector("dialog")).toBeNull()
+    cleanup()
   })
-
-  it("uses a theme-aware inverse surface for completed user responses", () => {
-    const { host, root } = mount()
-
-    setComposer(host, "Ada")
-    send(host)
-
-    const response = Array.from(host.querySelectorAll("p")).find((node) => node.textContent === "Ada")
-    expect(response?.className).toContain("bg-secondary-dark")
-    expect(response?.className).toContain("text-page-bg")
-    expect(response?.className).not.toContain("text-white")
-
-    act(() => root.unmount())
-    host.remove()
+  it("sends Enter, preserves Shift+Enter and IME, and prevents duplicate sends", async () => {
+    const { host, cleanup } = mount()
+    enter(host)
+    expect(sendMock).not.toHaveBeenCalled()
+    compose(host, "Ada")
+    expect(enter(host, { shiftKey: true }).defaultPrevented).toBe(false)
+    expect(enter(host, { isComposing: true }).defaultPrevented).toBe(false)
+    expect(enter(host, { keyCode: 229 }).defaultPrevented).toBe(false)
+    expect(sendMock).not.toHaveBeenCalled()
+    await act(async () => { enter(host); enter(host) })
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    expect(sendMock.mock.calls[0][0]).toEqual({ action: "message", revision: null, message: "Ada" })
+    cleanup()
   })
-
-  it("keeps a companion transcript and submits all five answers", () => {
-    const onSubmit = vi.fn()
-    const { host, root } = mount(onSubmit)
-
-    setComposer(host, "Ada")
-    send(host)
-    expect(host.textContent).toContain("Nice to meet you, Ada")
-
-    setComposer(host, "Research fellow")
-    send(host)
-    setComposer(host, "Neuroscience")
-    send(host)
-    setComposer(host, "Auditory attention\nLanguage development")
-    send(host)
-    setComposer(host, "Methods-heavy papers")
-    send(host)
-
-    expect(onSubmit).toHaveBeenCalledWith({
-      name: "Ada",
-      role: "Research fellow",
-      fields: "Neuroscience",
-      topics: "Auditory attention\nLanguage development",
-      feedPrefs: "Methods-heavy papers",
-      recommendations: { diversity: "balanced", learnFromFeedback: true, resetAt: null },
-    })
-
-    act(() => root.unmount())
-    host.remove()
+  it("shows real streamed text before completion and uses inverse colors for user answers", async () => {
+    let finish!: (result: unknown) => void
+    let preview!: (text: string) => void
+    sendMock.mockImplementation((_input, onText) => { preview = onText; return new Promise((resolve) => { finish = resolve }) })
+    const { host, onComplete, cleanup } = mount()
+    const scroll = host.querySelector('[aria-label="Onboarding conversation"]') as HTMLDivElement
+    Object.defineProperty(scroll, "scrollHeight", { configurable: true, value: 900 })
+    compose(host, "Ada, postdoc in auditory neuroscience")
+    enter(host)
+    act(() => preview("What question"))
+    expect(host.textContent).toContain("What question")
+    expect(host.textContent).toContain("Ada, postdoc")
+    const answer = [...host.querySelectorAll("p")].find((node) => node.textContent === "Ada, postdoc in auditory neuroscience")
+    expect(answer?.className).toContain("bg-secondary-dark")
+    expect(answer?.className).toContain("text-page-bg")
+    expect(scroll.scrollTop).toBe(900)
+    expect(onComplete).not.toHaveBeenCalled()
+    await act(async () => finish({ state: initial(), warnings: [] }))
+    cleanup()
   })
-
-  it("sends each answer with Enter, including the final answer, while respecting required fields", () => {
-    const { host, root, onSubmit } = mount()
-
-    pressEnter(host)
-    expect(host.querySelector("input")).not.toBeNull()
-    expect(onSubmit).not.toHaveBeenCalled()
-
-    for (const answer of ["Ada", "Postdoc", "Neuroscience", "Auditory attention", "Recent methods"] ) {
-      setComposer(host, answer)
-      expect(pressEnter(host).defaultPrevented).toBe(true)
-    }
-
-    expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
-      name: "Ada",
-      role: "Postdoc",
-      fields: "Neuroscience",
-      topics: "Auditory attention",
-      feedPrefs: "Recent methods",
-      recommendations: { diversity: "balanced", learnFromFeedback: true, resetAt: null },
-    })
-
-    act(() => root.unmount())
-    host.remove()
+  it("accepts custom diversity replies instead of forcing a suggestion", async () => {
+    const state = { ...initial(), question: "diversity" as const }
+    const { host, cleanup } = mount(state)
+    expect(host.textContent).toContain("A balanced mix")
+    const answer = "Mostly auditory work, but show computational methods from nearby fields; no animal studies."
+    compose(host, answer)
+    await act(async () => enter(host))
+    expect(sendMock.mock.calls[0][0].message).toBe(answer)
+    cleanup()
   })
-
-  it("preserves Shift+Enter for newlines and never sends while confirming composed text", () => {
-    const { host, root, onSubmit } = mount()
-    setComposer(host, "Ada")
-    expect(pressEnter(host, { isComposing: true }).defaultPrevented).toBe(false)
-    expect(pressEnter(host, { keyCode: 229 }).defaultPrevented).toBe(false)
-    expect(host.querySelector("input")).not.toBeNull()
-    pressEnter(host)
-
-    setComposer(host, "Postdoc")
-    expect(pressEnter(host, { shiftKey: true }).defaultPrevented).toBe(false)
-    expect(pressEnter(host, { isComposing: true }).defaultPrevented).toBe(false)
-    expect(host.textContent).toContain("2 of 5")
-    expect(onSubmit).not.toHaveBeenCalled()
-
-    setComposer(host, "Postdoc\nAuditory neuroscience")
-    pressEnter(host)
-    expect(host.textContent).toContain("Postdoc\nAuditory neuroscience")
-    expect(host.textContent).toContain("3 of 5")
-
-    act(() => root.unmount())
-    host.remove()
+  it("lets the user edit all extracted answers and confirms explicitly", async () => {
+    const state: OnboardingState = { ...initial(), question: "review", draft: { name: "Ada", role: "Postdoc", fields: "Hearing", topics: "EEG", feedPrefs: "Methods", diversity: "focused", diversityNote: "Stay close to hearing research", learnFromFeedback: false } }
+    const { host, onComplete, cleanup } = mount(state)
+    expect(sendMock).not.toHaveBeenCalled()
+    const form = host.querySelector("form")!
+    expect(form.querySelectorAll("textarea")).toHaveLength(5)
+    const name = form.querySelector("textarea")!
+    act(() => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(name, "Ada Lovelace"); name.dispatchEvent(new Event("input", { bubbles: true })) })
+    sendMock.mockResolvedValueOnce({ state, profile: { name: "Ada Lovelace" }, warnings: [] })
+    await act(async () => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })))
+    expect(sendMock.mock.calls[0][0]).toMatchObject({ action: "confirm", answers: { name: "Ada Lovelace", recommendations: { learnFromFeedback: false } } })
+    expect(onComplete).toHaveBeenCalledWith("Ada Lovelace")
+    cleanup()
+  })
+  it("recovers a saved unanswered turn after failure and retries without a new message", async () => {
+    sendMock.mockRejectedValueOnce(new Error("Provider timed out"))
+    const saved: OnboardingState = { ...initial(), pending: true, revision: "b".repeat(64), messages: [...initial().messages, { role: "user", content: "Ada" }] }
+    loadMock.mockResolvedValue(saved)
+    const { host, cleanup } = mount()
+    compose(host, "Ada")
+    await act(async () => enter(host))
+    expect(host.textContent).toContain("Provider timed out")
+    const retry = [...host.querySelectorAll("button")].find((button) => button.textContent === "Retry Sparky’s response")!
+    await act(async () => retry.click())
+    expect(sendMock.mock.calls[1][0]).toEqual({ action: "retry", revision: saved.revision })
+    cleanup()
   })
 })

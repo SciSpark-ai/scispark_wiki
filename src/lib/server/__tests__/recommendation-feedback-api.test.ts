@@ -8,6 +8,7 @@ import { FEED_CACHE_PATH } from "../../skills/feed"
 import { FEEDBACK_PATH } from "../../recommendation/contract"
 import { recordRecommendationFeedback } from "../../recommendation/feedback"
 import { exportVaultZip, importVaultZip } from "../../vault/export"
+import { writeReaderHandoff } from "../../reader/handoff"
 
 const key = "doi:10.1234/attention"
 const answers = { name: "Ada", role: "Researcher", fields: "Neuroscience", topics: "Attention", feedPrefs: "Methods" }
@@ -26,6 +27,24 @@ describe("recommendation feedback persistence and controls", () => {
     }], costUsd: 0, strategy: { queries: [{ source: "pubmed", query: "attention", rationale: "core" }] }, stats: { retrieved: 1, ranked: 1 } }))
   })
   afterEach(() => setServerVaultForTests(null))
+  it("clears a vote with a revision, and Undo restores it without changing the feed", async () => {
+    const initial = await (await route.POST(request({ paperKey: key, reason: "less_like_this", expectedRevision: null }))).json()
+    const remove = (revision: string) => route.DELETE(new Request("http://127.0.0.1:3111/api/recommendations/feedback", { method: "DELETE", headers: { host: "127.0.0.1:3111", origin: "http://127.0.0.1:3111" }, body: JSON.stringify({ paperKey: key, expectedRevision: revision }) }))
+    expect((await route.POST(request({ paperKey: key, reason: "more_like_this", expectedRevision: null }))).status).toBe(409)
+    expect((await remove("0".repeat(64))).status).toBe(409)
+    const cleared = await remove(initial.revision)
+    expect(cleared.status).toBe(200)
+    expect((await (await route.GET()).json()).entries).toEqual([])
+    await undoChangeset(storage, (await cleared.json()).changesetId)
+    expect((await (await route.GET()).json()).entries[0]).toMatchObject({ reason: "less_like_this", revision: initial.revision })
+  })
+  it("accepts feedback for a server-persisted search paper outside the current feed", async () => {
+    const paper = { ids: { doi: "10.1234/search" }, title: "EEG search result", abstract: "Measuring auditory attention with EEG", fields: ["auditory attention"], authors: [], source: "pubmed" as const }
+    await writeReaderHandoff(storage, paper)
+    const response = await route.POST(request({ paperKey: "doi:10.1234/search", reason: "more_like_this", expectedRevision: null }))
+    expect(response.status).toBe(200)
+    expect((await response.json()).result).toMatchObject({ title: paper.title, abstract: paper.abstract, topics: paper.fields })
+  })
   it("persists server-owned topics, is idempotent, and supports History undo", async () => {
     const cache = await storage.read(FEED_CACHE_PATH)
     const response = await route.POST(request({ paperKey: key, reason: "not_my_topic" }))

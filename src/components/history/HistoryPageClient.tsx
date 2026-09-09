@@ -125,6 +125,7 @@ export function HistoryPageClient() {
     setWarning(null)
     try {
       const result = await undoChangeRemote(change.changesetId)
+      window.dispatchEvent(new Event("scispark:feedback-changed"))
       if (result.warnings.length > 0) setWarning(result.warnings.map((item) => item.message).join(" "))
       await reloadChanges()
       if (openId === change.changesetId) setPreview(await getChangePreviewRemote(change.changesetId))

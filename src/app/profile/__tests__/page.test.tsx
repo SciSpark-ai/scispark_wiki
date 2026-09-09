@@ -72,7 +72,8 @@ describe("ProfilePage", () => {
     const edit = Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes("Edit profile"))
     act(() => edit?.click())
     expect(host.querySelectorAll("textarea")).toHaveLength(4)
-    expect(host.textContent).toContain("Add photo")
+    expect(host.querySelector('button[aria-label="Change profile photo"]')).not.toBeNull()
+    expect(host.textContent).not.toContain("Add photo")
     expect(host.textContent).toContain("Cancel")
     expect(host.textContent).toContain("Save changes")
 
@@ -92,6 +93,28 @@ describe("ProfilePage", () => {
     }))
     expect(useUserStore.getState().user?.name).toBe("Ada Lovelace")
 
+    act(() => root.unmount())
+    host.remove()
+  })
+
+  it("opens the picker from the main avatar without saving until explicitly confirmed", async () => {
+    const { host, root } = mount()
+    await act(async () => root.render(<ProfilePage />))
+    const camera = host.querySelector('button[aria-label="Change profile photo"]') as HTMLButtonElement
+    const input = host.querySelector('input[type="file"]') as HTMLInputElement
+    const picker = vi.spyOn(input, "click").mockImplementation(() => {})
+    expect(camera.closest('[data-testid="profile-avatar"]')).not.toBeNull()
+    expect(camera.textContent).toBe("")
+    expect(camera.getAttribute("aria-describedby")).toBe("profile-photo-help")
+    act(() => camera.click())
+    expect(picker).toHaveBeenCalledOnce()
+    expect(host.querySelectorAll("textarea")).toHaveLength(4)
+    expect(updateProfileMock).not.toHaveBeenCalled()
+    const cancel = Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Cancel")
+    act(() => cancel?.click())
+    expect(host.querySelectorAll("textarea")).toHaveLength(0)
+    expect(updateProfileMock).not.toHaveBeenCalled()
+    picker.mockRestore()
     act(() => root.unmount())
     host.remove()
   })

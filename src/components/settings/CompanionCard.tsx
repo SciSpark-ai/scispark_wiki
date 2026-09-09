@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { loadCompanionSettingsRemote, saveCompanionSettingsRemote } from "@/lib/companion/settings-client"
 import {
   DEFAULT_COMPANION_SETTINGS,
-  SESSION_BUDGET,
+  DAILY_BUDGET,
   type Chattiness,
 } from "@/lib/companion/settings"
 
@@ -58,8 +58,8 @@ export function CompanionCard() {
         {status && <span className="text-[13px] text-muted-text">{status}</span>}
       </div>
       <p className="text-[13px] text-muted-text mb-5">
-        Your companion greets you, celebrates ingests, and offers help while you read. Rename it, or
-        dial how often it speaks up on its own.
+        Sparky speaks up only when there is something new to act on. Limits apply across tabs and reloads.
+        Your chats and paper-feedback questions are not limited.
       </p>
 
       {!loaded ? (
@@ -93,7 +93,7 @@ export function CompanionCard() {
             >
               {CHATTINESS_LEVELS.map((level) => (
                 <option key={level} value={level}>
-                  {level} — {CHATTINESS_BLURB[level]} (max {SESSION_BUDGET[level]}/session)
+                  {level} — {CHATTINESS_BLURB[level]} (max {DAILY_BUDGET[level]}/24 hours)
                 </option>
               ))}
             </select>

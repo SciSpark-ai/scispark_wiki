@@ -1,7 +1,10 @@
+import { addCosts } from "../llm/pricing"
 import { FEED_CACHE_PATH, StrategySchema, FEED_BADGE_VALUES, type FeedStrategy, type FeedBadge } from "./feed-cache"
 export { FEED_CACHE_PATH, StrategySchema, FEED_BADGE_VALUES, normalizeFeedBadge, loadFeed, type FeedStrategy, type FeedBadge } from "./feed-cache"
 import { readUserModel } from "../usermodel/pages"
 import { splitTopics } from "../trending/fields"
+import { loadTrendingSettings } from "../trending/settings"
+import { feedResearchFields, researchFieldTopics, researchFieldFallback } from "../recommendation/research-fields"
 import { readRecommendationFeedback } from "../recommendation/feedback-record"
 import { selectFeedPreferenceMemory } from "../usermodel/feed-memory"
 import { recommendationAssessmentSkill } from "../recommendation/assessment-skill"
@@ -26,6 +29,8 @@ import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
 import { defineSkill, type SkillDefinition } from "./types"
 import { runSkill } from "./runner"
+import { readEnabledPaperSources } from "../papers/source-preferences"
+import type { SourceId } from "../papers/types"
 
 // ---------------------------------------------------------------------------
 // Strategy skill: one `strong`-tier structured call that formulates a diverse
@@ -36,9 +41,10 @@ import { runSkill } from "./runner"
 // calls with the strategy this skill returns.
 // ---------------------------------------------------------------------------
 
-function buildStrategySystemPrompt(): string {
+function buildStrategySystemPrompt(allowedSources?: SourceId[]): string {
   return [
     "You are formulating literature-search strategies for this researcher's personalized feed.",
+    ...(allowedSources ? [`Only use these enabled sources: ${allowedSources.join(", ")}. Never use other sources.`] : []),
     "Return between 1 and 8 search queries across academic paper sources that together will surface papers this researcher wants to see.",
     "",
     "Per-source query syntax:",
@@ -49,6 +55,8 @@ function buildStrategySystemPrompt(): string {
     "- the researcher's core, established topics",
     "- adjacent or rising topics noted in interests.md",
     "- author or venue follow-ups suggested by their recent activity",
+    "The supplied fieldPreferences are additional, explicitly selected research interests. Cover these alongside the profile and active topics. If subfields are selected, prioritize those; the parent name is context, not a request for the whole field.",
+    "Treat field/subfield choices as soft preferences. Translate them into useful source-specific search phrases, not OpenAlex taxonomy filters. Keep related cross-disciplinary searches according to diversity, honor enabled sources and explicit constraints, and never interpret an unselected field as disliked.",
     "",
     "Obey any standing instructions the researcher has given (feedback.md) — e.g. if they say 'never show preprints' or 'more methods papers', shape the queries accordingly.",
     "Every `query` string must be written in English, regardless of the researcher's field or language.",
@@ -77,15 +85,15 @@ function normalizeFeedList(key: "queries" | "scores" | "items", candidate: unkno
   return Array.isArray(candidate) ? { [key]: candidate } : candidate
 }
 
-export const feedStrategySkill: SkillDefinition<{ userContextText: string }, FeedStrategy> = defineSkill({
+export const feedStrategySkill: SkillDefinition<{ userContextText: string; allowedSources?: SourceId[] }, FeedStrategy> = defineSkill({
   name: "feed-strategy",
-  version: "1",
+  version: "2",
   async run(ctx, input) {
     const output = await ctx.llmStructured(
       "strong",
       {
         messages: [
-          { role: "system", content: buildStrategySystemPrompt() },
+          { role: "system", content: buildStrategySystemPrompt(input.allowedSources) },
           { role: "user", content: requestStructuredAnswer(input.userContextText) },
         ],
         // Explicit output budget (endpoint defaults can truncate JSON — M4 lesson).
@@ -106,6 +114,8 @@ export const feedStrategySkill: SkillDefinition<{ userContextText: string }, Fee
 // ---------------------------------------------------------------------------
 
 export interface SearchOpts {
+  /** Abort queued and active source requests when the caller's budget expires. */
+  signal?: AbortSignal
   /** Inclusive lower publication/submission date bound (YYYY-MM-DD). SP2.1
    * feed freshness: the feed constrains retrieval to a recent window instead
    * of whatever the sources return. Optional and additive — implementations
@@ -371,7 +381,7 @@ export interface FeedResult {
   recommendation?: RecommendationRun
   generatedAt: string
   items: FeedItem[]
-  costUsd: number
+  costUsd: number | null
   strategy: FeedStrategy
   stats: { retrieved: number; ranked: number }
 }
@@ -402,15 +412,20 @@ export async function runFeed(
   },
 ): Promise<FeedResult> {
   const now = opts.now?.() ?? new Date()
+  const enabledSources = await readEnabledPaperSources(storage)
   const model = await readUserModel(storage)
+  const fieldSelection = feedResearchFields(await loadTrendingSettings(storage))
   // Reason-aware paper memory is separate from raw click/dwell history. Its
   // selector enforces the learning toggle, reset cutoff and context budget.
   const explicitContext = [model.profile, model.interests, model.feedback].filter(Boolean).join("\n\n")
   const preferences = readRecommendationPreferences(model.profile)
-  const topics = [...new Set([
+  const profileTopics = [...new Set([
     ...splitTopics(profileSection(model.interests, "Active topics").replace(/^\s*[-*]\s+/gm, "")),
     ...splitTopics(profileSection(model.profile, "Research fields")),
   ])].filter(Boolean).map((topic) => topic.toLowerCase().slice(0, 200)).slice(0, 20)
+  // Keep every valid selected leaf even when the legacy profile-topic cap is full.
+  // The official catalog and three-parent limit bound this additional context.
+  const topics = [...new Set([...profileTopics, ...researchFieldTopics(fieldSelection.fields)])]
   const feedback = await readRecommendationFeedback(storage)
   const planningMemory = selectFeedPreferenceMemory(feedback.entries, preferences, now, topics.join(" "))
   const memoryPaperKeys = new Set(planningMemory.map((memory) => memory.paperKey))
@@ -418,12 +433,14 @@ export async function runFeed(
   const learnedTopics: NonNullable<FeedResult["recommendation"]>["learnedTopics"] = []
   const assessmentContext: RecommendationContext = {
     text: explicitContext, topics,
+    fieldPreferences: fieldSelection.fields, diversity: preferences.diversity,
     hasQuestion: Boolean(profileSection(model.interests, "Active topics").trim()),
     hasApproach: /method|population|dataset|review|trial|preprint|empirical|qualitative|quantitative/i.test(
       profileSection(model.profile, "What I want from my feed"),
     ),
   }
   const warnings: string[] = feedback.warning ? [feedback.warning] : []
+  if (fieldSelection.warning) warnings.push(fieldSelection.warning)
   if (!opts.venueSignals || !Object.keys(opts.venueSignals).length) {
     warnings.push("Venue metrics are unavailable. Venue standing is neutral, not an estimate of paper quality.")
   }
@@ -431,8 +448,9 @@ export async function runFeed(
   opts.onStage?.("strategy")
   const strategyRun = await runSkill({
     skill: feedStrategySkill,
-    input: { userContextText: explicitContext + "\n\n" + JSON.stringify({
+    input: { allowedSources: enabledSources, userContextText: explicitContext + "\n\n" + JSON.stringify({
       diversity: preferences.diversity,
+      fieldPreferences: fieldSelection.fields,
       searchGuidance: preferences.diversity === "focused"
         ? "Cover the declared interests; stay close to current work."
         : preferences.diversity === "exploratory"
@@ -446,15 +464,12 @@ export async function runFeed(
   })
   let strategy: FeedStrategy
   let costUsd = strategyRun.costUsd
-  if (strategyRun.status === "ok" && strategyRun.output) strategy = strategyRun.output
-  else {
+  strategy = { queries: strategyRun.status === "ok" && strategyRun.output
+    ? strategyRun.output.queries.filter((query) => enabledSources.includes(query.source)) : [] }
+  if (!strategy.queries.length) {
     // A failed model plan must not prevent a user from accessing public literature.
-    const queries = topics.slice(0, 4)
-    if (!queries.length) throw new Error("Search planning failed. Add research topics in your profile and try again.")
-    strategy = { queries: queries.flatMap((query) => [
-      { source: "openalex" as const, query, rationale: "Explicit research interest; planning fallback" },
-      { source: "pubmed" as const, query, rationale: "Explicit research interest; planning fallback" },
-    ]) }
+    strategy = researchFieldFallback(profileTopics, fieldSelection.fields, enabledSources)
+    if (!strategy.queries.length) throw new Error("Search planning failed. Add research topics in your profile and try again.")
     warnings.push("AI search planning was unavailable. Searched your explicit topics instead.")
   }
   opts.onStage?.("retrieval")
@@ -477,7 +492,8 @@ export async function runFeed(
   }
   const retrieved = await retrieveRecommendationCandidates(strategy, opts.searchFn, excluded, now)
   for (const trace of retrieved.retrieval) {
-    if (trace.error) warnings.push(trace.source + ": " + trace.error)
+    const sourceName = { s2: "Semantic Scholar", pubmed: "PubMed", arxiv: "arXiv", openalex: "OpenAlex" }[trace.source] ?? trace.source
+    if (trace.error) warnings.push(sourceName + ": " + trace.error)
   }
   if (!retrieved.candidates.length) {
     throw new Error("No eligible papers were retrieved. Check source availability or adjust your research topics.")
@@ -500,7 +516,7 @@ export async function runFeed(
       input: { context: batchContext, candidates: batch.map((entry) => entry.paper) },
       ...runOpts,
     })
-    costUsd += run.costUsd
+    costUsd = addCosts(costUsd, run.costUsd)
     if (run.status !== "ok" || !run.output) { assessmentFailed = true; break }
     const seen = new Set<number>()
     for (const assessment of run.output.assessments) {
@@ -547,6 +563,7 @@ export async function runFeed(
       warnings: [...new Set(warnings)], retrieval: retrieved.retrieval, learnedTopics,
       memoryPaperKeys: [...memoryPaperKeys],
       memoryStatus: !preferences.learnFromFeedback ? "off" : !memoryPaperKeys.size ? "none" : memoryUnchecked || assessmentFailed ? "incomplete" : "checked",
+      fieldPreferences: fieldSelection.fields,
       status: assessmentFailed ? "unranked" : "ranked",
     },
   }
