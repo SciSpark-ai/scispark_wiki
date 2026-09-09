@@ -13,6 +13,8 @@ import { logEvent } from "../../events/log"
 import { saveTrendingSettings } from "../../trending/settings"
 import * as feedRefreshRoute from "../../../app/api/skills/feed/refresh/route"
 import * as consolidateRoute from "../../../app/api/skills/consolidate/route"
+import { runConsolidation } from "../../skills/consolidation"
+import { runHeartbeatTick } from "../../scheduler/heartbeat"
 
 function paper(o: Partial<PaperRecord> & { title: string }): PaperRecord {
   return { ids: {}, authors: [], fields: [], source: "arxiv", abstract: "Sparse attention research", ...o }
@@ -202,6 +204,34 @@ describe("feed + consolidation skill routes", () => {
   })
 
   describe("POST /api/skills/consolidate", () => {
+    it("does not duplicate paid work when a scheduled consolidation overlaps the API", async () => {
+      await seedOnboardedUserModel(storage)
+      for (let i = 0; i < 25; i++) await logEvent(storage, { type: "search", source: "arxiv", query: `query-${i}` })
+      const output = structured({ profile: await storage.read("profile.md"), interests: await storage.read("interests.md"), feedback: "# Feedback\n" })
+      let entered!: () => void
+      const started = new Promise<void>((resolve) => { entered = resolve })
+      let release!: () => void
+      const held = new Promise<void>((resolve) => { release = resolve })
+      const inner = new MockProvider([output, output])
+      const provider: LLMProvider = { id: inner.id, complete: async (model, request) => {
+        entered()
+        await held
+        return inner.complete(model, request)
+      } }
+      setSkillTestOverrides({ providerOverride: { fast: provider } })
+      const scheduled = runHeartbeatTick({ storage, topWorksFn: async () => [], jobs: {
+        maybeAutoRefreshTrending: async () => "fresh",
+        runConsolidation: (vault, opts) => runConsolidation(vault, { ...opts, providerOverride: { fast: provider } }),
+        runLintDeterministic: async () => ({ findings: [], reviewIds: [] }),
+      } })
+      await started
+      const manual = consolidateRoute.POST(new Request("http://x/api/skills/consolidate", { method: "POST", body: JSON.stringify({}) }))
+      release()
+      const [, response] = await Promise.all([scheduled, manual])
+      expect(response.status).toBe(200)
+      expect((await response.json()).result.status).toBe("skipped")
+      expect(inner.calls).toHaveLength(1)
+    })
     it("returns status 'skipped' with no LLM calls when consolidation isn't due yet", async () => {
       const provider = new MockProvider([])
       setSkillTestOverrides({ providerOverride: { fast: provider } })

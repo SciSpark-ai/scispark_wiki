@@ -10,6 +10,7 @@ import { buildUserContext } from "../usermodel/context"
 import { countEventsSince, readRecentEvents, logEvent } from "../events/log"
 import { defineSkill } from "./types"
 import { runSkill } from "./runner"
+import { withVaultExclusive } from "../vault/exclusive"
 
 export const ConsolidationSchema = z.object({
   /** Full replacement body for profile.md — plain markdown, no frontmatter. */
@@ -124,7 +125,16 @@ export async function consolidationDue(storage: VaultStorage): Promise<boolean> 
  * advances to the newest event timestamp on a completed run (skipped runs leave it alone),
  * so due-ness correctly resets whether or not anything actually changed.
  */
-export async function runConsolidation(
+export function runConsolidation(
+  storage: VaultStorage,
+  opts: Parameters<typeof runConsolidationOwned>[1] = {},
+) {
+  // Keep the due check and marker update under one vault-level lock. API,
+  // scheduler and separately bundled server instances must all participate.
+  return withVaultExclusive(storage, "memory-consolidation", () => runConsolidationOwned(storage, opts))
+}
+
+async function runConsolidationOwned(
   storage: VaultStorage,
   opts: {
     force?: boolean

@@ -173,7 +173,7 @@ async function runHeartbeatTickInner(deps: HeartbeatDeps): Promise<void> {
 
   // Job 3: deterministic lint (free, no LLM call). Unlike trending/consolidation
   // this orchestrator has no due-ness gate of its own, so the heartbeat gates it
-  // here: only run when the last "lint-deterministic" ledger record (from ANY
+  // here: only run when the last successful "lint-deterministic" ledger record (from ANY
   // trigger — a manual "Lint vault" click resets the clock same as a scheduled
   // run) is more than 24h old, or there is none yet. When it isn't due, this
   // deliberately records NOTHING — an hourly "skipped" row for a job that has
@@ -182,7 +182,8 @@ async function runHeartbeatTickInner(deps: HeartbeatDeps): Promise<void> {
   // about cadence/backoff/event-count).
   try {
     const records = await readLedger(deps.storage, { limit: LINT_LEDGER_SCAN_LIMIT })
-    const lastLint = records.find((r) => r.orchestrator === "lint-deterministic")
+    // A failed attempt remains due and can retry on the next 15-minute tick.
+    const lastLint = records.find((r) => r.orchestrator === "lint-deterministic" && r.status === "ok")
     const due = lastLint === undefined || now().getTime() - new Date(lastLint.ts).getTime() > LINT_GATE_MS
     if (due) {
       await withLedger(deps.storage, { orchestrator: "lint-deterministic", trigger: "schedule", now }, async () => {

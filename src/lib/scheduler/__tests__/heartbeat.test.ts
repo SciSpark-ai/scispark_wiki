@@ -38,6 +38,20 @@ function makeThrowingFake<T>(message: string): T {
 describe("runHeartbeatTick", () => {
   const FIXED_NOW = new Date("2026-07-19T12:00:00.000Z")
 
+  it("retries failed lint on the next tick, then gates subsequent ticks after success", async () => {
+    const storage = new MemoryVaultStorage()
+    const lint = vi.fn().mockRejectedValueOnce(new Error("Temporary read failure"))
+      .mockResolvedValue({ findings: [], reviewIds: [] })
+    const jobs = { maybeAutoRefreshTrending: makeFakeTrending("fresh"), runConsolidation: makeFakeConsolidation({ status: "skipped" }), runLintDeterministic: lint }
+    for (const minutes of [0, 15, 30]) {
+      await runHeartbeatTick({ storage, topWorksFn: fakeTopWorksFn, jobs,
+        now: () => new Date(FIXED_NOW.getTime() + minutes * 60_000) })
+    }
+    expect(lint).toHaveBeenCalledTimes(2)
+    const records = (await readLedger(storage)).filter((record) => record.orchestrator === "lint-deterministic")
+    expect(records.map((record) => record.status)).toEqual(["ok", "failed"])
+  })
+
   it("runs all three jobs and leaves a trigger:\"schedule\" ledger record for each", async () => {
     const storage = new MemoryVaultStorage()
     await runHeartbeatTick({
