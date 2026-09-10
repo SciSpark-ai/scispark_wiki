@@ -52,3 +52,14 @@ next-env.d.ts
 
 # playwright mcp
 .playwright-mcp/
+
+# Local brand references and marketing exports (production artwork stays tracked)
+/design/
+/assets/brand/
+/assets/scispark-brand-kit.zip
+/scripts/build-brand-index.mjs
+/scripts/export-brand-assets.mjs
+/scripts/export-sci-avatar.mjs
+/scripts/stack-original-wordmark.mjs
+/public/brand/README.md
+/public/brand/scispark-editorial-source.png
