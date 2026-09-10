@@ -8,11 +8,11 @@
 
 A personal workspace to **discover papers, build knowledge, and explore ideas**.
 
+[![Build status](https://img.shields.io/github/actions/workflow/status/SciSpark-ai/scispark_wiki/ci.yml?branch=main&style=flat-square&label=build&color=716559)](https://github.com/SciSpark-ai/scispark_wiki/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-716559?style=flat-square)](LICENSE)
 [![Status: Developer preview](https://img.shields.io/badge/status-developer_preview-EA6B28?style=flat-square)](#current-preview)
 [![Local-first](https://img.shields.io/badge/storage-local_first-716559?style=flat-square)](#your-data-and-your-models)
-[![Bring your own AI](https://img.shields.io/badge/AI-bring_your_own_provider-84664C?style=flat-square)](#configure-your-workspace)
-[![CI](https://github.com/SciSpark-ai/scispark_wiki/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SciSpark-ai/scispark_wiki/actions/workflows/ci.yml)
+[![Bring your own AI](https://img.shields.io/badge/AI-bring_your_own_provider-716559?style=flat-square)](#configure-your-workspace)
 
 **Discover with purpose. Read with context. Keep what you learn.**
 
