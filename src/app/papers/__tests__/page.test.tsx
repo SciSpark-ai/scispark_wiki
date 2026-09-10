@@ -57,7 +57,7 @@ function enter(textarea: HTMLTextAreaElement, value: string) {
   })
 }
 function button(host: HTMLElement, name: string) {
-  return [...host.querySelectorAll("button")].find((b) => b.textContent?.trim() === name)!
+  return [...host.querySelectorAll("button")].find((b) => (b.getAttribute("aria-label") ?? b.textContent?.trim()) === name)!
 }
 describe("Search in the unified conversation workspace", () => {
   beforeEach(() => {
@@ -78,8 +78,8 @@ describe("Search in the unified conversation workspace", () => {
   it("opens a natural-language composer with optional source refinements", async () => {
     const { host } = await mount()
     expect(host.textContent).toContain("What would you like to explore?")
-    expect(host.querySelector<HTMLSelectElement>("select")!.value).toBe("search")
-    act(() => button(host, "Search scope").click())
+    expect(button(host, "Find papers").getAttribute("aria-pressed")).toBe("true")
+    act(() => (host.querySelector("summary") ?? button(host, "Search scope")).click())
     expect(host.textContent).toContain("Semantic Scholar")
     expect(host.textContent).toContain("PubMed")
   })
@@ -98,17 +98,18 @@ describe("Search in the unified conversation workspace", () => {
     expect(saved.host.textContent).toContain("Search details")
     expect(mocks.ask).toHaveBeenCalledTimes(1)
   })
-  it("restores the latest search on return without issuing any search or model call", async () => {
+  it("offers recent searches without redirecting, and restores an explicitly opened session", async () => {
     mocks.list.mockResolvedValue([SESSION])
-    await mount()
-    expect(mocks.router.replace).toHaveBeenCalledWith("/chat/chat_search")
+    const { host } = await mount()
+    expect(mocks.router.replace).not.toHaveBeenCalled()
+    expect(host.querySelector('a[href="/chat/chat_search"]')).toBeTruthy()
     await mount(<ChatWorkspace sessionId={SESSION.id} />)
     expect(mocks.ask).not.toHaveBeenCalled()
   })
   it("starts with saved sources and does not offer disabled indexes", async () => {
     vi.mocked(fetch).mockResolvedValue(Response.json({ enabledSources: ["pubmed", "openalex"] }))
     const { host } = await mount()
-    act(() => button(host, "Search scope").click())
+    act(() => (host.querySelector("summary") ?? button(host, "Search scope")).click())
     expect(host.textContent).toContain("PubMed")
     expect(host.textContent).not.toContain("Semantic Scholar")
     expect(host.textContent).not.toContain("arXiv")
@@ -117,7 +118,7 @@ describe("Search in the unified conversation workspace", () => {
     const { host } = await mount(<ChatWorkspace sessionId={SESSION.id} initialMode="search" />)
     const textarea = host.querySelector("textarea")!
     enter(textarea, "attention decoding in adults")
-    act(() => button(host, "Search scope").click())
+    act(() => (host.querySelector("summary") ?? button(host, "Search scope")).click())
     act(() => button(host, "Manage sources").click())
     expect(useUIStore.getState().settingsModalSection).toBe("sources")
     expect(mocks.router.push).not.toHaveBeenCalled()

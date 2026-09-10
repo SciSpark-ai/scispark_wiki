@@ -93,7 +93,7 @@ async function renderPage(el: React.ReactElement): Promise<{ container: HTMLElem
 }
 
 function findByText(container: HTMLElement, selector: string, text: string): HTMLElement | undefined {
-  return Array.from(container.querySelectorAll(selector)).find((e) => e.textContent?.trim() === text) as
+  return Array.from(container.querySelectorAll(selector)).find((e) => (e.getAttribute("aria-label") ?? e.textContent?.trim()) === text) as
     | HTMLElement
     | undefined
 }
@@ -125,9 +125,9 @@ describe("ChatEntryPage (/chat)", () => {
     cleanup()
   })
 
-  it("renders the Read Sources Only toggle", async () => {
+  it("renders the Saved papers only toggle", async () => {
     const { container, cleanup } = await renderPage(<ChatEntryPage />)
-    expect(container.textContent).toMatch(/read sources only/i)
+    expect(container.textContent).toMatch(/saved papers only/i)
     cleanup()
   })
 

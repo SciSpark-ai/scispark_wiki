@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+  SCISPARK_SCHEDULER: 'off'
+
+jobs:
+  checks:
+    name: Lint, types, and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.3.0'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npx next typegen && npx tsc --noEmit
+      - run: npm test -- --maxWorkers=2
+
+  browser:
+    name: Production build and browser smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SCISPARK_LIVE_GATE_DIST_DIR: .next-ci
+      SCISPARK_E2E_PRODUCTION_DIST_DIR: .next-ci
+      SCISPARK_VAULT: ${{ runner.temp }}/scispark-ci-build-vault
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.3.0'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      # Each invocation gets a fresh vault; these specs never share persisted state.
+      - name: Onboarding smoke
+        run: npm run e2e -- e2e/first-run-setup.spec.ts
+      - name: Navigation and chat smoke
+        run: npm run e2e -- e2e/chat-start.spec.ts e2e/streaming.spec.ts
+      - name: Retain browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: browser-diagnostics
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore

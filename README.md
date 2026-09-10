@@ -410,6 +410,8 @@ npx playwright install chromium  # first-time browser setup
 npm run e2e
 ```
 
+GitHub Actions runs lint, type checks, unit tests, a production build, and Chromium smoke tests on pull requests and pushes to `main`. See [CI details](docs/testing/ci.md).
+
 Browser tests use a disposable vault and local mock provider. Live model tests
 are environment-gated and require an explicit decision to use real credentials
 and spending. [More verification details](docs/FEATURE_GUIDE.md#verification-commands).
