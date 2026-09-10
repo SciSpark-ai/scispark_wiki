@@ -8,11 +8,11 @@
 
 A personal workspace to **discover papers, build knowledge, and explore ideas**.
 
+[![Build status](https://img.shields.io/github/actions/workflow/status/SciSpark-ai/scispark_wiki/ci.yml?branch=main&style=flat-square&label=build&color=716559)](https://github.com/SciSpark-ai/scispark_wiki/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-716559?style=flat-square)](LICENSE)
 [![Status: Developer preview](https://img.shields.io/badge/status-developer_preview-EA6B28?style=flat-square)](#current-preview)
 [![Local-first](https://img.shields.io/badge/storage-local_first-716559?style=flat-square)](#your-data-and-your-models)
-[![Bring your own AI](https://img.shields.io/badge/AI-bring_your_own_provider-84664C?style=flat-square)](#configure-your-workspace)
-[![CI](https://github.com/SciSpark-ai/scispark_wiki/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SciSpark-ai/scispark_wiki/actions/workflows/ci.yml)
+[![Bring your own AI](https://img.shields.io/badge/AI-bring_your_own_provider-716559?style=flat-square)](#configure-your-workspace)
 
 **Discover with purpose. Read with context. Keep what you learn.**
 
@@ -34,7 +34,7 @@ those starting points while your research stays organized in a local vault.
 
 <a href="docs/assets/readme/feed-1080p.png"><img src="docs/assets/readme/feed-1080p.png" alt="SciSpark Feed showing nine illustrative research papers, ranking explanations, save actions, and feedback controls" width="100%"></a>
 
-<sub>Real SciSpark screens captured in Chromium with an isolated example vault. Paper records, scores, notes, ideas, and report text are illustrative fixtures; these images are not live scientific results. No personal vault or paid model calls were used. <a href="docs/assets/readme/README.md">Capture details</a>.</sub>
+<sub>SciSpark screens with illustrative example content.</sub>
 
 <details>
 <summary><b>Explore Sparky and the full workspace</b></summary>
@@ -73,7 +73,7 @@ those starting points while your research stays organized in a local vault.
 | **Explore** | A knowledge graph, field timeline, citation flow, and author network. |
 | **Keep** | Local files, source references, conversations, report versions, and recoverable changes. |
 | **Run** | A local browser app with a Next.js runtime and your own AI provider. |
-| **Status** | Developer preview. Deep research is integrated; scientific quality across questions remains under evaluation. |
+| **Status** | Developer preview. |
 
 ## Why SciSpark
 
@@ -124,9 +124,8 @@ before starting and select relevant personal or project context.
 
 Reports stay in conversation History. Inspect citations, edit versioned drafts,
 ask follow-up questions, export Markdown or BibTeX, or add a report to your
-knowledge base. Interrupted jobs can be resumed explicitly. This produces a
-bounded narrative review draft; source checks do not establish exhaustive
-coverage, scientific correctness, or publication readiness.
+knowledge base. Resume interrupted jobs when you're ready. Reports are narrative
+review drafts: check their sources and coverage before using them in your research.
 
 ### LLM-wiki — turn reading into lasting knowledge
 
@@ -208,7 +207,7 @@ flowchart TB
 | **Keep knowledge you can inspect** | Local Markdown pages, retained source material, structured records, and links back to evidence. |
 | **Separate evidence from interpretation** | Source passages and coverage limits stay visible; personal context guides relevance without determining scientific conclusions. |
 | **Make personalization a choice** | Interests and exploration settings remain editable. You can enable, disable, or reset feedback learning. |
-| **Keep the researcher in control** | Approve deep-review scope and spending, choose what to save, inspect changes, and undo supported mutations. |
+| **Keep the researcher in control** | Approve deep-review scope and spending, choose what to save, inspect changes, and undo supported edits. |
 | **Build on earlier work** | Wiki pages, project context, and saved conversations remain available for the next question. |
 
 ## Research workflows
@@ -231,13 +230,11 @@ activity and highly cited papers in your selected fields.
 <details>
 <summary><b>What makes a recommendation inspectable?</b></summary>
 
-The feed retains source provenance, retrieval context, ranking factors, and
-warnings. Its initial scoring defaults are 70% relevance, 20% recency, and 10%
-venue standing; missing venue data stays neutral. These are product defaults,
-not a validated measure of scientific quality. Diversity settings affect the
-selection, and partial source failures remain visible.
+Inspect each paper's source and ranking factors to see why it was recommended.
+Adjust diversity settings to broaden your reading; source availability and
+retrieval issues remain visible.
 
-[Read the recommendation contract](docs/design/07-recommendation-pipeline.md).
+[Learn how recommendations work](docs/design/07-recommendation-pipeline.md).
 
 </details>
 
@@ -276,12 +273,9 @@ History. Saving the report to the wiki is a separate choice.
 >
 > **Develop:** What experiment could distinguish the competing explanations?
 
-These are starting prompts, not promises of a particular search result or research
-outcome. Choose a scope and evidence standard appropriate to your question.
-
 ## Getting started
 
-Requirements: **Node.js 20.9+**, **npm**, access to this repository, and your own
+Requirements: **Node.js 20.9+**, **npm**, and your own
 AI provider credentials for AI features.
 
 ```bash
@@ -333,8 +327,7 @@ The default vault is `~/SciSpark/vault`. See the
 | **Usage and spending** | Recorded token usage, available cost estimates, and spending controls. |
 
 Source settings apply to Feed and scholarly search. Trending uses OpenAlex
-analytics, while explicit reading, citation lookup, and source tests have their
-own request paths. See the [feature guide](docs/FEATURE_GUIDE.md) for exact scopes.
+analytics. See the [feature guide](docs/FEATURE_GUIDE.md) for details.
 
 ## Your data and your models
 
@@ -356,9 +349,9 @@ loopback-only server; it has no shared-server authentication.
 | **Saved in your vault** | Wiki pages, profile, notes, project membership, conversations, review versions, source snapshots, changesets. |
 | **Derived from saved work** | Wiki indexes, graph relationships, timeline views, and collaboration networks. |
 | **External requests when needed** | Scholarly search, article acquisition, citation lookup, and configured model calls. |
-| **Operational records** | Usage, review progress, recovery checkpoints, and notification suppression. |
+| **Activity and progress** | Usage, review progress, and recovery checkpoints. |
 
-Reopening saved work does not authorize replaying an interrupted paid request.
+Reopening saved work does not restart interrupted model calls.
 Estimates can be unavailable for unknown model prices, and provider billing
 remains authoritative. See [backup and security guidance](docs/DEVELOPER_PREVIEW.md).
 
@@ -384,22 +377,12 @@ flowchart TB
 | **Knowledge and storage** | Filesystem vault, Markdown/frontmatter, validated changesets, conflict checks, and persisted undo. |
 | **Visual exploration** | Sigma.js, Graphology, Louvain communities, and D3. |
 | **Reading** | pdf.js and DOMPurify. |
-| **Verification** | Vitest, jsdom, and Playwright with disposable vaults and local mock providers. |
+| **Testing** | Vitest, jsdom, and Playwright. |
 
-## Quality and validation
-
-| Check | What it establishes |
-|---|---|
-| **Unit and integration tests** | Deterministic behavior across research workflows, persistence, recovery, and validation. |
-| **Browser checks** | Actual interaction flows, responsive layouts, reloads, History, and isolated runtime behavior. |
-| **Explicit live-provider checks** | Behavior with real services and recorded spending for the specific evaluated run. |
-| **Scientific assessment** | Still requires review of coverage, attribution, synthesis quality, and usefulness across questions. |
-
-Automated checks support reliability. They do not establish complete literature
-coverage, validate scientific conclusions, or guarantee an idea's novelty.
+## Development
 
 <details>
-<summary><b>Run the verification tools</b></summary>
+<summary><b>Run tests and checks</b></summary>
 
 ```bash
 npm test
@@ -412,9 +395,7 @@ npm run e2e
 
 GitHub Actions runs lint, type checks, unit tests, a production build, and Chromium smoke tests on pull requests and pushes to `main`. See [CI details](docs/testing/ci.md).
 
-Browser tests use a disposable vault and local mock provider. Live model tests
-are environment-gated and require an explicit decision to use real credentials
-and spending. [More verification details](docs/FEATURE_GUIDE.md#verification-commands).
+[Testing setup and optional live-provider tests](docs/FEATURE_GUIDE.md#verification-commands).
 
 </details>
 
@@ -442,7 +423,7 @@ falsification criteria. Both can contribute material to the same knowledge base.
 <summary><b>Can I inspect or edit what the AI creates?</b></summary>
 
 Yes. Browse and edit wiki pages, inspect retained evidence, edit versioned review
-reports, and use Changes History to inspect or undo supported mutations. Changes
+reports, and use Changes History to inspect or undo supported edits. Changes
 to report claims invalidate their earlier checks.
 
 </details>
@@ -454,16 +435,6 @@ Feedback learning guides discovery and recommendation relevance when enabled.
 A deep review should still retain contradictory, null, or foundational evidence
 relevant to its approved question. Personalization is separate from scientific
 support.
-
-</details>
-
-<details>
-<summary><b>Are the screenshots real?</b></summary>
-
-They show the running SciSpark application with an illustrative, disposable
-workspace. The example papers, scores, notes, and report are fixtures, not real
-study results. The [capture recipe](docs/assets/readme/README.md) makes this
-presentation reproducible without a private vault or paid calls.
 
 </details>
 
@@ -514,13 +485,13 @@ Third-party components retain their own licenses and attribution notices:
 |---|---|
 | [Feature and runtime guide](docs/FEATURE_GUIDE.md) | Detailed behavior, feed ranking, source settings, review recovery, and spending controls. |
 | [Developer preview guide](docs/DEVELOPER_PREVIEW.md) | Installation, backups, credentials, and local security. |
-| [Product design](docs/design/01-product.md) · [System architecture](docs/design/02-system.md) | Product decisions, the framework, and historical/planned work. |
-| [Recommendation pipeline](docs/design/07-recommendation-pipeline.md) | Ranking and feedback contracts. |
-| [Project state](project_memory.md) · [Roadmap](docs/design/06-roadmap.md) | Verified implementation state and remaining work. |
-| [Agent contract](AGENTS.md) · [Engineering guide](CLAUDE.md) | Repository conventions and contribution guidance. |
+| [Product design](docs/design/01-product.md) · [System architecture](docs/design/02-system.md) | Product and architecture decisions. |
+| [Recommendation pipeline](docs/design/07-recommendation-pipeline.md) | How ranking and feedback work. |
+| [Roadmap](docs/design/06-roadmap.md) | Planned work. |
+| [Engineering guide](CLAUDE.md) | Repository conventions and contribution guidance. |
 
 For changes, preserve the browser/server boundary, source provenance, and
-undoable vault mutations. Include focused regression coverage for behavior
+undoable vault edits. Include focused regression coverage for behavior
 changes and use a disposable vault for browser verification.
 
 ---
