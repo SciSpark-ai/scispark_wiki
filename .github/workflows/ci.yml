@@ -42,7 +42,6 @@ jobs:
     env:
       SCISPARK_LIVE_GATE_DIST_DIR: .next-ci
       SCISPARK_E2E_PRODUCTION_DIST_DIR: .next-ci
-      SCISPARK_VAULT: ${{ runner.temp }}/scispark-ci-build-vault
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -54,6 +53,8 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run build
+        env:
+          SCISPARK_VAULT: ${{ runner.temp }}/scispark-ci-build-vault
       # Each invocation gets a fresh vault; these specs never share persisted state.
       - name: Onboarding smoke
         run: npm run e2e -- e2e/first-run-setup.spec.ts
