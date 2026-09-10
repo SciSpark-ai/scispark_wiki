@@ -63,7 +63,12 @@ describe("research text contrast", () => {
           expect(contrast(values[text], values[surface]), `${text} on ${surface}`).toBeGreaterThanOrEqual(4.5)
         }
       }
-      expect(contrast(values["--on-accent"], values["--accent"])).toBeGreaterThanOrEqual(4.5)
+      for (const surface of ["--paper-header-findings", "--paper-header-methods", "--paper-header-review", "--paper-header-tools"]) {
+        expect(contrast(values["--text-primary"], values[surface]), `paper header ${surface}`).toBeGreaterThanOrEqual(4.5)
+      }
+      // User-selected white labels on the retained bright orange fill. This
+      // visual choice is not covered by the text contrast guarantee above.
+      expect(values["--on-accent"]).toBe("#ffffff")
     })
   }
 })

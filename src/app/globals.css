@@ -11,9 +11,14 @@
   --text-primary: #2b180a;
   --text-secondary: #3e2407;
   --text-muted: #716559;
+  --paper-header-findings: #fce2ce;
+  --paper-header-methods: #f4cca8;
+  --paper-header-review: #f2d7c8;
+  --paper-header-tools: #f8e8c6;
+  --sparky-ink: #000000;
   --accent-ink: #a64717;
   --accent-ink-hover: #87380e;
-  --on-accent: #2b180a;
+  --on-accent: #ffffff;
   --accent: #f97316;
   --accent-light: #fb923c;
   --tan: #dab697;
@@ -56,9 +61,14 @@
   --text-primary: #f4ead9;
   --text-secondary: #e6d6c0;
   --text-muted: #a09080;
+  --paper-header-findings: #452918;
+  --paper-header-methods: #50301a;
+  --paper-header-review: #442c24;
+  --paper-header-tools: #42341a;
+  --sparky-ink: #ffffff;
   --accent-ink: #fb923c;
   --accent-ink-hover: #fdba74;
-  --on-accent: #2b180a;
+  --on-accent: #ffffff;
   --accent: #f97316;
   --accent-light: #fb923c;
   --tan: #8a6b4f;
@@ -109,6 +119,10 @@
   --color-border-warm: var(--border);
   --color-gold: var(--gold);
 
+  --color-paper-header-findings: var(--paper-header-findings);
+  --color-paper-header-methods: var(--paper-header-methods);
+  --color-paper-header-review: var(--paper-header-review);
+  --color-paper-header-tools: var(--paper-header-tools);
   --color-band-impact: var(--band-impact);
   --color-band-breakthrough: var(--band-breakthrough);
   --color-band-method: var(--band-method);

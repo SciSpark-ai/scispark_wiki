@@ -1,0 +1,29 @@
+.badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-light);
+  color: var(--sparky-ink);
+}
+
+.badge svg { width: 16px; height: 16px; fill: currentColor; }
+.badge[data-size="header"] { width: 36px; height: 36px; }
+.badge[data-size="header"] svg { width: 20px; height: 20px; }
+.badge[data-size="companion"] { width: 48px; height: 48px; }
+.badge[data-size="companion"] svg { width: 24px; height: 24px; }
+.badge[data-state="thinking"],
+.badge[data-state="responding"] { color: var(--accent-ink); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .badge[data-state="thinking"] svg { animation: breathe 2.4s ease-in-out infinite; }
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}

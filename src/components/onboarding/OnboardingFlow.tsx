@@ -1,15 +1,12 @@
 "use client"
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react"
-import { ArrowUp, Loader2, Sparkles } from "lucide-react"
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react"
+import { ArrowUp, Loader2 } from "lucide-react"
+import { SparkyBadge } from "@/components/brand/SparkyBadge"
 import Link from "next/link"
 import { draftAnswers, readyForConfirmation, type OnboardingState, type OnboardingInput } from "@/lib/onboarding/contract"
 import { loadOnboarding, sendOnboarding } from "@/lib/onboarding/client"
 import type { OnboardingAnswers } from "@/lib/usermodel/pages"
-
-function SparkyMark() {
-  return <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange text-on-accent"><Sparkles size={17} aria-hidden="true" /></span>
-}
 
 const fields = [
   ["name", "Your name"], ["role", "Your research role"], ["fields", "Research fields"],
@@ -32,9 +29,11 @@ export function OnboardingFlow({ initial, onComplete }: { initial: OnboardingSta
     ? ["Stay focused", "A balanced mix", "Bring in nearby ideas"]
     : state.question === "learning" ? ["Yes, remember my feedback", "No, don’t learn from my feedback"] : []
 
-  useEffect(() => {
+  // Set the new scroll position before layout-driven scroll events can clear
+  // the follow flag when the confirmation form replaces the streaming reply.
+  useLayoutEffect(() => {
     if (stickToEnd.current && historyRef.current) historyRef.current.scrollTop = historyRef.current.scrollHeight
-  }, [state.messages, preview, ready, error])
+  }, [state.messages, preview, ready, error, busy])
 
   async function perform(request: OnboardingInput) {
     if (sending.current) return
@@ -89,7 +88,7 @@ export function OnboardingFlow({ initial, onComplete }: { initial: OnboardingSta
   return (
     <section aria-label="Chat with Sparky" className="mx-auto flex min-h-0 w-full max-w-[800px] flex-1 flex-col overflow-hidden rounded-[24px] border border-border-warm bg-light-surface">
       <header className="flex shrink-0 items-center gap-3 border-b border-border-warm/70 px-4 py-3 sm:px-7">
-        <SparkyMark />
+        <SparkyBadge size="header" />
         <div><p className="text-[14px] font-medium text-espresso">Sparky</p><p className="text-[12px] text-muted-text">Your research companion</p></div>
         <span className="ml-auto hidden text-[12px] text-muted-text sm:inline">{ready ? "Check your profile" : "Getting to know you"}</span>
       </header>
@@ -100,12 +99,12 @@ export function OnboardingFlow({ initial, onComplete }: { initial: OnboardingSta
         <div className="my-auto w-full shrink-0 space-y-4">
           <div role="log" aria-live="polite" className="space-y-4">
             {state.messages.map((message, index) => (
-              <div key={index} className={message.role === "user" ? "flex justify-end" : "flex items-start gap-3"}>
-                {message.role === "assistant" && <SparkyMark />}
+              <div key={index} className={message.role === "user" ? "flex justify-end" : "flex items-start gap-2.5"}>
+                {message.role === "assistant" && <SparkyBadge />}
                 <p className={`max-w-[85%] break-words whitespace-pre-wrap rounded-[18px] px-4 py-3 text-[14px] leading-relaxed ${message.role === "user" ? "bg-secondary-dark text-page-bg" : "bg-card-surface text-espresso"}`}>{message.content}</p>
               </div>
             ))}
-            {busy && <div className="flex items-start gap-3"><SparkyMark /><p className="max-w-[85%] whitespace-pre-wrap rounded-[18px] bg-card-surface px-4 py-3 text-[14px] leading-relaxed text-espresso">{preview || <span role="status">Sparky is thinking…</span>}</p></div>}
+            {busy && <div className="flex items-start gap-2.5"><SparkyBadge state={preview ? "responding" : "thinking"} /><p className="max-w-[85%] whitespace-pre-wrap rounded-[18px] bg-card-surface px-4 py-3 text-[14px] leading-relaxed text-espresso">{preview || <span role="status">Sparky is thinking…</span>}</p></div>}
           </div>
           {ready && !busy && <form aria-label="Review your research profile" onSubmit={(event) => {
             event.preventDefault()

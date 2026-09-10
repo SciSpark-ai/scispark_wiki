@@ -18,10 +18,10 @@ import { Chip } from "@/components/ui/Chip"
 import { GrainOverlay } from "@/components/shared/GrainOverlay"
 
 const CATEGORY_COLOR: Record<PaperCategory, string> = {
-  "Methods": "bg-band-method/10",
-  "Research findings": "bg-band-evidence/10",
-  "Review / synthesis": "bg-band-review/10",
-  "Data & tools": "bg-band-dataset/10",
+  "Methods": "bg-paper-header-methods",
+  "Research findings": "bg-paper-header-findings",
+  "Review / synthesis": "bg-paper-header-review",
+  "Data & tools": "bg-paper-header-tools",
 }
 
 export function RealFeedCard({ item, storage, saved, onSave }: {
@@ -54,7 +54,7 @@ export function RealFeedCard({ item, storage, saved, onSave }: {
   }
   return <Card onClick={goToPaper} onKeyDown={handleCardKeyDown} role="link" tabIndex={0}
     className="flex cursor-pointer flex-col overflow-hidden p-0 transition-shadow hover:shadow-sm">
-    <div className={`relative isolate flex flex-wrap items-center justify-between gap-2 overflow-hidden px-4 py-2 text-[12px] text-espresso ${CATEGORY_COLOR[category]}`}>
+    <div data-paper-category={category} className={`relative isolate flex flex-wrap items-center justify-between gap-2 overflow-hidden px-4 py-2 text-[12px] text-espresso ${CATEGORY_COLOR[category]}`}>
       <GrainOverlay intensity="light" />
       <span className="relative">{category}</span>
       {publication && <span className="relative rounded-pill border border-border-warm bg-light-surface px-2 py-0.5 text-[11px]">{publication}</span>}

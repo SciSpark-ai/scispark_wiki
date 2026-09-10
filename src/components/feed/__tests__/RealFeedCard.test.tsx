@@ -139,7 +139,7 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
     expect(band.textContent).toContain("Research findings")
     expect(band.textContent).toContain("Preprint")
     expect(band.textContent).not.toContain("High impact")
-    expect(band.className).toContain("bg-band-evidence")
+    expect(band.className).toContain("bg-paper-header-findings")
     expect(band.className).not.toContain("border-t-")
     const texture = band.querySelector('[aria-hidden="true"]') as HTMLElement
     expect(texture).not.toBeNull()
@@ -166,7 +166,7 @@ describe("RealFeedCard (SP2 Task 12 redesign)", () => {
     const band = (host.firstElementChild as HTMLElement).firstElementChild as HTMLElement
     expect(band.textContent).not.toContain("ear-eeg")
     expect(host.textContent).toContain("ear-eeg")
-    expect(band.className).toContain("bg-band-evidence")
+    expect(band.className).toContain("bg-paper-header-findings")
 
     act(() => root.unmount())
     host.remove()

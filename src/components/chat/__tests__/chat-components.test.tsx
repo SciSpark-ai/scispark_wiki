@@ -388,7 +388,7 @@ describe("SourcesToggle", () => {
   it("reflects an off state", () => {
     const html = renderToStaticMarkup(<SourcesToggle value={false} onChange={() => {}} />)
     expect(html).toContain('aria-checked="false"')
-    expect(html).toMatch(/read sources only/i)
+    expect(html).toMatch(/saved papers only/i)
   })
 
   it("reflects an on state", () => {

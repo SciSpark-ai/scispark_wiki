@@ -75,7 +75,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     heading: "Tools",
     items: [
-      { key: "spark", label: "Spark", href: "/spark", icon: Sparkles },
+      { key: "spark", label: "Idea Spark", href: "/spark", icon: Sparkles },
     ],
   },
 ];
@@ -240,17 +240,17 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
         <hr className="border-border-warm mx-[10px] my-[14px]" />
         <div ref={menuRef} className="relative">
           {menuOpen && (
-            <div className="absolute bottom-full left-0 mb-2 w-48 rounded-card border border-border-warm bg-light-surface py-1 shadow-lg">
+            <div className="absolute bottom-full left-0 mb-2 w-48 overflow-hidden rounded-card border border-border-warm bg-light-surface py-1 shadow-lg">
               <Link
                 href="/profile"
-                className="block px-4 py-2 text-[13px] text-espresso hover:bg-card-surface"
+                className="block px-4 py-2 text-[13px] text-espresso hover:bg-card-surface focus-visible:bg-card-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent-ink"
                 onClick={() => setMenuOpen(false)}
               >
                 Profile
               </Link>
               <button
                 type="button"
-                className="block w-full px-4 py-2 text-left text-[13px] text-espresso hover:bg-card-surface"
+                className="block w-full px-4 py-2 text-left text-[13px] text-espresso hover:bg-card-surface focus-visible:bg-card-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent-ink"
                 onClick={() => {
                   setMenuOpen(false);
                   openSettingsModal("ai");

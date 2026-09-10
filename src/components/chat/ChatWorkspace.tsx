@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import { BookOpen, Search, Layers, Clock } from "lucide-react"
 import Link from "next/link"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { listSessions, loadSession, type ChatSession } from "@/lib/chat/session"
@@ -28,7 +29,7 @@ const STAGE_LABELS: Record<ChatStage, string> = {
 }
 const SOURCE_LABELS: Record<SourceId, string> = { arxiv: "arXiv", openalex: "OpenAlex", s2: "Semantic Scholar", pubmed: "PubMed" }
 
-export function ChatWorkspace({ sessionId, fresh = false, initialMode = "chat" }: {
+export function ChatWorkspace({ sessionId, initialMode = "chat" }: {
   sessionId?: string; fresh?: boolean; initialMode?: "chat" | "search"
 }) {
   const router = useRouter()
@@ -117,15 +118,13 @@ export function ChatWorkspace({ sessionId, fresh = false, initialMode = "chat" }
         else {
           const sessions = await listSessions(await getOpenVault())
           if (!alive) return
-          const global = sessions.filter((s) => !s.projectId)
-          if (!fresh && global[0]) { router.replace(`/chat/${global[0].id}`); return }
           setRecent(sessions.slice(0, 8)); setSession(null)
         }
       } catch (e) { if (alive) { setError(sessionId ? "Conversation not found. It may have been removed or could not be read." : e instanceof Error ? e.message : String(e)); if (sessionId) setScopeError("Open a saved conversation from History or start a new chat.") } }
       finally { if (alive) setLoading(false) }
     })()
     return () => { alive = false }
-  }, [sessionId, fresh, reload, router])
+  }, [sessionId, reload])
 
   useEffect(() => {
     let alive = true
@@ -191,12 +190,57 @@ export function ChatWorkspace({ sessionId, fresh = false, initialMode = "chat" }
     finally { setSavingIndex(null) }
   }
 
+  function selectMode(next: "chat" | "search" | "review") {
+    setMode(next); setReadSourcesOnly(false)
+    saveDraftOptions({ mode: next, readSourcesOnly: false })
+  }
+
+  if (!sessionId && !loading) return (
+    <div data-chat-start className="flex min-h-full w-full flex-col px-4 py-4 sm:px-8 sm:py-6">
+      <header className="mx-auto flex w-full max-w-[1180px] items-center justify-between gap-4">
+        <p className="font-heading text-[24px] text-espresso">Sparky</p>
+        <Link href="/history?tab=conversations" className="inline-flex items-center gap-2 text-sm text-accent-ink"><Clock size={16} aria-hidden="true" />History</Link>
+      </header>
+      <section aria-label="Start a conversation" className="mx-auto my-auto w-full max-w-[760px] py-12 sm:py-16">
+        <h1 className="mb-7 text-center font-heading text-[24px] leading-tight text-espresso sm:text-[38px]">What would you like to explore?</h1>
+        {error && <div className="mb-3"><LlmErrorMessage message={error} /></div>}
+        <Composer welcome value={question} onChange={changeQuestion} onSubmit={submit}
+          busy={busy || (mode !== "chat" && (!sources.length || Boolean(sourcesError)))}
+          placeholder={mode === "review" ? "What question should this literature review investigate?" : mode === "search" ? "Ask a research question to find papers…" : "Ask Sparky about your research…"} />
+        <div aria-label="Research options" className="mt-4 flex flex-wrap justify-center gap-2">
+          {([{ value: "chat", label: "Discuss research", Icon: BookOpen }, { value: "search", label: "Find papers", Icon: Search }, { value: "review", label: "Deep literature review", Icon: Layers }] as const).map(({ value, label, Icon }) => (
+            <button key={value} type="button" aria-pressed={mode === value} disabled={busy} onClick={() => selectMode(value)}
+              className={`flex items-center gap-2 rounded-pill border px-3.5 py-2.5 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink disabled:opacity-50 ${mode === value ? "border-accent-ink bg-light-surface text-accent-ink" : "border-border-warm text-muted-text hover:bg-light-surface hover:text-espresso"}`}>
+              <Icon size={16} aria-hidden="true" />{label}
+            </button>
+          ))}
+        </div>
+        <details className="mt-5 text-[13px] text-muted-text">
+          <summary className="mx-auto w-fit cursor-pointer rounded px-2 py-1 focus-visible:outline-2 focus-visible:outline-accent-ink">{mode === "chat" ? "Conversation options" : "Search scope"}</summary>
+          <div className="mx-auto mt-3 w-full max-w-[440px]">
+            {mode === "chat" ? <SourcesToggle value={readSourcesOnly} onChange={(value) => { setReadSourcesOnly(value); saveDraftOptions({ readSourcesOnly: value }) }} /> : <>
+              <div className="flex flex-wrap gap-3">{enabledSources.map((s) => <label key={s} className="flex items-center gap-1.5 text-sm text-espresso"><input type="checkbox" disabled={busy} checked={sources.includes(s)} onChange={() => { const next = sources.includes(s) ? sources.filter((p) => p !== s) : [...sources, s]; setSources(next); saveDraftOptions({ sources: next }) }} />{SOURCE_LABELS[s]}</label>)}</div>
+              <button type="button" onClick={() => openSettings("sources")} className="mt-3 text-accent-ink">Manage sources</button>
+            </>}
+          </div>
+        </details>
+        {mode !== "chat" && sourcesError && <p role="alert" className="mt-3 text-sm text-espresso">{sourcesError} <button onClick={() => openSettings("sources")} className="text-accent-ink underline">Manage sources</button></p>}
+        <p className="mt-4 text-center text-xs text-muted-text">Enter to send. Shift+Enter for a new line.</p>
+        {busy && <div className="mt-6"><StreamingReply text={draft} label={stage ? STAGE_LABELS[stage] : "Thinking…"} /></div>}
+        {recent.length > 0 && <details className="mt-8 border-t border-border-warm pt-4 text-sm text-muted-text">
+          <summary className="w-fit cursor-pointer rounded focus-visible:outline-2 focus-visible:outline-accent-ink">Recent conversations</summary>
+          <ul className="mt-2 divide-y divide-border-warm">{recent.slice(0, 4).map((s) => <li key={s.id}><Link className="block py-3 text-espresso hover:text-accent-ink" href={`/chat/${s.id}`}>{s.title}</Link></li>)}</ul>
+        </details>}
+      </section>
+    </div>
+  )
+
   return <div className="flex h-full min-h-0 w-full">
     <div className={`${reportId ? "hidden max-w-[520px] lg:flex" : "flex max-w-[1180px]"} mx-auto h-full min-h-0 min-w-0 w-full flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6`}>
     <header className="mb-4 flex shrink-0 flex-col items-start justify-between gap-3 border-b border-border-warm pb-4 sm:flex-row sm:gap-4">
       <div className="min-w-0"><h1 className="font-heading text-[28px] leading-tight text-espresso sm:text-[34px]">{reportId ? "Review conversation" : session?.title ?? "Sparky"}</h1>
         <p className="mt-1 text-sm text-muted-text">{reportId ? "Ask questions. Refine your draft." : session?.projectId ? `Project conversation · ${session.projectTitle}. Scoped to current members.` : "Find papers. Discuss findings. Continue anytime."}</p></div>
-      <nav className="flex shrink-0 flex-wrap gap-3 text-sm text-accent-ink"><Link href="/history?tab=conversations">History</Link><Link href="/chat?new=1">New chat</Link></nav>
+      <nav className="flex shrink-0 flex-wrap gap-3 text-sm text-accent-ink"><Link href="/history?tab=conversations" className="inline-flex items-center gap-2"><Clock size={16} aria-hidden="true" />History</Link><Link href="/chat?new=1">New chat</Link></nav>
     </header>
     <div ref={scroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1" aria-label="Conversation">
       {loading ? <LoadingState label="Loading conversation…" /> : session ? <MessageList messages={session.messages} pageTitleById={titles} onSaveMessage={save} savingIndex={savingIndex} /> : <div className="flex min-h-full flex-col justify-center py-6">

@@ -1,6 +1,7 @@
 "use client"
 
 import type { KeyboardEvent } from "react"
+import { ArrowUp } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 
 export interface ComposerProps {
@@ -9,6 +10,7 @@ export interface ComposerProps {
   onSubmit: () => void
   busy: boolean
   placeholder?: string
+  welcome?: boolean
 }
 
 /**
@@ -29,7 +31,7 @@ export interface ComposerProps {
  * CaptureIdeaCard's implicit form submit) — fixed here only; worth a
  * dedicated pass to close it everywhere.
  */
-export function Composer({ value, onChange, onSubmit, busy, placeholder = "Ask about your knowledge base…" }: ComposerProps) {
+export function Composer({ value, onChange, onSubmit, busy, welcome = false, placeholder = "Ask about your knowledge base…" }: ComposerProps) {
   const canSubmit = !busy && value.trim() !== ""
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -40,7 +42,7 @@ export function Composer({ value, onChange, onSubmit, busy, placeholder = "Ask a
   }
 
   return (
-    <div className="flex items-end gap-2">
+    <div className={welcome ? "flex items-end gap-3 rounded-[24px] border border-border-warm bg-light-surface p-4 shadow-sm focus-within:ring-2 focus-within:ring-accent-ink" : "flex items-end gap-2"}>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -49,11 +51,12 @@ export function Composer({ value, onChange, onSubmit, busy, placeholder = "Ask a
         rows={2}
         placeholder={placeholder}
         aria-label="Message Sparky"
-        className="flex-1 resize-none rounded-card border border-border-warm bg-light-surface px-3 py-2 text-[14px] text-espresso tracking-body disabled:opacity-50"
+        className={welcome ? "min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-[16px] leading-6 text-espresso outline-none placeholder:text-muted-text disabled:opacity-50" : "min-w-0 flex-1 resize-none rounded-[12px] border border-border-warm bg-light-surface focus:outline-2 focus:outline-accent-ink px-3 py-2 text-[14px] text-espresso tracking-body disabled:opacity-50"}
       />
-      <Button onClick={onSubmit} disabled={!canSubmit}>
-        Send
-      </Button>
+      {welcome ? <button type="button" aria-label="Send" onClick={onSubmit} disabled={!canSubmit}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange text-on-accent focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent-ink disabled:opacity-40">
+        <ArrowUp size={20} aria-hidden="true" />
+      </button> : <Button onClick={onSubmit} disabled={!canSubmit}>Send</Button>}
     </div>
   )
 }

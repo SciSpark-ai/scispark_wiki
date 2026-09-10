@@ -1,5 +1,6 @@
 "use client"
 
+import { SparkyBadge } from "@/components/brand/SparkyBadge"
 import { Button } from "@/components/ui/Button"
 import { cn } from "@/components/ui/cn"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
@@ -58,58 +59,61 @@ export function MessageBubble({ message, pageTitleById, onSave, saving }: Messag
   const canSave = isAssistant && hasContent && !message.error && !message.blocks?.length
 
   return (
-    <div
-      className={cn(
-        "rounded-card border border-border-warm px-4 py-3",
-        isAssistant ? "bg-light-surface" : "bg-card-surface",
-      )}
-    >
-      <div className="text-[11px] uppercase tracking-wide text-muted-text">{isAssistant ? "Assistant" : "You"}</div>
+    <div className={isAssistant ? "flex items-start gap-2.5" : undefined}>
+      {isAssistant && <SparkyBadge />}
+      <div
+        className={cn(
+          "min-w-0 flex-1 rounded-card border border-border-warm px-4 py-3",
+          isAssistant ? "bg-light-surface" : "bg-card-surface",
+        )}
+      >
+        <div className="text-[11px] uppercase tracking-wide text-muted-text">{isAssistant ? "Sparky" : "You"}</div>
 
-      {hasContent && (
-        <p className="mt-1 whitespace-pre-wrap text-[14px] leading-[1.5] text-espresso tracking-body">
-          {message.content}
-        </p>
-      )}
-      {isAssistant && message.blocks?.map((block, index) => block.type === "review-citations" ? <button key={index} className="mt-3 text-sm text-accent-ink" onClick={() => window.dispatchEvent(new CustomEvent("open-review-report", { detail: { runId: block.runId, versionId: block.versionId } }))}>View saved review sources{block.sourceIds.length ? ` · ${block.sourceIds.join(", ")}` : ""}</button> : block.type === "review" ? <ReviewBlock key={index} id={block.runId} /> : block.type === "paper-results"
-        ? <PaperResultsBlock key={index} result={block.result} />
-        : <PaperResultsBlock key={index} result={{ query: "", plan: { interpretation: "Cited papers", sort: "relevance", fromDate: null, queries: [] }, items: block.papers.map((paper) => ({ paper, score: 0, whyMatch: "", foundBy: [] })), stats: { retrieved: 0, deduplicated: 0 }, costUsd: 0, warnings: [] }} citationsOnly />)}
+        {hasContent && (
+          <p className="mt-1 whitespace-pre-wrap text-[14px] leading-[1.5] text-espresso tracking-body">
+            {message.content}
+          </p>
+        )}
+        {isAssistant && message.blocks?.map((block, index) => block.type === "review-citations" ? <button key={index} className="mt-3 text-sm text-accent-ink" onClick={() => window.dispatchEvent(new CustomEvent("open-review-report", { detail: { runId: block.runId, versionId: block.versionId } }))}>View saved review sources{block.sourceIds.length ? ` · ${block.sourceIds.join(", ")}` : ""}</button> : block.type === "review" ? <ReviewBlock key={index} id={block.runId} /> : block.type === "paper-results"
+          ? <PaperResultsBlock key={index} result={block.result} />
+          : <PaperResultsBlock key={index} result={{ query: "", plan: { interpretation: "Cited papers", sort: "relevance", fromDate: null, queries: [] }, items: block.papers.map((paper) => ({ paper, score: 0, whyMatch: "", foundBy: [] })), stats: { retrieved: 0, deduplicated: 0 }, costUsd: 0, warnings: [] }} citationsOnly />)}
 
-      {isAssistant && message.error && (
-        <div className="mt-2">
-          <LlmErrorMessage message={hasContent ? `Reason: ${message.error}` : message.error} />
-        </div>
-      )}
+        {isAssistant && message.error && (
+          <div className="mt-2">
+            <LlmErrorMessage message={hasContent ? `Reason: ${message.error}` : message.error} />
+          </div>
+        )}
 
-      {isAssistant && message.selectionFallback && (
-        <p className="mt-2 text-[12px] text-muted-text tracking-body">
-          Context was chosen by keyword match, not the AI page selector.
-        </p>
-      )}
+        {isAssistant && message.selectionFallback && (
+          <p className="mt-2 text-[12px] text-muted-text tracking-body">
+            Context was chosen by keyword match, not the AI page selector.
+          </p>
+        )}
 
-      {isAssistant && skippedPageIds.length > 0 && (
-        <p className="mt-2 text-[12px] text-muted-text tracking-body">
-          Couldn&apos;t read: {skippedPageIds.map((id) => labelFor(id, pageTitleById)).join(", ")}
-        </p>
-      )}
+        {isAssistant && skippedPageIds.length > 0 && (
+          <p className="mt-2 text-[12px] text-muted-text tracking-body">
+            Couldn&apos;t read: {skippedPageIds.map((id) => labelFor(id, pageTitleById)).join(", ")}
+          </p>
+        )}
 
-      {isAssistant && truncatedPageIds.length > 0 && (
-        <p className="mt-2 text-[12px] text-muted-text tracking-body">
-          Context limit reached for: {truncatedPageIds.map((id) => labelFor(id, pageTitleById)).join(", ")}
-        </p>
-      )}
+        {isAssistant && truncatedPageIds.length > 0 && (
+          <p className="mt-2 text-[12px] text-muted-text tracking-body">
+            Context limit reached for: {truncatedPageIds.map((id) => labelFor(id, pageTitleById)).join(", ")}
+          </p>
+        )}
 
-      {isAssistant && citedPageIds.length > 0 && (
-        <CitationChips pageIds={citedPageIds} pageTitleById={pageTitleById} />
-      )}
+        {isAssistant && citedPageIds.length > 0 && (
+          <CitationChips pageIds={citedPageIds} pageTitleById={pageTitleById} />
+        )}
 
-      {canSave && (
-        <div className="mt-3">
-          <Button variant="secondary" size="sm" onClick={onSave} disabled={saving}>
-            {saving ? "Saving…" : "Save to knowledge base"}
-          </Button>
-        </div>
-      )}
+        {canSave && (
+          <div className="mt-3">
+            <Button variant="secondary" size="sm" onClick={onSave} disabled={saving}>
+              {saving ? "Saving…" : "Save to knowledge base"}
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

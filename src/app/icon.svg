@@ -1,8 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <style>
-    path { fill: #000; }
-    @media (prefers-color-scheme: dark) { path { fill: #fff; } }
-  </style>
+  <rect x="0.5" y="0.5" width="31" height="31" rx="6" fill="#fff" stroke="#e7e5e4" />
   <!-- Small-size optical rendition of the supplied four-point brandmark. -->
-  <path d="M16 2C17.2 12.4 19.4 14.6 28 16C19.4 17.4 17.2 19.6 16 30C14.8 19.6 12.6 17.4 4 16C12.6 14.6 14.8 12.4 16 2Z"/>
+  <path fill="#000" transform="translate(4 4) scale(0.75)" d="M16 2C17.2 12.4 19.4 14.6 28 16C19.4 17.4 17.2 19.6 16 30C14.8 19.6 12.6 17.4 4 16C12.6 14.6 14.8 12.4 16 2Z"/>
 </svg>

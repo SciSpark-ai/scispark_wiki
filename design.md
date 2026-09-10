@@ -117,8 +117,11 @@ Accessibility corrections may change the foreground used on those surfaces:
   boundaries need at least 3:1. Check actual rendered combinations and opacity.
 - Orange fill and orange text need separate roles. A color that works behind a
   dark button label may fail as small text on cream.
-- Use a stable dark `on-accent` foreground for orange controls in both themes;
-  `text-espresso` alone is unsuitable because it becomes light in dark mode.
+- User override (September 9): use white `on-accent` text and icons on orange
+  controls and profile initials in both themes. Keep the existing orange fill.
+  This supersedes the earlier dark foreground; white on this bright orange does
+  not meet the 4.5:1 normal-text contrast target. Do not claim these controls pass
+  that target. Disabled controls retain their existing reduced opacity.
 - Metadata must stay readable on all existing surfaces. Do not turn labels into
   unreadable low-opacity text to make the UI look quieter.
 - Preserve distinct categorical graph and feed colors and their meaning. Audit
@@ -203,13 +206,13 @@ text is strengthened. See [the real-product audit](docs/testing/2026-09-09-brand
 for evidence, source provenance, verification and remaining accessibility scope.
 
 The browser favicon is implemented in `src/app/icon.svg`: a small-size optical
-vector rendition of the supplied four-point symbol, with black/white treatment
-chosen by the browser's preferred color scheme. It is favicon-specific artwork,
+vector rendition of the supplied four-point symbol: black on a white
+rounded-square tile in both browser themes (user reference). It is favicon-specific artwork,
 not a claim to possess the original logo vector. `src/app/favicon.ico` provides
 16/32/48px black-on-white fallbacks, reproducibly rendered by
 `scripts/generate-favicon.mjs`. Both are registered through Next's file-based
-metadata with content-versioned URLs. Browser-theme selection is independent
-of the application's own appearance setting. The header wordmark is unchanged.
+metadata with content-versioned URLs. The favicon stays the same across browser
+and application appearance settings. The header wordmark is unchanged.
 
 ## Decisions log
 
@@ -219,3 +222,52 @@ of the application's own appearance setting. The header wordmark is unchanged.
 | 2026-09-09 | Preserve the current real product UI; no redesign | Latest explicit user correction, supersedes mockup direction |
 | 2026-09-09 | Integrate logo and audit fonts, colors, themes and components in place | User's corrected scope |
 | 2026-09-09 | Keep existing warm surfaces, shape, density, typography and app structure | Direct consequence of preserve-current-UI scope |
+
+## Sparky identity — approved September 9
+
+Sparky is an abstract four-point spark closely following the logo symbol, with
+no face, limbs, or accessories. Use the shared `SparkyBadge` in chat replies,
+onboarding, and the floating companion. A quiet neutral circle with a subtle
+border contains the spark in both themes. Replies use a 28px badge and 16px spark,
+aligned to the card top with a 10px gap. Keep existing reply cards and typography;
+label assistant replies “Sparky”. The main chatbot has no header badge (option B).
+Retain the onboarding header's 36px badge and the floating control's 48px target.
+
+At rest and on completed replies, the spark is black in light mode and white in
+dark mode. While thinking it uses the accessible orange foreground and gently
+breathes over 2.4 seconds with a maximum 1.12 scale. While text is streaming it
+stays steady orange. Only the spark moves; the circle stays still. Reduced-motion
+preferences disable breathing. Remove idle bobbing and celebration pulses.
+State follows existing request/stream state; no research behavior is changed.
+
+### Sparky start page — September 9 layout follow-up
+
+The user explicitly requested a ChatGPT-like starting layout, superseding the
+preserve-layout rule for the empty chat entry only. `/chat` opens a centered
+question heading and a large composer, followed by the existing Discuss research,
+Find papers, and Deep literature review options. These select a mode without
+submitting or replacing the user's draft. Source settings and recent conversations
+remain accessible through disclosures. Keep SciSpark fonts, warm surfaces and
+existing navigation. Saved conversations retain reply cards, Sparky badges, and
+the bottom composer; direct conversation links continue to reopen their transcript.
+
+### Floating quick chat
+
+The user requested that clicking the floating Sparky on Home immediately open a
+small chat box. The shared floating control now toggles a nonmodal 400px chat
+panel, capped to the viewport, rather than doing nothing when idle. Keep the
+48px launcher, existing chat backend, grounded reply cards and source links.
+Escape or Close returns focus to the launcher. Closing preserves the in-memory
+draft and response in progress. Saved replies link to their full conversation.
+Existing proactive suggestions and feedback remain queued behind an open chat.
+
+### Paper-card header palette — September 9 user update
+
+Home feed headers use an orange-family palette by existing content category:
+research findings in peach (#FCE2CE), methods in apricot (#F4CCA8), review/synthesis
+in soft terracotta (#F2D7C8), and data/tools in pale amber (#F8E8C6). Dark variants
+are #452918, #50301A, #442C24 and #42341A, respectively. Use dedicated
+`paper-header-*` semantic tokens, retaining category text and the existing grain.
+Header labels retain theme text color and pass 4.5:1 on these surfaces. This
+supersedes the former pale green/teal feed headers; graph and other categorical
+visualizations keep their existing palette. No category inference logic changes.
