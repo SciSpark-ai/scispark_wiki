@@ -12,7 +12,7 @@ A personal workspace to **discover papers, build knowledge, and explore ideas**.
 [![Status: Developer preview](https://img.shields.io/badge/status-developer_preview-EA6B28?style=flat-square)](#current-preview)
 [![Local-first](https://img.shields.io/badge/storage-local_first-716559?style=flat-square)](#your-data-and-your-models)
 [![Bring your own AI](https://img.shields.io/badge/AI-bring_your_own_provider-84664C?style=flat-square)](#configure-your-workspace)
-[![TypeScript](https://img.shields.io/badge/built_with-TypeScript-716559?style=flat-square)](#under-the-hood)
+[![CI](https://github.com/SciSpark-ai/scispark_wiki/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SciSpark-ai/scispark_wiki/actions/workflows/ci.yml)
 
 **Discover with purpose. Read with context. Keep what you learn.**
 
