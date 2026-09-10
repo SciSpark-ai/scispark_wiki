@@ -2,17 +2,17 @@
 
 <div align="center">
 
-# ✦ SciSpark
+<img src="docs/assets/readme/brand-banner.png" alt="SciSpark — Discover. Connect. Explore." width="100%">
 
 ### From the paper you discover to the question you ask next.
 
 A personal workspace to **discover papers, build knowledge, and explore ideas**.
 
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-716559?style=flat-square)](LICENSE)
 [![Status: Developer preview](https://img.shields.io/badge/status-developer_preview-EA6B28?style=flat-square)](#current-preview)
-[![Local-first](https://img.shields.io/badge/storage-local_first-496D59?style=flat-square)](#your-data-and-your-models)
+[![Local-first](https://img.shields.io/badge/storage-local_first-716559?style=flat-square)](#your-data-and-your-models)
 [![Bring your own AI](https://img.shields.io/badge/AI-bring_your_own_provider-84664C?style=flat-square)](#configure-your-workspace)
-[![TypeScript](https://img.shields.io/badge/built_with-TypeScript-3178C6?style=flat-square)](#under-the-hood)
+[![TypeScript](https://img.shields.io/badge/built_with-TypeScript-716559?style=flat-square)](#under-the-hood)
 
 **Discover with purpose. Read with context. Keep what you learn.**
 
@@ -37,9 +37,13 @@ those starting points while your research stays organized in a local vault.
 <sub>Real SciSpark screens captured in Chromium with an isolated example vault. Paper records, scores, notes, ideas, and report text are illustrative fixtures; these images are not live scientific results. No personal vault or paid model calls were used. <a href="docs/assets/readme/README.md">Capture details</a>.</sub>
 
 <details>
-<summary><b>Explore all six feature screens</b></summary>
+<summary><b>Explore Sparky and the full workspace</b></summary>
 <br>
 <table>
+<tr>
+<td width="50%"><a href="docs/assets/readme/sparky.png"><img src="docs/assets/readme/sparky.png" alt="Sparky start page with a centered input and research mode options" width="100%"></a><br><b>Start with a question</b><br>Discuss research, find papers, or begin a deep literature review.</td>
+<td width="50%"><a href="docs/assets/readme/quick-chat.png"><img src="docs/assets/readme/quick-chat.png" alt="Sparky floating chat open beside the paper feed" width="100%"></a><br><b>Sparky, close at hand</b><br>Open a small chat from the spark badge while browsing your workspace.</td>
+</tr>
 <tr>
 <td width="50%"><a href="docs/assets/readme/feed.png"><img src="docs/assets/readme/feed.png" alt="Personalized Feed with paper cards" width="100%"></a><br><b>Feed</b><br>Research interests, paper discovery, ranking explanations, and feedback.</td>
 <td width="50%"><a href="docs/assets/readme/deep-research.png"><img src="docs/assets/readme/deep-research.png" alt="Sparky conversation beside an illustrative deep-research report" width="100%"></a><br><b>Deep research</b><br>A question, a retained conversation, and a versioned report you can inspect.</td>
@@ -53,6 +57,11 @@ those starting points while your research stays organized in a local vault.
 <td width="50%"><a href="docs/assets/readme/spark.png"><img src="docs/assets/readme/spark.png" alt="Idea Spark controls and an illustrative idea gallery" width="100%"></a><br><b>Idea Spark</b><br>Develop ideas from the research you have already collected.</td>
 </tr>
 </table>
+
+**A quieter view after dark.** The same workspace, with theme-aware artwork, warm paper-card headers, and orange accents.
+
+<a href="docs/assets/readme/feed-dark.png"><img src="docs/assets/readme/feed-dark.png" alt="SciSpark Feed in dark mode with a white wordmark and warm orange paper-card headers" width="100%"></a>
+
 </details>
 
 ## Current preview

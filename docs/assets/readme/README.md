@@ -5,8 +5,8 @@ fresh, disposable vault. They demonstrate the interface, not scientific results.
 
 ## Provenance
 
-- Captured September 9, 2026, with Chromium at **1440 × 960**, light theme and
-  reduced motion, against application source at commit `893e8c5`.
+- Captured September 9, 2026, with Chromium at **1440 × 960**, light and dark themes and
+  reduced motion, against application source at commit `908fa7c`.
 - All paper records, research notes, project content, ideas, relevance assessments,
   and review text are fixtures. No private research vault was used.
 - Feed runs through the real workflow with deterministic mock model responses and
@@ -19,6 +19,10 @@ fresh, disposable vault. They demonstrate the interface, not scientific results.
 
 | Image | View |
 |---|---|
+| [brand-banner.png](brand-banner.png) | Documentation masthead using the shipped transparent wordmark on a paper-colored surface; 1200 × 300. |
+| [sparky.png](sparky.png) | Sparky start page with composer and research modes. |
+| [quick-chat.png](quick-chat.png) | Floating Sparky chat opened from the Feed. |
+| [feed-dark.png](feed-dark.png) | Feed in dark mode. |
 | [feed.png](feed.png) | Personalized Feed with six illustrative papers. |
 | [deep-research.png](deep-research.png) | Sparky conversation and an example report. |
 | [wiki.png](wiki.png) | Rendered concept page with research questions and links. |
@@ -37,7 +41,13 @@ SCISPARK_CAPTURE_README=1 SCISPARK_SCHEDULER=off npm run e2e -- e2e/readme-showc
 The [capture script](../../../e2e/readme-showcase.spec.ts) is opt-in and skipped
 in ordinary E2E runs. Use `npm run e2e` so the harness provisions and cleans up
 the temporary vault and local mock services. Do not run it against a personal
-vault. The command replaces the six images in this directory.
+vault. The command replaces the nine product screenshots and the brand masthead in this directory.
+The masthead is a browser-rendered documentation layout, not an application screen;
+its wordmark is the existing `public/brand/scispark-wordmark-transparent.png` artwork.
 
 After capture, inspect each image for loaded content, readable text, and accurate
 feature state. Update the date and application revision above when recapturing.
+
+For this refresh, the existing production build was reused with
+`SCISPARK_E2E_PRODUCTION_DIST_DIR=.next-profile-menu-clip` added to the command.
+Omit that variable to capture current source through the default development harness.

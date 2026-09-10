@@ -108,6 +108,18 @@ test("capture README product showcase with illustrative data", async ({ page, re
   await page.goto("/")
   await expect(page.getByRole("heading", { name: titles[0], exact: true })).toBeVisible()
   await capture("feed")
+  await page.getByRole("button", { name: "Open Sparky chat", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "What are you exploring?", exact: true })).toBeVisible()
+  await capture("quick-chat")
+  await page.goto("/chat")
+  await expect(page.getByRole("heading", { name: "What would you like to explore?", exact: true })).toBeVisible()
+  await capture("sparky")
+  await request.put("/api/settings", { data: { ui: { theme: "dark" } } })
+  await page.goto("/")
+  await expect(page.getByRole("heading", { name: titles[0], exact: true })).toBeVisible()
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+  await capture("feed-dark")
+  await request.put("/api/settings", { data: { ui: { theme: "light" } } })
   await page.goto("/wiki/concepts/generalization")
   await expect(page.getByRole("heading", { name: "Generalization", exact: true }).first()).toBeVisible()
   await page.getByRole("button", { name: "Preview", exact: true }).click()
@@ -123,7 +135,8 @@ test("capture README product showcase with illustrative data", async ({ page, re
   await page.goto("/spark")
   await expect(page.getByRole("heading", { name: "Idea gallery", exact: true })).toBeVisible()
   await expect(page.getByText("Test representation stability across sessions", { exact: true })).toBeVisible()
-  await page.locator("textarea").fill("Explore how learned representations transfer across recording sessions.")
+  await page.getByPlaceholder("What direction should Spark explore?", { exact: false }).fill("Explore how learned representations transfer across recording sessions.")
+  await page.getByRole("heading", { name: "Idea gallery", exact: true }).click()
   await capture("spark")
   await page.goto(`/chat/${review.sessionId}`)
   await page.getByRole("button", { name: "Open report", exact: true }).click()
@@ -131,4 +144,20 @@ test("capture README product showcase with illustrative data", async ({ page, re
   await expect(page.getByLabel("Report version")).toBeVisible()
   await expect(page.getByRole("heading", { name: "Comparing generalization across sessions", exact: true })).toBeVisible()
   await capture("deep-research")
+
+  // A documentation masthead, laid out in Chromium using the shipped artwork.
+  // The paper background keeps the black wordmark readable in either GitHub theme.
+  const logoUrl = new URL("/brand/scispark-wordmark-transparent.png", page.url()).href
+  await page.setViewportSize({ width: 1200, height: 300 })
+  await page.setContent(`<!doctype html><html><head><style>
+    * { box-sizing: border-box; } body { margin: 0; background: #fffaf5; color: #302015;
+      height: 300px; display: grid; place-content: center; justify-items: center; gap: 28px; }
+    .logo { width: 360px; height: 130px; position: relative; overflow: hidden; }
+    img { position: absolute; width: 377.89px; max-width: none; left: -8.95px; top: -31.53px; }
+    p { margin: 0; font: 16px Arial, sans-serif; letter-spacing: 3px; text-transform: uppercase; }
+    .rule { width: 48px; height: 3px; background: #e7803f; }
+  </style></head><body><div class="logo"><img src="${logoUrl}" alt="SciSpark"></div>
+    <p>Discover. Connect. Explore.</p><div class="rule"></div></body></html>`)
+  await page.locator("img").evaluate((img: HTMLImageElement) => img.decode())
+  await capture("brand-banner")
 })
