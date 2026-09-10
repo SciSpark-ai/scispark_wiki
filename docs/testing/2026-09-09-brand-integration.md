@@ -124,9 +124,10 @@ unchanged. No public deployment or paid model calls.
 ## Transparent header-logo follow-up
 
 Replaced the opaque, blended header image with a genuine RGBA PNG extracted
-from the supplied editorial logo using imagegen. The asset and exact edit prompt
-are documented in `public/brand/README.md`. This is an edited raster; the original
-reference remains preserved. Removed multiply/screen blending. Dark mode inverts
+from the supplied editorial logo using imagegen. The production asset is
+`public/brand/scispark-wordmark-transparent.png`. This is an edited raster;
+the original reference and extraction notes remain preserved locally, outside
+version control. Removed multiply/screen blending. Dark mode inverts
 only the lettering while preserving alpha, and existing header geometry remains.
 
 Verified transparent pixels, including letter counters, and visually inspected

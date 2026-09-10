@@ -25,15 +25,18 @@ version history and undo. Attractive output is not evidence of scientific validi
 
 ## Brand sources
 
-All five user-supplied sheets were visually inspected. Preserve the originals.
+The design system is derived from five user-supplied sheets. Originals are kept
+locally in the gitignored `design/` folder; they are not required to build or run
+the app. Preserve them when present. The tracked production wordmark is
+`public/brand/scispark-wordmark-transparent.png`; the favicon is `src/app/icon.svg`.
 
 | Reference | Use |
 | --- | --- |
-| [Editorial logo](design/SciSpark%20Logo%20Concept%20-%20Editorial%20%231.png) | Canonical letterforms, four-point spark, tagline |
-| [Primary variants](design/SciSpark_Primary_Lockup_Variants.png) | Formal lockup and reversed version |
-| [Horizontal variants](design/SciSpark_Horizontal_Lockup_Variants.png) | Navigation placement, including wordmark without tagline |
-| [Symbol variants](design/SciSpark_Symbol_Brandmark_Variants.png) | Spark for compact identity and favicon preparation |
-| [Usage guidelines](design/SciSpark_Usage_Guidelines.png) | Monochrome default, orange #E7803F, clear-space intent |
+| Editorial logo | Canonical letterforms, four-point spark, tagline |
+| Primary variants | Formal lockup and reversed version |
+| Horizontal variants | Navigation placement, including wordmark without tagline |
+| Symbol variants | Spark for compact identity and favicon preparation |
+| Usage guidelines | Monochrome default, orange #E7803F, clear-space intent |
 
 Use black identity on light backgrounds and reversed white on dark backgrounds.
 The orange variants are alternatives; the usage sheet explicitly prefers

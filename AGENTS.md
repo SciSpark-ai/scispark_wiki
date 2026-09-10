@@ -54,13 +54,14 @@ CI/unit tests. See `CLAUDE.md` and the relevant milestone plan for the exact gat
 ## Design System
 
 Read `design.md` before making visual or UI decisions. It is the canonical
-SciSpark brand contract derived from the user's sheets in `design/` and covers
+SciSpark brand contract derived from the user's local reference sheets and covers
 all product surfaces, fonts, colors, spacing, motion and logo usage. Preserve
 the current real UI; the editorial mockup is superseded. Use its
 semantic tokens and acceptance criteria; flag deviations during UI review.
 Changes to the approved direction require explicit user approval. Check its
 implementation status: a documented target does not mean every existing screen
-has migrated. Preserve the original design sheets and research interactions.
+has migrated. Original sheets and marketing exports are optional, gitignored
+local material; preserve them when present. Preserve research interactions.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
