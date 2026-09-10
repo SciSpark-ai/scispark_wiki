@@ -32,7 +32,7 @@ those starting points while your research stays organized in a local vault.
 
 **One workspace, from discovery to your next experiment.**
 
-<a href="docs/assets/readme/feed.png"><img src="docs/assets/readme/feed.png" alt="SciSpark Feed showing nine illustrative research papers, ranking explanations, save actions, and feedback controls" width="100%"></a>
+<a href="docs/assets/readme/feed-nine-cards.png"><img src="docs/assets/readme/feed-nine-cards.png" alt="SciSpark Feed showing nine illustrative research papers, ranking explanations, save actions, and feedback controls" width="100%"></a>
 
 <sub>Real SciSpark screens captured in Chromium with an isolated example vault. Paper records, scores, notes, ideas, and report text are illustrative fixtures; these images are not live scientific results. No personal vault or paid model calls were used. <a href="docs/assets/readme/README.md">Capture details</a>.</sub>
 
@@ -45,7 +45,7 @@ those starting points while your research stays organized in a local vault.
 <td width="50%"><a href="docs/assets/readme/quick-chat.png"><img src="docs/assets/readme/quick-chat.png" alt="Sparky floating chat open beside the paper feed" width="100%"></a><br><b>Sparky, close at hand</b><br>Open a small chat from the spark badge while browsing your workspace.</td>
 </tr>
 <tr>
-<td width="50%"><a href="docs/assets/readme/feed.png"><img src="docs/assets/readme/feed.png" alt="Personalized Feed with paper cards" width="100%"></a><br><b>Feed</b><br>Research interests, paper discovery, ranking explanations, and feedback.</td>
+<td width="50%"><a href="docs/assets/readme/feed-nine-cards.png"><img src="docs/assets/readme/feed-nine-cards.png" alt="Personalized Feed with paper cards" width="100%"></a><br><b>Feed</b><br>Research interests, paper discovery, ranking explanations, and feedback.</td>
 <td width="50%"><a href="docs/assets/readme/deep-research.png"><img src="docs/assets/readme/deep-research.png" alt="Sparky conversation beside an illustrative deep-research report" width="100%"></a><br><b>Deep research</b><br>A question, a retained conversation, and a versioned report you can inspect.</td>
 </tr>
 <tr>
@@ -60,7 +60,7 @@ those starting points while your research stays organized in a local vault.
 
 **A quieter view after dark.** The same workspace, with theme-aware artwork, warm paper-card headers, and orange accents.
 
-<a href="docs/assets/readme/feed-dark.png"><img src="docs/assets/readme/feed-dark.png" alt="SciSpark Feed in dark mode with a white wordmark and warm orange paper-card headers" width="100%"></a>
+<a href="docs/assets/readme/feed-nine-cards-dark.png"><img src="docs/assets/readme/feed-nine-cards-dark.png" alt="SciSpark Feed in dark mode with a white wordmark and warm orange paper-card headers" width="100%"></a>
 
 </details>
 

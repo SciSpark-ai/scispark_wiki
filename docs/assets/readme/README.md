@@ -22,8 +22,8 @@ fresh, disposable vault. They demonstrate the interface, not scientific results.
 | [brand-banner.png](brand-banner.png) | Documentation masthead using the shipped transparent wordmark on a paper-colored surface; 1200 × 300. |
 | [sparky.png](sparky.png) | Sparky start page with composer and research modes. |
 | [quick-chat.png](quick-chat.png) | Floating Sparky chat opened from the Feed. |
-| [feed-dark.png](feed-dark.png) | Feed in dark mode. |
-| [feed.png](feed.png) | Personalized Feed with nine illustrative papers. |
+| [feed-nine-cards-dark.png](feed-nine-cards-dark.png) | Feed in dark mode. |
+| [feed-nine-cards.png](feed-nine-cards.png) | Personalized Feed with nine illustrative papers. |
 | [deep-research.png](deep-research.png) | Sparky conversation and an example report. |
 | [wiki.png](wiki.png) | Rendered concept page with research questions and links. |
 | [graph.png](graph.png) | Knowledge graph derived from the example vault. |
