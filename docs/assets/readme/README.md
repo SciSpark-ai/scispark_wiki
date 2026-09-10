@@ -5,7 +5,7 @@ fresh, disposable vault. They demonstrate the interface, not scientific results.
 
 ## Provenance
 
-- Captured September 9, 2026, with Chromium at **1440 × 960**, with **1440 × 1120** for the nine-card Feed and floating chat views, light and dark themes and
+- Captured September 9, 2026, with Chromium at **1920 × 1080 (16:9)**, light and dark themes and
   reduced motion, against application source at commit `908fa7c`.
 - All paper records, research notes, project content, ideas, relevance assessments,
   and review text are fixtures. No private research vault was used.
@@ -22,8 +22,8 @@ fresh, disposable vault. They demonstrate the interface, not scientific results.
 | [brand-banner.png](brand-banner.png) | Documentation masthead using the shipped transparent wordmark on a paper-colored surface; 1200 × 300. |
 | [sparky.png](sparky.png) | Sparky start page with composer and research modes. |
 | [quick-chat.png](quick-chat.png) | Floating Sparky chat opened from the Feed. |
-| [feed-nine-cards-dark.png](feed-nine-cards-dark.png) | Feed in dark mode. |
-| [feed-nine-cards.png](feed-nine-cards.png) | Personalized Feed with nine illustrative papers. |
+| [feed-1080p-dark.png](feed-1080p-dark.png) | Feed in dark mode. |
+| [feed-1080p.png](feed-1080p.png) | Personalized Feed with nine illustrative papers. |
 | [deep-research.png](deep-research.png) | Sparky conversation and an example report. |
 | [wiki.png](wiki.png) | Rendered concept page with research questions and links. |
 | [graph.png](graph.png) | Knowledge graph derived from the example vault. |

@@ -96,7 +96,7 @@ test("capture README product showcase with illustrative data", async ({ page, re
   session.messages[1].content = "Here is an illustrative review workspace. Open the report to explore its structure, versions, and export controls."
   await saveSession(storage, session)
 
-  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.setViewportSize({ width: 1920, height: 1080 })
   await page.emulateMedia({ reducedMotion: "reduce" })
   // Screenshots can read only this disposable app. They never contact research
   // indexes or external model endpoints, including from an accidental UI action.
@@ -108,24 +108,20 @@ test("capture README product showcase with illustrative data", async ({ page, re
     await page.evaluate(() => document.fonts.ready)
     await page.screenshot({ path: resolve(output, `${name}.png`), animations: "disabled" })
   }
-  await page.setViewportSize({ width: 1440, height: 1120 })
   await page.goto("/")
   for (const title of titles) await expect(page.getByRole("heading", { name: title, exact: true })).toBeInViewport()
-  await capture("feed-nine-cards")
+  await capture("feed-1080p")
   await page.getByRole("button", { name: "Open Sparky chat", exact: true }).click()
   await expect(page.getByRole("heading", { name: "What are you exploring?", exact: true })).toBeVisible()
   await capture("quick-chat")
-  await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto("/chat")
   await expect(page.getByRole("heading", { name: "What would you like to explore?", exact: true })).toBeVisible()
   await capture("sparky")
-  await page.setViewportSize({ width: 1440, height: 1120 })
   await request.put("/api/settings", { data: { ui: { theme: "dark" } } })
   await page.goto("/")
   await expect(page.getByRole("heading", { name: titles[0], exact: true })).toBeVisible()
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
-  await capture("feed-nine-cards-dark")
-  await page.setViewportSize({ width: 1440, height: 960 })
+  await capture("feed-1080p-dark")
   await request.put("/api/settings", { data: { ui: { theme: "light" } } })
   await page.goto("/wiki/concepts/generalization")
   await expect(page.getByRole("heading", { name: "Generalization", exact: true }).first()).toBeVisible()
