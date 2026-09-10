@@ -32,7 +32,7 @@ those starting points while your research stays organized in a local vault.
 
 **One workspace, from discovery to your next experiment.**
 
-<a href="docs/assets/readme/feed.png"><img src="docs/assets/readme/feed.png" alt="SciSpark Feed showing six illustrative research papers, ranking explanations, save actions, and feedback controls" width="100%"></a>
+<a href="docs/assets/readme/feed.png"><img src="docs/assets/readme/feed.png" alt="SciSpark Feed showing nine illustrative research papers, ranking explanations, save actions, and feedback controls" width="100%"></a>
 
 <sub>Real SciSpark screens captured in Chromium with an isolated example vault. Paper records, scores, notes, ideas, and report text are illustrative fixtures; these images are not live scientific results. No personal vault or paid model calls were used. <a href="docs/assets/readme/README.md">Capture details</a>.</sub>
 

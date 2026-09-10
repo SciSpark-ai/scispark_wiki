@@ -35,11 +35,14 @@ test("capture README product showcase with illustrative data", async ({ page, re
   await storage.delete("wiki/papers/e2e-grounding-paper.md")
   const today = new Date().toISOString().slice(0, 10)
   const titles = ["Learning from limited labels", "Robust decoding across recording sessions", "When neural models generalize",
-    "A toolkit for reproducible EEG analysis", "Comparing representations across tasks", "Attention in natural listening environments"]
+    "A toolkit for reproducible EEG analysis", "Comparing representations across tasks", "Attention in natural listening environments",
+    "Evaluating transfer across participants", "A benchmark for data-efficient decoding", "Reviewing robust neural representations"]
   const papers: PaperRecord[] = titles.map((title, i) => ({ ids: {}, title,
     abstract: ["Explore label efficiency and evaluation beyond the training distribution.", "Compare within-session and cross-session evaluation designs.",
       "Investigate which learned representations transfer to new conditions.", "Connect preprocessing choices with transparent evaluation and reporting.",
-      "Compare representations, tasks, and the assumptions behind each metric.", "Study attention under realistic listening conditions and changing contexts."][i],
+      "Compare representations, tasks, and the assumptions behind each metric.", "Study attention under realistic listening conditions and changing contexts.",
+      "Separate participant-specific patterns from representations that transfer.", "Evaluate label budgets with shared baselines and reproducible splits.",
+      "Compare evidence for stable representations across datasets and tasks."][i],
     authors: [{ name: "Example Research Group" }], year: Number(today.slice(0, 4)), date: today,
     venue: "Illustrative example", source: "openalex", fields: [i % 2 ? "Neuroscience" : "Machine learning"],
     publicationTypes: [i === 3 ? "dataset" : "article"] }))
@@ -53,9 +56,9 @@ test("capture README product showcase with illustrative data", async ({ page, re
   const methods = ["Cross-validation", "Contrastive learning", "Neural decoding", "Ablation studies"]
   for (const [i, paper] of papers.entries()) {
     const draft = buildPaperPage(paper, { today, status: "ingested", sources: ["demo:illustrative-workspace"] })
-    draft.frontmatter.related = [slugifyTitle(concepts[i]), slugifyTitle(methods[i % methods.length])]
+    draft.frontmatter.related = [slugifyTitle(concepts[i % concepts.length]), slugifyTitle(methods[i % methods.length])]
     draft.frontmatter.tags = ["example-workspace", "methods"]
-    draft.body += `\n## Research connections\n\nConnects [[${slugifyTitle(concepts[i])}]] with [[${slugifyTitle(methods[i % methods.length])}]].\n\n> Illustrative content for the product walkthrough; this is not a real publication.\n`
+    draft.body += `\n## Research connections\n\nConnects [[${slugifyTitle(concepts[i % concepts.length])}]] with [[${slugifyTitle(methods[i % methods.length])}]].\n\n> Illustrative content for the product walkthrough; this is not a real publication.\n`
     await storage.write(draft.path, composePage(draft))
   }
   for (const [i, title] of [...concepts, ...methods].entries()) {
@@ -105,20 +108,24 @@ test("capture README product showcase with illustrative data", async ({ page, re
     await page.evaluate(() => document.fonts.ready)
     await page.screenshot({ path: resolve(output, `${name}.png`), animations: "disabled" })
   }
+  await page.setViewportSize({ width: 1440, height: 1120 })
   await page.goto("/")
-  await expect(page.getByRole("heading", { name: titles[0], exact: true })).toBeVisible()
+  for (const title of titles) await expect(page.getByRole("heading", { name: title, exact: true })).toBeInViewport()
   await capture("feed")
   await page.getByRole("button", { name: "Open Sparky chat", exact: true }).click()
   await expect(page.getByRole("heading", { name: "What are you exploring?", exact: true })).toBeVisible()
   await capture("quick-chat")
+  await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto("/chat")
   await expect(page.getByRole("heading", { name: "What would you like to explore?", exact: true })).toBeVisible()
   await capture("sparky")
+  await page.setViewportSize({ width: 1440, height: 1120 })
   await request.put("/api/settings", { data: { ui: { theme: "dark" } } })
   await page.goto("/")
   await expect(page.getByRole("heading", { name: titles[0], exact: true })).toBeVisible()
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
   await capture("feed-dark")
+  await page.setViewportSize({ width: 1440, height: 960 })
   await request.put("/api/settings", { data: { ui: { theme: "light" } } })
   await page.goto("/wiki/concepts/generalization")
   await expect(page.getByRole("heading", { name: "Generalization", exact: true }).first()).toBeVisible()
