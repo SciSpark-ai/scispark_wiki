@@ -7,6 +7,7 @@ export interface LLMMessage {
 }
 
 export interface LLMRequest {
+  signal?: AbortSignal
   /** Optional live output snapshot. An empty snapshot resets a retried attempt. Never includes reasoning. */
   onText?: (text: string) => void
   messages: LLMMessage[]
@@ -27,6 +28,8 @@ export interface LLMRequest {
 }
 
 export interface LLMUsage {
+  engine?: "codex" | "claude-code"
+  billingMode?: "subscription"
   /** Total input, including cache reads (not an additional token category). */
   inputTokens: number
   /** Total billed completion, including reasoning when supplied by the API. */
@@ -48,10 +51,14 @@ export interface LLMResult {
 
 export interface LLMProvider {
   readonly id: ProviderId
+  readonly billingMode?: "subscription"
   complete(model: string, req: LLMRequest): Promise<LLMResult>
 }
 
 export class LLMError extends Error {}
+export class LLMLocalEngineError extends LLMError {
+  constructor(message: string, public usage: LLMUsage, public model: string) { super(message) }
+}
 export class LLMAuthError extends LLMError {}
 export class LLMBadRequestError extends LLMError {}
 export class LLMRefusalError extends LLMError {}

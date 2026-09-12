@@ -1,6 +1,6 @@
 import { jsonSkillRoute } from "@/lib/server/skill-route"
 import { addCosts, estimateCostUsd } from "@/lib/llm/pricing"
-import { loadSettings } from "@/lib/llm/settings"
+import { loadSettings, usesLocalEngine } from "@/lib/llm/settings"
 
 export interface LintEstimateRouteResult {
   costUsd: number | null
@@ -13,7 +13,7 @@ export interface LintEstimateRouteResult {
 const MAX_JUDGE_PAIRS = 20
 export const POST = jsonSkillRoute<Record<string, never>, LintEstimateRouteResult>(async (_input, vault) => {
   const settings = await loadSettings(vault)
-  const screen = estimateCostUsd(settings.tierModels.fast.model, { inputTokens: 6000, outputTokens: 800 })
-  const judge = estimateCostUsd(settings.tierModels.strong.model, { inputTokens: 1600, outputTokens: 200 })
+  const screen = usesLocalEngine(settings) ? null : estimateCostUsd(settings.tierModels.fast.model, { inputTokens: 6000, outputTokens: 800 })
+  const judge = usesLocalEngine(settings) ? null : estimateCostUsd(settings.tierModels.strong.model, { inputTokens: 1600, outputTokens: 200 })
   return { costUsd: addCosts(screen, judge === null ? null : judge * MAX_JUDGE_PAIRS) }
 })

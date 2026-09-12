@@ -11,7 +11,9 @@ import { sanitizeSlugList } from "../skills/ingest"
 export interface SaveAnswerAsQueryOpts {
   question: string
   answer: string
-  sessionId: string
+  sessionId?: string
+  /** A reading answer has paper provenance instead of a chat session. */
+  readingSource?: { paperKey: string; paperTitle: string; selection: string }
   /** FULL bundle ids (e.g. "wiki/papers/x") — the shape `ChatMessage.citedPageIds`
    * is documented to carry (see src/lib/chat/session.ts). Mapped down to bare
    * slugs before landing in `related[]` — see the module doc below. */
@@ -82,6 +84,7 @@ export async function saveAnswerAsQuery(
   opts: SaveAnswerAsQueryOpts,
 ): Promise<SaveAnswerAsQueryResult> {
   const today = opts.today ?? new Date().toISOString().slice(0, 10)
+  if (!opts.readingSource && !opts.sessionId) throw new Error("An answer must have chat or paper provenance.")
   const routing = await loadRouting(storage)
   const dir = routing["query"] ?? "wiki/queries"
 
@@ -104,14 +107,16 @@ export async function saveAnswerAsQuery(
     updated: today,
     tags: [],
     related: sanitizeSlugList(opts.citedPageIds),
-    sources: [`chat:${singleLine(opts.sessionId)}`, `question:${singleLine(opts.question)}`],
+    sources: [opts.readingSource ? `paper:${singleLine(opts.readingSource.paperKey)}` : `chat:${singleLine(opts.sessionId!)}`, `question:${singleLine(opts.question)}`],
   }
-  const body = `## ${opts.question}\n\n${opts.answer.trim()}\n`
+  const body = opts.readingSource
+    ? `## Question\n\n${opts.question}\n\n## Selected passage\n\n${opts.readingSource.selection.split("\n").map(line => `> ${line}`).join("\n")}\n\n## Explanation\n\n${opts.answer.trim()}\n\n## Provenance\n\nAI-generated reading explanation; saved by the user.\n\nPaper: ${singleLine(opts.readingSource.paperTitle)}\n\nReference: ${singleLine(opts.readingSource.paperKey)}\n`
+    : `## ${opts.question}\n\n${opts.answer.trim()}\n`
   const content = serializeDocument(frontmatter, body)
 
   const changeset: Changeset = {
     id: makeChangesetId(),
-    skill: "chat-save",
+    skill: opts.readingSource ? "reading-answer-save" : "chat-save",
     model: "none",
     timestamp: `${today}T00:00:00.000Z`,
     changes: [{ path, before: null, after: content }],

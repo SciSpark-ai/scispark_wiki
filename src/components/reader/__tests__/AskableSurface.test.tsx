@@ -14,15 +14,18 @@ import type { AskableSurfaceRenderProps } from "../AskableSurface"
 // directly in ReaderView. Everything that talks to the network is mocked;
 // buildAskContext/logEvent run for real against an in-memory vault (cheap,
 // deterministic, no I/O).
-vi.mock("@/lib/reader/client", () => ({ askRemote: vi.fn() }))
+vi.mock("@/lib/reader/client", () => ({ askRemote: vi.fn(), saveReadingAnswerRemote: vi.fn() }))
 vi.mock("@/lib/companion/settings-client", () => ({ loadCompanionSettingsRemote: vi.fn() }))
 vi.mock("@/lib/reader/capture-idea", () => ({ captureIdeaAsNote: vi.fn() }))
+vi.mock("@/lib/projects/client", () => ({ listProjectsRemote: vi.fn(), createProjectNoteRemote: vi.fn() }))
 
-import { askRemote } from "@/lib/reader/client"
+import { askRemote, saveReadingAnswerRemote } from "@/lib/reader/client"
 import { loadCompanionSettingsRemote } from "@/lib/companion/settings-client"
 import { captureIdeaAsNote } from "@/lib/reader/capture-idea"
 
 import AskableSurface from "../AskableSurface"
+import { SelectionToNoteBubble } from "@/components/notes/SelectionToNoteBubble"
+import { listProjectsRemote, createProjectNoteRemote } from "@/lib/projects/client"
 
 const askRemoteMock = vi.mocked(askRemote)
 const loadCompanionSettingsRemoteMock = vi.mocked(loadCompanionSettingsRemote)
@@ -96,7 +99,7 @@ function renderSurface(props: Partial<React.ComponentProps<typeof AskableSurface
         latest = renderProps
         return (
           <>
-            <div data-testid="content">paper content</div>
+            <div data-testid="content" data-note-source="paper" data-selection-actions="paper">paper content</div>
             <div data-testid="ask-panel">{renderProps.askPanel}</div>
           </>
         )
@@ -114,6 +117,77 @@ function renderSurface(props: Partial<React.ComponentProps<typeof AskableSurface
 }
 
 describe("AskableSurface", () => {
+  it("integrates a completed answer with its source once and shows the resulting wiki link", async () => {
+    loadCompanionSettingsRemoteMock.mockResolvedValue({ companionName: "Sparky", chattiness: "medium" })
+    askRemoteMock.mockResolvedValue({ answer: "A grounded explanation.", citedPageIds: ["wiki/concepts/attention"] })
+    let finish!: (result: Awaited<ReturnType<typeof saveReadingAnswerRemote>>) => void
+    vi.mocked(saveReadingAnswerRemote).mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    const { host, getRenderProps } = renderSurface({ sourcePageId: "wiki/papers/source" })
+    expect(host.textContent).not.toContain("Integrate into wiki")
+    act(() => getRenderProps().onHtmlSelectionChange(SELECTION))
+    act(() => findBubbleButton(host, "Ask").click())
+    await flush()
+    const button = findButton(host, "Integrate into wiki")
+    act(() => { button.click(); button.click() })
+    expect(saveReadingAnswerRemote).toHaveBeenCalledTimes(1)
+    expect(saveReadingAnswerRemote).toHaveBeenCalledWith({ question: "Explain: hello world", answer: "A grounded explanation.", selection: "hello world", paperKey: "arxiv:2401.00001", paperTitle: PAPER.title, citedPageIds: ["wiki/papers/source", "wiki/concepts/attention"] })
+    await act(async () => finish({ pageId: "wiki/queries/explanation", changesetId: "cs-save" }))
+    expect(host.querySelector('a[href="/wiki/queries/explanation"]')?.textContent).toBe("View wiki page")
+    expect(host.textContent).not.toContain("Integrate into wiki")
+    expect(askRemoteMock).toHaveBeenCalledTimes(1)
+  })
+  it("shows integration failures and allows an explicit retry", async () => {
+    loadCompanionSettingsRemoteMock.mockResolvedValue({ companionName: "Sparky", chattiness: "medium" })
+    askRemoteMock.mockResolvedValue({ answer: "Explanation", citedPageIds: [] })
+    vi.mocked(saveReadingAnswerRemote).mockRejectedValue(new Error("Save unavailable"))
+    const { host, getRenderProps } = renderSurface()
+    act(() => getRenderProps().onHtmlSelectionChange(SELECTION))
+    act(() => findBubbleButton(host, "Ask").click())
+    await flush()
+    act(() => findButton(host, "Integrate into wiki").click())
+    await flush()
+    expect(host.textContent).toContain("Save unavailable")
+    expect(findButton(host, "Integrate into wiki").disabled).toBe(false)
+    expect(host.querySelector('a[href^="/wiki/"]')).toBeNull()
+  })
+  it("uses one selection menu and hands the snapshotted quote to the project-note picker", async () => {
+    vi.mocked(listProjectsRemote).mockResolvedValue([{ id: "project-1", title: "Research" }] as Awaited<ReturnType<typeof listProjectsRemote>>)
+    vi.mocked(createProjectNoteRemote).mockResolvedValue({} as Awaited<ReturnType<typeof createProjectNoteRemote>>)
+    const picker = mount(<SelectionToNoteBubble />)
+    const { host, getRenderProps } = renderSurface({ enableSaveToNote: true, sourcePageId: "wiki/papers/source.md" })
+    const range = document.createRange()
+    range.selectNodeContents(host.querySelector('[data-testid="content"]')!)
+    window.getSelection()!.addRange(range)
+    act(() => document.dispatchEvent(new MouseEvent("mouseup")))
+    await flush()
+    expect(picker.host.querySelector("button")).toBeNull()
+    act(() => getRenderProps().onHtmlSelectionChange(SELECTION))
+    expect(host.querySelectorAll('[role="toolbar"]')).toHaveLength(1)
+    expect(host.textContent).toContain("Save to note")
+    act(() => findBubbleButton(host, "Save to note").click())
+    expect(host.querySelector('[role="toolbar"]')).toBeNull()
+    expect(picker.host.textContent).toContain("Research")
+    expect(createProjectNoteRemote).not.toHaveBeenCalled()
+    act(() => findButton(picker.host, "Save").click())
+    await flush()
+    expect(createProjectNoteRemote).toHaveBeenCalledWith("project-1", { title: "hello world", content: "hello world", sources: ["paper:wiki/papers/source.md"] })
+    expect(askRemoteMock).not.toHaveBeenCalled()
+  })
+  it("opens the caller's drawer only after Ask and retains the passage after clearing selection", async () => {
+    const onAskOpen = vi.fn()
+    loadCompanionSettingsRemoteMock.mockResolvedValue({ companionName: "Sparky", chattiness: "medium" })
+    askRemoteMock.mockResolvedValue({ answer: "Explanation", citedPageIds: [] })
+    const { host, getRenderProps } = renderSurface({ onAskOpen })
+    act(() => getRenderProps().onHtmlSelectionChange(SELECTION))
+    expect(onAskOpen).not.toHaveBeenCalled()
+    expect(askRemoteMock).not.toHaveBeenCalled()
+    act(() => findBubbleButton(host, "Ask").click())
+    expect(onAskOpen).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('[role="toolbar"]')).toBeNull()
+    expect(host.textContent).toContain("hello world")
+    await flush()
+    expect(askRemoteMock).toHaveBeenCalledTimes(1)
+  })
   it("shows partial text while asking, then replaces it with the final answer and sources", async () => {
     loadCompanionSettingsRemoteMock.mockResolvedValue({ companionName: "Sparky", chattiness: "medium" })
     let finish!: (answer: { answer: string; citedPageIds: string[] }) => void

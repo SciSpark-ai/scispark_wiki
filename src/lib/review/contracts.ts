@@ -7,6 +7,7 @@ export const ReviewId = z.string().regex(/^[A-Za-z0-9_-]{1,100}$/)
 export const ReviewSource = z.enum(["arxiv", "openalex", "s2", "pubmed"])
 export const ReviewModelSchema = z.object({
   provider: z.enum(["openai", "openrouter", "anthropic", "google"]), model: z.string().min(1),
+  engine: z.enum(["codex", "claude-code"]).optional(),
   endpoint: z.string(), rates: TokenRatesSchema.nullable(),
 }).strict()
 export const ContextItemSchema = z.object({

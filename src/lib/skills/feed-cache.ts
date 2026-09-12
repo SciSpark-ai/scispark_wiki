@@ -90,6 +90,8 @@ const FeedItemCacheSchema = z.object({
 })
 
 const FeedResultCacheSchema = z.object({
+  billingMode: z.literal("subscription").optional(),
+  engine: z.enum(["codex", "claude-code"]).optional(),
   recommendation: RecommendationRunSchema.optional(),
   generatedAt: z.string(),
   items: z.array(FeedItemCacheSchema),

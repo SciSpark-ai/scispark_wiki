@@ -34,6 +34,17 @@ function mount(): { host: HTMLDivElement; root: Root } {
 }
 
 describe("FeedRefreshBar first-run initialization", () => {
+  it("labels degraded Codex results as subscription usage rather than missing API pricing", async () => {
+    refreshFeedMock.mockResolvedValue({ ...FEED, costUsd: null, billingMode: "subscription", engine: "codex", recommendation: { status: "unranked" } })
+    const { host, root } = mount()
+    await act(async () => root.render(<FeedRefreshBar autoStart onUpdated={vi.fn()} />))
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)) })
+    expect(host.textContent).toContain("unranked results")
+    expect(host.textContent).toContain("Codex plan usage")
+    expect(host.textContent).not.toContain("cost unavailable")
+    act(() => root.unmount())
+    host.remove()
+  })
   it("does not describe an unpriced refresh as zero dollars", async () => {
     refreshFeedMock.mockResolvedValue({ ...FEED, costUsd: null })
     const { host, root } = mount()

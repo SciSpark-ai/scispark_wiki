@@ -1,7 +1,7 @@
 import { z } from "zod"
 import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "./types"
-import { loadSettings } from "./settings"
+import { loadSettings, resolveTier } from "./settings"
 import { addCosts } from "./pricing"
 import { defineSkill } from "../skills/types"
 import { runSkill } from "../skills/runner"
@@ -25,11 +25,12 @@ export interface ConnectionTestResult {
  * successful call only when both tiers have the same provider and model. */
 export async function testConnection(storage: VaultStorage, providerOverride?: Partial<Record<Tier, LLMProvider>>): Promise<ConnectionTestResult> {
   const settings = await loadSettings(storage)
+  const tierModels = { fast: resolveTier(settings, "fast"), strong: resolveTier(settings, "strong") }
   const testedTiers: Tier[] = []
   let costUsd: number | null = 0
   for (const tier of ["strong", "fast"] as const) {
-    if (tier === "fast" && settings.tierModels.fast.provider === settings.tierModels.strong.provider &&
-      settings.tierModels.fast.model === settings.tierModels.strong.model) {
+    if (tier === "fast" && tierModels.fast.provider === tierModels.strong.provider &&
+      tierModels.fast.model === tierModels.strong.model) {
       testedTiers.push(tier)
       continue
     }
@@ -38,7 +39,7 @@ export async function testConnection(storage: VaultStorage, providerOverride?: P
     // Do not reflect raw provider errors: some gateways echo credentials or
     // request headers. Keep the user-facing failure actionable but secret-free.
     if (run.status !== "ok") return { status: "error", costUsd, testedTiers,
-      error: `The ${tier === "strong" ? "analysis" : "quick-steps"} model (${settings.tierModels[tier].model}) did not pass the connection test. ${run.status === "budget_exceeded" ? "Your local AI budget was reached. Adjust it in Settings and retry." : "Check model access, your API key, the server URL and your provider’s usage limit, then retry."}` }
+      error: `The ${tier === "strong" ? "analysis" : "quick-steps"} model (${tierModels[tier].model}) did not pass the connection test. ${run.status === "budget_exceeded" ? "Your local AI budget was reached. Adjust it in Settings and retry." : "Check model access, your connection and the provider’s usage limit, then retry."}` }
     testedTiers.push(tier)
   }
   return { status: "ok", costUsd, testedTiers }

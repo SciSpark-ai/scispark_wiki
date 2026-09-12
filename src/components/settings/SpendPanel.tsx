@@ -244,12 +244,13 @@ export function SpendPanel() {
           <div>
             <div className="flex items-baseline justify-between mb-1.5">
               <span className="text-[13px] text-muted-text font-medium uppercase tracking-[0.06em]">
-                Today
+                API spend today
               </span>
               <span className={`text-[14px] font-medium ${overBudget ? "text-red-600" : "text-espresso"}`}>
                 {usd(todayUsd)} / {usd(budgetUsd)}
               </span>
             </div>
+            {summary?.subscription && <p className="mb-3 text-xs leading-relaxed text-muted-text">Local engines: {summary.subscription.calls} recorded calls across saved history, separate from API spending. Reported tokens: {summary.subscription.inputTokens.toLocaleString()} input, {summary.subscription.outputTokens.toLocaleString()} output. {summary.subscription.unknownUsageCalls > 0 ? `${summary.subscription.unknownUsageCalls} calls have unknown usage. ` : ""}Plan limits are managed by your provider.</p>}
             {todayUsd !== null && <div className="h-2.5 w-full rounded-pill bg-card-surface overflow-hidden">
               <div
                 className={`h-full rounded-pill ${overBudget ? "bg-red-600" : "bg-orange"}`}

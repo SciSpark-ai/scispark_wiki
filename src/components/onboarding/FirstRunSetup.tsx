@@ -9,12 +9,13 @@ import { FeedRefreshBar } from "@/components/feed/FeedRefreshBar"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { isOnboarded } from "@/lib/usermodel/pages"
 import { loadFeed, type FeedResult } from "@/lib/skills/feed-cache"
+import { checkLocalEngine } from "@/lib/engines/client"
 import { loadRedactedSettings } from "@/lib/llm/settings-client"
 
 type SetupPhase = "checking" | "connect" | "initializing" | "ready" | "error"
 
 const STEPS = [
-  { id: "connect", label: "Connect your AI", detail: "Your key stays on this machine.", icon: KeyRound },
+  { id: "connect", label: "Connect your AI", detail: "Use an API key or a local AI engine.", icon: KeyRound },
   { id: "profile", label: "Meet Sparky", detail: "Talk about your research and confirm your profile.", icon: Sparkles },
   { id: "feed", label: "Find your first papers", detail: "Build a feed around your interests.", icon: LibraryBig },
 ] as const
@@ -40,7 +41,10 @@ export function FirstRunSetup() {
           return
         }
         const provider = settings.tierModels.strong.provider
-        if (settings.keys[provider]?.present && onboarded) setPhase("initializing")
+        const engine = settings.engines?.kind
+        const connected = engine && engine !== "api" ? (await checkLocalEngine(engine)).state === "ready" : !!settings.keys[provider]?.present
+        if (cancelled) return
+        if (connected && onboarded) setPhase("initializing")
         else setPhase("connect")
       } catch (caught) {
         if (!cancelled) {

@@ -1,3 +1,5 @@
+import { EngineSettingsSchema, DEFAULT_ENGINES, type EngineSettings } from "../engines/contracts"
+import { LocalEngineProvider } from "../engines/local-provider"
 import type { VaultStorage } from "../vault/storage"
 import { withSettingsWrite } from "../vault/settings-write"
 import type { LLMProvider, ProviderId, Tier } from "./types"
@@ -13,6 +15,7 @@ import { GoogleProvider } from "./providers/google"
 const SETTINGS_PATH = ".scispark/settings.json"
 
 export interface LLMSettings {
+  engines?: EngineSettings
   keys: Partial<Record<ProviderId, string>>
   tierModels: Record<Tier, { provider: ProviderId; model: string }>
   dailyBudgetUsd: number
@@ -62,6 +65,7 @@ export async function loadSettings(storage: VaultStorage): Promise<LLMSettings> 
   const llm = (file.llm !== null && typeof file.llm === "object" ? file.llm : {}) as Partial<LLMSettings>
 
   return {
+    ...(llm.engines ? { engines: EngineSettingsSchema.parse(llm.engines) } : {}),
     keys: { ...DEFAULT_SETTINGS.keys, ...(llm.keys ?? {}) },
     tierModels: {
       fast: { ...DEFAULT_SETTINGS.tierModels.fast, ...(llm.tierModels?.fast ?? {}) },
@@ -77,10 +81,14 @@ export async function saveSettings(storage: VaultStorage, settings: LLMSettings)
 }
 
 export function resolveTier(settings: LLMSettings, tier: Tier): { provider: ProviderId; model: string } {
+  const engine = settings.engines
+  if (engine && engine.kind !== "api") return { provider: engine.kind === "codex" ? "openai" : "anthropic", model: engine.models[engine.kind][tier] }
   return settings.tierModels[tier]
 }
 
 export function buildProvider(settings: LLMSettings, tier: Tier, fetchFn?: typeof fetch): LLMProvider {
+  const engine = settings.engines ?? DEFAULT_ENGINES
+  if (engine.kind !== "api") return new LocalEngineProvider(engine.kind, engine)
   const { provider } = resolveTier(settings, tier)
   const key = settings.keys[provider]
   if (!key) throw new MissingKeyError(provider)
@@ -103,4 +111,16 @@ export function buildProvider(settings: LLMSettings, tier: Tier, fetchFn?: typeo
       throw new Error(`unknown provider: ${exhaustive as string}`)
     }
   }
+}
+
+export function usesLocalEngine(settings: Pick<LLMSettings, "engines">): boolean {
+  return !!settings.engines && settings.engines.kind !== "api"
+}
+
+export async function isAiReady(settings: LLMSettings): Promise<boolean> {
+  if (settings.engines && settings.engines.kind !== "api") {
+    const { localEngineStatus } = await import("../engines/status")
+    return (await localEngineStatus(settings.engines.kind)).state === "ready"
+  }
+  return Boolean(settings.keys[settings.tierModels.strong.provider]?.trim())
 }

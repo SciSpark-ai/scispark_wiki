@@ -1,5 +1,14 @@
 import type { ReadingCompanionInput, ReadingAnswer } from "../skills/reading-companion"
 import { readNdjson } from "../server/ndjson"
+import type { SaveReadingAnswerInput } from "./save-answer-contract"
+import type { SaveAnswerAsQueryResult } from "../chat/save-query"
+
+export async function saveReadingAnswerRemote(input: SaveReadingAnswerInput, fetchFn: typeof fetch = fetch): Promise<SaveAnswerAsQueryResult> {
+  const res = await fetchFn("/api/skills/ask/save", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) })
+  if (!res.ok) throw new Error(await readErrorMessage(res, "Could not integrate this answer."))
+  const body = await res.json() as { result: SaveAnswerAsQueryResult }
+  return body.result
+}
 
 /**
  * Browser-side caller for the reading-companion ask skill route (M11 Task 9).

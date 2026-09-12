@@ -1,7 +1,8 @@
+import { LLMLocalEngineError } from "../llm/types"
 import type { z } from "zod"
 import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, LLMUsage, ProviderId, Tier } from "../llm/types"
-import { loadSettings, resolveTier, buildProvider, type LLMSettings } from "../llm/settings"
+import { loadSettings, resolveTier, buildProvider, usesLocalEngine, type LLMSettings } from "../llm/settings"
 import { Meter, checkBudget, BudgetExceededError } from "../llm/metering"
 import { withRetry } from "../llm/retry"
 import { completeStructured, StructuredOutputError } from "../llm/structured"
@@ -35,7 +36,8 @@ export async function runSkill<I, O>(opts: {
 }): Promise<SkillRunResult<O>> {
   // The review coordinator uses this same cross-process spending lock. Existing
   // skills cannot race a deep-review reservation against the daily allowance.
-  return withVaultExclusive(opts.storage, "ai-spend", () => runSkillLocked(opts))
+  const settings = opts.settings ?? await loadSettings(opts.storage)
+  return withVaultExclusive(opts.storage, usesLocalEngine(settings) ? "local-engine" : "ai-spend", () => runSkillLocked({ ...opts, settings }))
 }
 
 async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]): Promise<SkillRunResult<O>> {
@@ -49,6 +51,8 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
   const logs: string[] = []
 
   function accumulate(model: string, usage: LLMUsage): void {
+    if (usage.billingMode) { totals.billingMode = usage.billingMode; totals.engine = usage.engine }
+    if (usage.reported === false) totals.reported = false
     totals.inputTokens += usage.inputTokens
     totals.outputTokens += usage.outputTokens
     costUsd = addCosts(costUsd, estimateCostUsd(model, usage))
@@ -68,15 +72,28 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
     // call already happened and already cost real money.
     accumulate(entry.model, entry.usage)
     try {
-      await meter.record({
+      const record = () => meter.record({
         skill: opts.skill.name,
         runId,
         provider: entry.provider,
         model: entry.model,
         usage: entry.usage,
       })
+      if (entry.usage.billingMode === "subscription") await withVaultExclusive(opts.storage, "ai-spend", record)
+      else await record()
     } catch (e) {
       logs.push(`metering failed: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
+  async function callProvider(provider: LLMProvider, model: string, request: Parameters<LLMProvider["complete"]>[1]) {
+    try { return await withRetry(() => provider.complete(model, request), opts.retryOpts) }
+    catch (error) {
+      if (error instanceof LLMLocalEngineError) {
+        await meterAndContinue({ provider: provider.id, model, usage: error.usage })
+        logs.push("The local engine attempt may have consumed plan usage. SciSpark did not retry it.")
+      }
+      throw error
     }
   }
 
@@ -87,9 +104,9 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
       // MissingKeyError) stays AFTER the check, preserving today's precedence —
       // an over-budget run still fails with BudgetExceededError first.
       const model = resolveTier(settings, tier).model
-      await checkBudget(meter, settings, estimateNextCallUsd(model, req) ?? 0, (message) => { if (!logs.includes(message)) logs.push(message) })
+      if (!usesLocalEngine(settings)) await checkBudget(meter, settings, estimateNextCallUsd(model, req) ?? 0, (message) => { if (!logs.includes(message)) logs.push(message) })
       const provider = resolveProvider(tier)
-      const result = await withRetry(() => provider.complete(model, req), opts.retryOpts)
+      const result = await callProvider(provider, model, req)
       // Meter/price on the REQUESTED model (`model`), not the provider-echoed
       // `result.model`: pricing.ts's PRICES table is keyed by requested ids, but
       // providers commonly echo back dated/versioned snapshot ids (e.g. OpenAI's
@@ -110,7 +127,7 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
       // above (see its comment): keeps BudgetExceededError taking precedence over
       // a MissingKeyError from provider construction.
       const model = resolveTier(settings, tier).model
-      await checkBudget(meter, settings, estimateNextCallUsd(model, req) ?? 0, (message) => { if (!logs.includes(message)) logs.push(message) })
+      if (!usesLocalEngine(settings)) await checkBudget(meter, settings, estimateNextCallUsd(model, req) ?? 0, (message) => { if (!logs.includes(message)) logs.push(message) })
       const provider = resolveProvider(tier)
       // NOTE: the projection above covers the FIRST attempt only — it is checked
       // once here, not inside completeStructured's internal validation-retry loop.
@@ -127,7 +144,8 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
       // own 2-attempt loop is for schema-validation retries only, not transient failures.
       const retryingProvider: LLMProvider = {
         id: provider.id,
-        complete: (m, r) => withRetry(() => provider.complete(m, r), opts.retryOpts),
+        billingMode: provider.billingMode,
+        complete: (m, r) => callProvider(provider, m, r),
       }
       try {
         const { value, usage } = await completeStructured(retryingProvider, model, req, schema, {

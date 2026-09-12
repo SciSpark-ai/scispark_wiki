@@ -30,6 +30,7 @@ export const PRICES: Record<string, { inPerM: number; outPerM: number }> = {
 }
 
 export function estimateCostUsd(model: string, usage: LLMUsage): number | null {
+  if (usage.billingMode === "subscription") return null
   if (usage.reported === false || !Number.isSafeInteger(usage.inputTokens) || usage.inputTokens < 0
     || !Number.isSafeInteger(usage.outputTokens) || usage.outputTokens < 0) return null
   const key = model in PRICES ? model : model.split("/").pop() ?? model

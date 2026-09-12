@@ -275,8 +275,8 @@ History. Saving the report to the wiki is a separate choice.
 
 ## Getting started
 
-Requirements: **Node.js 20.9+**, **npm**, and your own
-AI provider credentials for AI features.
+Requirements: **Node.js 20.9+**, **npm**, and either an AI provider API key
+or a signed-in **Codex / Claude Code CLI** for AI features.
 
 ```bash
 # 1. Get the app
@@ -292,12 +292,19 @@ Open **[http://127.0.0.1:3000](http://127.0.0.1:3000)**.
 
 | First session | What to do |
 |---|---|
-| **1 · Connect AI** | Add and test your provider in Settings. |
+| **1 · Connect AI** | Choose API key, Codex, or Claude Code in Settings → Connect your AI. |
 | **2 · Meet Sparky** | Describe your role, interests, preferred topic variety, and feedback-learning choice. |
 | **3 · Confirm your profile** | Edit the proposed answers and start your first feed. |
 | **4 · Follow a paper** | Open it, read, ask questions, and save useful material. |
 | **5 · Build context** | Add knowledge to the wiki and organize a project around a question. |
 | **6 · Explore a direction** | Start a deep review or develop an idea in Spark. |
+
+For local engines, sign in with `codex login` or `claude auth login`, then use
+**Check connection** and select the engine in Settings. These connections use
+your subscription limits; model tests consume plan usage. SciSpark keeps API
+spending separate and never falls back to API billing automatically. See the
+[engine setup and validation notes](docs/testing/2026-09-10-local-ai-engines.md)
+for supported CLI versions and current validation limits.
 
 <details>
 <summary><b>Run in production mode or choose another vault</b></summary>

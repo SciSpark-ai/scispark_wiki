@@ -96,7 +96,7 @@ export class Meter {
   }
 
   async spendingToday(): Promise<{ totalUsd: number | null; knownUsd: number; unpricedCount: number }> {
-    const records = await this.recordsForDay(utcDateString(this.now()))
+    const records = (await this.recordsForDay(utcDateString(this.now()))).filter((r) => r.usage?.billingMode !== "subscription")
     const knownUsd = records.reduce((sum, r) => sum + (typeof r.costUsd === "number" && Number.isFinite(r.costUsd) ? r.costUsd : 0), 0)
     const unpricedCount = records.filter((r) => typeof r.costUsd !== "number" || !Number.isFinite(r.costUsd)).length
     return { totalUsd: unpricedCount ? null : knownUsd, knownUsd, unpricedCount }

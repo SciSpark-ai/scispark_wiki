@@ -201,7 +201,7 @@ export async function actOnReview(storage: VaultStorage, id: string, raw: unknow
       throw new Error("This answer needs additional evidence. Start a new review with additional sources or a revised scope; rechecking the same claims cannot fill coverage gaps.")
     }
     await checkAuthorization(storage, run)
-    if (!run.brief.model.rates) throw new Error("Enter token prices to enforce your review allowance")
+    if (!run.brief.model.engine && !run.brief.model.rates) throw new Error("Enter token prices to enforce your review allowance")
     const active = await storage.read(ACTIVE)
     if (active) {
       const lease = z.object({ runId: z.string(), pid: z.number().int() }).parse(JSON.parse(active))
