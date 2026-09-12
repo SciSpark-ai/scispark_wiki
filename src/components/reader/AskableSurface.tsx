@@ -4,17 +4,18 @@ import Link from "next/link"
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import type { SurfaceSelection } from "./HtmlSurface"
 import SelectionBubble from "./SelectionBubble"
-import AskPanel, { type AskState } from "./AskPanel"
+import AskPanel, { type AskState, type AskPanelProps } from "./AskPanel"
 import CaptureIdeaCard from "./CaptureIdeaCard"
 import { paperKey, type PaperRecord } from "@/lib/papers/types"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { captureIdeaAsNote } from "@/lib/reader/capture-idea"
 import { buildAskContext } from "@/lib/reader/ask-context"
-import { askRemote } from "@/lib/reader/client"
+import { askRemote, saveReadingAnswerRemote } from "@/lib/reader/client"
 import { applyChangesetRemote } from "@/lib/vault/changeset-client"
 import { loadCompanionSettingsRemote } from "@/lib/companion/settings-client"
 import { logEvent } from "@/lib/events/log"
 import { wikiHref } from "@/lib/wiki/href"
+import { openSelectionNote } from "@/components/notes/selection-note-request"
 
 /** How much plain text on each side of a selection is sent as "surrounding"
  * context to the Reading-Companion skill (already truncated here, per
@@ -63,6 +64,9 @@ export interface AskableSurfaceProps {
    * (only reachable when `enableHighlight` is set — see above). The native
    * and internal selection are already cleared by the time this fires. */
   onHighlight?: (selection: SurfaceSelection) => void
+  /** Open a caller-owned drawer only when the user chooses Ask. */
+  onAskOpen?: () => void
+  enableSaveToNote?: boolean
   /** Renders the wrapped content region. Receives this surface's selection
    * handlers back so the caller can wire them onto whichever reading
    * surface it mounts (`HtmlSurface`/`PdfSurface` today). A function rather
@@ -92,6 +96,8 @@ export default function AskableSurface({
   surfaceText,
   enableHighlight = false,
   onHighlight,
+  onAskOpen,
+  enableSaveToNote = false,
   children,
 }: AskableSurfaceProps) {
   const key = paperKey(paper)
@@ -100,6 +106,8 @@ export default function AskableSurface({
   const [askTarget, setAskTarget] = useState<SurfaceSelection | null>(null)
   const [askState, setAskState] = useState<AskState>({ status: "idle" })
   const askRequest = useRef(0)
+  const [integration, setIntegration] = useState<AskPanelProps["integration"]>({ status: "idle" })
+  const integrating = useRef(new Set<number>())
   useEffect(() => () => { askRequest.current++ }, [key])
   const [captureNotice, setCaptureNotice] = useState<{ path: string } | null>(null)
   // The passage "Capture idea" was invoked on, snapshotted independently of
@@ -157,8 +165,11 @@ export default function AskableSurface({
   // typed-question flow must not depend on pendingSelection still being set.
   function beginAsk() {
     if (!pendingSelection) return
-    setAskTarget(pendingSelection)
-    void runAsk(pendingSelection, "")
+    const target = pendingSelection
+    setAskTarget(target)
+    clearSelection()
+    onAskOpen?.()
+    void runAsk(target, "")
   }
 
   function submitAskQuestion(question: string) {
@@ -168,6 +179,7 @@ export default function AskableSurface({
 
   async function runAsk(target: SurfaceSelection, question: string) {
     const requestId = ++askRequest.current
+    setIntegration({ status: "idle" })
     setAskState({ status: "loading" })
     try {
       const context = await buildAskContext(storage, {
@@ -183,12 +195,29 @@ export default function AskableSurface({
         (text) => { if (requestId === askRequest.current) setAskState({ status: "loading", text }) },
       )
       if (requestId !== askRequest.current) return
-      setAskState({ status: "done", answer: answer.answer, citedPageIds: answer.citedPageIds })
+      setAskState({ status: "done", answer: answer.answer, citedPageIds: answer.citedPageIds, question })
       void logEvent(storage, { type: "reading_ask", paperKey: key })
     } catch (err) {
       if (requestId !== askRequest.current) return
       setAskState({ status: "error", message: err instanceof Error ? err.message : String(err) })
     }
+  }
+
+  async function integrateAnswer() {
+    const requestId = askRequest.current
+    if (askState.status !== "done" || !askTarget || integration?.status === "saved" || integrating.current.has(requestId)) return
+    integrating.current.add(requestId)
+    setIntegration({ status: "saving" })
+    try {
+      const result = await saveReadingAnswerRemote({
+        question: askState.question?.trim() || `Explain: ${askTarget.text.trim().replace(/\s+/g, " ").slice(0, 160)}`,
+        answer: askState.answer, selection: askTarget.text, paperKey: key, paperTitle: paper.title,
+        citedPageIds: [...new Set([...(sourcePageId ? [sourcePageId] : []), ...askState.citedPageIds])],
+      })
+      if (requestId === askRequest.current) setIntegration({ status: "saved", pageId: result.pageId, message: result.warnings?.map(warning => warning.message).join(" ") || undefined })
+    } catch (error) {
+      if (requestId === askRequest.current) setIntegration({ status: "error", message: error instanceof Error ? error.message : "Could not integrate this answer." })
+    } finally { integrating.current.delete(requestId) }
   }
 
   // Open the inline capture card (replaces the old blocking window.prompt,
@@ -227,7 +256,7 @@ export default function AskableSurface({
     }
   }
 
-  const askPanel = <AskPanel selectionText={askTarget?.text ?? null} state={askState} onAsk={submitAskQuestion} />
+  const askPanel = <AskPanel selectionText={askTarget?.text ?? null} state={askState} onAsk={submitAskQuestion} onIntegrate={() => void integrateAnswer()} integration={integration} />
 
   return (
     <>
@@ -238,6 +267,13 @@ export default function AskableSurface({
         onAsk={beginAsk}
         onHighlight={enableHighlight ? handleHighlightClick : undefined}
         onCapture={handleCapture}
+        onSaveToNote={enableSaveToNote ? () => {
+          if (!pendingSelection) return
+          const target = pendingSelection
+          clearSelection()
+          openSelectionNote({ text: target.text, top: target.rectTop, left: target.rectLeft,
+            kind: "paper", refId: sourcePageId ?? key, refLabel: paper.title })
+        } : undefined}
       />
 
       {captureState && (

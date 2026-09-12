@@ -2,6 +2,7 @@ import type { UsageRecord } from "./metering"
 import { addCosts } from "./pricing"
 
 export interface UsageSummary {
+  subscription?: { calls: number; inputTokens: number; outputTokens: number; unknownUsageCalls: number }
   today: {
     totalUsd: number | null
     bySkill: Array<{ skill: string; totalUsd: number | null }>
@@ -48,6 +49,7 @@ export function summarizeUsage(
   let unpricedCount = 0
 
   for (const r of records) {
+    if (r.usage?.billingMode === "subscription") continue
     if (r.costUsd == null) unpricedCount++
     const costUsd = typeof r.costUsd === "number" && Number.isFinite(r.costUsd) ? r.costUsd : null
     const dateStr = utcDateString(new Date(r.ts))
@@ -67,6 +69,12 @@ export function summarizeUsage(
     .sort((a, b) => (b.totalUsd ?? -1) - (a.totalUsd ?? -1))
 
   return {
+    ...(records.some((r) => r.usage?.billingMode === "subscription") ? { subscription: {
+      calls: records.filter((r) => r.usage?.billingMode === "subscription").length,
+      inputTokens: records.filter((r) => r.usage?.billingMode === "subscription").reduce((n, r) => n + r.usage.inputTokens, 0),
+      outputTokens: records.filter((r) => r.usage?.billingMode === "subscription").reduce((n, r) => n + r.usage.outputTokens, 0),
+      unknownUsageCalls: records.filter((r) => r.usage?.billingMode === "subscription" && r.usage.reported === false).length,
+    } } : {}),
     today: { totalUsd: todayTotalUsd, bySkill },
     days: orderedDates.map((date) => ({ date, totalUsd: dayTotals.get(date)! })),
     unpricedCount,

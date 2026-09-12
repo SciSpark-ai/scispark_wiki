@@ -22,8 +22,8 @@ test("deep review approval, server pipeline, History, editable report, exports a
   const errors: string[] = []
   page.on("pageerror", (e) => errors.push(e.message))
   await page.goto("/chat")
-  await page.getByLabel("Chat mode").selectOption("review")
-  await page.getByRole("button", { name: "Search scope" }).click()
+  await page.getByRole("button", { name: "Deep literature review", exact: true }).click()
+  await page.locator("summary").filter({ hasText: "Search scope" }).click()
   for (const label of ["arXiv", "Semantic Scholar", "PubMed"]) await page.getByRole("checkbox", { name: label, exact: true }).uncheck()
   await page.getByRole("checkbox", { name: "OpenAlex", exact: true }).check()
   await page.getByLabel("Message Sparky").fill("Compare adult decoding methods")

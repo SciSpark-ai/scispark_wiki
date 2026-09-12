@@ -1,7 +1,11 @@
 # Codex and Claude Code engines for SciSpark
 
 Date: 2026-09-08
-Status: implementation proposal; no engine integration implemented by this document.
+Status: bounded-completion integration implemented September 10; see
+[implementation and validation](../../testing/2026-09-10-local-ai-engines.md).
+The original broader agent-task roadmap below is retained; its App Server/SDK
+transport choice is superseded for the initial delivery by official CLI adapters.
+Agent-directed tools and live acceptance remain follow-up scope.
 
 ## Outcome and scope
 

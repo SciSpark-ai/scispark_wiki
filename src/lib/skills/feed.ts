@@ -378,6 +378,8 @@ export interface FeedItem {
 }
 
 export interface FeedResult {
+  billingMode?: "subscription"
+  engine?: "codex" | "claude-code"
   recommendation?: RecommendationRun
   generatedAt: string
   items: FeedItem[]
@@ -549,6 +551,7 @@ export async function runFeed(
   } else selected = selectRecommendations(ranked, preferences)
   if (!selected.length) warnings.push("No candidates met the relevance threshold. Your previous feed has not been replaced.")
   const result: FeedResult = {
+    ...(strategyRun.usage.billingMode === "subscription" ? { billingMode: "subscription" as const, engine: strategyRun.usage.engine } : {}),
     generatedAt: now.toISOString(),
     items: selected.map(({ paper, ranking }) => ({
       paper, ranking, score: ranking.total ?? 0,

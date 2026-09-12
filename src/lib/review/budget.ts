@@ -1,9 +1,10 @@
+import { localReviewComplete, localReviewSpend, acknowledgeLocalReview } from "./local-budget"
 import { randomUUID, createHash } from "node:crypto"
 import { z } from "zod"
 import type { VaultStorage } from "../vault/storage"
 import { withVaultExclusive } from "../vault/exclusive"
 import { Meter } from "../llm/metering"
-import { buildProvider, loadSettings } from "../llm/settings"
+import { buildProvider, loadSettings, resolveTier, usesLocalEngine } from "../llm/settings"
 import { completeStructured } from "../llm/structured"
 import { priceTokenUsage, reserveTokenCost } from "../llm/scoped-pricing"
 import type { LLMProvider } from "../llm/types"
@@ -24,12 +25,14 @@ async function attempts(storage: VaultStorage): Promise<Attempt[]> {
 }
 export async function reviewSpend(storage: VaultStorage, runId: string) {
   const rows = (await attempts(storage)).filter((a) => a.runId === runId)
-  return { spentUsd: rows.reduce((s, a) => s + (a.costUsd ?? 0), 0),
+  const local = await localReviewSpend(storage, runId)
+  return { engineCalls: local.calls, spentUsd: rows.reduce((s, a) => s + (a.costUsd ?? 0), 0),
     heldUsd: rows.filter((a) => a.costUsd === null).reduce((s, a) => s + a.reservedUsd, 0),
-    uncertain: rows.some((a) => a.state === "reserved" || a.state === "uncertain" || a.state === "overrun") }
+    uncertain: local.uncertain || rows.some((a) => a.state === "reserved" || a.state === "uncertain" || a.state === "overrun") }
 }
 export function reviewModel(settings: Awaited<ReturnType<typeof loadSettings>>) {
-  const target = settings.tierModels.strong
+  const target = resolveTier(settings, "strong")
+  if (settings.engines && settings.engines.kind !== "api") return { ...target, endpoint: `local://${settings.engines.kind}`, engine: settings.engines.kind }
   const endpoint = target.provider === "openai" ? settings.baseUrls?.openai ?? "https://api.openai.com/v1"
     : target.provider === "openrouter" ? settings.baseUrls?.openrouter ?? "https://openrouter.ai/api/v1"
     : target.provider === "google" ? "https://generativelanguage.googleapis.com" : "https://api.anthropic.com"
@@ -42,6 +45,12 @@ export function reviewModel(settings: Awaited<ReturnType<typeof loadSettings>>) 
 export async function reviewComplete<T>(storage: VaultStorage, runId: string, brief: ReviewBrief,
   step: string, prompt: string, schema: z.ZodType<T>, tokens: number,
   guard: () => Promise<void>, providerOverride?: LLMProvider): Promise<T> {
+  const selected = await loadSettings(storage)
+  if (usesLocalEngine(selected)) {
+    const target = reviewModel(selected)
+    if (target.endpoint !== brief.model.endpoint || target.model !== brief.model.model) throw new Error("Your AI engine changed. Update the brief before continuing.")
+    return localReviewComplete(storage, runId, brief, step, prompt, schema, tokens, guard, providerOverride ?? buildProvider(selected, "strong"))
+  }
   return withVaultExclusive(storage, "ai-spend", async () => {
     await guard()
     const settings = await loadSettings(storage)
@@ -96,6 +105,7 @@ export async function reviewComplete<T>(storage: VaultStorage, runId: string, br
 }
 
 export async function acknowledgeReviewCharge(storage: VaultStorage, runId: string) {
+  await acknowledgeLocalReview(storage, runId)
   await withVaultExclusive(storage, "ai-spend", async () => {
     const rows = await attempts(storage)
     for (const row of rows.filter((a) => a.runId === runId && (a.state === "reserved" || a.state === "uncertain" || a.state === "overrun"))) {

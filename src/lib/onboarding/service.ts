@@ -4,7 +4,7 @@ import { commitChangeset, type MutationWarning } from "../vault/mutations"
 import { makeChangesetId } from "../vault/changesets"
 import { createUserProfile, getUserProfile } from "../usermodel/profile"
 import { isOnboarded } from "../usermodel/pages"
-import { loadSettings } from "../llm/settings"
+import { loadSettings, isAiReady, resolveTier } from "../llm/settings"
 import { runSkill } from "../skills/runner"
 import type { LLMProvider, Tier } from "../llm/types"
 import { onboardingSkill } from "./skill"
@@ -29,7 +29,7 @@ async function current(storage: VaultStorage) {
 export async function getOnboardingState(storage: VaultStorage): Promise<OnboardingState> {
   const [{ raw, record }, settings, onboarded] = await Promise.all([current(storage), loadSettings(storage), isOnboarded(storage)])
   return { ...record, revision: raw === null ? null : await revisionOf(raw), onboarded,
-    connected: Boolean(settings.keys[settings.tierModels.strong.provider]?.trim()) }
+    connected: await isAiReady(settings) }
 }
 async function save(storage: VaultStorage, before: string | null, record: OnboardingRecord, model: string) {
   const after = JSON.stringify(RecordSchema.parse(record), null, 2) + "\n"
@@ -51,7 +51,7 @@ export async function advanceOnboarding(storage: VaultStorage, input: Onboarding
     if (revision !== input.revision) throw new OnboardingError("This conversation changed in another tab. Reload it before continuing.", 409)
     if (await isOnboarded(storage)) throw new OnboardingError("Your research profile is already saved. Edit it on Profile.", 409)
     const settings = await loadSettings(storage)
-    if (!settings.keys[settings.tierModels.strong.provider]?.trim() && !options.providerOverride?.strong) {
+    if (!await isAiReady(settings) && !options.providerOverride?.strong) {
       throw new OnboardingError("Connect your AI provider before continuing.", 412)
     }
     if (input.action === "confirm") {
@@ -80,7 +80,7 @@ export async function advanceOnboarding(storage: VaultStorage, input: Onboarding
     const reply = run.output
     record = { ...record, draft: reply.draft, question: reply.question, pending: false,
       messages: [...record.messages, { role: "assistant", content: reply.message }] }
-    const saved = await save(storage, raw, record, settings.tierModels.strong.model)
+    const saved = await save(storage, raw, record, resolveTier(settings, "strong").model)
     warnings.push(...saved.warnings)
     return { state: await getOnboardingState(storage), warnings }
   })

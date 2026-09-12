@@ -66,6 +66,9 @@ test("Search snapshots, drafts and source settings survive Home, reload and Hist
 
       await page.goto("/")
       await page.goto("/papers")
+      await expect(page).toHaveURL(/\/papers$/)
+      await page.goto("/history?tab=conversations")
+      await page.getByRole("link", { name: /Auditory attention history fixture/ }).last().click()
       await expect(page).toHaveURL(/\/chat\/chat_search_settings$/)
       await expect(paper).toBeVisible()
       await expect(composer).toHaveValue("auditory attention in adults")
@@ -80,11 +83,14 @@ test("Search snapshots, drafts and source settings survive Home, reload and Hist
       await page.getByRole("link", { name: /Auditory attention history fixture/ }).last().click()
       await expect(paper).toBeVisible()
       await page.getByLabel("Chat mode").selectOption("chat")
-      await page.getByRole("switch", { name: /Read Sources Only/ }).check()
+      await page.getByRole("switch", { name: "Saved papers only", exact: true }).check()
       await page.goto("/")
       await page.goto("/chat")
+      await expect(page.getByRole("region", { name: "Start a conversation" })).toBeVisible()
+      await page.goto("/history?tab=conversations")
+      await page.getByRole("link", { name: /Auditory attention history fixture/ }).last().click()
       await expect(page).toHaveURL(/\/chat\/chat_search_settings$/)
-      await expect(page.getByRole("switch", { name: /Read Sources Only/ })).toBeChecked()
+      await expect(page.getByRole("switch", { name: "Saved papers only", exact: true })).toBeChecked()
       expect(aiRequests).toBe(0)
     }
   } finally {

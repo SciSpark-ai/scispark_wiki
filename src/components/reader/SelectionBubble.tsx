@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, type CSSProperties } from "react"
+import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react"
 import type { SurfaceSelection } from "./HtmlSurface"
 
 export interface SelectionBubbleProps {
@@ -11,6 +11,7 @@ export interface SelectionBubbleProps {
    * support persistent highlighting on this surface. */
   onHighlight?: () => void
   onCapture: () => void
+  onSaveToNote?: () => void
 }
 
 const VERTICAL_GAP = 10
@@ -32,8 +33,16 @@ const MIN_EDGE_MARGIN = 8
  * This keeps the bubble's "am I still showing a live selection?" state in
  * one place — the actual DOM selection — instead of two.
  */
-export default function SelectionBubble({ selection, onAsk, onHighlight, onCapture }: SelectionBubbleProps) {
+export default function SelectionBubble({ selection, onAsk, onHighlight, onCapture, onSaveToNote }: SelectionBubbleProps) {
   const bubbleRef = useRef<HTMLDivElement | null>(null)
+
+  useLayoutEffect(() => {
+    const bubble = bubbleRef.current
+    if (!selection || !bubble) return
+    const rect = bubble.getBoundingClientRect()
+    bubble.style.left = `${Math.max(MIN_EDGE_MARGIN, Math.min(selection.rectLeft, window.innerWidth - rect.width - MIN_EDGE_MARGIN))}px`
+    bubble.style.top = `${Math.max(MIN_EDGE_MARGIN, selection.rectTop - rect.height - VERTICAL_GAP)}px`
+  }, [selection])
 
   useEffect(() => {
     if (!selection) return
@@ -73,7 +82,6 @@ export default function SelectionBubble({ selection, onAsk, onHighlight, onCaptu
     position: "fixed",
     top: Math.max(MIN_EDGE_MARGIN, selection.rectTop - VERTICAL_GAP),
     left: Math.max(MIN_EDGE_MARGIN, selection.rectLeft),
-    transform: "translateY(-100%)",
     zIndex: 50,
   }
 
@@ -82,8 +90,9 @@ export default function SelectionBubble({ selection, onAsk, onHighlight, onCaptu
       ref={bubbleRef}
       role="toolbar"
       aria-label="Selection actions"
+      data-selection-bubble
       style={style}
-      className="flex items-center gap-1 rounded-pill border border-border-warm bg-light-surface px-1.5 py-1 shadow-lg"
+      className="flex max-w-[calc(100vw-16px)] flex-wrap items-center gap-1 rounded-pill border border-border-warm bg-light-surface px-1.5 py-1 shadow-lg [&>button]:whitespace-nowrap"
     >
       <button
         type="button"
@@ -108,6 +117,11 @@ export default function SelectionBubble({ selection, onAsk, onHighlight, onCaptu
       >
         Capture idea
       </button>
+      {onSaveToNote && (
+        <button type="button" onClick={onSaveToNote} className="text-[12px] font-medium tracking-body text-espresso px-2.5 py-1 rounded-pill hover:bg-card-surface transition-colors whitespace-nowrap">
+          Save to note
+        </button>
+      )}
     </div>
   )
 }

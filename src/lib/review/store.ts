@@ -4,7 +4,7 @@ import { withVaultExclusive } from "../vault/exclusive"
 import { BriefInputSchema, ReviewId, ReviewRunSchema, type ReviewRun } from "./contracts"
 import { hashReviewData, reviewModel } from "./budget"
 import { reviewContext, reviewConversationContext } from "./context"
-import { loadSettings } from "../llm/settings"
+import { loadSettings, isAiReady } from "../llm/settings"
 import { PRICES } from "../llm/pricing"
 import { readEnabledPaperSources } from "../papers/source-preferences"
 import { deriveTitle, loadSession, saveSession, type ChatMessage } from "../chat/session"
@@ -59,10 +59,10 @@ export async function createReview(storage: VaultStorage, raw: unknown) {
     const session = await loadSession(storage, input.sessionId)
     const settings = await loadSettings(storage)
     const target = reviewModel(settings)
-    if (!settings.keys[target.provider]) throw new Error("Connect your AI in Settings before preparing a review")
+    if (!await isAiReady(settings)) throw new Error("Connect your AI in Settings before preparing a review")
     // Do not apply direct-provider tariffs to a third-party endpoint.
     const direct = !settings.baseUrls?.[target.provider as "openai" | "openrouter"] && target.provider !== "openrouter"
-    const price = direct ? PRICES[target.model] : null
+    const price = direct && !("engine" in target) ? PRICES[target.model] : null
     const context = [...await reviewContext(storage, input.question, session?.projectId), ...await reviewConversationContext(storage, input.sessionId, input.question)]
     const now = new Date().toISOString()
     const run: ReviewRun = { version: 1, id, sessionId: input.sessionId, revision: 0, createdAt: now, updatedAt: now,

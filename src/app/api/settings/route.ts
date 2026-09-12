@@ -1,3 +1,4 @@
+import { EngineSettingsSchema } from "@/lib/engines/contracts"
 import { getServerVault } from "@/lib/server/vault"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { loadSettings, DEFAULT_SETTINGS, type LLMSettings } from "@/lib/llm/settings"
@@ -39,6 +40,7 @@ const SETTINGS_PATH = ".scispark/settings.json"
 export type RedactedKeys = Partial<Record<ProviderId, { present: true }>>
 
 export interface RedactedSettings {
+  engines?: LLMSettings["engines"]
   keys: RedactedKeys
   tierModels: LLMSettings["tierModels"]
   dailyBudgetUsd: number
@@ -86,6 +88,7 @@ function redact(settings: LLMSettings): RedactedSettings {
   }
   return {
     keys,
+    ...(settings.engines ? { engines: settings.engines } : {}),
     tierModels: settings.tierModels,
     dailyBudgetUsd: settings.dailyBudgetUsd,
     ...(settings.baseUrls ? { baseUrls: settings.baseUrls } : {}),
@@ -158,6 +161,11 @@ export async function PUT(req: Request): Promise<Response> {
       return jsonResponse(400, { error: "patch must be an object" })
     }
     p = body.patch as Partial<LLMSettings>
+    if (p.engines !== undefined) {
+      const parsed = EngineSettingsSchema.safeParse(p.engines)
+      if (!parsed.success) return jsonResponse(400, { error: "Invalid engine settings" })
+      p.engines = parsed.data
+    }
   }
   if (hasCompanion && (body.companion === null || typeof body.companion !== "object")) {
     return jsonResponse(400, { error: "companion must be an object" })
@@ -187,6 +195,7 @@ export async function PUT(req: Request): Promise<Response> {
     await withSettingsWrite(storage, (file) => {
       const llmRaw = (file.llm !== null && typeof file.llm === "object" ? file.llm : {}) as Partial<LLMSettings>
       const current: LLMSettings = {
+        ...(llmRaw.engines ? { engines: EngineSettingsSchema.parse(llmRaw.engines) } : {}),
         keys: { ...DEFAULT_SETTINGS.keys, ...(llmRaw.keys ?? {}) },
         tierModels: {
           fast: { ...DEFAULT_SETTINGS.tierModels.fast, ...(llmRaw.tierModels?.fast ?? {}) },
@@ -197,6 +206,7 @@ export async function PUT(req: Request): Promise<Response> {
       }
 
       const merged: LLMSettings = {
+        ...(p.engines ?? current.engines ? { engines: p.engines ?? current.engines } : {}),
         keys: p.keys ? mergeDeletable(current.keys, p.keys) : current.keys,
         tierModels: {
           fast: { ...current.tierModels.fast, ...(p.tierModels?.fast ?? {}) },

@@ -1,6 +1,7 @@
 "use client"
 
 import { formatCost } from "@/lib/llm/pricing"
+import { engineLabel } from "@/lib/engines/contracts"
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Check, Loader2 } from "lucide-react"
@@ -23,7 +24,7 @@ type RefreshPhase = "memory" | FeedStage
 type RefreshState =
   | { status: "idle" }
   | { status: "running"; phase: RefreshPhase; startedAt: number }
-  | { status: "done"; costUsd: number | null }
+  | { status: "done"; costUsd: number | null; billingMode?: "subscription"; engine?: string; unranked?: boolean }
   | { status: "error"; message: string }
 
 /** Refresh the server-owned recommendation pipeline with real NDJSON progress.
@@ -65,7 +66,7 @@ export function FeedRefreshBar({
       const feed = await refreshFeed((stage) => {
         if (STAGE_ORDER.includes(stage)) setState({ status: "running", phase: stage, startedAt })
       })
-      setState({ status: "done", costUsd: feed.costUsd })
+      setState({ status: "done", costUsd: feed.costUsd, billingMode: feed.billingMode, engine: feed.engine, unranked: feed.recommendation?.status === "unranked" })
       onUpdated(feed)
       onComplete?.(feed)
     } catch (err) {
@@ -172,7 +173,9 @@ export function FeedRefreshBar({
         )}
         {state.status === "done" && (
           <span className="text-[13px] text-muted-text tracking-body">
-            {state.costUsd === null ? "Refresh complete · cost unavailable for this model. Check your provider’s usage." : `This refresh ${formatCost(state.costUsd).toLowerCase()}`}
+            {state.billingMode === "subscription"
+              ? `${state.unranked ? "Refresh finished with unranked results" : "Refresh complete"} · ${engineLabel(state.engine ?? "codex")} plan usage; no API dollar charge recorded.`
+              : state.costUsd === null ? "Refresh complete · cost unavailable for this model. Check your provider’s usage." : `This refresh ${formatCost(state.costUsd).toLowerCase()}`}
           </span>
         )}
       </div>

@@ -5,17 +5,11 @@ import { AnimatePresence, motion } from "framer-motion"
 import { Check, FolderOpen, Plus, X } from "lucide-react"
 import { createProjectNoteRemote, listProjectsRemote } from "@/lib/projects/client"
 import type { ProjectSummary } from "@/lib/projects/types"
+import { SELECTION_NOTE_REQUEST, type SelectionNoteRequest } from "./selection-note-request"
 
 type NoteSourceKind = "paper" | "chat" | "manual"
 
-interface BubbleState {
-  text: string
-  top: number
-  left: number
-  kind: NoteSourceKind
-  refId?: string
-  refLabel?: string
-}
+type BubbleState = SelectionNoteRequest
 
 export function SelectionToNoteBubble() {
   const [state, setState] = useState<BubbleState | null>(null)
@@ -36,6 +30,12 @@ export function SelectionToNoteBubble() {
   }, [])
 
   useEffect(() => {
+    const openFromToolbar = (event: Event) => {
+      setState((event as CustomEvent<SelectionNoteRequest>).detail)
+      setExpanded(true)
+      setShowConfirm(false)
+      setError(null)
+    }
     const onMouseUp = () => {
       setTimeout(() => {
         const selection = window.getSelection()
@@ -47,6 +47,8 @@ export function SelectionToNoteBubble() {
         const element = node instanceof Element ? node : node.parentElement
         const source = element?.closest("[data-note-source]")
         if (!source) return
+        // Paper/reader surfaces own a single combined selection toolbar.
+        if (element?.closest("[data-selection-actions]")) { setState(null); return }
         const rect = range.getBoundingClientRect()
         setState({
           text,
@@ -77,10 +79,12 @@ export function SelectionToNoteBubble() {
       setExpanded(false)
     }
     document.addEventListener("mouseup", onMouseUp)
+    document.addEventListener(SELECTION_NOTE_REQUEST, openFromToolbar)
     document.addEventListener("mousedown", onMouseDown)
     window.addEventListener("scroll", onScroll, true)
     return () => {
       document.removeEventListener("mouseup", onMouseUp)
+      document.removeEventListener(SELECTION_NOTE_REQUEST, openFromToolbar)
       document.removeEventListener("mousedown", onMouseDown)
       window.removeEventListener("scroll", onScroll, true)
     }
@@ -131,8 +135,8 @@ export function SelectionToNoteBubble() {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 4, scale: 0.94 }}
         transition={{ duration: 0.15, ease: "easeOut" }}
-        style={{ position: "fixed", top: state.top, left: state.left, transform: "translate(-50%, 0)", zIndex: 70 }}
-        className="rounded-pill border border-border-warm/40 bg-light-surface shadow-md"
+        style={{ position: "fixed", top: Math.max(8, Math.min(state.top, window.innerHeight - 100)), left: Math.max(8, Math.min(state.left, window.innerWidth - 368)), zIndex: 70 }}
+        className="max-w-[calc(100vw-16px)] rounded-pill border border-border-warm/40 bg-light-surface shadow-md"
         onMouseDown={(event) => event.stopPropagation()}
       >
         {showConfirm ? (
@@ -140,7 +144,7 @@ export function SelectionToNoteBubble() {
         ) : !expanded ? (
           <button type="button" onClick={() => setExpanded(true)} className="flex items-center gap-1.5 whitespace-nowrap rounded-pill px-3 py-1.5 text-[13px] font-medium text-espresso hover:bg-page-warm"><Plus size={14} className="text-accent-ink" />Save to note</button>
         ) : (
-          <div className="flex max-w-[520px] items-center gap-2 px-2 py-1.5">
+          <div className="flex w-[360px] max-w-full flex-wrap items-center gap-2 px-2 py-1.5">
             <FolderOpen size={14} className="ml-1.5 shrink-0 text-accent-ink" />
             {projects.length > 0 ? <select value={chosenProject} onChange={(event) => setChosenProject(event.target.value)} className="max-w-[180px] truncate bg-transparent text-[13px] text-espresso focus:outline-none">{projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select> : <span className="text-[12px] text-muted-text">Create a project first</span>}
             <button type="button" disabled={!chosenProject || saving} onClick={() => void save()} className="rounded-pill bg-orange px-3 py-1 text-[12px] font-medium text-on-accent disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>

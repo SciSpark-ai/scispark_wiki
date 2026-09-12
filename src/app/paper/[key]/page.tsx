@@ -177,7 +177,6 @@ function PaperPageContent() {
       rectTop: rect.top,
       rectLeft: rect.left,
     })
-    setAskOpen(true)
   }, [])
 
   // Mirrors HtmlSurface's own listener: a selection collapsed from outside
@@ -416,7 +415,7 @@ function PaperPageContent() {
     // (see the mount effect's manual resets above for this page's OWN
     // state), so without a key change a stale answer/capture card from the
     // previous paper could otherwise still be showing.
-    <AskableSurface key={slug} storage={load.storage} paper={load.paper} sourcePageId={sourcePageId} surfaceText={surfaceText}>
+    <AskableSurface key={slug} storage={load.storage} paper={load.paper} sourcePageId={sourcePageId} surfaceText={surfaceText} onAskOpen={() => setAskOpen(true)} enableSaveToNote>
       {({ onHtmlSelectionChange, askPanel }) => {
         // See the contentRef/handleSelection setup above: this render-prop
         // is the only place AskableSurface's (stable) selection callback is
@@ -428,6 +427,7 @@ function PaperPageContent() {
             <div
               ref={contentRef}
               data-note-source="paper"
+              data-selection-actions="paper"
               data-note-source-id={sourcePageId}
               data-note-source-label={load.paper.title}
               onMouseUp={handleSelection}
@@ -522,9 +522,9 @@ function PaperPageContent() {
                 onKeyDown={(e) => {
                   if (e.key === "Escape") setAskOpen(false)
                 }}
-                className="fixed top-24 right-6 bottom-28 z-40 w-[360px] overflow-y-auto rounded-card border border-border-warm shadow-lg outline-none"
+                className="fixed top-24 right-3 bottom-28 z-40 w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-card border border-border-warm bg-light-surface shadow-lg outline-none sm:right-6"
               >
-                <div className="relative min-h-full">
+                <div className="relative h-full min-h-0">
                   <Button
                     variant="quiet"
                     size="sm"

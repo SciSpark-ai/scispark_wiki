@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { LocalEngineConnection } from "./LocalEngineConnection"
+import { DEFAULT_ENGINES, engineLabel, type EngineSettings } from "@/lib/engines/contracts"
 import { Check, Eye, EyeOff, ExternalLink, Loader2, AlertCircle } from "lucide-react"
 import { loadRedactedSettings, patchSettings } from "@/lib/llm/settings-client"
 import type { ProviderId } from "@/lib/llm/types"
@@ -134,6 +136,8 @@ export function ConnectAiCard({
   firstRun?: boolean
 } = {}) {
   const [loaded, setLoaded] = useState(false)
+  const [engines, setEngines] = useState<EngineSettings>(DEFAULT_ENGINES)
+  const [engineChoice, setEngineChoice] = useState<EngineSettings["kind"]>("api")
   const [presetId, setPresetId] = useState<string>("anthropic")
   const [fastModel, setFastModel] = useState("")
   const [strongModel, setStrongModel] = useState("")
@@ -153,6 +157,8 @@ export function ConnectAiCard({
     ;(async () => {
       try {
         const s = await loadRedactedSettings()
+        setEngines(s.engines ?? DEFAULT_ENGINES)
+        setEngineChoice(s.engines?.kind ?? "api")
         const provider = s.tierModels.strong.provider
         const savedBaseUrl = s.baseUrls?.openai ?? ""
         const id = inferPresetId(provider, savedBaseUrl)
@@ -193,6 +199,7 @@ export function ConnectAiCard({
     setTest({ status: "idle" })
     try {
       await patchSettings({
+        ...(engines.kind !== "api" ? { engines: { ...engines, kind: "api" } } : {}),
         tierModels: {
           fast: { provider: preset.provider, model: fastModel.trim() },
           strong: { provider: preset.provider, model: strongModel.trim() },
@@ -206,6 +213,7 @@ export function ConnectAiCard({
         },
         ...(apiKey.trim() ? { keys: { [preset.provider]: apiKey.trim() } } : {}),
       })
+      setEngines({ ...engines, kind: "api" })
       if (apiKey.trim()) {
         setKeySaved(true)
         setSavedProviders((previous) => ({ ...previous, [preset.provider]: true }))
@@ -254,8 +262,8 @@ export function ConnectAiCard({
 
   return (
     <div className="bg-light-surface rounded-[14px] border border-border-warm/30 p-6">
-      <div className="flex items-center justify-between mb-1">
-        <h2 className="font-heading text-[18px] text-espresso">Connect your AI</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+        <h2 className="whitespace-nowrap font-heading text-[18px] text-espresso">Connect your AI</h2>
         <span
           className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-pill text-[12px] font-medium ${
             connected
@@ -264,9 +272,13 @@ export function ConnectAiCard({
           }`}
         >
           <span className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-green-500" : "bg-muted-text/50"}`} />
-          {connected ? `Connected — ${preset.label}${strongModel ? ` · ${strongModel}` : ""}` : keySaved ? "Key saved — test connection" : "Not connected"}
+          {engines.kind !== "api" ? `Selected — ${engineLabel(engines.kind)}` : connected ? `Connected — ${preset.label}${strongModel ? ` · ${strongModel}` : ""}` : keySaved ? "Key saved — test connection" : "Not connected"}
         </span>
       </div>
+      <div className="my-4 flex flex-wrap gap-2" role="group" aria-label="AI engine">
+        {(["api", "codex", "claude-code"] as const).map((kind) => <button key={kind} type="button" aria-pressed={engineChoice === kind} disabled={!loaded || saving} onClick={() => setEngineChoice(kind)} className={`rounded-pill border px-4 py-2 text-sm ${engineChoice === kind ? "border-orange bg-orange/10 text-espresso" : "border-border-warm text-muted-text"}`}>{engineLabel(kind)}</button>)}
+      </div>
+      {engineChoice !== "api" ? <LocalEngineConnection key={engineChoice} engine={engineChoice} settings={engines} onSaved={setEngines} onConnected={onConnected} firstRun={firstRun} /> : <>
       <p className="text-[13px] text-muted-text mb-5">
         Your key is stored only in this local vault and is never shown again after saving. SciSpark calls the provider
         from its local runtime.{firstRun ? " Once connected, you’ll talk with Sparky and confirm your profile before the first feed starts." : ""}
@@ -444,6 +456,7 @@ export function ConnectAiCard({
           </div>
         </fieldset>
       )}
+      </>}
     </div>
   )
 }

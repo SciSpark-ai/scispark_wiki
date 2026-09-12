@@ -34,6 +34,7 @@ export interface StructuredOutputOptions {
 
 function sumUsage(a: LLMUsage, b: LLMUsage): LLMUsage {
   return {
+    ...(b.billingMode ? { billingMode: b.billingMode, engine: b.engine } : {}),
     inputTokens: a.inputTokens + b.inputTokens,
     outputTokens: a.outputTokens + b.outputTokens,
     ...(a.cachedInputTokens !== undefined || b.cachedInputTokens !== undefined
@@ -102,7 +103,7 @@ export async function completeStructured<T>(
       parseError = formatIssues(parsed.error)
     }
 
-    if (attempt === 1) {
+    if (attempt === 1 || provider.billingMode === "subscription") {
       throw new StructuredOutputError(
         `Structured output validation failed after ${attempts.length} attempts: ${parseError}`,
         attempts,
