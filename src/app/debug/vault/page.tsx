@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { getVault } from "@/lib/vault/get-vault"
+import { getOpenVault } from "@/lib/vault/get-vault"
 import { createVault, VaultExistsError } from "@/lib/vault/scaffold"
 import { exportVaultZip } from "@/lib/vault/export"
 
@@ -11,7 +11,7 @@ export default function VaultDebugPage() {
 
   useEffect(() => {
     ;(async () => {
-      const vault = await getVault()
+      const vault = await getOpenVault()
       try {
         await createVault(vault, { purpose: "Debug vault.", today: new Date().toISOString().slice(0, 10) })
       } catch (e) {
@@ -31,7 +31,7 @@ export default function VaultDebugPage() {
   }, [])
 
   const download = async () => {
-    const vault = await getVault()
+    const vault = await getOpenVault()
     const zip = await exportVaultZip(vault)
     const url = URL.createObjectURL(new Blob([zip as Uint8Array<ArrayBuffer>], { type: "application/zip" }))
     const a = Object.assign(document.createElement("a"), { href: url, download: "scispark-vault.zip" })
