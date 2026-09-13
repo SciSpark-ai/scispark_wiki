@@ -1,3 +1,4 @@
+import { parseJsonLoosely } from "../json"
 import type { LLMProvider, LLMRequest, LLMResult } from "../types"
 import { readSseData } from "../sse"
 import {
@@ -33,7 +34,7 @@ export class OpenAICompatProvider implements LLMProvider {
     // backend-replica variance — a transient infra flake, not a schema defect
     // (CLAUDE.md). On exactly that rejection, fall back once to prompt-embedded JSON:
     // drop response_format and instruct the model to emit schema-conformant JSON in
-    // its text, which safeParse extracts. zod re-validation in completeStructured
+    // its text, which parseJsonLoosely extracts. zod re-validation in completeStructured
     // remains the enforcement layer either way.
     //
     // We deliberately re-try native (not a sticky skip-native flag) on every call:
@@ -161,7 +162,7 @@ export class OpenAICompatProvider implements LLMProvider {
       const text: string = data.choices?.[0]?.message?.content ?? ""
       return {
         text,
-        json: req.jsonSchema ? safeParse(text) : undefined,
+        json: req.jsonSchema ? parseJsonLoosely(text) : undefined,
         usage: {
           inputTokens: data.usage?.prompt_tokens ?? 0,
           outputTokens: data.usage?.completion_tokens ?? 0,
@@ -241,8 +242,8 @@ export function resetFallbackStats(): void {
 
 // The prompt-JSON fallback instruction: appended as a final user turn when the
 // native structured-output path is rejected. The full JSON Schema guides the
-// model; the "only JSON, no prose/fences" directive keeps safeParse's job simple
-// (though safeParse also tolerates fences/prose defensively).
+// model; the "only JSON, no prose/fences" directive keeps parseJsonLoosely's job simple
+// (though parseJsonLoosely also tolerates fences/prose defensively).
 function buildPromptJsonInstruction(jsonSchema: Record<string, unknown>): string {
   const { $schema, ...rest } = jsonSchema as Record<string, unknown>
   void $schema
@@ -295,31 +296,6 @@ async function readChatStream(res: Response, onText: (text: string) => void): Pr
   }
   if (!finished || !done) throw new LLMTransientError("Provider stream interrupted before completion")
   return result
-}
-
-// Parses JSON from a model response. The native structured-output path returns
-// pure JSON (the first, direct attempt succeeds). The prompt-JSON fallback path
-// may wrap the JSON in a ```json fence or surround it with prose despite the
-// instruction, so we defensively try: (1) the raw text, (2) a fenced block,
-// (3) the outermost {...} object, (4) the outermost [...] array.
-function safeParse(text: string): unknown {
-  for (const candidate of jsonCandidates(text)) {
-    try { return JSON.parse(candidate) } catch { /* try next */ }
-  }
-  return undefined
-}
-
-function jsonCandidates(text: string): string[] {
-  const out: string[] = [text.trim()]
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  if (fenced) out.push(fenced[1].trim())
-  const objStart = text.indexOf("{")
-  const objEnd = text.lastIndexOf("}")
-  if (objStart >= 0 && objEnd > objStart) out.push(text.slice(objStart, objEnd + 1))
-  const arrStart = text.indexOf("[")
-  const arrEnd = text.lastIndexOf("]")
-  if (arrStart >= 0 && arrEnd > arrStart) out.push(text.slice(arrStart, arrEnd + 1))
-  return out
 }
 
 // Validation-constraint keywords that some backends' structured-output

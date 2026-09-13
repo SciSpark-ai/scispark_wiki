@@ -11,12 +11,6 @@ export interface UsageSummary {
   unpricedCount: number
 }
 
-// Mirrors metering.ts's utcDateString exactly so day-bucketing here matches
-// the .scispark/usage/<date>.jsonl file naming the records were read from.
-function utcDateString(d: Date): string {
-  return d.toISOString().slice(0, 10)
-}
-
 /**
  * Pure summary over a usage ledger. No Date.now() — `now` is the sole source
  * of "today"/"the window end", so this is fully deterministic given its inputs.
@@ -27,14 +21,15 @@ export function summarizeUsage(
   opts?: { days?: number },
 ): UsageSummary {
   const numDays = opts?.days ?? 7
-  const todayDate = utcDateString(now)
+  // UTC day buckets match the .scispark/usage/<date>.jsonl file names.
+  const todayDate = now.toISOString().slice(0, 10)
 
   // Fixed-length zero-filled series, oldest -> newest, ending on today.
   const dayTotals = new Map<string, number | null>()
   const orderedDates: string[] = []
   for (let i = numDays - 1; i >= 0; i--) {
     const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
-    const dateStr = utcDateString(d)
+    const dateStr = d.toISOString().slice(0, 10)
     orderedDates.push(dateStr)
     dayTotals.set(dateStr, 0)
   }
@@ -52,7 +47,7 @@ export function summarizeUsage(
     if (r.usage?.billingMode === "subscription") continue
     if (r.costUsd == null) unpricedCount++
     const costUsd = typeof r.costUsd === "number" && Number.isFinite(r.costUsd) ? r.costUsd : null
-    const dateStr = utcDateString(new Date(r.ts))
+    const dateStr = new Date(r.ts).toISOString().slice(0, 10)
 
     if (dayTotals.has(dateStr)) {
       dayTotals.set(dateStr, addCosts(dayTotals.get(dateStr) ?? null, costUsd))

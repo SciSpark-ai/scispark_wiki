@@ -10,3 +10,8 @@ export function resolveWikiRouteId(joinedParams: string): string {
   const bare = joinedParams.replace(/^wiki\//, "")
   return `wiki/${bare}`
 }
+
+/** Last path segment of a page id (`wiki/concepts/foo` → `foo`). */
+export function slugOf(id: string): string {
+  return id.split("/").pop() ?? id
+}

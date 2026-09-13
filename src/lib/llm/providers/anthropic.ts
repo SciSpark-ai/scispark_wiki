@@ -1,3 +1,4 @@
+import { parseJsonLoosely } from "../json"
 import Anthropic from "@anthropic-ai/sdk"
 import type { LLMProvider, LLMRequest, LLMResult, ProviderId } from "../types"
 import {
@@ -51,7 +52,7 @@ export class AnthropicProvider implements LLMProvider {
         .join("")
       return {
         text,
-        json: req.jsonSchema ? safeParse(text) : undefined,
+        json: req.jsonSchema ? parseJsonLoosely(text) : undefined,
         usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
         model: response.model,
         provider: this.id,
@@ -61,10 +62,6 @@ export class AnthropicProvider implements LLMProvider {
       throw mapError(e)
     }
   }
-}
-
-function safeParse(text: string): unknown {
-  try { return JSON.parse(text) } catch { return undefined }
 }
 
 function mapError(e: unknown): unknown {

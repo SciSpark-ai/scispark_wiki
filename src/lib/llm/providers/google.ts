@@ -1,3 +1,4 @@
+import { parseJsonLoosely } from "../json"
 import type { LLMProvider, LLMRequest, LLMResult, ProviderId } from "../types"
 import { readSseData } from "../sse"
 import {
@@ -72,7 +73,7 @@ export class GoogleProvider implements LLMProvider {
     const text = data.candidates?.[0]?.content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? "").join("") ?? ""
     return {
       text,
-      json: req.jsonSchema ? safeParse(text) : undefined,
+      json: req.jsonSchema ? parseJsonLoosely(text) : undefined,
       usage: {
         inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
         outputTokens: (data.usageMetadata?.candidatesTokenCount ?? 0) + (data.usageMetadata?.thoughtsTokenCount ?? 0),
@@ -109,10 +110,6 @@ async function readGoogleStream(res: Response, onText: (text: string) => void): 
   }
   if (!finishReason) throw new LLMTransientError("Provider stream interrupted before completion")
   return { ...result, candidates: [{ content: { parts: [{ text }] }, finishReason }] }
-}
-
-function safeParse(text: string): unknown {
-  try { return JSON.parse(text) } catch { return undefined }
 }
 
 // Gemini's `responseSchema` accepts only a subset of OpenAPI 3.0 / JSON Schema

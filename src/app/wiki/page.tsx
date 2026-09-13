@@ -25,10 +25,6 @@ import { COMPANION_CLEARANCE } from "@/components/layout/companion-clearance"
 import { LoadingState } from "@/components/ui/LoadingState"
 import { cn } from "@/components/ui/cn"
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
 const SHELF_LABELS: Record<PaperShelfStatus, string> = {
   saved: "Saved",
   enriched: "Enriched",
@@ -103,7 +99,7 @@ function WikiIndexPageContent() {
     if (!storage) return
     setBusy(true)
     try {
-      const day = today()
+      const day = new Date().toISOString().slice(0, 10)
       const path = `wiki/notes/note-${Date.now()}.md`
       const content = composePage({
         path,

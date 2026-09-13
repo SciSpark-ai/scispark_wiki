@@ -15,10 +15,6 @@ import { PageEditor } from "@/components/wiki/PageEditor"
 import { Backlinks } from "@/components/wiki/Backlinks"
 import DeleteConfirmCard from "@/components/wiki/DeleteConfirmCard"
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
 export default function WikiPageDetail() {
   const params = useParams()
   const router = useRouter()
@@ -75,7 +71,7 @@ export default function WikiPageDetail() {
   const handleSave = async () => {
     if (!storage || !page) return
     try {
-      const updatedFrontmatter = { ...page.frontmatter, updated: today() }
+      const updatedFrontmatter = { ...page.frontmatter, updated: new Date().toISOString().slice(0, 10) }
       const content = serializeDocument(updatedFrontmatter, body)
       await storage.write(page.path, content)
       setStatus("Saved")
