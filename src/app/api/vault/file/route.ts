@@ -53,34 +53,27 @@ function isChangesetAuditPath(path: string): boolean {
     || resolved === resolve(SENTINEL_ROOT, ".scispark/usage/review-attempts.json").toLowerCase()
 }
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  })
-}
-
 function requirePath(req: Request): string | null {
   const path = new URL(req.url).searchParams.get("path")
   return path && path.length > 0 ? path : null
 }
 
 function invalidPathResponse(): Response {
-  return jsonResponse(400, { error: "path must be a safe vault-relative path" })
+  return Response.json({ error: "path must be a safe vault-relative path" }, { status: 400 })
 }
 
 export async function GET(req: Request): Promise<Response> {
   const path = requirePath(req)
-  if (!path) return jsonResponse(400, { error: "path is required" })
+  if (!path) return Response.json({ error: "path is required" }, { status: 400 })
   if (isProtectedPath(path)) {
-    return jsonResponse(403, { error: "settings are managed via /api/settings" })
+    return Response.json({ error: "settings are managed via /api/settings" }, { status: 403 })
   }
   if (!isSafeVaultRelativePath(path)) return invalidPathResponse()
 
   try {
     const storage = await getServerVault()
     const bytes = await storage.readBinary(path)
-    if (bytes === null) return jsonResponse(404, { error: "not found" })
+    if (bytes === null) return Response.json({ error: "not found" }, { status: 404 })
 
     return new Response(bytes as Uint8Array<ArrayBuffer>, {
       status: 200,
@@ -88,19 +81,19 @@ export async function GET(req: Request): Promise<Response> {
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return jsonResponse(500, { error: message })
+    return Response.json({ error: message }, { status: 500 })
   }
 }
 
 export async function PUT(req: Request): Promise<Response> {
   const path = requirePath(req)
-  if (!path) return jsonResponse(400, { error: "path is required" })
+  if (!path) return Response.json({ error: "path is required" }, { status: 400 })
   if (isProtectedPath(path)) {
-    return jsonResponse(403, { error: "settings are managed via /api/settings" })
+    return Response.json({ error: "settings are managed via /api/settings" }, { status: 403 })
   }
   if (!isSafeVaultRelativePath(path)) return invalidPathResponse()
   if (isChangesetAuditPath(path)) {
-    return jsonResponse(403, { error: "changeset audit records are server-managed" })
+    return Response.json({ error: "changeset audit records are server-managed" }, { status: 403 })
   }
 
   try {
@@ -116,19 +109,19 @@ export async function PUT(req: Request): Promise<Response> {
     return new Response(null, { status: 204 })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return jsonResponse(500, { error: message })
+    return Response.json({ error: message }, { status: 500 })
   }
 }
 
 export async function DELETE(req: Request): Promise<Response> {
   const path = requirePath(req)
-  if (!path) return jsonResponse(400, { error: "path is required" })
+  if (!path) return Response.json({ error: "path is required" }, { status: 400 })
   if (isProtectedPath(path)) {
-    return jsonResponse(403, { error: "settings are managed via /api/settings" })
+    return Response.json({ error: "settings are managed via /api/settings" }, { status: 403 })
   }
   if (!isSafeVaultRelativePath(path)) return invalidPathResponse()
   if (isChangesetAuditPath(path)) {
-    return jsonResponse(403, { error: "changeset audit records are server-managed" })
+    return Response.json({ error: "changeset audit records are server-managed" }, { status: 403 })
   }
 
   try {
@@ -138,6 +131,6 @@ export async function DELETE(req: Request): Promise<Response> {
     return new Response(null, { status: 204 })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return jsonResponse(500, { error: message })
+    return Response.json({ error: message }, { status: 500 })
   }
 }

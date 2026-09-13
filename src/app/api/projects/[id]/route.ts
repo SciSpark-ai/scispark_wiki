@@ -6,7 +6,6 @@ import {
 } from "@/lib/projects/repository"
 import {
   deleteProjectSchema,
-  jsonResponse,
   parseJsonBody,
   projectErrorResponse,
   updateProjectSchema,
@@ -18,7 +17,7 @@ type RouteContext = { params: Promise<{ id: string }> }
 export async function GET(_request: Request, context: RouteContext): Promise<Response> {
   try {
     const { id } = await context.params
-    return jsonResponse(200, await getProject(await getServerVault(), id))
+    return Response.json(await getProject(await getServerVault(), id), { status: 200 })
   } catch (error) {
     return projectErrorResponse(error)
   }
@@ -28,7 +27,7 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
   try {
     const { id } = await context.params
     const input = await parseJsonBody(request, updateProjectSchema)
-    return jsonResponse(200, await updateProject(await getServerVault(), id, input))
+    return Response.json(await updateProject(await getServerVault(), id, input), { status: 200 })
   } catch (error) {
     return projectErrorResponse(error)
   }
@@ -39,10 +38,10 @@ export async function DELETE(request: Request, context: RouteContext): Promise<R
     const { id } = await context.params
     const preview = new URL(request.url).searchParams.get("preview")
     if (preview === "true") {
-      return jsonResponse(200, { result: await previewDeleteProject(await getServerVault(), id) })
+      return Response.json({ result: await previewDeleteProject(await getServerVault(), id) }, { status: 200 })
     }
     const input = await parseJsonBody(request, deleteProjectSchema)
-    return jsonResponse(200, await deleteProject(await getServerVault(), id, input))
+    return Response.json(await deleteProject(await getServerVault(), id, input), { status: 200 })
   } catch (error) {
     return projectErrorResponse(error)
   }

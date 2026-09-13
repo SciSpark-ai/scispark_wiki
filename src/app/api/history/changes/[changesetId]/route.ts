@@ -5,13 +5,6 @@ import {
 import { getChangesetPreview } from "@/lib/vault/history"
 import { getServerVault } from "@/lib/server/vault"
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  })
-}
-
 export async function GET(
   _request: Request,
   context: { params: Promise<{ changesetId: string }> },
@@ -19,16 +12,16 @@ export async function GET(
   const { changesetId } = await context.params
   try {
     const storage = await getServerVault()
-    return jsonResponse(200, await getChangesetPreview(storage, changesetId))
+    return Response.json(await getChangesetPreview(storage, changesetId), { status: 200 })
   } catch (error) {
     if (error instanceof ChangesetNotFoundError) {
-      return jsonResponse(404, { error: error.message })
+      return Response.json({ error: error.message }, { status: 404 })
     }
     if (error instanceof ChangesetInvalidError) {
-      return jsonResponse(400, { error: error.message })
+      return Response.json({ error: error.message }, { status: 400 })
     }
-    return jsonResponse(500, {
+    return Response.json({
       error: error instanceof Error ? error.message : String(error),
-    })
+    }, { status: 500 })
   }
 }

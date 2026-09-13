@@ -34,13 +34,6 @@ export const runtime = "nodejs"
 const USAGE_PREFIX = ".scispark/usage/"
 const CHANGESET_PREFIX = ".scispark/changesets/"
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  })
-}
-
 export async function GET(): Promise<Response> {
   try {
     const vault = await getServerVault()
@@ -100,8 +93,8 @@ export async function GET(): Promise<Response> {
     const acceptance = summarizeAcceptance(changesets, revertedIds, records)
     const recentRuns = await readLedger(vault, { limit: 20 })
 
-    return jsonResponse(200, { summary, budgetUsd: settings.dailyBudgetUsd, acceptance, recentRuns })
+    return Response.json({ summary, budgetUsd: settings.dailyBudgetUsd, acceptance, recentRuns }, { status: 200 })
   } catch (err) {
-    return jsonResponse(500, { error: err instanceof Error ? err.message : String(err) })
+    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
 }

@@ -21,10 +21,6 @@ export interface CachedDigestRouteResult {
   digest: DigestResult | null
 }
 
-function jsonResponse(status: number, body: unknown): Response {
-  return Response.json(body, { status })
-}
-
 /**
  * GET /api/skills/digest?slug=... — read-only cache lookup used when a paper
  * page opens. A miss returns `{digest:null}` and, critically, never acquires
@@ -32,14 +28,14 @@ function jsonResponse(status: number, body: unknown): Response {
  */
 export async function GET(request: Request): Promise<Response> {
   const slug = new URL(request.url).searchParams.get("slug")
-  if (!slug) return jsonResponse(400, { error: "slug is required" })
-  if (!isDigestCacheSlug(slug)) return jsonResponse(400, { error: "slug must be a canonical paper slug" })
+  if (!slug) return Response.json({ error: "slug is required" }, { status: 400 })
+  if (!isDigestCacheSlug(slug)) return Response.json({ error: "slug must be a canonical paper slug" }, { status: 400 })
 
   try {
     const digest = await loadCachedDigestBySlug(await getServerVault(), slug)
-    return jsonResponse(200, { result: { digest } satisfies CachedDigestRouteResult })
+    return Response.json({ result: { digest } satisfies CachedDigestRouteResult }, { status: 200 })
   } catch (error) {
-    return jsonResponse(500, { error: error instanceof Error ? error.message : String(error) })
+    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
   }
 }
 

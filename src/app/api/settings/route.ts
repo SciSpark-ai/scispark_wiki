@@ -56,13 +56,6 @@ export interface SettingsResponse {
   ui: UiSettings
 }
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  })
-}
-
 /**
  * Reads the raw `ui` sub-object directly. Unlike llm/companion/trending, `ui`
  * has no dedicated storage-backed loader — src/lib/ui/settings.ts is kept
@@ -124,10 +117,10 @@ export async function GET(): Promise<Response> {
       trending,
       ui: normalizeUiSettings(uiRaw),
     }
-    return jsonResponse(200, body)
+    return Response.json(body, { status: 200 })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return jsonResponse(500, { error: message })
+    return Response.json({ error: message }, { status: 500 })
   }
 }
 
@@ -136,11 +129,11 @@ export async function PUT(req: Request): Promise<Response> {
   try {
     payload = await req.json()
   } catch {
-    return jsonResponse(400, { error: "invalid JSON body" })
+    return Response.json({ error: "invalid JSON body" }, { status: 400 })
   }
 
   if (payload === null || typeof payload !== "object") {
-    return jsonResponse(400, { error: "body must be an object" })
+    return Response.json({ error: "body must be an object" }, { status: 400 })
   }
   const body = payload as { patch?: unknown; companion?: unknown; trending?: unknown; ui?: unknown }
 
@@ -152,31 +145,31 @@ export async function PUT(req: Request): Promise<Response> {
   // (kept for back-compat with the debug page's combined save); `companion`,
   // `trending`, and `ui` are full-object replacements.
   if (!hasPatch && !hasCompanion && !hasTrending && !hasUi) {
-    return jsonResponse(400, { error: "at least one of patch, companion, trending, ui is required" })
+    return Response.json({ error: "at least one of patch, companion, trending, ui is required" }, { status: 400 })
   }
 
   let p: Partial<LLMSettings> = {}
   if (hasPatch) {
     if (body.patch === null || typeof body.patch !== "object") {
-      return jsonResponse(400, { error: "patch must be an object" })
+      return Response.json({ error: "patch must be an object" }, { status: 400 })
     }
     p = body.patch as Partial<LLMSettings>
     if (p.engines !== undefined) {
       const parsed = EngineSettingsSchema.safeParse(p.engines)
-      if (!parsed.success) return jsonResponse(400, { error: "Invalid engine settings" })
+      if (!parsed.success) return Response.json({ error: "Invalid engine settings" }, { status: 400 })
       p.engines = parsed.data
     }
   }
   if (hasCompanion && (body.companion === null || typeof body.companion !== "object")) {
-    return jsonResponse(400, { error: "companion must be an object" })
+    return Response.json({ error: "companion must be an object" }, { status: 400 })
   }
   if (hasTrending && (body.trending === null || typeof body.trending !== "object")) {
-    return jsonResponse(400, { error: "trending must be an object" })
+    return Response.json({ error: "trending must be an object" }, { status: 400 })
   }
   const topicError = hasTrending ? manualAnchorError(body.trending) : null
-  if (topicError) return jsonResponse(400, { error: topicError })
+  if (topicError) return Response.json({ error: topicError }, { status: 400 })
   if (hasUi && (body.ui === null || typeof body.ui !== "object")) {
-    return jsonResponse(400, { error: "ui must be an object" })
+    return Response.json({ error: "ui must be an object" }, { status: 400 })
   }
 
   try {
@@ -247,9 +240,9 @@ export async function PUT(req: Request): Promise<Response> {
       trending: nextTrending,
       ui: nextUi,
     }
-    return jsonResponse(200, res)
+    return Response.json(res, { status: 200 })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return jsonResponse(500, { error: message })
+    return Response.json({ error: message }, { status: 500 })
   }
 }

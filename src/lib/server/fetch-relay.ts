@@ -66,14 +66,6 @@ export interface HandleFetchRelayDeps {
   timeoutMs?: number
 }
 
-function jsonResponse(status: number, body: unknown, headers?: Record<string, string>): Response {
-  const h = new Headers({ "Content-Type": "application/json" })
-  if (headers) {
-    for (const [key, value] of Object.entries(headers)) h.set(key, value)
-  }
-  return new Response(JSON.stringify(body), { status, headers: h })
-}
-
 function isAllowedHost(hostname: string): boolean {
   return RELAY_ALLOWED_HOSTS.some((entry) => hostname === entry || hostname.endsWith("." + entry))
 }
@@ -154,17 +146,17 @@ export async function handleFetchRelay(
 ): Promise<Response> {
   const buckets = deps.ipBuckets ?? defaultIpBuckets
   if (!buckets.take(clientKey)) {
-    return jsonResponse(429, ERROR_RATE_LIMITED, { "Retry-After": RATE_LIMIT_RETRY_AFTER_SECONDS })
+    return Response.json(ERROR_RATE_LIMITED, { status: 429, headers: { "Retry-After": RATE_LIMIT_RETRY_AFTER_SECONDS } })
   }
 
   let url = parseUrl(rawUrl)
   if (!url) {
-    return jsonResponse(400, ERROR_BAD_URL)
+    return Response.json(ERROR_BAD_URL, { status: 400 })
   }
 
   const initialRejection = rejectionStatus(url)
   if (initialRejection) {
-    return jsonResponse(initialRejection, ERROR_FORBIDDEN)
+    return Response.json(ERROR_FORBIDDEN, { status: initialRejection })
   }
 
   const fetchFn = deps.fetchFn ?? fetch
@@ -178,7 +170,7 @@ export async function handleFetchRelay(
     } catch {
       // Network failure talking to an already-allowlisted host: generic
       // 502, no upstream error message or URL leaked to the caller.
-      return jsonResponse(502, ERROR_UPSTREAM)
+      return Response.json(ERROR_UPSTREAM, { status: 502 })
     }
 
     if (response.status >= 300 && response.status < 400) {
@@ -186,19 +178,19 @@ export async function handleFetchRelay(
       if (!location) break // Redirect with no Location: treat as the final (non-redirect) response.
 
       if (hops >= MAX_REDIRECT_HOPS) {
-        return jsonResponse(403, ERROR_FORBIDDEN)
+        return Response.json(ERROR_FORBIDDEN, { status: 403 })
       }
 
       let nextUrl: URL
       try {
         nextUrl = new URL(location, url)
       } catch {
-        return jsonResponse(400, ERROR_BAD_URL)
+        return Response.json(ERROR_BAD_URL, { status: 400 })
       }
 
       const hopRejection = rejectionStatus(nextUrl)
       if (hopRejection) {
-        return jsonResponse(hopRejection, ERROR_FORBIDDEN)
+        return Response.json(ERROR_FORBIDDEN, { status: hopRejection })
       }
 
       hops += 1
@@ -212,7 +204,7 @@ export async function handleFetchRelay(
   const contentType = response.headers.get("content-type") ?? ""
   const contentTypePrefix = contentType.split(";")[0].trim().toLowerCase()
   if (!ALLOWED_CONTENT_TYPES.has(contentTypePrefix)) {
-    return jsonResponse(415, ERROR_UNSUPPORTED_TYPE)
+    return Response.json(ERROR_UNSUPPORTED_TYPE, { status: 415 })
   }
 
   const outHeaders = new Headers()
