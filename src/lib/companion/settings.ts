@@ -1,5 +1,5 @@
 import type { VaultStorage } from "../vault/storage"
-import { withSettingsWrite } from "../vault/settings-write"
+import { withSettingsWrite, readSettingsFile } from "../vault/settings-write"
 import { COMPANION } from "./persona"
 
 /**
@@ -9,8 +9,6 @@ import { COMPANION } from "./persona"
  * discipline: reading tolerates a missing file/section, and saving never
  * clobbers sibling top-level keys.
  */
-
-const SETTINGS_PATH = ".scispark/settings.json"
 
 export type Chattiness = "off" | "low" | "medium" | "high"
 
@@ -46,17 +44,6 @@ export const DAILY_BUDGET: Record<Chattiness, number> = {
 export const SESSION_BUDGET = DAILY_BUDGET
 export const MIN_GAP_MS: Record<Chattiness, number> = {
   off: Infinity, low: 60 * 60_000, medium: 30 * 60_000, high: 15 * 60_000,
-}
-
-async function readJsonFile(storage: VaultStorage): Promise<Record<string, unknown>> {
-  const raw = await storage.read(SETTINGS_PATH)
-  if (raw == null) return {}
-  try {
-    const parsed = JSON.parse(raw)
-    return parsed !== null && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {}
-  } catch {
-    return {}
-  }
 }
 
 /**
@@ -107,7 +94,7 @@ export function normalizeCompanionSettings(raw: unknown): CompanionSettings {
 }
 
 export async function loadCompanionSettings(storage: VaultStorage): Promise<CompanionSettings> {
-  const file = await readJsonFile(storage)
+  const file = await readSettingsFile(storage)
   return normalizeCompanionSettings(file.companion)
 }
 

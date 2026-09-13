@@ -1,3 +1,4 @@
+import { readErrorMessage } from "../http"
 import type { SaveAnswerAsQueryOpts, SaveAnswerAsQueryResult } from "./save-query"
 
 /**
@@ -13,15 +14,6 @@ import type { SaveAnswerAsQueryOpts, SaveAnswerAsQueryResult } from "./save-quer
  * only, so nothing from `./save-query` (which calls `applyChangeset`
  * directly against a `VaultStorage`) is pulled into the client bundle.
  */
-
-async function readErrorMessage(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await res.json()) as { error?: string }
-    return body?.error ?? fallback
-  } catch {
-    return fallback
-  }
-}
 
 export async function saveAnswerAsQueryRemote(
   opts: SaveAnswerAsQueryOpts,

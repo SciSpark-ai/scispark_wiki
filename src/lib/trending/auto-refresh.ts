@@ -136,3 +136,15 @@ export async function maybeAutoRefreshTrending(
     return "failed"
   }
 }
+
+/** Best-effort `lastError` from the refresh failure marker, for ledger/UI reasons. */
+export async function readRefreshFailureReason(storage: VaultStorage): Promise<string | undefined> {
+  try {
+    const raw = await storage.read(REFRESH_FAILURE_PATH)
+    if (raw == null) return undefined
+    const parsed = JSON.parse(raw) as { lastError?: unknown }
+    return typeof parsed.lastError === "string" ? parsed.lastError : undefined
+  } catch {
+    return undefined
+  }
+}

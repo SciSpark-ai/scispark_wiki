@@ -1,14 +1,8 @@
+import { readErrorMessage } from "../http"
 import type { ReadingCompanionInput, ReadingAnswer } from "../skills/reading-companion"
 import { readNdjson } from "../server/ndjson"
 import type { SaveReadingAnswerInput } from "./save-answer-contract"
 import type { SaveAnswerAsQueryResult } from "../chat/save-query"
-
-export async function saveReadingAnswerRemote(input: SaveReadingAnswerInput, fetchFn: typeof fetch = fetch): Promise<SaveAnswerAsQueryResult> {
-  const res = await fetchFn("/api/skills/ask/save", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) })
-  if (!res.ok) throw new Error(await readErrorMessage(res, "Could not integrate this answer."))
-  const body = await res.json() as { result: SaveAnswerAsQueryResult }
-  return body.result
-}
 
 /**
  * Browser-side caller for the reading-companion ask skill route (M11 Task 9).
@@ -25,13 +19,11 @@ export async function saveReadingAnswerRemote(input: SaveReadingAnswerInput, fet
  * of `Seed`/`QuickSparkResult` from server-side modules.
  */
 
-async function readErrorMessage(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await res.json()) as { error?: string }
-    return body?.error ?? fallback
-  } catch {
-    return fallback
-  }
+export async function saveReadingAnswerRemote(input: SaveReadingAnswerInput, fetchFn: typeof fetch = fetch): Promise<SaveAnswerAsQueryResult> {
+  const res = await fetchFn("/api/skills/ask/save", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) })
+  if (!res.ok) throw new Error(await readErrorMessage(res, "Could not integrate this answer."))
+  const body = await res.json() as { result: SaveAnswerAsQueryResult }
+  return body.result
 }
 
 /** POST /api/skills/ask with a `ReadingCompanionInput`; resolves with the `ReadingAnswer`. */

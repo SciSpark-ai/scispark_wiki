@@ -1,22 +1,9 @@
 import { withLedger } from "@/lib/runs/ledger"
 import { jsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
-import type { VaultStorage } from "@/lib/vault/storage"
 import { loadSettings } from "@/lib/llm/settings"
 import { nodeTopWorksFn, nodeCountFn, nodeTopicGroupFn, nodeTopicFieldGroupFn } from "@/lib/papers/node-search"
 
-import { maybeAutoRefreshTrending, REFRESH_FAILURE_PATH } from "@/lib/trending/auto-refresh"
-
-/** Best-effort read of the failure marker's `lastError`, for the ledger's "failed" reason. */
-async function readFailureReason(storage: VaultStorage): Promise<string | undefined> {
-  try {
-    const raw = await storage.read(REFRESH_FAILURE_PATH)
-    if (raw == null) return undefined
-    const parsed = JSON.parse(raw) as { lastError?: unknown }
-    return typeof parsed.lastError === "string" ? parsed.lastError : undefined
-  } catch {
-    return undefined
-  }
-}
+import { maybeAutoRefreshTrending, readRefreshFailureReason } from "@/lib/trending/auto-refresh"
 
 /**
  * POST /api/skills/trending/auto-refresh — body `{}`, JSON result
@@ -42,7 +29,7 @@ export const POST = jsonSkillRoute<Record<string, never>, "refreshed" | "fresh" 
     providerOverride: overrides.providerOverride,
     })
     if (result === "refreshed") return { result, status: "ok" }
-    if (result === "failed") return { result, status: "failed", reason: await readFailureReason(vault) }
+    if (result === "failed") return { result, status: "failed", reason: await readRefreshFailureReason(vault) }
     return { result, status: "skipped", reason: result }
   })
 })

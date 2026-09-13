@@ -1,5 +1,5 @@
 import type { VaultStorage } from "../vault/storage"
-import { withSettingsWrite } from "../vault/settings-write"
+import { withSettingsWrite, readSettingsFile } from "../vault/settings-write"
 import type { TrackedField } from "./fields"
 import { MAX_TRACKED_FIELDS } from "./fields"
 import type { AnchorDiscipline } from "./anchors"
@@ -13,8 +13,6 @@ import { openAlexSubfield } from "./openalex-subfields"
  * src/lib/companion/settings.ts: reading tolerates a missing file/section,
  * saving never clobbers sibling keys, and writes are serialized per storage.
  */
-
-const SETTINGS_PATH = ".scispark/settings.json"
 
 export type Cadence = "daily" | "weekly"
 
@@ -82,17 +80,6 @@ function dedupeFieldsBySlug(fields: TrackedField[]): TrackedField[] {
   return out
 }
 
-async function readJsonFile(storage: VaultStorage): Promise<Record<string, unknown>> {
-  const raw = await storage.read(SETTINGS_PATH)
-  if (raw == null) return {}
-  try {
-    const parsed = JSON.parse(raw)
-    return parsed !== null && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {}
-  } catch {
-    return {}
-  }
-}
-
 /**
  * Validates a raw `trending` section (from the settings file or an API
  * payload) into a full TrendingSettings, falling back to defaults for any
@@ -132,7 +119,7 @@ export function normalizeTrendingSettings(raw: unknown): TrendingSettings {
 }
 
 export async function loadTrendingSettings(storage: VaultStorage): Promise<TrendingSettings> {
-  const file = await readJsonFile(storage)
+  const file = await readSettingsFile(storage)
   return normalizeTrendingSettings(file.trending)
 }
 

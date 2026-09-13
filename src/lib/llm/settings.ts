@@ -1,7 +1,7 @@
 import { EngineSettingsSchema, DEFAULT_ENGINES, type EngineSettings } from "../engines/contracts"
 import { LocalEngineProvider } from "../engines/local-provider"
 import type { VaultStorage } from "../vault/storage"
-import { withSettingsWrite } from "../vault/settings-write"
+import { withSettingsWrite, readSettingsFile } from "../vault/settings-write"
 import type { LLMProvider, ProviderId, Tier } from "./types"
 import { LLMError } from "./types"
 import { AnthropicProvider } from "./providers/anthropic"
@@ -11,8 +11,6 @@ function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, "")
 }
 import { GoogleProvider } from "./providers/google"
-
-const SETTINGS_PATH = ".scispark/settings.json"
 
 export interface LLMSettings {
   engines?: EngineSettings
@@ -49,19 +47,8 @@ export class MissingKeyError extends LLMError {
   }
 }
 
-async function readJsonFile(storage: VaultStorage): Promise<Record<string, unknown>> {
-  const raw = await storage.read(SETTINGS_PATH)
-  if (raw == null) return {}
-  try {
-    const parsed = JSON.parse(raw)
-    return parsed !== null && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {}
-  } catch {
-    return {}
-  }
-}
-
 export async function loadSettings(storage: VaultStorage): Promise<LLMSettings> {
-  const file = await readJsonFile(storage)
+  const file = await readSettingsFile(storage)
   const llm = (file.llm !== null && typeof file.llm === "object" ? file.llm : {}) as Partial<LLMSettings>
 
   return {

@@ -1,3 +1,4 @@
+import { readErrorMessage } from "../http"
 import type { Changeset } from "./types"
 
 /**
@@ -10,15 +11,6 @@ import type { Changeset } from "./types"
  * `applyChangeset`/`revertChangeset` the route already wraps
  * (`src/app/api/vault/changeset/route.ts`, built in M11 Task 2).
  */
-
-async function readErrorMessage(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await res.json()) as { error?: string }
-    return body?.error ?? fallback
-  } catch {
-    return fallback
-  }
-}
 
 /**
  * POST /api/vault/changeset with `{action: "apply", changeset}`. Resolves on

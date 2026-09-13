@@ -1,3 +1,4 @@
+import { readErrorMessage } from "../http"
 import { readNdjson } from "../server/ndjson"
 import type { LintFinding, LintFixOutcome } from "./types"
 
@@ -29,15 +30,6 @@ export interface LintPairProgress {
   index: number
   total: number
   pair: { a: string; b: string }
-}
-
-async function readErrorMessage(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await res.json()) as { error?: string }
-    return body?.error ?? fallback
-  } catch {
-    return fallback
-  }
 }
 
 /**

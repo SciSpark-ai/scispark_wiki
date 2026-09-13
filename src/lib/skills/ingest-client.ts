@@ -1,3 +1,4 @@
+import { readErrorMessage } from "../http"
 import { readNdjson } from "../server/ndjson"
 import type { PaperRecord } from "../papers/types"
 import { paperSlug } from "../wiki/authoring"
@@ -29,15 +30,6 @@ export interface DigestRemoteResult {
 
 interface CachedDigestRemoteResult {
   digest: DigestResult | null
-}
-
-async function readErrorMessage(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await res.json()) as { error?: string }
-    return body?.error ?? fallback
-  } catch {
-    return fallback
-  }
 }
 
 /** POST /api/skills/digest with `{paper}`; resolves with `{digest, fromCache, costUsd}`. */
