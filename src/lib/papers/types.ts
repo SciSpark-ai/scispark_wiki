@@ -147,3 +147,6 @@ export function clampLimit(limit: number | undefined): number {
   if (limit == null || Number.isNaN(limit)) return DEFAULT_LIMIT
   return Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, Math.floor(limit)))
 }
+
+/** Per-request ceiling for source adapters (connection + headers + body). */
+export const SOURCE_FETCH_TIMEOUT_MS = 15_000

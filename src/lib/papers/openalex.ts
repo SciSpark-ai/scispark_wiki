@@ -1,5 +1,4 @@
-import { clampLimit } from "./types"
-import { fetchWithTimeout } from "./fetch-timeout"
+import { clampLimit, SOURCE_FETCH_TIMEOUT_MS } from "./types"
 import { openAlexSubfield } from "../trending/openalex-subfields"
 import { openAlexField } from "../trending/openalex-fields"
 import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
@@ -318,7 +317,7 @@ async function fetchOpenAlexJson(url: string, deps: OpenAlexDeps): Promise<unkno
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let response: Response
     try {
-      response = await fetchWithTimeout(fetchFn, url)
+      response = await fetchFn(url, { signal: AbortSignal.timeout(SOURCE_FETCH_TIMEOUT_MS) })
     } catch (err) {
       // Network error — transient, retry with backoff.
       lastError = new PaperSourceError(err instanceof Error ? err.message : "OpenAlex request failed")

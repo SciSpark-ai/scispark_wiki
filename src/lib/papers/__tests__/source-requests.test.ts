@@ -123,15 +123,23 @@ describe("source HTTP pacing", () => {
   })
 
   it("aborts active fetches and stalled bodies when the adapter deadline expires", async () => {
-    let activeSignal: AbortSignal | undefined
-    const pending = searchS2({ query: "x" }, { fetchFn: async (_url, init) => {
-      activeSignal = init!.signal!
-      return { ok: true, json: () => new Promise(() => {}) } as Response
-    } })
-    const failed = expect(pending).rejects.toMatchObject({ name: "TimeoutError" })
-    await vi.advanceTimersByTimeAsync(20_000)
-    await failed
-    expect(activeSignal!.aborted).toBe(true)
-    expect(vi.getTimerCount()).toBe(0)
+    // Native AbortSignal.timeout uses a real clock, independent of Vitest's
+    // fake timers. Exercise that native signal with a short real deadline.
+    const nativeTimeout = AbortSignal.timeout.bind(AbortSignal)
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => nativeTimeout(10))
+    try {
+      let activeSignal: AbortSignal | undefined
+      const pending = searchS2({ query: "x" }, { fetchFn: async (_url, init) => {
+        activeSignal = init!.signal!
+        return { ok: true, json: () => new Promise(() => {}) } as Response
+      } })
+      const failed = expect(pending).rejects.toMatchObject({ name: "TimeoutError" })
+      await failed
+      expect(timeout).toHaveBeenCalledWith(20_000)
+      expect(activeSignal!.aborted).toBe(true)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      timeout.mockRestore()
+    }
   })
 })
