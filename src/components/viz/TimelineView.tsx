@@ -1,7 +1,6 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { scaleLinear } from "d3-scale"
 import { displayTitle } from "@/lib/papers/title"
 import type { Timeline, TimelineItem } from "@/lib/viz/timeline"
 import { topLanes, OTHER_LANE_ID } from "@/lib/viz/layout"
@@ -34,9 +33,16 @@ function decimalYear(item: TimelineItem): number {
   return y + frac
 }
 
+/** d3's tick-step rule (1/2/5 × 10ⁿ) without the dependency; years only. */
+function tickStep(span: number, count: number): number {
+  const raw = span / Math.max(1, count)
+  const power = 10 ** Math.floor(Math.log10(raw))
+  const ratio = raw / power
+  return power * (ratio >= Math.sqrt(50) ? 10 : ratio >= Math.sqrt(10) ? 5 : ratio >= Math.sqrt(2) ? 2 : 1)
+}
+
 /** Sensible tick years for the axis: every year when the span is narrow,
- * otherwise d3's "nice" tick picker (which naturally lands on decades for
- * wide ranges). */
+ * otherwise "nice" steps that land on decades for wide ranges. */
 function tickYears(minYear: number, maxYear: number, pxPerYear: number): number[] {
   const span = maxYear - minYear
   if (span <= 0) return [minYear]
@@ -46,7 +52,10 @@ function tickYears(minYear: number, maxYear: number, pxPerYear: number): number[
     return ticks
   }
   const approxTickCount = Math.max(4, Math.min(10, Math.round((span * pxPerYear) / 90)))
-  return scaleLinear().domain([minYear, maxYear]).ticks(approxTickCount).map((t) => Math.round(t))
+  const step = tickStep(span, approxTickCount)
+  const ticks: number[] = []
+  for (let y = Math.ceil(minYear / step) * step; y <= maxYear; y += step) ticks.push(y)
+  return ticks
 }
 
 interface TimelineViewProps {
@@ -64,7 +73,7 @@ interface TimelineViewProps {
 }
 
 /**
- * Horizontal time axis (d3-scale math, React/SVG rendering) with one lane
+ * Horizontal time axis (arithmetic, React/SVG rendering) with one lane
  * row per topic (top ~12 by itemCount, the rest merged into "Other" via
  * `topLanes`). Items are dots positioned by date, colored by type. Items
  * with an unparseable date (`year === 0`, excluded from `minYear`/`maxYear`
@@ -130,10 +139,10 @@ export default function TimelineView({ timeline, selectedId = null, onSelect }: 
   const span = Math.max(timeline.maxYear - timeline.minYear, 1)
   const pxPerYear = Math.max(PX_PER_YEAR_MIN, Math.min(PX_PER_YEAR_MAX, Math.round(1200 / span)))
   const chartWidth = span * pxPerYear
-  const domainPad = Math.max(0.5, 0.5)
-  const scale = scaleLinear()
-    .domain([timeline.minYear - domainPad, timeline.maxYear + domainPad])
-    .range([0, chartWidth])
+  const domainPad = 0.5
+  const domainMin = timeline.minYear - domainPad
+  const domainSpan = timeline.maxYear + domainPad - domainMin
+  const scale = (year: number) => ((year - domainMin) / domainSpan) * chartWidth
 
   const ticks = tickYears(timeline.minYear, timeline.maxYear, pxPerYear)
   const gutterX = chartWidth + 16
