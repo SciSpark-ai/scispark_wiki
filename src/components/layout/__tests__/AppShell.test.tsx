@@ -19,7 +19,6 @@ vi.mock("../UserIdentityHydrator", () => ({ UserIdentityHydrator: () => null }))
 vi.mock("@/components/notes/SelectionToNoteBubble", () => ({ SelectionToNoteBubble: () => null }))
 vi.mock("@/components/companion/CompanionMascot", () => ({ CompanionMascot: () => null }))
 vi.mock("@/components/settings/SettingsModal", () => ({ default: () => null }))
-vi.mock("@/components/projects/LegacyPrototypeWarning", () => ({ LegacyPrototypeWarning: () => null }))
 
 import { AppShell } from "../AppShell"
 

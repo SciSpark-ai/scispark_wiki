@@ -12,7 +12,6 @@ import { useCompanion } from "@/components/companion/useCompanion";
 import SettingsModal from "@/components/settings/SettingsModal";
 import ThemeApplier from "./ThemeApplier";
 import NavHistoryTracker from "./NavHistoryTracker";
-import { LegacyPrototypeWarning } from "@/components/projects/LegacyPrototypeWarning";
 import { UserIdentityHydrator } from "./UserIdentityHydrator";
 
 interface AppShellProps {
@@ -56,7 +55,6 @@ export function AppShell({ children }: AppShellProps) {
       <SettingsModal />
       <ThemeApplier />
       <NavHistoryTracker />
-      <LegacyPrototypeWarning />
       <UserIdentityHydrator />
     </div>
   );
