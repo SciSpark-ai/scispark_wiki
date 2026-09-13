@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { AnimatePresence, motion } from "framer-motion"
 import { Check, FolderOpen, Plus, X } from "lucide-react"
 import { createProjectNoteRemote, listProjectsRemote } from "@/lib/projects/client"
 import type { ProjectSummary } from "@/lib/projects/types"
@@ -127,32 +126,25 @@ export function SelectionToNoteBubble() {
   if (!state) return null
 
   return (
-    <AnimatePresence>
-      <motion.div
-        key="bubble"
-        data-selection-bubble
-        initial={{ opacity: 0, y: 6, scale: 0.94 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 4, scale: 0.94 }}
-        transition={{ duration: 0.15, ease: "easeOut" }}
-        style={{ position: "fixed", top: Math.max(8, Math.min(state.top, window.innerHeight - 100)), left: Math.max(8, Math.min(state.left, window.innerWidth - 368)), zIndex: 70 }}
-        className="max-w-[calc(100vw-16px)] rounded-pill border border-border-warm/40 bg-light-surface shadow-md"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        {showConfirm ? (
-          <div className="flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-[13px] font-medium text-emerald-700"><Check size={14} />Saved to {chosenTitle}</div>
-        ) : !expanded ? (
-          <button type="button" onClick={() => setExpanded(true)} className="flex items-center gap-1.5 whitespace-nowrap rounded-pill px-3 py-1.5 text-[13px] font-medium text-espresso hover:bg-page-warm"><Plus size={14} className="text-accent-ink" />Save to note</button>
-        ) : (
-          <div className="flex w-[360px] max-w-full flex-wrap items-center gap-2 px-2 py-1.5">
-            <FolderOpen size={14} className="ml-1.5 shrink-0 text-accent-ink" />
-            {projects.length > 0 ? <select value={chosenProject} onChange={(event) => setChosenProject(event.target.value)} className="max-w-[180px] truncate bg-transparent text-[13px] text-espresso focus:outline-none">{projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select> : <span className="text-[12px] text-muted-text">Create a project first</span>}
-            <button type="button" disabled={!chosenProject || saving} onClick={() => void save()} className="rounded-pill bg-orange px-3 py-1 text-[12px] font-medium text-on-accent disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
-            <button type="button" aria-label="Cancel" onClick={() => { setState(null); setExpanded(false); window.getSelection()?.removeAllRanges() }} className="p-0.5 text-muted-text hover:text-espresso"><X size={13} /></button>
-            {error && <span className="max-w-[180px] truncate text-[11px] text-red-700" title={error}>{error}</span>}
-          </div>
-        )}
-      </motion.div>
-    </AnimatePresence>
+    <div
+      data-selection-bubble
+      style={{ position: "fixed", top: Math.max(8, Math.min(state.top, window.innerHeight - 100)), left: Math.max(8, Math.min(state.left, window.innerWidth - 368)), zIndex: 70 }}
+      className="max-w-[calc(100vw-16px)] rounded-pill border border-border-warm/40 bg-light-surface shadow-md transition-opacity duration-150 ease-out starting:opacity-0"
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      {showConfirm ? (
+        <div className="flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-[13px] font-medium text-emerald-700"><Check size={14} />Saved to {chosenTitle}</div>
+      ) : !expanded ? (
+        <button type="button" onClick={() => setExpanded(true)} className="flex items-center gap-1.5 whitespace-nowrap rounded-pill px-3 py-1.5 text-[13px] font-medium text-espresso hover:bg-page-warm"><Plus size={14} className="text-accent-ink" />Save to note</button>
+      ) : (
+        <div className="flex w-[360px] max-w-full flex-wrap items-center gap-2 px-2 py-1.5">
+          <FolderOpen size={14} className="ml-1.5 shrink-0 text-accent-ink" />
+          {projects.length > 0 ? <select value={chosenProject} onChange={(event) => setChosenProject(event.target.value)} className="max-w-[180px] truncate bg-transparent text-[13px] text-espresso focus:outline-none">{projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select> : <span className="text-[12px] text-muted-text">Create a project first</span>}
+          <button type="button" disabled={!chosenProject || saving} onClick={() => void save()} className="rounded-pill bg-orange px-3 py-1 text-[12px] font-medium text-on-accent disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
+          <button type="button" aria-label="Cancel" onClick={() => { setState(null); setExpanded(false); window.getSelection()?.removeAllRanges() }} className="p-0.5 text-muted-text hover:text-espresso"><X size={13} /></button>
+          {error && <span className="max-w-[180px] truncate text-[11px] text-red-700" title={error}>{error}</span>}
+        </div>
+      )}
+    </div>
   )
 }

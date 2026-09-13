@@ -1,14 +1,10 @@
 // @vitest-environment jsdom
-import { act, useEffect, useState, type ReactNode } from "react"
+import { act, useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { describe, expect, it, vi } from "vitest"
 
 const route = vi.hoisted(() => ({ pathname: "/chat" }))
 vi.mock("next/navigation", () => ({ usePathname: () => route.pathname }))
-vi.mock("framer-motion", () => ({
-  motion: { div: ({ children }: { children: ReactNode }) => <div>{children}</div> },
-  AnimatePresence: ({ children }: { children: ReactNode }) => children,
-}))
 vi.mock("@/stores/ui-store", () => ({ useUIStore: (select: (state: object) => unknown) => select({ desktopSidebarOpen: true }) }))
 vi.mock("../Sidebar", () => ({ Sidebar: () => null }))
 vi.mock("../MobileNav", () => ({ MobileNav: () => null }))
