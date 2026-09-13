@@ -1,82 +1,114 @@
-import { parseJsonLoosely } from "../json"
-import Anthropic from "@anthropic-ai/sdk"
 import type { LLMProvider, LLMRequest, LLMResult, ProviderId } from "../types"
 import {
   LLMAuthError, LLMBadRequestError, LLMRateLimitError, LLMRefusalError, LLMTransientError,
 } from "../types"
+import { readSseData } from "../sse"
+import { parseJsonLoosely } from "../json"
+
+const BASE_URL = "https://api.anthropic.com"
+const API_VERSION = "2023-06-01"
+// Covers connection, headers AND body (the signal aborts a streaming body too).
+const TIMEOUT_MS = 120_000
+
+interface MessagesResponse {
+  model?: string
+  content?: Array<{ type: string; text?: string }>
+  stop_reason?: string | null
+  usage?: { input_tokens?: number; output_tokens?: number }
+}
 
 export class AnthropicProvider implements LLMProvider {
   readonly id: ProviderId = "anthropic"
-  private client: Anthropic
 
-  constructor(apiKey: string, fetchFn?: typeof fetch) {
-    this.client = new Anthropic({
-      apiKey,
-      dangerouslyAllowBrowser: true, // BYOK: the user's own key, from local settings
-      maxRetries: 0,                 // retries are handled by withRetry at the harness layer
-      ...(fetchFn ? { fetch: fetchFn } : {}),
-    })
-  }
+  // BYOK: the user's own key from local settings; retries live in withRetry at the harness layer.
+  constructor(private apiKey: string, private fetchFn: typeof fetch = fetch) {}
 
   async complete(model: string, req: LLMRequest): Promise<LLMResult> {
     const system = req.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n")
     const messages = req.messages
       .filter((m) => m.role !== "system")
       .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }))
+    const body = {
+      model,
+      max_tokens: req.maxTokens ?? 8192,
+      ...(system ? { system } : {}),
+      messages,
+      ...(req.jsonSchema ? { output_config: { format: { type: "json_schema", schema: req.jsonSchema } } } : {}),
+      ...(req.onText ? { stream: true } : {}),
+    }
 
+    req.onText?.("")
+    let res: Response
     try {
-      req.onText?.("")
-      const params = {
-        model,
-        max_tokens: req.maxTokens ?? 8192,
-        ...(system ? { system } : {}),
-        messages,
-        ...(req.jsonSchema
-          ? { output_config: { format: { type: "json_schema" as const, schema: req.jsonSchema } } }
-          : {}),
-      }
-      let streamed = ""
-      const response = req.onText
-        ? await this.client.messages.stream(params).on("text", (delta) => {
-            streamed += delta
-            req.onText!(streamed)
-          }).finalMessage()
-        : await this.client.messages.create(params)
-
-      if (response.stop_reason === "refusal") {
-        throw new LLMRefusalError("provider declined the request")
-      }
-      const text = response.content
-        .filter((b): b is Anthropic.TextBlock => b.type === "text")
-        .map((b) => b.text)
-        .join("")
-      return {
-        text,
-        json: req.jsonSchema ? parseJsonLoosely(text) : undefined,
-        usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
-        model: response.model,
-        provider: this.id,
-        stopReason: response.stop_reason ?? "unknown",
-      }
+      res = await this.fetchFn(`${BASE_URL}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": this.apiKey,
+          "anthropic-version": API_VERSION,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      })
     } catch (e) {
-      throw mapError(e)
+      throw new LLMTransientError(e instanceof Error ? e.message : "network error")
+    }
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "")
+      if (res.status === 401 || res.status === 403) throw new LLMAuthError(text || `HTTP ${res.status}`)
+      if (res.status === 429) {
+        // Header absent → get() is null and Number(null) is 0 — must not become a 0ms hint.
+        const raw = res.headers.get("retry-after")
+        const ra = raw != null ? Number(raw) : NaN
+        throw new LLMRateLimitError(text || "rate limited", Number.isFinite(ra) && ra > 0 ? ra * 1000 : undefined)
+      }
+      if (res.status >= 500) throw new LLMTransientError(text || `HTTP ${res.status}`)
+      throw new LLMBadRequestError(text || `HTTP ${res.status}`)
+    }
+
+    const data = req.onText ? await readMessageStream(res, req.onText) : (await res.json()) as MessagesResponse
+    if (data.stop_reason === "refusal") throw new LLMRefusalError("provider declined the request")
+    const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join("")
+    return {
+      text,
+      json: req.jsonSchema ? parseJsonLoosely(text) : undefined,
+      usage: { inputTokens: data.usage?.input_tokens ?? 0, outputTokens: data.usage?.output_tokens ?? 0 },
+      model: data.model ?? model,
+      provider: this.id,
+      stopReason: data.stop_reason ?? "unknown",
     }
   }
 }
 
-function mapError(e: unknown): unknown {
-  if (e instanceof LLMRefusalError) return e
-  if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) {
-    return new LLMAuthError(e.message)
+/** Folds the Messages API event stream into one response, snapshotting the text so far to `onText`. */
+async function readMessageStream(res: Response, onText: (text: string) => void): Promise<MessagesResponse> {
+  const result: MessagesResponse = { usage: {} }
+  let text = ""
+  let stopped = false
+  for await (const data of readSseData(res)) {
+    const event = JSON.parse(data) as {
+      type: string
+      message?: MessagesResponse
+      delta?: { type?: string; text?: string; stop_reason?: string | null }
+      usage?: { output_tokens?: number }
+      error?: { message?: string }
+    }
+    if (event.type === "error") throw new LLMTransientError(event.error?.message ?? "Provider stream failed")
+    if (event.type === "message_start" && event.message) {
+      result.model = event.message.model
+      result.usage = { ...event.message.usage }
+    } else if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+      text += event.delta.text ?? ""
+      onText(text)
+    } else if (event.type === "message_delta") {
+      if (event.delta?.stop_reason) result.stop_reason = event.delta.stop_reason
+      if (event.usage?.output_tokens != null) result.usage = { ...result.usage, output_tokens: event.usage.output_tokens }
+    } else if (event.type === "message_stop") {
+      stopped = true
+    }
   }
-  if (e instanceof Anthropic.RateLimitError) {
-    const raw = e.headers?.get?.("retry-after")
-    const ra = raw != null ? Number(raw) : NaN
-    return new LLMRateLimitError(e.message, Number.isFinite(ra) && ra > 0 ? ra * 1000 : undefined)
-  }
-  if (e instanceof Anthropic.InternalServerError || e instanceof Anthropic.APIConnectionError) {
-    return new LLMTransientError(e instanceof Error ? e.message : "connection error")
-  }
-  if (e instanceof Anthropic.APIError) return new LLMBadRequestError(e.message)
-  return e
+  if (!stopped) throw new LLMTransientError("Provider stream interrupted before completion")
+  result.content = [{ type: "text", text }]
+  return result
 }

@@ -91,4 +91,13 @@ describe("AnthropicProvider", () => {
     await expect(p.complete("claude-haiku-4-5", { messages: [{ role: "user", content: "hi" }] }))
       .rejects.toThrow(LLMTransientError)
   })
+  it("authenticates with x-api-key and pins the API version", async () => {
+    const { fn, captured } = fakeFetch(200, OK_MESSAGE)
+    await new AnthropicProvider("sk-test", fn).complete("claude-haiku-4-5", { messages: [{ role: "user", content: "hi" }] })
+    const headers = captured.init?.headers as Record<string, string>
+    expect(headers["x-api-key"]).toBe("sk-test")
+    expect(headers["anthropic-version"]).toBe("2023-06-01")
+    expect(headers["content-type"]).toBe("application/json")
+  })
+
 })
