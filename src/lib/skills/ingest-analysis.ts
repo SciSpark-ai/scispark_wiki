@@ -1,3 +1,4 @@
+import { truncateAtWhitespace } from "../text"
 import { z } from "zod"
 import type { VaultStorage } from "../vault/storage"
 import type { PaperRecord } from "../papers/types"
@@ -40,22 +41,6 @@ export function neutralizeFenceMarkers(content: string): string {
  */
 export function wikiDataFence(section: string, content: string): string {
   return `<<<WIKI-DATA section="${section}">>>\n${neutralizeFenceMarkers(content)}\n<<<END-WIKI-DATA>>>`
-}
-
-/**
- * Truncates `text` to at most `limit` characters, preferring to cut at the last run of
- * whitespace within the final 200 characters of the hard cut so the result doesn't end
- * mid-word or mid-number (see Review finding 4). Falls back to a hard cut exactly at
- * `limit` when no whitespace exists in that trailing window.
- */
-function truncateAtWhitespace(text: string, limit: number): string {
-  if (text.length <= limit) return text
-  const hardCut = text.slice(0, limit)
-  const searchFloor = Math.max(0, hardCut.length - 200)
-  for (let i = hardCut.length - 1; i >= searchFloor; i--) {
-    if (/\s/.test(hardCut[i])) return hardCut.slice(0, i)
-  }
-  return hardCut
 }
 
 export const AnalysisSchema = z.object({

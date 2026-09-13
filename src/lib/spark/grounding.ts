@@ -1,3 +1,5 @@
+import { tokenize } from "../text"
+import { asStringArray } from "../vault/frontmatter"
 import type { VaultStorage } from "../vault/storage"
 import type { Bundle } from "../vault/bundle"
 import { loadBundle } from "../vault/bundle"
@@ -56,19 +58,6 @@ const TAG_MATCH_WEIGHT = 1
  * excludes note/idea/author/topic/project/comparison pages, which are either
  * user-authored or not useful research grounding for ideation. */
 const GROUNDING_PAGE_TYPES = new Set(["concept", "method", "finding", "paper"])
-
-function tokenize(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter((t) => t.length >= MIN_TOKEN_LENGTH),
-  )
-}
-
-function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []
-}
 
 interface SnippetPage {
   id: string

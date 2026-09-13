@@ -1,3 +1,5 @@
+import { tokenize } from "../text"
+import { asStringArray } from "../vault/frontmatter"
 import { z } from "zod"
 import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
@@ -12,13 +14,7 @@ import { neutralizeFenceMarkers } from "../skills/ingest-analysis"
 import { logEvent } from "../events/log"
 import { buildIdeaPage } from "./idea-page"
 
-// ---------------------------------------------------------------------------
-// Skill: one `strong`-tier structured call producing 2-3 vault-grounded idea
-// seeds. Pure LLM-calling unit (blessed pattern, docs/design/04-agent-harness.md)
-// — `runQuickSpark` below owns storage/vault assembly. Vault-only: no
-// retrieval, no scoop-check (design delta vs. Deep Spark — see
-// docs/superpowers/plans/2026-07-13-m9-spark.md Task 2).
-// ---------------------------------------------------------------------------
+
 
 export const SeedSchema = z.object({
   seeds: z
@@ -98,33 +94,17 @@ export const quickSparkSkill: SkillDefinition<QuickSparkInput, z.infer<typeof Se
 })
 
 // ---------------------------------------------------------------------------
-// Vault context assembly (orchestrator-owned): the pages named by
-// `clusterPageIds` (from the M7 companion trigger) when given, else a
-// deterministic token-overlap search over the bundle for `direction` —
-// mirrors `buildAskContext`'s `buildWikiNeighborhood` neighborhood approach
-// (src/lib/reader/ask-context.ts), pure and LLM-free so it's fully
-// unit-testable without a provider.
+// Skill: one `strong`-tier structured call producing 2-3 vault-grounded idea
+// seeds. Pure LLM-calling unit (blessed pattern, docs/design/04-agent-harness.md)
+// — `runQuickSpark` below owns storage/vault assembly. Vault-only: no
+// retrieval, no scoop-check (design delta vs. Deep Spark — see
+// docs/superpowers/plans/2026-07-13-m9-spark.md Task 2).
 // ---------------------------------------------------------------------------
 
-/** Minimum token length counted toward "salient terms" (mirrors ask-context.ts). */
-const MIN_TOKEN_LENGTH = 4
 const MAX_SNIPPET_PAGES = 6
 const SNIPPET_CHARS = 300
 const TITLE_MATCH_WEIGHT = 2
 const TAG_MATCH_WEIGHT = 1
-
-function tokenize(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter((t) => t.length >= MIN_TOKEN_LENGTH),
-  )
-}
-
-function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []
-}
 
 interface SnippetPage {
   id: string
@@ -134,6 +114,15 @@ interface SnippetPage {
 
 /** Resolves `clusterPageIds` against the bundle, silently dropping any id that isn't a
  * real page (a stale companion-trigger id should degrade gracefully, not throw). */
+// ---------------------------------------------------------------------------
+// Vault context assembly (orchestrator-owned): the pages named by
+// `clusterPageIds` (from the M7 companion trigger) when given, else a
+// deterministic token-overlap search over the bundle for `direction` —
+// mirrors `buildAskContext`'s `buildWikiNeighborhood` neighborhood approach
+// (src/lib/reader/ask-context.ts), pure and LLM-free so it's fully
+// unit-testable without a provider.
+// ---------------------------------------------------------------------------
+
 function pagesFromClusterIds(bundle: Bundle, clusterPageIds: string[]): SnippetPage[] {
   const pages: SnippetPage[] = []
   for (const id of clusterPageIds) {

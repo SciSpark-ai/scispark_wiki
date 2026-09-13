@@ -1,12 +1,10 @@
+import { clampLimit } from "./types"
 import { fetchWithTimeout } from "./fetch-timeout"
 import { openAlexSubfield } from "../trending/openalex-subfields"
 import { openAlexField } from "../trending/openalex-fields"
 import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
 
 const OPENALEX_WORKS_URL = "https://api.openalex.org/works"
-const MIN_LIMIT = 1
-const MAX_LIMIT = 50
-const DEFAULT_LIMIT = 20
 const MAX_FIELDS = 5
 // Max group_by page size per OpenAlex's docs — one grouped request covers up
 // to 200 daily buckets, comfortably spanning trending's 8-week (56-day) window.
@@ -221,11 +219,6 @@ function mapWork(work: OpenAlexWork): PaperRecord {
     publicationTypes: work.type ? [work.type] : undefined,
     isRetracted: work.is_retracted,
   }
-}
-
-function clampLimit(limit: number | undefined): number {
-  if (limit == null || Number.isNaN(limit)) return DEFAULT_LIMIT
-  return Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, Math.floor(limit)))
 }
 
 interface BuildUrlOpts {

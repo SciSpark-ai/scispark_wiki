@@ -1,3 +1,4 @@
+import { clampLimit } from "./types"
 import { XMLParser } from "fast-xml-parser"
 import { fetchWithTimeout } from "./fetch-timeout"
 import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
@@ -6,9 +7,6 @@ import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperR
 // live call to export.arxiv.org: https works (200, correct Atom body), even though
 // the manual's examples show http. Using https here since it was live-confirmed.
 const ARXIV_QUERY_URL = "https://export.arxiv.org/api/query"
-const MIN_LIMIT = 1
-const MAX_LIMIT = 50
-const DEFAULT_LIMIT = 20
 const ARRAY_TAGS = new Set(["entry", "author", "link", "category"])
 
 const xmlParser = new XMLParser({
@@ -189,11 +187,6 @@ function mapEntry(entry: ArxivEntry): PaperRecord {
     source: "arxiv",
     publicationTypes: ["preprint"],
   }
-}
-
-function clampLimit(limit: number | undefined): number {
-  if (limit == null || Number.isNaN(limit)) return DEFAULT_LIMIT
-  return Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, Math.floor(limit)))
 }
 
 // arXiv's native query syntax: field prefixes (the default `all:` plus
