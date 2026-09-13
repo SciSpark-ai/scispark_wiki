@@ -102,14 +102,3 @@ export function loadPatternCards(): PatternCard[] {
 export function patternIndex(cards: PatternCard[]): string {
   return cards.map((c) => `- ${c.id} (${c.alias}): ${c.signature}`).join("\n")
 }
-
-/** Filters `cards` down to the ones whose `id` is in `ids`, preserving `ids`' order; unknown ids are silently dropped. */
-export function cardsByIds(cards: PatternCard[], ids: string[]): PatternCard[] {
-  const byId = new Map(cards.map((c) => [c.id, c]))
-  const out: PatternCard[] = []
-  for (const id of ids) {
-    const card = byId.get(id)
-    if (card) out.push(card)
-  }
-  return out
-}

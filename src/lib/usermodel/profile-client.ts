@@ -3,7 +3,6 @@ import type {
   UserProfileDetail,
   UserProfileMutation,
 } from "./profile"
-import type { OnboardingAnswers } from "./pages"
 
 async function responseError(response: Response): Promise<string> {
   try {
@@ -21,19 +20,6 @@ export async function loadUserProfile(fetchFn: typeof fetch = fetch): Promise<Us
   if (!response.ok) throw new Error(await responseError(response))
   const body = (await response.json()) as { profile: UserProfileDetail }
   return body.profile
-}
-
-export async function createUserProfileRemote(
-  answers: OnboardingAnswers,
-  fetchFn: typeof fetch = fetch,
-): Promise<UserProfileMutation> {
-  const response = await fetchFn("/api/profile", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(answers),
-  })
-  if (!response.ok) throw new Error(await responseError(response))
-  return response.json() as Promise<UserProfileMutation>
 }
 
 export async function updateUserProfileRemote(

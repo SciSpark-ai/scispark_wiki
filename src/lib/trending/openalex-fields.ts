@@ -3,7 +3,7 @@
  * https://api.openalex.org/fields?per_page=100
  * Bundled for offline selection. Update from the source, not AI-generated names.
  */
-export const OPENALEX_FIELD_CATALOG_DATE = "2026-09-06"
+// Catalog captured from OpenAlex on 2026-09-06.
 const FIELD_ROWS = [
   [11, "Agricultural and Biological Sciences", "Life Sciences"],
   [12, "Arts and Humanities", "Social Sciences"],

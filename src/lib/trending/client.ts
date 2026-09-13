@@ -37,29 +37,3 @@ export async function refreshTrendingDashboard(
     if (event?.type === "progress" && typeof event.field === "string") onField?.(event.field)
   }) as Promise<TrendingBoard>
 }
-
-/**
- * POST /api/skills/trending/auto-refresh with an empty body; resolves with
- * the server's refresh outcome.
- */
-export async function autoRefreshTrending(
-  fetchFn: typeof fetch = fetch,
-): Promise<"refreshed" | "fresh" | "no-fields" | "backoff" | "failed"> {
-  const res = await fetchFn("/api/skills/trending/auto-refresh", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({}),
-  })
-  if (!res.ok) {
-    let message = `trending auto-refresh failed (${res.status})`
-    try {
-      const body = (await res.json()) as { error?: string }
-      if (body?.error) message = body.error
-    } catch {
-      /* non-JSON body; fall back to the generic status message */
-    }
-    throw new Error(message)
-  }
-  const body = (await res.json()) as { result: "refreshed" | "fresh" | "no-fields" | "backoff" | "failed" }
-  return body.result
-}

@@ -9,7 +9,6 @@ import {
   listHighlights,
   listHighlightsWithRetry,
   addHighlight,
-  updateHighlight,
   removeHighlight,
   formatHighlightsForPrompt,
 } from "../store"
@@ -122,32 +121,6 @@ describe("addHighlight", () => {
     const raw = await storage.read(highlightsPath(key))
     expect(raw).toContain("\n")
     expect(raw).toContain("  ")
-  })
-})
-
-describe("updateHighlight", () => {
-  it("patches color and note only, leaving other fields untouched", async () => {
-    const storage = new MemoryVaultStorage()
-    const key = "arxiv:2101.00001"
-    const h = makeHighlight({ id: "h1", color: "yellow", note: "" })
-    await addHighlight(storage, key, h)
-
-    await updateHighlight(storage, key, "h1", { color: "blue", note: "important" })
-
-    const listed = await listHighlights(storage, key)
-    expect(listed).toEqual([{ ...h, color: "blue", note: "important" }])
-  })
-
-  it("is a no-op when the id is absent", async () => {
-    const storage = new MemoryVaultStorage()
-    const key = "arxiv:2101.00001"
-    const h = makeHighlight({ id: "h1" })
-    await addHighlight(storage, key, h)
-
-    await updateHighlight(storage, key, "missing", { color: "blue" })
-
-    const listed = await listHighlights(storage, key)
-    expect(listed).toEqual([h])
   })
 })
 
