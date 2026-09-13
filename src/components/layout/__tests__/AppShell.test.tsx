@@ -9,10 +9,9 @@ vi.mock("framer-motion", () => ({
   motion: { div: ({ children }: { children: ReactNode }) => <div>{children}</div> },
   AnimatePresence: ({ children }: { children: ReactNode }) => children,
 }))
-vi.mock("@/stores/ui-store", () => ({ useUIStore: (select: (state: object) => unknown) => select({ desktopSidebarOpen: true, showRightPanel: false, rightPanelContent: null }) }))
+vi.mock("@/stores/ui-store", () => ({ useUIStore: (select: (state: object) => unknown) => select({ desktopSidebarOpen: true }) }))
 vi.mock("../Sidebar", () => ({ Sidebar: () => null }))
 vi.mock("../MobileNav", () => ({ MobileNav: () => null }))
-vi.mock("../RightPanel", () => ({ RightPanel: () => null }))
 vi.mock("../ThemeApplier", () => ({ default: () => null }))
 vi.mock("../NavHistoryTracker", () => ({ default: () => null }))
 vi.mock("../UserIdentityHydrator", () => ({ UserIdentityHydrator: () => null }))

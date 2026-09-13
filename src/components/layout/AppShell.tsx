@@ -4,7 +4,6 @@ import { motion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { MobileNav } from "./MobileNav";
-import { RightPanel } from "./RightPanel";
 import { useUIStore } from "@/stores/ui-store";
 import { SelectionToNoteBubble } from "@/components/notes/SelectionToNoteBubble";
 import { CompanionMascot } from "@/components/companion/CompanionMascot";
@@ -20,8 +19,6 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   useCompanion();
-  const showRightPanel = useUIStore((s) => s.showRightPanel);
-  const rightPanelContent = useUIStore((s) => s.rightPanelContent);
   const desktopSidebarOpen = useUIStore((s) => s.desktopSidebarOpen);
   const pathname = usePathname();
 
@@ -44,10 +41,6 @@ export function AppShell({ children }: AppShellProps) {
               erasing inputs/selections and duplicating initialization. */}
           <div className="h-full">{children}</div>
         </main>
-
-        <RightPanel show={showRightPanel}>
-          {rightPanelContent}
-        </RightPanel>
       </div>
       <SelectionToNoteBubble />
       {/* Sparky is already in the onboarding panel; avoid covering its composer. */}
