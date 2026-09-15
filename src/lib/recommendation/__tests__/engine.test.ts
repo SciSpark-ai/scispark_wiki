@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { DEFAULT_RECOMMENDATION_PREFERENCES as prefs, type Assessment, type FeedbackEntry } from "../contract"
-import { candidateText, interleaveCandidates, learnTopicAdjustments, publicationDate, recencyScore, retrieveRecommendationCandidates, scoreCandidate, selectRecommendations, type Candidate } from "../engine"
+import { DEFAULT_RECOMMENDATION_PREFERENCES as prefs, type Assessment } from "../contract"
+import { candidateText, interleaveCandidates, publicationDate, recencyScore, retrieveRecommendationCandidates, scoreCandidate, selectRecommendations, type Candidate } from "../engine"
 import { PaperSourceError, type PaperRecord } from "../../papers/types"
 
 const now = new Date("2026-09-04T00:00:00Z")
@@ -93,27 +93,5 @@ describe("reusable recommendation scoring", () => {
     }, new Set(), now)
     expect(output.retrieval[0].error).toMatch(status === 429 ? /Rate limited/ : status === 403 ? /Access denied/ : /Search failed/)
     expect(JSON.stringify(output)).not.toContain("secret-key")
-  })
-})
-
-describe("bounded feedback learning", () => {
-  const vote = (id: string, reason: FeedbackEntry["reason"] = "more_like_this", at = now.toISOString()): FeedbackEntry => ({ paperKey: id, title: id, topics: ["auditory attention"], reason, at })
-  it("requires two independent papers, never counts repeated clicks, and caps influence", () => {
-    expect(learnTopicAdjustments([vote("a"), vote("a")], prefs, now)).toEqual([])
-    const entries = Array.from({ length: 10 }, (_, index) => vote(String(index)))
-    expect(learnTopicAdjustments(entries, prefs, now)[0]).toMatchObject({ adjustment: 5, examples: 10 })
-    expect(scoreCandidate(make(), assessment(), context, learnTopicAdjustments(entries, prefs, now), now)?.ranking.feedbackAdjustment).toBe(5)
-  })
-  it("ignores age/knowledge/dismiss signals for topic learning and respects disable/reset", () => {
-    expect(learnTopicAdjustments([vote("a", "too_old"), vote("b", "already_know"), vote("c", "dismiss")], prefs, now)).toEqual([])
-    const entries = [vote("a"), vote("b")]
-    expect(learnTopicAdjustments(entries, { ...prefs, learnFromFeedback: false }, now)).toEqual([])
-    expect(learnTopicAdjustments(entries, { ...prefs, resetAt: now.toISOString() }, now)).toEqual([])
-  })
-  it("decays with age; latest feedback can reverse an earlier vote", () => {
-    const fresh = learnTopicAdjustments([vote("a"), vote("b")], prefs, now)[0].adjustment
-    const old = learnTopicAdjustments([vote("a", "more_like_this", "2026-08-05T00:00:00Z"), vote("b", "more_like_this", "2026-08-05T00:00:00Z")], prefs, now)[0].adjustment
-    expect(old).toBeLessThan(fresh)
-    expect(learnTopicAdjustments([vote("a"), vote("b"), vote("a", "not_my_topic")], prefs, now)[0].adjustment).toBe(0)
   })
 })

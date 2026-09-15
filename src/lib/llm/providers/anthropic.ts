@@ -1,6 +1,6 @@
 import type { LLMProvider, LLMRequest, LLMResult, ProviderId } from "../types"
 import {
-  LLMAuthError, LLMBadRequestError, LLMRateLimitError, LLMRefusalError, LLMTransientError,
+  LLMError, LLMAuthError, LLMBadRequestError, LLMRateLimitError, LLMRefusalError, LLMTransientError,
 } from "../types"
 import { readSseData } from "../sse"
 import { parseJsonLoosely } from "../json"
@@ -21,7 +21,7 @@ export class AnthropicProvider implements LLMProvider {
   readonly id: ProviderId = "anthropic"
 
   // BYOK: the user's own key from local settings; retries live in withRetry at the harness layer.
-  constructor(private apiKey: string, private fetchFn: typeof fetch = fetch) {}
+  constructor(private apiKey: string, private fetchFn: typeof fetch = fetch, private timeoutMs = TIMEOUT_MS) {}
 
   async complete(model: string, req: LLMRequest): Promise<LLMResult> {
     const system = req.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n")
@@ -38,6 +38,7 @@ export class AnthropicProvider implements LLMProvider {
     }
 
     req.onText?.("")
+    const signal = AbortSignal.timeout(this.timeoutMs)
     let res: Response
     try {
       res = await this.fetchFn(`${BASE_URL}/v1/messages`, {
@@ -48,10 +49,12 @@ export class AnthropicProvider implements LLMProvider {
           "anthropic-version": API_VERSION,
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal,
       })
     } catch (e) {
-      throw new LLMTransientError(e instanceof Error ? e.message : "network error")
+      throw signal.aborted
+        ? new LLMTransientError(`request timed out after ${this.timeoutMs}ms`)
+        : new LLMTransientError(e instanceof Error ? e.message : "network error")
     }
 
     if (!res.ok) {
@@ -67,13 +70,25 @@ export class AnthropicProvider implements LLMProvider {
       throw new LLMBadRequestError(text || `HTTP ${res.status}`)
     }
 
-    const data = req.onText ? await readMessageStream(res, req.onText) : (await res.json()) as MessagesResponse
+    let data: MessagesResponse
+    try {
+      data = req.onText ? await readMessageStream(res, req.onText) : (await res.json()) as MessagesResponse
+    } catch (e) {
+      if (e instanceof LLMError) throw e
+      throw signal.aborted
+        ? new LLMTransientError(`request timed out after ${this.timeoutMs}ms`)
+        : new LLMBadRequestError(e instanceof Error ? e.message : "malformed provider response")
+    }
     if (data.stop_reason === "refusal") throw new LLMRefusalError("provider declined the request")
     const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join("")
     return {
       text,
       json: req.jsonSchema ? parseJsonLoosely(text) : undefined,
-      usage: { inputTokens: data.usage?.input_tokens ?? 0, outputTokens: data.usage?.output_tokens ?? 0 },
+      usage: {
+        inputTokens: data.usage?.input_tokens ?? 0,
+        outputTokens: data.usage?.output_tokens ?? 0,
+        ...(data.usage?.input_tokens == null || data.usage?.output_tokens == null ? { reported: false } : {}),
+      },
       model: data.model ?? model,
       provider: this.id,
       stopReason: data.stop_reason ?? "unknown",

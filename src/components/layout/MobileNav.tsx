@@ -30,7 +30,7 @@ export function MobileNav() {
           `inert` keeps the closed drawer out of the tab order and screen readers. */}
       <div
         onClick={() => setSidebarOpen(false)}
-        className={`lg:hidden fixed inset-0 z-50 bg-espresso/30 backdrop-blur-sm transition-opacity duration-200 ${sidebarOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        className={`lg:hidden fixed inset-0 z-50 bg-espresso/30 backdrop-blur-sm transition-[opacity,visibility] duration-200 ${sidebarOpen ? "opacity-100" : "invisible opacity-0"}`}
       />
       <div
         inert={!sidebarOpen}
@@ -44,7 +44,7 @@ export function MobileNav() {
           >
             <X size={18} />
           </button>
-          <Sidebar />
+          {sidebarOpen && <Sidebar />}
         </div>
       </div>
     </>

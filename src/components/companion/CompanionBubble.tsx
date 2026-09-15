@@ -20,7 +20,7 @@ export function CompanionBubble({ utterance, onDismiss, onAction, streaming = fa
   return (
     <div
       data-companion-bubble
-      className="absolute bottom-full right-0 mb-3 w-64 rounded-card border border-border-warm/60 bg-light-surface p-4 shadow-lg transition-[opacity,transform] duration-150 ease-out starting:translate-y-2 starting:scale-95 starting:opacity-0"
+      className="absolute bottom-full right-0 mb-3 w-64 rounded-card border border-border-warm/60 bg-light-surface p-4 shadow-lg transition duration-150 ease-out starting:translate-y-2 starting:scale-95 starting:opacity-0"
       role="status"
       aria-busy={streaming}
     >

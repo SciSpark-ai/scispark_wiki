@@ -48,16 +48,6 @@ export function jsonSkillRoute<TIn, TOut>(
 }
 
 /**
- * Shared skill-route foundation (M11 Task 5): every skill route (trending,
- * and every later milestone's route) is either a single-shot JSON call
- * (`jsonSkillRoute`) or a progress-streaming NDJSON call (`ndjsonSkillRoute`).
- * Both own the boilerplate every route would otherwise repeat: parsing the
- * request body, resolving the server vault singleton, and turning a thrown
- * error into a well-formed error response — so route files themselves stay
- * down to "assemble deps, call the orchestrator".
- */
-
-/**
  * `req.json()` → `getServerVault()` → `handler(input, vault, emit)`, streamed
  * back as newline-delimited JSON (`content-type: application/x-ndjson`).
  * `emit(event)` writes one `{...}\n` progress line immediately (for

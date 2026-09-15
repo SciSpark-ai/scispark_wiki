@@ -14,7 +14,13 @@ import { neutralizeFenceMarkers } from "../skills/ingest-analysis"
 import { logEvent } from "../events/log"
 import { buildIdeaPage } from "./idea-page"
 
-
+// ---------------------------------------------------------------------------
+// Skill: one `strong`-tier structured call producing 2-3 vault-grounded idea
+// seeds. Pure LLM-calling unit (blessed pattern, docs/design/04-agent-harness.md)
+// — `runQuickSpark` below owns storage/vault assembly. Vault-only: no
+// retrieval, no scoop-check (design delta vs. Deep Spark — see
+// docs/superpowers/plans/2026-07-13-m9-spark.md Task 2).
+// ---------------------------------------------------------------------------
 
 export const SeedSchema = z.object({
   seeds: z
@@ -94,11 +100,12 @@ export const quickSparkSkill: SkillDefinition<QuickSparkInput, z.infer<typeof Se
 })
 
 // ---------------------------------------------------------------------------
-// Skill: one `strong`-tier structured call producing 2-3 vault-grounded idea
-// seeds. Pure LLM-calling unit (blessed pattern, docs/design/04-agent-harness.md)
-// — `runQuickSpark` below owns storage/vault assembly. Vault-only: no
-// retrieval, no scoop-check (design delta vs. Deep Spark — see
-// docs/superpowers/plans/2026-07-13-m9-spark.md Task 2).
+// Vault context assembly (orchestrator-owned): the pages named by
+// `clusterPageIds` (from the M7 companion trigger) when given, else a
+// deterministic token-overlap search over the bundle for `direction` —
+// mirrors `buildAskContext`'s `buildWikiNeighborhood` neighborhood approach
+// (src/lib/reader/ask-context.ts), pure and LLM-free so it's fully
+// unit-testable without a provider.
 // ---------------------------------------------------------------------------
 
 const MAX_SNIPPET_PAGES = 6
@@ -114,15 +121,6 @@ interface SnippetPage {
 
 /** Resolves `clusterPageIds` against the bundle, silently dropping any id that isn't a
  * real page (a stale companion-trigger id should degrade gracefully, not throw). */
-// ---------------------------------------------------------------------------
-// Vault context assembly (orchestrator-owned): the pages named by
-// `clusterPageIds` (from the M7 companion trigger) when given, else a
-// deterministic token-overlap search over the bundle for `direction` —
-// mirrors `buildAskContext`'s `buildWikiNeighborhood` neighborhood approach
-// (src/lib/reader/ask-context.ts), pure and LLM-free so it's fully
-// unit-testable without a provider.
-// ---------------------------------------------------------------------------
-
 function pagesFromClusterIds(bundle: Bundle, clusterPageIds: string[]): SnippetPage[] {
   const pages: SnippetPage[] = []
   for (const id of clusterPageIds) {
