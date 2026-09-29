@@ -32,7 +32,7 @@ export async function runReviewPipeline(storage: VaultStorage, start: ReviewRun,
     return reviewCheckpoint(storage, id, `model-${attemptStep}`, { prompt, model: brief.model, schema: z.toJSONSchema(schema) }, schema,
       () => reviewComplete(storage, id, brief, attemptStep, prompt, schema, Math.max(tokens, 4096), guard, deps.provider))
   }
-  const search = deps.search ?? nodeResearchSearchFn({ reportErrors: true })
+  const search = deps.search ?? nodeResearchSearchFn({ reportErrors: true, storage })
   await stage("Planning the literature search")
   const requirements = await defineReviewRequirements(scientificQuestion, complete)
   const plan = await complete("search-plan-v1", [
@@ -63,7 +63,7 @@ export async function runReviewPipeline(storage: VaultStorage, start: ReviewRun,
   const initial = await retrieve("initial-search-v1", [...plan.queries, ...seedQueries])
   let citationWarnings: string[] = []
   if (brief.sources.includes("s2")) {
-    const references = deps.references ?? (async (externalId: string) => fetchReferences(externalId, { apiKey: await getServerS2Key() }))
+    const references = deps.references ?? (async (externalId: string) => fetchReferences(externalId, { apiKey: await getServerS2Key(storage) }))
     const refs = await reviewCheckpoint(storage, id, "citation-expansion-v1", initial.papers.slice(0, 2), SearchSnapshot, async () => {
       const found = [], warnings: string[] = []
       for (const paper of initial.papers.slice(0, 2)) {

@@ -73,7 +73,7 @@ describe("mutation request security", () => {
   })
 
   it("returns a 403 JSON response from the Next.js proxy", async () => {
-    const response = proxy(
+    const response = await proxy(
       new NextRequest("http://127.0.0.1:3000/api/projects", {
         method: "POST",
         headers: { host: "attacker.example", origin: "https://attacker.example" },

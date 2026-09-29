@@ -82,7 +82,9 @@
     ".next-literature-workspace/types/**/*.ts",
     ".next-literature-workspace/dev/types/**/*.ts",
     ".next-deep-review/types/**/*.ts",
-    ".next-deep-review/dev/types/**/*.ts"
+    ".next-deep-review/dev/types/**/*.ts",
+    ".next-profiles/types/**/*.ts",
+    ".next-profiles/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

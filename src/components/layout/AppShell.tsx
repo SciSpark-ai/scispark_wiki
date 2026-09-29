@@ -11,12 +11,17 @@ import SettingsModal from "@/components/settings/SettingsModal";
 import ThemeApplier from "./ThemeApplier";
 import NavHistoryTracker from "./NavHistoryTracker";
 import { UserIdentityHydrator } from "./UserIdentityHydrator";
+import { ProfileGate } from "./ProfileGate";
 
 interface AppShellProps {
   children: React.ReactNode;
 }
 
 export function AppShell({ children }: AppShellProps) {
+  return <ProfileGate><OpenProfileShell>{children}</OpenProfileShell></ProfileGate>;
+}
+
+function OpenProfileShell({ children }: AppShellProps) {
   useCompanion();
   const desktopSidebarOpen = useUIStore((s) => s.desktopSidebarOpen);
   const pathname = usePathname();

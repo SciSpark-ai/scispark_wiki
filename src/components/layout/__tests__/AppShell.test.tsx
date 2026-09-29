@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, useEffect, useState } from "react"
+import { act, useEffect, useState, type ReactNode } from "react"
 import { createRoot } from "react-dom/client"
 import { describe, expect, it, vi } from "vitest"
 
@@ -11,6 +11,7 @@ vi.mock("../MobileNav", () => ({ MobileNav: () => null }))
 vi.mock("../ThemeApplier", () => ({ default: () => null }))
 vi.mock("../NavHistoryTracker", () => ({ default: () => null }))
 vi.mock("../UserIdentityHydrator", () => ({ UserIdentityHydrator: () => null }))
+vi.mock("../ProfileGate", () => ({ ProfileGate: ({ children }: { children: ReactNode }) => children }))
 vi.mock("@/components/notes/SelectionToNoteBubble", () => ({ SelectionToNoteBubble: () => null }))
 vi.mock("@/components/companion/CompanionMascot", () => ({ CompanionMascot: () => null }))
 vi.mock("@/components/settings/SettingsModal", () => ({ default: () => null }))

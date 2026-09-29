@@ -15,6 +15,15 @@ beforeEach(() => {
 afterEach(() => { setServerVaultForTests(null); vi.unstubAllEnvs() })
 
 describe("personal Semantic Scholar credentials", () => {
+  it("keeps background retrieval bound to its originating profile after a switch", async () => {
+    const original = storage
+    await saveS2Key(original, "original-test-source")
+    const next = new MemoryVaultStorage()
+    await saveS2Key(next, "next-test-source")
+    setServerVaultForTests(next)
+    expect(await getServerS2Key(original)).toBe("original-test-source")
+    expect(await getServerS2Key()).toBe("next-test-source")
+  })
   it("is anonymous by default; vault keys override the environment without a restart", async () => {
     expect(await getPaperSourceStatus()).toEqual({ mode: "anonymous", keySource: null, savedKeyPresent: false })
     vi.stubEnv("S2_API_KEY", "environment-key")

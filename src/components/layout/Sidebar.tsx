@@ -24,6 +24,7 @@ import type { ChatSession } from "@/lib/chat/session";
 import { Chip } from "@/components/ui/Chip";
 import { ThemeToggle } from "./ThemeToggle";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { logoutLocalProfile } from "@/lib/local-profile-client";
 
 /** A nav aid, not a second inbox — just enough recent conversations to jump
  * back into one, no badges/counts. */
@@ -101,6 +102,8 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
   const disabled = isFirstRun && !onboardingComplete;
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -258,11 +261,29 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
               >
                 Settings
               </button>
+              <button
+                type="button"
+                disabled={loggingOut}
+                className="block w-full border-t border-border-warm px-4 py-2 text-left text-[13px] text-espresso hover:bg-card-surface disabled:opacity-50 focus-visible:outline-accent-ink"
+                onClick={() => {
+                  setLoggingOut(true);
+                  setLogoutError(null);
+                  void logoutLocalProfile().catch((error) => {
+                    setLogoutError(error instanceof Error ? error.message : "Could not log out.");
+                    setLoggingOut(false);
+                  });
+                }}
+              >
+                {loggingOut ? "Logging out…" : "Log out"}
+              </button>
+              {logoutError && <p role="alert" className="px-4 py-2 text-xs text-accent-ink">{logoutError}</p>}
             </div>
           )}
           <button
             type="button"
             onClick={() => setMenuOpen(true)}
+            aria-label="Profile menu"
+            aria-expanded={menuOpen}
             className="flex items-center gap-3 px-3 py-2.5 rounded-[10px] transition-colors hover:bg-card-surface/50 w-full text-left"
           >
             <UserAvatar />

@@ -66,6 +66,20 @@ describe("DigestSchema", () => {
 })
 
 describe("generateDigest", () => {
+  it("never shares a digest run or cache between two profile vaults", async () => {
+    const ada = new MemoryVaultStorage()
+    const grace = new MemoryVaultStorage()
+    const a = new MockProvider([structuredResult()])
+    const privateDigest = { ...SAMPLE_DIGEST, summary: "Grace's distinct supplied text" }
+    const b = new MockProvider([structuredResult({ json: privateDigest, text: JSON.stringify(privateDigest) })])
+    const [first, second] = await Promise.all([
+      generateDigest(ada, PAPER, { settings: settingsWithKeys(), providerOverride: { strong: a }, now: NOW }),
+      generateDigest(grace, PAPER, { settings: settingsWithKeys(), providerOverride: { strong: b }, now: NOW }),
+    ])
+    expect(first.digest.summary).toBe(SAMPLE_DIGEST.summary)
+    expect(second.digest.summary).toBe(privateDigest.summary)
+    expect(await loadCachedDigest(grace, PAPER)).toEqual(privateDigest)
+  })
   it("happy path: calls the LLM, returns the digest, and writes a valid cache file", async () => {
     const storage = new MemoryVaultStorage()
     const provider = new MockProvider([structuredResult()])

@@ -20,14 +20,14 @@ type DigestOutcome = {
 }
 
 /**
- * Module-level map of in-flight generateDigest calls, keyed by cache path.
+ * In-flight generateDigest calls, scoped to the vault and keyed by cache path.
  * Ensures concurrent calls for the same paper share a single runSkill call
  * and avoid duplicate LLM charges. Entries are cleared when the promise settles
  * (whether resolved or rejected).
  *
- * Single-flight scope: per module (per tab/session in browser; per process in Node.js).
+ * Calls in different profiles must use their own text, settings and usage ledger.
  */
-const inFlightDigests = new Map<string, Promise<DigestOutcome>>()
+const inFlightByVault = new WeakMap<VaultStorage, Map<string, Promise<DigestOutcome>>>()
 
 /** Cap on how much of the paper's full text goes into the prompt (characters, not tokens). */
 const MAX_FULL_TEXT_CHARS = 40_000
@@ -222,6 +222,8 @@ export async function generateDigest(
   },
 ): Promise<DigestOutcome> {
   const path = digestCachePath(paper)
+  let inFlightDigests = inFlightByVault.get(storage)
+  if (!inFlightDigests) { inFlightDigests = new Map(); inFlightByVault.set(storage, inFlightDigests) }
 
   // Single-flight: if another call for this same paper is already in flight,
   // return that promise instead of issuing another runSkill.

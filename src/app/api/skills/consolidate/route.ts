@@ -1,5 +1,5 @@
 import { jsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
-import { skillSingleFlightState } from "@/lib/server/skill-singleflight-state"
+import { skillSingleFlightFor } from "@/lib/server/skill-singleflight-state"
 import { loadSettings } from "@/lib/llm/settings"
 import { runConsolidation } from "@/lib/skills/consolidation"
 import { withLedger } from "@/lib/runs/ledger"
@@ -13,6 +13,7 @@ type ConsolidationResult = Awaited<ReturnType<typeof runConsolidation>>
  */
 export const POST = jsonSkillRoute<Record<string, never>, ConsolidationResult>(
   async (_input, vault) => {
+    const skillSingleFlightState = skillSingleFlightFor(vault)
     if (skillSingleFlightState.consolidation) return skillSingleFlightState.consolidation
 
     const promise = Promise.resolve().then(async () => {

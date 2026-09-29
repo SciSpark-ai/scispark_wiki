@@ -6,7 +6,7 @@ import { withLedger, readLedger } from "../runs/ledger"
 import { maybeAutoRefreshTrending, readRefreshFailureReason } from "../trending/auto-refresh"
 import { runConsolidation } from "../skills/consolidation"
 import { runLintDeterministic } from "../lint/run"
-import { getServerVault } from "../server/vault"
+import { getDefaultServerVault } from "../server/vault"
 import { nodeTopWorksFn, nodeCountFn, nodeTopicGroupFn, nodeTopicFieldGroupFn } from "../papers/node-search"
 
 // ---------------------------------------------------------------------------
@@ -191,7 +191,7 @@ const INITIAL_DELAY_MS = 60 * 1000
  * a bad tick can never crash the interval or the process. */
 async function tick(): Promise<void> {
   try {
-    const storage = await getServerVault()
+    const storage = await getDefaultServerVault()
     await runHeartbeatTick({
       storage,
       topWorksFn: nodeTopWorksFn(),

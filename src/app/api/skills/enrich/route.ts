@@ -44,9 +44,11 @@ export interface EnrichRouteResult {
  * (save on the feed, immediately open the paper), which would otherwise
  * charge the skill twice and race two changesets onto the same page.
  */
-const inFlightBySlug = new Map<string, Promise<EnrichRouteResult>>()
+const inFlightByVault = new WeakMap<VaultStorage, Map<string, Promise<EnrichRouteResult>>>()
 
 export const POST = jsonSkillRoute<{ slug: string }, EnrichRouteResult>(({ slug }, vault) => {
+  let inFlightBySlug = inFlightByVault.get(vault)
+  if (!inFlightBySlug) { inFlightBySlug = new Map(); inFlightByVault.set(vault, inFlightBySlug) }
   const existing = inFlightBySlug.get(slug)
   if (existing) return existing
   const run = withLedger(vault, { orchestrator: "enrich", trigger: "user" }, async () => {

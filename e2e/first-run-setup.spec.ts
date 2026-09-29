@@ -72,7 +72,9 @@ for (const entry of ["new connection", "saved connection"] as const) {
           await composer.fill(answer)
           const turn = page.waitForResponse((response) => response.url().endsWith("/api/onboarding") && response.request().method() === "POST")
           await composer.press("Enter")
-          await (await turn).finished()
+          // The UI consumes the NDJSON stream before re-enabling the composer.
+          // Chromium can omit request-finished for this already-consumed stream.
+          expect((await turn).ok()).toBe(true)
           await expect(composer).toBeEnabled()
           expect(feedRequests).toBe(0)
         }

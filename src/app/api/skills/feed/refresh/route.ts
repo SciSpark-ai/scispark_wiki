@@ -4,7 +4,7 @@ import { loadSettings } from "@/lib/llm/settings"
 import { nodeFeedSearchFn } from "@/lib/papers/node-search"
 import { runFeed, type FeedStage } from "@/lib/skills/feed"
 import {
-  skillSingleFlightState,
+  skillSingleFlightFor,
   type ActiveFeedRefresh,
 } from "@/lib/server/skill-singleflight-state"
 
@@ -23,11 +23,12 @@ function broadcast(state: ActiveFeedRefresh, stage: FeedStage): void {
 /**
  * POST /api/skills/feed/refresh — body `{}`, streaming NDJSON progress.
  *
- * The provider pipeline is process-wide single-flight: reloading, navigating,
+ * The provider pipeline is single-flight per vault: reloading, navigating,
  * or opening another tab while a refresh is running joins that exact promise
  * and receives its current/future stage instead of paying for duplicate work.
  */
 export const POST = ndjsonSkillRoute<Record<string, never>>(async (_input, vault, emit) => {
+  const skillSingleFlightState = skillSingleFlightFor(vault)
   const existing = skillSingleFlightState.feed
   if (existing) {
     existing.listeners.add(emit)
@@ -49,7 +50,7 @@ export const POST = ndjsonSkillRoute<Record<string, never>>(async (_input, vault
       const overrides = getSkillTestOverrides()
       return withLedger(vault, { orchestrator: "feed-refresh", trigger: "user" }, async () => {
         const result = await runFeed(vault, {
-          searchFn: overrides.searchFn ?? nodeFeedSearchFn(),
+          searchFn: overrides.searchFn ?? nodeFeedSearchFn(vault),
           settings,
           providerOverride: overrides.providerOverride,
           onStage: (stage) => broadcast(state, stage),

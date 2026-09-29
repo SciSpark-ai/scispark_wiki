@@ -56,6 +56,29 @@ describe("feed + consolidation skill routes", () => {
   })
 
   describe("POST /api/skills/feed/refresh", () => {
+    it("does not join another profile's refresh while its provider is running", async () => {
+      await seedOnboardedUserModel(storage)
+      let release!: () => void
+      let started!: () => void
+      const gate = new Promise<void>((resolve) => { release = resolve })
+      const running = new Promise<void>((resolve) => { started = resolve })
+      let calls = 0
+      const provider: LLMProvider = { id: "anthropic", async complete() { calls++; started(); await gate; return structured(ONE_QUERY_STRATEGY) } }
+      setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: async () => [] })
+      const first = await feedRefreshRoute.POST(new Request("http://x/api/skills/feed/refresh", { method: "POST", body: "{}" }))
+      await running
+      const other = new MemoryVaultStorage()
+      await seedOnboardedUserModel(other)
+      setServerVaultForTests(other)
+      const second = await feedRefreshRoute.POST(new Request("http://x/api/skills/feed/refresh", { method: "POST", body: "{}" }))
+      // Both profiles must execute their own pipeline rather than sharing a result.
+      const secondResult = readNdjson(second, () => {}).then(() => "success", (error: Error) => error.message)
+      release()
+      await expect(secondResult).resolves.toContain("No eligible papers were retrieved.")
+      await expect(readNdjson(first, () => {})).rejects.toThrow("No eligible papers were retrieved.")
+      expect(calls).toBe(2)
+      expect(await other.read(FEED_CACHE_PATH)).toBeNull()
+    })
     it("reads shared fields from the server vault, not a client-forged preference payload", async () => {
       await seedOnboardedUserModel(storage)
       await saveTrendingSettings(storage, { fields: [], cadence: "weekly", anchorsOverridden: true,
