@@ -68,6 +68,8 @@ describe("Sidebar recent chats (SP5 Task 10)", () => {
     expect(idx2).toBeGreaterThan(-1)
     expect(idx1).toBeGreaterThan(-1)
     expect(idx2).toBeLessThan(idx1)
+    // Saved conversations are shortcuts within History, not tool children.
+    expect(html.indexOf('href="/history"')).toBeLessThan(idx2)
     expect(html).toContain("Second question about diffusion models")
     expect(html).toContain("First question about transformers")
 

@@ -27,6 +27,7 @@ describe("local profile gate", () => {
   it("binds child effects before mounting and clears drafts from the previous profile", async () => {
     sessionStorage.setItem("scispark:active-profile", "ada")
     sessionStorage.setItem("scispark:chat-draft:new", "Ada private draft")
+    sessionStorage.setItem("scispark:active-chat", "chat_ada")
     sessionStorage.setItem("review-edit:old", "Ada private review")
     const transport = vi.fn().mockImplementation(async (url) => Response.json(String(url).endsWith("/session") ? { profile: { id: "grace", name: "Grace", vaultPath: "/local/grace" } } : {}))
     vi.stubGlobal("fetch", transport)
@@ -39,6 +40,7 @@ describe("local profile gate", () => {
       const call = transport.mock.calls.find(([url]) => url === "/api/vault/list")!
       expect(new Headers(call[1].headers).get("x-scispark-profile")).toBe("grace")
       expect(sessionStorage.getItem("scispark:chat-draft:new")).toBeNull()
+      expect(sessionStorage.getItem("scispark:active-chat")).toBeNull()
       expect(sessionStorage.getItem("review-edit:old")).toBeNull()
     } finally { await act(async () => root.unmount()) }
   })

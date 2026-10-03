@@ -137,7 +137,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
     };
   }, [pathname]);
 
-  // Recent chat sessions for the quiet nav-aid list under Tools. Reloaded on
+  // Recent chat sessions for the quiet nav-aid list under History. Reloaded on
   // pathname change so starting/continuing a conversation is reflected on
   // return, same rationale as the inbox count above. Failures resolve to an
   // empty list silently — the nav must never break on a vault hiccup.
@@ -219,23 +219,24 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
               {group.heading}
             </div>
             {group.items.map(renderItem)}
-            {group.heading === "Tools" && !collapsed && recentSessions.length > 0 && (
-              <div>
-                {recentSessions.map((session) => (
-                  <Link
-                    key={session.id}
-                    href={`/chat/${session.id}`}
-                    className="block truncate rounded-[10px] py-1.5 pl-[42px] pr-3 text-[13px] text-muted-text tracking-body transition-colors hover:bg-card-surface/50 hover:text-espresso"
-                  >
-                    {session.title}
-                  </Link>
-                ))}
-              </div>
-            )}
           </div>
         ))}
         <hr className="border-border-warm mx-[10px] my-[14px]" />
         {renderItem(HISTORY_ITEM)}
+        {!collapsed && recentSessions.length > 0 && (
+          <ul aria-label="Recent chats">
+            {recentSessions.map((session) => (
+              <li key={session.id}>
+                <Link
+                  href={`/chat/${session.id}`}
+                  className="block truncate rounded-[10px] py-1.5 pl-[42px] pr-3 text-[13px] text-muted-text tracking-body transition-colors hover:bg-card-surface/50 hover:text-espresso"
+                >
+                  {session.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </nav>
 
       {/* Account menu — hidden when collapsed */}

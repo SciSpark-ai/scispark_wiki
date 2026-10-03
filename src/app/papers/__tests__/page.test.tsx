@@ -22,6 +22,7 @@ vi.mock("@/lib/papers/resolve", () => ({ resolvePaperByKey: mocks.resolve }))
 vi.mock("@/lib/reader/handoff", () => ({ writeReaderHandoff: mocks.handoff }))
 
 import PapersPage from "../page"
+import ChatEntryPage from "../../chat/page"
 import { ChatWorkspace } from "@/components/chat/ChatWorkspace"
 import { useUIStore } from "@/stores/ui-store"
 
@@ -105,6 +106,54 @@ describe("Search in the unified conversation workspace", () => {
     expect(host.querySelector('a[href="/chat/chat_search"]')).toBeTruthy()
     await mount(<ChatWorkspace sessionId={SESSION.id} />)
     expect(mocks.ask).not.toHaveBeenCalled()
+  })
+  it("returns to the last opened conversation rather than the newest History item", async () => {
+    const saved = await mount(<ChatWorkspace sessionId={SESSION.id} />)
+    enter(saved.host.querySelector("textarea")!, "My unfinished follow-up")
+    saved.cleanup()
+    mocks.list.mockResolvedValue([{ ...SESSION, id: "chat_newer" }, SESSION])
+    await mount(<ChatEntryPage />)
+    expect(mocks.router.replace).toHaveBeenCalledWith(`/chat/${SESSION.id}`)
+    const restored = await mount(<ChatWorkspace sessionId={SESSION.id} />)
+    expect(restored.host.querySelector("textarea")!.value).toBe("My unfinished follow-up")
+    expect(mocks.ask).not.toHaveBeenCalled()
+  })
+  it("keeps New chat explicit and does not reopen the old conversation afterward", async () => {
+    const saved = await mount(<ChatWorkspace sessionId={SESSION.id} />)
+    saved.cleanup()
+    mocks.list.mockResolvedValue([SESSION])
+    mocks.params.get.mockImplementation((key) => key === "new" ? "1" : null)
+    const fresh = await mount(<ChatEntryPage />)
+    expect(fresh.host.textContent).toContain("What would you like to explore?")
+    expect(mocks.router.replace).not.toHaveBeenCalled()
+    fresh.cleanup()
+    mocks.params.get.mockReturnValue(null)
+    await mount(<ChatEntryPage />)
+    expect(mocks.router.replace).not.toHaveBeenCalled()
+  })
+  it("falls back to a new draft when the last conversation has been removed", async () => {
+    const saved = await mount(<ChatWorkspace sessionId={SESSION.id} />)
+    saved.cleanup()
+    mocks.list.mockResolvedValue([])
+    const { host } = await mount(<ChatEntryPage />)
+    expect(host.textContent).toContain("What would you like to explore?")
+    expect(mocks.router.replace).not.toHaveBeenCalled()
+    expect(mocks.ask).not.toHaveBeenCalled()
+  })
+  it("remembers a submitted chat when the user leaves before its response finishes", async () => {
+    let complete!: (value: unknown) => void
+    mocks.ask.mockImplementation(() => new Promise((resolve) => { complete = resolve }))
+    const sending = await mount(<ChatEntryPage />)
+    enter(sending.host.querySelector("textarea")!, "A question still being answered")
+    await act(async () => button(sending.host, "Send").click())
+    const id = mocks.ask.mock.calls[0][0].sessionId as string
+    sending.cleanup()
+    mocks.list.mockResolvedValue([{ ...SESSION, id, messages: [{ role: "user", content: "A question still being answered" }] }])
+    await mount(<ChatEntryPage />)
+    expect(mocks.router.replace).toHaveBeenCalledWith(`/chat/${id}`)
+    await act(async () => complete({ sessionId: id, message: SESSION.messages[1] }))
+    expect(mocks.ask).toHaveBeenCalledTimes(1)
+    expect(mocks.router.push).not.toHaveBeenCalled()
   })
   it("starts with saved sources and does not offer disabled indexes", async () => {
     vi.mocked(fetch).mockResolvedValue(Response.json({ enabledSources: ["pubmed", "openalex"] }))

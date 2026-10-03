@@ -28,9 +28,11 @@ const STAGE_LABELS: Record<ChatStage, string> = {
   planning: "Understanding your question…", searching: "Searching the literature…", ranking: "Reading the strongest matches…",
 }
 const SOURCE_LABELS: Record<SourceId, string> = { arxiv: "arXiv", openalex: "OpenAlex", s2: "Semantic Scholar", pubmed: "PubMed" }
+// Per-tab navigation only; ProfileGate clears this with drafts on profile changes.
+const ACTIVE_CHAT_KEY = "scispark:active-chat"
 
-export function ChatWorkspace({ sessionId, initialMode = "chat" }: {
-  sessionId?: string; fresh?: boolean; initialMode?: "chat" | "search"
+export function ChatWorkspace({ sessionId, fresh = false, resume = false, initialMode = "chat" }: {
+  sessionId?: string; fresh?: boolean; resume?: boolean; initialMode?: "chat" | "search"
 }) {
   const router = useRouter()
   const openSettings = useUIStore((s) => s.openSettingsModal)
@@ -102,6 +104,7 @@ export function ChatWorkspace({ sessionId, initialMode = "chat" }: {
     if (sessionId && !loaded) throw new Error("Conversation not found. It may have been removed or could not be read.")
     if (!mounted.current) return
     setSession(loaded)
+    if (loaded) { try { sessionStorage.setItem(ACTIVE_CHAT_KEY, loaded.id) } catch {} }
     if (loaded?.projectId) {
       try { await getProjectRemote(loaded.projectId); setScopeError(null) }
       catch { setScopeError("This project's scope is unavailable. The transcript is preserved, but cannot continue.") }
@@ -111,20 +114,32 @@ export function ChatWorkspace({ sessionId, initialMode = "chat" }: {
   }, [sessionId])
   useEffect(() => {
     let alive = true
+    let resuming = false
     setLoading(true); setError(null)
     ;(async () => {
       try {
         if (sessionId) await reload()
         else {
+          let activeId: string | null = null
+          try {
+            if (fresh) sessionStorage.removeItem(ACTIVE_CHAT_KEY)
+            else if (resume) activeId = sessionStorage.getItem(ACTIVE_CHAT_KEY)
+          } catch { /* Browser storage is optional; History remains available. */ }
           const sessions = await listSessions(await getOpenVault())
           if (!alive) return
+          if (activeId && sessions.some((saved) => saved.id === activeId)) {
+            resuming = true
+            router.replace(`/chat/${activeId}`)
+            return
+          }
+          if (activeId) { try { sessionStorage.removeItem(ACTIVE_CHAT_KEY) } catch {} }
           setRecent(sessions.slice(0, 8)); setSession(null)
         }
       } catch (e) { if (alive) { setError(sessionId ? "Conversation not found. It may have been removed or could not be read." : e instanceof Error ? e.message : String(e)); if (sessionId) setScopeError("Open a saved conversation from History or start a new chat.") } }
-      finally { if (alive) setLoading(false) }
+      finally { if (alive && !resuming) setLoading(false) }
     })()
     return () => { alive = false }
-  }, [sessionId, reload])
+  }, [sessionId, fresh, resume, reload, router])
 
   useEffect(() => {
     let alive = true
@@ -159,6 +174,9 @@ export function ChatWorkspace({ sessionId, initialMode = "chat" }: {
     if (!q || sending.current || scopeError || (mode !== "chat" && (!sources.length || sourcesError))) return
     sending.current = true; setBusy(true); setError(null); setStage(null); setDraft("")
     const id = sessionId ?? `chat_${crypto.randomUUID()}`
+    // Remember the submitted conversation before waiting for its result, so
+    // leaving during a response can reopen the server's saved pending turn.
+    try { sessionStorage.setItem(ACTIVE_CHAT_KEY, id) } catch {}
     try { sessionStorage.setItem(`scispark:chat-draft:${id}:options`, JSON.stringify(draftOptions.current)) } catch {}
     try {
       if (mode === "review") {
