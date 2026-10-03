@@ -2,10 +2,25 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { LLMError, LLMLocalEngineError, type LLMProvider, type LLMRequest, type LLMResult, type LLMUsage } from "../llm/types"
-import type { EngineSettings, LocalEngine } from "./contracts"
+import { engineLabel, type EngineSettings, type LocalEngine } from "./contracts"
 import { engineExecutable, runEngineProcess } from "./process"
 import { localEngineStatus } from "./status"
 import { codexNativeSchema } from "./schema"
+import { requireCodexModel } from "./models"
+
+/** Map diagnostics to fixed public copy; raw CLI output can contain credentials. */
+function engineFailureMessage(engine: LocalEngine, diagnostic: string): string | undefined {
+  const label = engineLabel(engine)
+  let reason: string
+  if (/model.*not supported|model.*not found|model.*does not exist/i.test(diagnostic)) reason = `${label} rejected the selected model. Choose a model available to your account in Settings → Connect your AI.`
+  else if (/invalid.*schema|schema.*invalid/i.test(diagnostic)) reason = `${label} rejected the response schema. This is an integration error.`
+  else if (/usage limit|rate.?limit|quota|too many requests|\b429\b/i.test(diagnostic)) reason = `${label} reported a usage limit. Check your plan in the CLI before resuming.`
+  else if (/token.*expired|unauthorized|authentication.*failed|sign in again|\b401\b/i.test(diagnostic)) reason = `${label} sign-in expired or was rejected. Sign in again through the CLI before resuming.`
+  else if (/\b(?:500|502|503|504)\b|service unavailable|server error|overloaded/i.test(diagnostic)) reason = `${label}'s service is temporarily unavailable. Try resuming later.`
+  else if (/stream disconnected|error sending request|connection.*(?:failed|reset|closed|refused)|network|dns|timed out|websocket/i.test(diagnostic)) reason = `${label}'s connection failed before the request finished. Check your connection before resuming.`
+  else return undefined
+  return `${reason} Usage may have been consumed; no automatic retry was made.`
+}
 
 export function completionArguments(engine: LocalEngine, model: string, req: LLMRequest, schemaPath: string): string[] {
   if (engine === "claude-code") return ["--print", "--safe-mode", "--setting-sources", "", "--tools", "", "--strict-mcp-config",
@@ -43,11 +58,12 @@ export class CompletionEvents {
       // warnings before a successful turn. These are not tool executions.
       if (["item.started", "item.completed"].includes(e.type) && !["agent_message", "reasoning", "todo_list", "error"].includes(e.item?.type)) throw new Error("Unexpected tool call")
       if (e.type === "turn.failed" || e.type === "error") {
-        this.failed = true
         const message = String(e.message ?? e.error?.message ?? "")
-        // Classify known failures without forwarding raw CLI text or credentials.
-        if (/model.*not supported|model.*not found|model.*does not exist/i.test(message)) this.failureMessage = "Codex rejected the selected model. Choose a model available to your Codex account in Settings → Connect your AI."
-        else if (/invalid.*schema|schema.*invalid/i.test(message)) this.failureMessage = "Codex rejected the response schema. This is an integration error; no automatic retry was made."
+        // The installed CLI emits top-level error events for its own reconnect
+        // attempts, even when the same turn later completes successfully.
+        // Do not discard that completed result or dispatch a second request.
+        if (e.type === "turn.failed" || !/^Reconnecting\.\.\. \d+\/\d+\b/.test(message)) this.failed = true
+        this.failureMessage = engineFailureMessage(this.engine, message) ?? this.failureMessage
       }
       if (e.type === "turn.completed") { this.done = true; this.setUsage(e.usage) }
     } else {
@@ -59,6 +75,11 @@ export class CompletionEvents {
       }
       if (e.type === "result") {
         this.done = true; this.failed = e.is_error === true || e.subtype !== "success"
+        if (this.failed) {
+          this.failureMessage = engineFailureMessage(this.engine, [e.result, ...(Array.isArray(e.errors) ? e.errors : [])].filter(value => typeof value === "string").join("\n"))
+          this.setUsage(e.usage)
+          return
+        }
         this.json = e.structured_output
         this.text = this.json !== undefined ? JSON.stringify(this.json) : typeof e.result === "string" ? e.result : this.text
         this.onText?.(this.text); this.setUsage(e.usage)
@@ -78,9 +99,13 @@ export class LocalEngineProvider implements LLMProvider {
   constructor(private engine: LocalEngine, private settings: EngineSettings) {
     this.id = engine === "codex" ? "openai" as const : "anthropic" as const
   }
-  async complete(model: string, req: LLMRequest): Promise<LLMResult> {
+  async preflight(model: string): Promise<void> {
     const status = await localEngineStatus(this.engine)
     if (status.state !== "ready") throw new LLMError(status.message)
+    if (this.engine === "codex") await requireCodexModel(model)
+  }
+  async complete(model: string, req: LLMRequest): Promise<LLMResult> {
+    await this.preflight(model)
     const cwd = await mkdtemp(join(tmpdir(), "scispark-engine-"))
     const events = new CompletionEvents(this.engine, req.onText)
     let dispatched = false
@@ -93,7 +118,7 @@ export class LocalEngineProvider implements LLMProvider {
       dispatched = true
       const result = await runEngineProcess({ executable, args: completionArguments(this.engine, model, req, schemaPath), cwd,
         input: prompt, timeoutMs: this.settings.timeoutSeconds * 1000, signal: req.signal, onLine: (line) => events.accept(line) })
-      if (result.code !== 0 || events.failed || !events.done || !events.text.trim()) throw new LLMError(events.failureMessage ?? `${this.engine === "codex" ? "Codex" : "Claude Code"} did not complete the request. Check account limits and model availability in the CLI. Usage may have been consumed; no automatic retry was made.`)
+      if (result.code !== 0 || events.failed || !events.done || !events.text.trim()) throw new LLMError(events.failureMessage ?? engineFailureMessage(this.engine, result.stderr) ?? `${engineLabel(this.engine)} did not return a completed response. The CLI did not provide a recognized cause. Usage may have been consumed; no automatic retry was made.`)
       return { text: events.text, json: events.json, usage: events.usage, provider: this.id, model, stopReason: "stop" }
     } catch (error) {
       if (dispatched) throw new LLMLocalEngineError(error instanceof Error ? error.message : "Local engine failed.", events.usage, model)

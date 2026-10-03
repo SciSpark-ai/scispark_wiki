@@ -42,6 +42,8 @@ export async function localReviewComplete<T>(storage: VaultStorage, id: string, 
       if (prior?.result) return prior.result as LLMResult
       if (rows.some((r) => r.state === "uncertain" || r.state === "reserved")) throw new Error("A previous engine request may have consumed plan usage. Acknowledge it before retrying.")
       if (rows.length >= 120) throw new Error("This review reached its 120 engine-call limit. Partial work is saved.")
+      await provider.preflight?.(model)
+      await guard()
       const row: z.infer<typeof Attempt> = { id: randomUUID(), signature, step, state: "reserved" }
       rows.push(row); await persist()
       const abort = new AbortController()

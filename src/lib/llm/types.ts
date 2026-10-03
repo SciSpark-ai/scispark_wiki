@@ -52,6 +52,8 @@ export interface LLMResult {
 export interface LLMProvider {
   readonly id: ProviderId
   readonly billingMode?: "subscription"
+  /** Optional read-only readiness check, before reserving a billable attempt. */
+  preflight?(model: string): Promise<void>
   complete(model: string, req: LLMRequest): Promise<LLMResult>
 }
 

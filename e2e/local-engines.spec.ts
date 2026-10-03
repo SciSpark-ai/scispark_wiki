@@ -12,7 +12,7 @@ for (const engine of ["codex", "claude-code"] as const) {
       await request.put("/api/settings", { data: { patch: { keys: { openai: "", anthropic: "", google: "", openrouter: "" }, engines: { ...DEFAULT_ENGINES, kind: "api" } } } })
       await page.goto("/settings")
       const label = engine === "codex" ? "Codex" : "Claude Code"
-      const selectedModels = engine === "codex" ? { strong: "gpt-6-astra", fast: "gpt-6-luna" } : { strong: "opus", fast: "sonnet" }
+      const selectedModels = engine === "codex" ? { strong: "gpt-5.6-terra", fast: "gpt-5.6-luna" } : { strong: "opus", fast: "sonnet" }
       await page.getByRole("button", { name: label, exact: true }).click()
       const beforeUsage = (await (await request.get("/api/usage")).json()).summary.subscription?.calls ?? 0
       await page.getByRole("combobox", { name: `${label} analysis model`, exact: true }).selectOption(selectedModels.strong)
@@ -51,7 +51,8 @@ for (const engine of ["codex", "claude-code"] as const) {
       await page.reload()
       // Settings lives in a modal; reload returns to the underlying page.
       await page.goto("/settings")
-      await expect(page.getByRole("textbox", { name: `${label} analysis custom model ID`, exact: true })).toHaveValue("fixture/custom-model")
+      if (engine === "codex") await expect(page.getByRole("combobox", { name: `${label} analysis model`, exact: true })).toHaveValue("fixture/custom-model")
+      else await expect(page.getByRole("textbox", { name: `${label} analysis custom model ID`, exact: true })).toHaveValue("fixture/custom-model")
       await page.getByRole("combobox", { name: `${label} analysis model`, exact: true }).selectOption(selectedModels.strong)
       await page.getByRole("button", { name: "Save models", exact: true }).click()
       await expect(page.getByRole("status").filter({ hasText: "Models saved for new requests" })).toBeVisible()

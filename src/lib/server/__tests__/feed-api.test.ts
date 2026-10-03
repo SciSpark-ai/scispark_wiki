@@ -15,6 +15,9 @@ import * as feedRefreshRoute from "../../../app/api/skills/feed/refresh/route"
 import * as consolidateRoute from "../../../app/api/skills/consolidate/route"
 import { runConsolidation } from "../../skills/consolidation"
 import { runHeartbeatTick } from "../../scheduler/heartbeat"
+import { readLedger } from "../../runs/ledger"
+import { DEFAULT_SETTINGS, saveSettings } from "../../llm/settings"
+import { DEFAULT_ENGINES } from "../../engines/contracts"
 
 function paper(o: Partial<PaperRecord> & { title: string }): PaperRecord {
   return { ids: {}, authors: [], fields: [], source: "arxiv", abstract: "Sparse attention research", ...o }
@@ -56,6 +59,107 @@ describe("feed + consolidation skill routes", () => {
   })
 
   describe("POST /api/skills/feed/refresh", () => {
+    it("recovers a legacy assessment failure that was incorrectly recorded as successful without rewriting records", async () => {
+      const cached: FeedResult = { generatedAt: "2026-09-29T07:48:21.037Z", items: [], strategy: ONE_QUERY_STRATEGY, stats: { retrieved: 49, ranked: 49 }, costUsd: null }
+      await storage.write(FEED_CACHE_PATH, JSON.stringify(cached))
+      const ledger = [{ orchestrator: "feed-refresh", trigger: "user", status: "ok", ts: "2026-09-29T07:51:49.024Z" },
+        { orchestrator: "feed-refresh", trigger: "user", status: "ok", ts: "2026-09-29T08:44:34.892Z", meta: { itemCount: 12 } }].map(r => JSON.stringify(r)).join("\n")
+      await storage.write(".scispark/runs/ledger.jsonl", ledger)
+      await storage.write(".scispark/runs/run-1790671449194-abcd.json", JSON.stringify({ skill: "recommendation-assessment", status: "error", error: "PRIVATE_DIAGNOSTIC" }))
+      const returned = await feedRefreshRoute.GET(new Request("http://x/api/skills/feed/refresh"))
+      await expect(readNdjson(returned, () => {})).rejects.toThrow("AI relevance assessment did not complete")
+      expect(await storage.read(".scispark/runs/ledger.jsonl")).toBe(ledger)
+      expect(await loadFeed(storage)).toEqual(cached)
+    })
+    it("rejects an unavailable local model before any search or completion", async () => {
+      await seedOnboardedUserModel(storage)
+      await saveSettings(storage, { ...DEFAULT_SETTINGS, engines: { ...DEFAULT_ENGINES, kind: "codex" } })
+      const provider = Object.assign(new MockProvider([]), { preflight: async () => { throw new Error("The selected Codex model is unavailable") } })
+      let searches = 0
+      setSkillTestOverrides({ providerOverride: { strong: provider, fast: provider }, searchFn: async () => { searches++; return [] } })
+      const started = await feedRefreshRoute.POST(new Request("http://x/api/skills/feed/refresh", { method: "POST", body: "{}" }))
+      await expect(readNdjson(started, () => {})).rejects.toThrow("model is unavailable")
+      const returned = await feedRefreshRoute.GET(new Request("http://x/api/skills/feed/refresh"))
+      await expect(readNdjson(returned, () => {})).rejects.toThrow("model is unavailable")
+      expect((await readLedger(storage))[0]).toMatchObject({ status: "failed", reason: "The selected Codex model is unavailable" })
+      expect(provider.calls).toHaveLength(0)
+      expect(searches).toBe(0)
+    })
+    it("keeps a failed refresh visible after navigation and process state is cleared", async () => {
+      await seedOnboardedUserModel(storage)
+      const strong = new MockProvider([structured(ONE_QUERY_STRATEGY)])
+      setSkillTestOverrides({ providerOverride: { strong }, searchFn: async () => [] })
+      const started = await feedRefreshRoute.POST(new Request("http://x/api/skills/feed/refresh", { method: "POST", body: "{}" }))
+      await expect(readNdjson(started, () => {})).rejects.toThrow("No eligible papers")
+      resetFeedRefreshForTests()
+      const returned = await feedRefreshRoute.GET(new Request("http://x/api/skills/feed/refresh"))
+      await expect(readNdjson(returned, () => {})).rejects.toThrow("No eligible papers")
+      expect(strong.calls).toHaveLength(1)
+    })
+
+    it("records degraded assessment and keeps the old feed and failure visible on return", async () => {
+      await seedOnboardedUserModel(storage)
+      const cached: FeedResult = { generatedAt: "2026-09-28T12:00:00.000Z", items: [], strategy: ONE_QUERY_STRATEGY, stats: { retrieved: 0, ranked: 0 }, costUsd: 0 }
+      await storage.write(FEED_CACHE_PATH, JSON.stringify(cached))
+      const strong = new MockProvider([structured(ONE_QUERY_STRATEGY)])
+      const fast = new MockProvider([new Error("Model rejected")])
+      setSkillTestOverrides({ providerOverride: { strong, fast }, searchFn: fakeSearchFn })
+      const started = await feedRefreshRoute.POST(new Request("http://x/api/skills/feed/refresh", { method: "POST", body: "{}" }))
+      await expect(readNdjson(started, () => {})).rejects.toThrow("previous feed")
+      expect(await loadFeed(storage)).toEqual(cached)
+      expect((await readLedger(storage))[0]).toMatchObject({ status: "degraded", meta: { cacheUpdated: false } })
+      resetFeedRefreshForTests()
+      const returned = await feedRefreshRoute.GET(new Request("http://x/api/skills/feed/refresh", { headers: { "x-feed-generated-at": cached.generatedAt } }))
+      await expect(readNdjson(returned, () => {})).rejects.toThrow("previous feed")
+      expect(strong.calls).toHaveLength(1)
+      expect(fast.calls).toHaveLength(1)
+    })
+    it("reconnects with GET after the initiating stream disconnects without starting another pipeline", async () => {
+      await seedOnboardedUserModel(storage)
+      let release!: () => void
+      let started!: () => void
+      const gate = new Promise<void>((resolve) => { release = resolve })
+      const running = new Promise<void>((resolve) => { started = resolve })
+      let calls = 0
+      const provider: LLMProvider = { id: "anthropic", async complete() { calls++; started(); await gate; return structured(ONE_QUERY_STRATEGY) } }
+      const fast = new MockProvider([structured({ assessments: [assessment(0, 4), assessment(1, 1)] })])
+      setSkillTestOverrides({ providerOverride: { strong: provider, fast }, searchFn: fakeSearchFn })
+      const first = await feedRefreshRoute.POST(new Request("http://x/api/skills/feed/refresh", { method: "POST", body: "{}" }))
+      await running
+      await first.body!.cancel()
+      const observer = await feedRefreshRoute.GET(new Request("http://x/api/skills/feed/refresh"))
+      const events: Array<Record<string, unknown>> = []
+      const result = readNdjson(observer, (event) => { events.push(event) })
+      release()
+      const feed = await result as FeedResult
+      expect(feed.items).toHaveLength(1)
+      expect(calls).toBe(1)
+      expect(fast.calls).toHaveLength(1)
+      expect(events[0]).toMatchObject({ type: "progress", stage: "strategy", startedAt: expect.any(Number) })
+      expect(await loadFeed(storage)).toEqual(feed)
+      const idle = await feedRefreshRoute.GET(new Request("http://x/api/skills/feed/refresh"))
+      expect(await readNdjson(idle, () => {})).toBeNull()
+      expect(calls).toBe(1)
+    })
+
+    it("GET never starts work when no refresh is active", async () => {
+      await seedOnboardedUserModel(storage)
+      const provider = new MockProvider([])
+      setSkillTestOverrides({ providerOverride: { strong: provider, fast: provider } })
+      const response = await feedRefreshRoute.GET(new Request("http://x/api/skills/feed/refresh"))
+      expect(await readNdjson(response, () => {})).toBeNull()
+      expect(provider.calls).toHaveLength(0)
+    })
+
+    it("recovers a refresh that finished during navigation without replaying an unchanged cache", async () => {
+      const cached: FeedResult = { generatedAt: "2026-09-29T12:00:00.000Z", items: [], strategy: ONE_QUERY_STRATEGY, stats: { retrieved: 0, ranked: 0 }, costUsd: 0 }
+      await storage.write(FEED_CACHE_PATH, JSON.stringify(cached))
+      const changed = await feedRefreshRoute.GET(new Request("http://x/api/skills/feed/refresh", { headers: { "x-feed-generated-at": "2026-09-28T12:00:00.000Z" } }))
+      expect(await readNdjson(changed, () => {})).toEqual(cached)
+      const unchanged = await feedRefreshRoute.GET(new Request("http://x/api/skills/feed/refresh", { headers: { "x-feed-generated-at": cached.generatedAt } }))
+      expect(await readNdjson(unchanged, () => {})).toBeNull()
+    })
+
     it("does not join another profile's refresh while its provider is running", async () => {
       await seedOnboardedUserModel(storage)
       let release!: () => void
@@ -70,6 +174,8 @@ describe("feed + consolidation skill routes", () => {
       const other = new MemoryVaultStorage()
       await seedOnboardedUserModel(other)
       setServerVaultForTests(other)
+      const observer = await feedRefreshRoute.GET(new Request("http://x/api/skills/feed/refresh"))
+      expect(await readNdjson(observer, () => {})).toBeNull()
       const second = await feedRefreshRoute.POST(new Request("http://x/api/skills/feed/refresh", { method: "POST", body: "{}" }))
       // Both profiles must execute their own pipeline rather than sharing a result.
       const secondResult = readNdjson(second, () => {}).then(() => "success", (error: Error) => error.message)
@@ -133,10 +239,10 @@ describe("feed + consolidation skill routes", () => {
       const result = (await readNdjson(res, (e) => progressEvents.push(e))) as FeedResult
 
       expect(progressEvents).toEqual([
-        { type: "progress", stage: "strategy" },
-        { type: "progress", stage: "retrieval" },
-        { type: "progress", stage: "rank" },
-        { type: "progress", stage: "rerank" },
+        { type: "progress", stage: "strategy", startedAt: expect.any(Number) },
+        { type: "progress", stage: "retrieval", startedAt: expect.any(Number) },
+        { type: "progress", stage: "rank", startedAt: expect.any(Number) },
+        { type: "progress", stage: "rerank", startedAt: expect.any(Number) },
       ])
 
       expect(result.items).toHaveLength(1)

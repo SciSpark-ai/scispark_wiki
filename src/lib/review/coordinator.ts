@@ -16,6 +16,7 @@ import { exportReview } from "./report"
 import { invalidateAnswerCoverage } from "./coverage"
 import { z } from "zod"
 import { logEvent } from "../events/log"
+import { requireCodexModel } from "../engines/models"
 
 // Survives dev module replacement. The disk lease, not this map, grants ownership.
 const runtime = globalThis as typeof globalThis & { __scisparkReviews?: WeakMap<VaultStorage, Map<string, Promise<void>>>; __scisparkDiskReviews?: Map<string, Map<string, Promise<void>>> }
@@ -106,7 +107,13 @@ export async function reviewSnapshot(storage: VaultStorage, id: string) {
   await recoverReviewJobs(storage)
   const run = await loadReview(storage, id)
   if (["completed", "partial"].includes(run.status)) await publishCompletion(storage, run)
-  return { run: await loadReview(storage, id), spending: await reviewSpend(storage, id) }
+  let modelError: string | undefined
+  if (run.brief.model.engine === "codex" && (inactiveStatuses.has(run.status) || run.status === "awaiting-approval")) {
+    try { await requireCodexModel(run.brief.model.model) }
+    catch (error) { modelError = error instanceof Error ? error.message : "Could not check the selected Codex model." }
+  }
+  // Current connection guidance is not a rewrite of the saved failure or ledger.
+  return { run: await loadReview(storage, id), spending: await reviewSpend(storage, id), ...(modelError ? { modelError } : {}) }
 }
 
 async function publishCompletion(storage: VaultStorage, run: ReviewRun) {
@@ -184,9 +191,10 @@ export async function actOnReview(storage: VaultStorage, id: string, raw: unknow
     await appendReviewMessage(storage, next, { role: "assistant", content: "The revision is saved as a new version. Its edited claims need a new source check.", blocks: [{ type: "review", runId: id }] })
     return next
   }
-  if (action.action === "resume" && action.acknowledgeUncertainCharge) {
+  if ((action.action === "resume" || action.action === "approve") && action.acknowledgeUncertainCharge) {
     const current = await loadReview(storage, id)
-    if (current.revision !== action.revision || !inactiveStatuses.has(current.status)) throw new Error("The review changed. Reload before resuming.")
+    const canAcknowledge = action.action === "approve" ? current.status === "awaiting-approval" : inactiveStatuses.has(current.status)
+    if (current.revision !== action.revision || !canAcknowledge) throw new Error("The review changed. Reload before resuming.")
     await acknowledgeReviewCharge(storage, id)
   }
   // Register ownership and the local promise in the SAME critical section so

@@ -67,6 +67,7 @@ export function jsonSkillRoute<TIn, TOut>(
  */
 export function ndjsonSkillRoute<TIn>(
   handler: (input: TIn, vault: VaultStorage, emit: (event: object) => void) => Promise<unknown>,
+  parseInput: (request: Request) => Promise<TIn> = (request) => request.json(),
 ): (req: Request) => Promise<Response> {
   return async (req: Request): Promise<Response> => {
     const encoder = new TextEncoder()
@@ -85,7 +86,7 @@ export function ndjsonSkillRoute<TIn>(
           controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))
         }
         try {
-          const input = (await req.json()) as TIn
+          const input = await parseInput(req)
           const vault = await getServerVault()
           const result = await handler(input, vault, emit)
           emit({ type: "result", payload: result })

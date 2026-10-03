@@ -5,8 +5,8 @@ import { DEFAULT_ENGINES } from "../contracts"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { openVault } from "../../vault/scaffold"
 import { DEFAULT_SETTINGS, saveSettings, buildProvider } from "../../llm/settings"
-import { createReview, loadReview } from "../../review/store"
-import { actOnReview, waitForReview } from "../../review/coordinator"
+import { createReview, loadReview, updateReview } from "../../review/store"
+import { actOnReview, reviewSnapshot, waitForReview } from "../../review/coordinator"
 import { reviewComplete, reviewSpend, acknowledgeReviewCharge } from "../../review/budget"
 import type { PaperRecord } from "../../papers/types"
 
@@ -57,5 +57,31 @@ for (const engine of ["codex", "claude-code"] as const) {
     await expect(invoke("ready")).resolves.toEqual({ message: "ready" })
     await expect(invoke("ready")).resolves.toEqual({ message: "ready" })
     expect(spy).toHaveBeenCalledTimes(2)
+  })
+  it(`${engine}: can approve an amended brief after acknowledging the existing uncertain attempt`, async () => {
+    const { storage, settings, run } = await setup()
+    await expect(reviewComplete(storage, run.id, run.brief, "old-attempt", "FIXTURE_ERROR", z.object({ message: z.string() }), 256, async () => {}, buildProvider(settings, "strong"))).rejects.toThrow()
+    const paused = await updateReview(storage, run.id, r => { r.status = "paused"; r.approvedRevision = 0 })
+    await actOnReview(storage, run.id, { action: "amend", revision: paused.revision, question: run.brief.question, scope: run.brief.scope, allowanceUsd: run.brief.allowanceUsd, usePersonalContext: false, rates: null })
+    const amended = await loadReview(storage, run.id)
+    await expect(actOnReview(storage, run.id, { action: "approve", revision: amended.revision })).rejects.toThrow("uncertain")
+    await actOnReview(storage, run.id, { action: "approve", revision: amended.revision, acknowledgeUncertainCharge: true }, { search: async () => [] })
+    await waitForReview(storage, run.id)
+    const attempts = JSON.parse((await storage.read(`.scispark/reviews/${run.id}/engine-attempts.json`))!)
+    expect(attempts[0].state).toBe("acknowledged")
+    expect((await reviewSpend(storage, run.id)).uncertain).toBe(false)
+  })
+  if (engine === "codex") it("rejects an unavailable Codex model before reserving a review attempt", async () => {
+    const { storage, settings } = await setup()
+    await saveSettings(storage, { ...settings, engines: { ...settings.engines, models: { ...settings.engines.models, codex: { ...settings.engines.models.codex, strong: "gpt-6-astra" } } } })
+    const run = await createReview(storage, { sessionId: "unavailable-model", operationId: "unavailable-model", question: "Compare adult decoding methods", sources: ["openalex"] })
+    await actOnReview(storage, run.id, { action: "approve", revision: run.revision })
+    await waitForReview(storage, run.id)
+    expect((await loadReview(storage, run.id)).error).toContain("does not list gpt-6-astra")
+    expect(await reviewSpend(storage, run.id)).toMatchObject({ engineCalls: 0, uncertain: false })
+    const before = await storage.read(`.scispark/reviews/${run.id}/run.json`)
+    expect(await reviewSnapshot(storage, run.id)).toHaveProperty("modelError", expect.stringContaining("does not list gpt-6-astra"))
+    expect(await storage.read(`.scispark/reviews/${run.id}/run.json`)).toBe(before)
+    expect(await reviewSpend(storage, run.id)).toMatchObject({ engineCalls: 0, uncertain: false })
   })
 }

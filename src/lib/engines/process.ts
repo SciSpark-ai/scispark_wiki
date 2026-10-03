@@ -29,7 +29,9 @@ export async function engineExecutable(engine: LocalEngine): Promise<string> {
 }
 export interface ProcessRequest {
   executable: string; args: string[]; cwd: string; input?: string
-  timeoutMs: number; signal?: AbortSignal; onLine?: (line: string) => void
+  timeoutMs: number; signal?: AbortSignal
+  keepStdinOpen?: boolean
+  onLine?: (line: string, reply: (input: string | null) => void) => void
 }
 export interface ProcessResult { code: number | null; stdout: string; stderr: string }
 export function runEngineProcess(req: ProcessRequest): Promise<ProcessResult> {
@@ -54,13 +56,14 @@ export function runEngineProcess(req: ProcessRequest): Promise<ProcessResult> {
     child.on("error", () => { cleanup(); reject(new LLMError("Could not start the local AI runtime. Check its installation and permissions.")) })
     child.stdout.setEncoding("utf8")
     child.stderr.setEncoding("utf8")
+    const reply = (input: string | null) => { if (input === null) child.stdin.end(); else child.stdin.write(input) }
     child.stdout.on("data", (text: string) => {
       stdout += text; pending += text
       if (Buffer.byteLength(stdout) > 8_000_000) { stop(new LLMError("Local AI output exceeded the response limit.")); return }
       let end: number
       while ((end = pending.indexOf("\n")) >= 0) {
         const line = pending.slice(0, end); pending = pending.slice(end + 1)
-        try { req.onLine?.(line) } catch { stop(new LLMError("The local AI runtime returned an unsupported response.")) }
+        try { req.onLine?.(line, reply) } catch { stop(new LLMError("The local AI runtime returned an unsupported response.")) }
       }
     })
     child.stderr.on("data", (text: string) => { stderr = (stderr + text).slice(-32_000) })
@@ -68,9 +71,10 @@ export function runEngineProcess(req: ProcessRequest): Promise<ProcessResult> {
     child.once("close", (code) => {
       cleanup()
       if (failure) { reject(failure); return }
-      try { if (pending.trim()) req.onLine?.(pending); resolve({ code, stdout, stderr }) }
+      try { if (pending.trim()) req.onLine?.(pending, reply); resolve({ code, stdout, stderr }) }
       catch { reject(new LLMError("The local AI runtime returned an unsupported response.")) }
     })
-    child.stdin.end(req.input ?? "")
+    if (req.keepStdinOpen) child.stdin.write(req.input ?? "")
+    else child.stdin.end(req.input ?? "")
   })
 }

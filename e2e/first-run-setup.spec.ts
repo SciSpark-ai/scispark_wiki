@@ -45,6 +45,10 @@ for (const entry of ["new connection", "saved connection"] as const) {
       await route.fulfill({ json: { result: { status: "skipped", costUsd: 0 } } })
     })
     await page.route("**/api/skills/feed/refresh", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({ contentType: "application/x-ndjson", body: `${JSON.stringify({ type: "result", payload: null })}\n` })
+        return
+      }
       feedRequests++
       await feedGate
       await route.fulfill({

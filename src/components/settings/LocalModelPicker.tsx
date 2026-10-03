@@ -1,34 +1,21 @@
 "use client"
 
 import { useId, useState } from "react"
-import { engineLabel, type LocalEngine } from "@/lib/engines/contracts"
+import { engineLabel, type EngineModel, type LocalEngine } from "@/lib/engines/contracts"
 
-// Suggestions, not an account entitlement list. Codex IDs were checked against
-// the official CLI's visible model metadata on 2026-09-29. Claude's stable aliases
-// are documented at https://code.claude.com/docs/en/model-config.
-// Keep custom IDs available and never migrate a user's saved selection here.
-const SUGGESTIONS: Record<LocalEngine, readonly { id: string; label: string }[]> = {
-  codex: [
-    { id: "gpt-6-astra", label: "GPT-6 Astra" },
-    { id: "gpt-6-sol", label: "GPT-6 Sol" },
-    { id: "gpt-6-luna", label: "GPT-6 Luna" },
-    { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
-    { id: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
-    { id: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
-    { id: "gpt-5.5", label: "GPT-5.5" },
-  ],
-  "claude-code": [
-    { id: "sonnet", label: "Claude Sonnet" },
-    { id: "opus", label: "Claude Opus" },
-    { id: "haiku", label: "Claude Haiku" },
-  ],
-}
+// Codex choices come from the installed CLI. Claude's stable aliases are
+// documented at https://code.claude.com/docs/en/model-config.
+const CLAUDE_MODELS: EngineModel[] = [
+  { id: "sonnet", label: "Claude Sonnet" },
+  { id: "opus", label: "Claude Opus" },
+  { id: "haiku", label: "Claude Haiku" },
+]
 
-export function LocalModelPicker({ engine, tier, value, onChange }: {
-  engine: LocalEngine; tier: "strong" | "fast"; value: string; onChange: (value: string) => void
+export function LocalModelPicker({ engine, tier, value, models, onChange }: {
+  engine: LocalEngine; tier: "strong" | "fast"; value: string; models?: EngineModel[]; onChange: (value: string) => void
 }) {
   const id = useId()
-  const options = SUGGESTIONS[engine]
+  const options = engine === "codex" ? models ?? [] : CLAUDE_MODELS
   const [customSelected, setCustomSelected] = useState(false)
   const custom = customSelected || !options.some((option) => option.id === value)
   const name = `${engineLabel(engine)} ${tier === "strong" ? "analysis" : "quick"}`

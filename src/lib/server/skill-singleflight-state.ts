@@ -5,6 +5,7 @@ import type { VaultStorage } from "../vault/storage"
 export type ProgressEmitter = (event: object) => void
 
 export interface ActiveFeedRefresh {
+  startedAt: number
   promise: Promise<FeedResult>
   stage: FeedStage | null
   listeners: Set<ProgressEmitter>

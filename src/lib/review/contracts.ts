@@ -58,7 +58,7 @@ export const BriefInputSchema = z.object({ sessionId: ReviewId, operationId: Rev
   question: z.string().trim().min(5).max(2000), sources: z.array(ReviewSource).min(1).max(4),
 }).strict()
 export const ReviewActionSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("approve"), revision: z.number().int() }).strict(),
+  z.object({ action: z.literal("approve"), revision: z.number().int(), acknowledgeUncertainCharge: z.boolean().optional() }).strict(),
   z.object({ action: z.literal("amend"), revision: z.number().int(), question: z.string().min(5).max(2000), scope: z.string().max(4000), allowanceUsd: z.number().min(0.01).max(100), usePersonalContext: z.boolean(), rates: TokenRatesSchema.nullable() }).strict(),
   z.object({ action: z.literal("cancel") }).strict(),
   z.object({ action: z.literal("resume"), revision: z.number().int(), acknowledgeUncertainCharge: z.boolean().default(false) }).strict(),

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { DEFAULT_ENGINES, EngineSettingsSchema, engineLabel, type EngineSettings, type EngineStatus, type LocalEngine } from "@/lib/engines/contracts"
 import { checkLocalEngine } from "@/lib/engines/client"
@@ -19,8 +19,15 @@ export function LocalEngineConnection({ engine, settings, onSaved, onConnected, 
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState("")
   const selected = current.kind === engine
+  useEffect(() => {
+    let alive = true
+    void checkLocalEngine(engine).then(result => { if (alive) setStatus(result) }).catch(() => { /* explicit Check connection shows the error */ })
+    return () => { alive = false }
+  }, [engine])
   const dirty = models.strong.trim() !== current.models[engine].strong || models.fast.trim() !== current.models[engine].fast || timeout !== current.timeoutSeconds
   const candidate = EngineSettingsSchema.safeParse({ ...current, kind: engine, models: { ...current.models, [engine]: models }, timeoutSeconds: timeout })
+  const unavailable = engine === "codex" && status?.models ? [...new Set(Object.values(models).map(id => id.trim()).filter(id => !status.models!.some(m => m.id === id)))] : []
+  const canSave = candidate.success && (engine !== "codex" || !!status?.models) && unavailable.length === 0
   const inputClass = "mt-1 w-full rounded-btn border border-border-warm bg-card-surface px-3 py-2 text-sm text-espresso focus-visible:outline-2 focus-visible:outline-accent-ink"
   function changeModel(tier: "strong" | "fast", value: string) {
     setModels({ ...models, [tier]: value }); setMessage("")
@@ -37,6 +44,11 @@ export function LocalEngineConnection({ engine, settings, onSaved, onConnected, 
       const result = await check()
       if (!save || result.state !== "ready" || !candidate.success) return
       const next = candidate.data
+      if (engine === "codex") {
+        if (!result.models) throw new Error(result.modelsError ?? "Check connection to load this Codex CLI's available models before saving.")
+        const unavailable = Object.values(next.models.codex).filter(id => !result.models!.some(m => m.id === id))
+        if (unavailable.length) throw new Error(`${[...new Set(unavailable)].join(", ")} is not available in this Codex CLI's model list. Choose an available model below; no model request was sent.`)
+      }
       await patchSettings({ engines: next }); onSaved(next); setModels(next.models[engine])
       if (test) {
         const res = await fetch("/api/settings/test-connection", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
@@ -54,18 +66,20 @@ export function LocalEngineConnection({ engine, settings, onSaved, onConnected, 
     {selected && <p className="break-words text-[13px] leading-relaxed text-espresso">Saved models: {current.models[engine].strong} (analysis) · {current.models[engine].fast} (quick steps)</p>}
     <fieldset disabled={busy} className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
-        <LocalModelPicker engine={engine} tier="strong" value={models.strong} onChange={(value) => changeModel("strong", value)} />
-        <LocalModelPicker engine={engine} tier="fast" value={models.fast} onChange={(value) => changeModel("fast", value)} />
+        <LocalModelPicker engine={engine} tier="strong" value={models.strong} models={status?.models} onChange={(value) => changeModel("strong", value)} />
+        <LocalModelPicker engine={engine} tier="fast" value={models.fast} models={status?.models} onChange={(value) => changeModel("fast", value)} />
       </div>
       <p className="text-xs leading-relaxed text-muted-text">Choose the same model for both, or use different models for each step. Model access depends on your account and CLI version; use Custom model for another ID. Saving applies to new requests in this profile.</p>
+      {engine === "codex" && <p className="text-xs leading-relaxed text-muted-text">{status?.models ? "Choices come from the Codex CLI installed on this computer." : status?.modelsError ?? "Checking the installed Codex CLI for available models…"}</p>}
+      {unavailable.length > 0 && <p role="alert" className="text-sm text-espresso">{unavailable.join(", ")} is not available in this Codex CLI&apos;s model list. Choose an available model; no model request has been sent.</p>}
       <label className="block text-[13px] text-espresso">Timeout per request (seconds)<input aria-label="Timeout per request (seconds)" type="number" min={30} max={600} className={inputClass} value={timeout} onChange={(e) => { setTimeoutSeconds(Number(e.target.value)); setMessage("") }} /></label>
-      <p className="text-xs leading-relaxed text-muted-text">Output-token limits are approximate for local agents. Requests stop at the timeout; usage may already have been consumed. Status checks do not verify model access.</p>
+      <p className="text-xs leading-relaxed text-muted-text">Output-token limits are approximate for local agents. Requests stop at the timeout; usage may already have been consumed. Checking the connection does not run an AI request.</p>
       {dirty && <p role="status" className="text-xs text-espresso">Unsaved changes</p>}
       {!candidate.success && <p role="alert" className="text-xs text-espresso">Enter a model ID of 1–150 characters using letters, numbers, dots, dashes, underscores, slashes or colons, starting with a letter or number, and a whole-number timeout from 30 to 600 seconds.</p>}
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={() => void run(false, false)} className="rounded-pill border border-border-warm px-4 py-2 text-sm text-espresso">Check connection</button>
-        <button type="button" disabled={!candidate.success} onClick={() => void run(true, false)} className="rounded-pill bg-orange px-4 py-2 text-sm font-medium text-on-accent disabled:opacity-40">{firstRun ? "Connect & continue" : selected ? "Save models" : `Use ${engineLabel(engine)}`}</button>
-        {!firstRun && <button type="button" disabled={!candidate.success} onClick={() => void run(true, true)} className="text-sm text-muted-text underline disabled:opacity-40">Save & test models (uses plan)</button>}
+        <button type="button" disabled={!canSave} onClick={() => void run(true, false)} className="rounded-pill bg-orange px-4 py-2 text-sm font-medium text-on-accent disabled:opacity-40">{firstRun ? "Connect & continue" : selected ? "Save models" : `Use ${engineLabel(engine)}`}</button>
+        {!firstRun && <button type="button" disabled={!canSave} onClick={() => void run(true, true)} className="text-sm text-muted-text underline disabled:opacity-40">Save & test models (uses plan)</button>}
         {busy && <Loader2 size={16} aria-label="Checking engine" className="animate-spin text-muted-text" />}
       </div>
     </fieldset>
