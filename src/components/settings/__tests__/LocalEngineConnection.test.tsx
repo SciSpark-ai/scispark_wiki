@@ -46,6 +46,34 @@ beforeEach(() => {
 afterEach(() => { act(() => root?.unmount()); host?.remove(); vi.unstubAllGlobals() })
 
 describe("local model selection", () => {
+  it("limits Codex to discovered choices, retaining unavailable saved IDs visibly", async () => {
+    await mount("codex", { ...DEFAULT_ENGINES, kind: "codex", models: { ...DEFAULT_ENGINES.models, codex: { strong: "unavailable-model", fast: "gpt-5.6-luna" } } })
+    expect(host.querySelector('option[value="__custom__"]')).toBeNull()
+    expect(host.querySelector('input[aria-label="Codex analysis custom model ID"]')).toBeNull()
+    expect(host.textContent).toContain("unavailable-model (unavailable)")
+    expect(button("Save models").disabled).toBe(true)
+    select("Codex analysis model", "gpt-5.6-sol")
+    expect(button("Save models").disabled).toBe(false)
+    expect(host.textContent).toContain("Check connection refreshes")
+  })
+
+  it("shows a loading choice until Codex discovery completes", async () => {
+    checkEngine.mockReturnValue(new Promise(() => {}))
+    await mount("codex")
+    expect(host.textContent).toContain("Loading available models")
+    expect(host.textContent).not.toContain("Custom model")
+    expect((host.querySelector('select[aria-label="Codex analysis model"]') as HTMLSelectElement).disabled).toBe(true)
+  })
+  it.each(["signed-out", "failed"])("stops showing loading when discovery is %s", async (state) => {
+    if (state === "failed") checkEngine.mockRejectedValue(new Error("Connection check failed"))
+    else checkEngine.mockResolvedValue({ engine: "codex", state, message: "Sign in first" })
+    await mount("codex")
+    expect(host.textContent).not.toContain("Loading available models")
+    expect(host.textContent).toContain("Check connection to load models")
+    expect(button("Use Codex").disabled).toBe(true)
+    enter("Timeout per request (seconds)", "120")
+    expect(host.textContent).not.toContain("Loading available models")
+  })
   it("refuses to save or test a model absent from the installed CLI catalog", async () => {
     checkEngine.mockResolvedValue({ engine: "codex", state: "ready", message: "Signed in", models: [{ id: "gpt-5.6-sol", label: "GPT-5.6 Sol" }, { id: "gpt-5.6-luna", label: "GPT-5.6 Luna" }] })
     await mount("codex", { ...DEFAULT_ENGINES, kind: "codex", models: { ...DEFAULT_ENGINES.models, codex: { strong: "gpt-6-astra", fast: "gpt-5.6-luna" } } })
@@ -86,28 +114,28 @@ describe("local model selection", () => {
   })
 
   it("preserves saved custom IDs and supports editing, trimming, and returning to a preset", async () => {
-    await mount("codex", { ...DEFAULT_ENGINES, kind: "codex", models: { ...DEFAULT_ENGINES.models, codex: { strong: "custom/model-v2", fast: "gpt-5.6-luna" } } })
-    expect((host.querySelector('input[aria-label="Codex analysis custom model ID"]') as HTMLInputElement).value).toBe("custom/model-v2")
-    enter("Codex analysis custom model ID", "  custom/model-v3  ")
+    await mount("claude-code", { ...DEFAULT_ENGINES, kind: "claude-code", models: { ...DEFAULT_ENGINES.models, "claude-code": { strong: "custom/model-v2", fast: "haiku" } } })
+    expect((host.querySelector('input[aria-label="Claude Code analysis custom model ID"]') as HTMLInputElement).value).toBe("custom/model-v2")
+    enter("Claude Code analysis custom model ID", "  custom/model-v3  ")
     await act(async () => button("Save models").click())
-    expect(patchSettings.mock.calls[0][0].engines.models.codex.strong).toBe("custom/model-v3")
-    select("Codex analysis model", "gpt-5.6-sol")
-    expect(host.querySelector('input[aria-label="Codex analysis custom model ID"]')).toBeNull()
-    select("Codex analysis model", "__custom__")
-    enter("Codex analysis custom model ID", "custom/model-v4")
+    expect(patchSettings.mock.calls[0][0].engines.models["claude-code"].strong).toBe("custom/model-v3")
+    select("Claude Code analysis model", "sonnet")
+    expect(host.querySelector('input[aria-label="Claude Code analysis custom model ID"]')).toBeNull()
+    select("Claude Code analysis model", "__custom__")
+    enter("Claude Code analysis custom model ID", "custom/model-v4")
     await act(async () => button("Save models").click())
-    expect(patchSettings.mock.calls[1][0].engines.models.codex.strong).toBe("custom/model-v4")
+    expect(patchSettings.mock.calls[1][0].engines.models["claude-code"].strong).toBe("custom/model-v4")
   })
 
   it("prevents invalid or blank custom IDs and invalid timeouts from being saved or tested", async () => {
-    await mount("codex", { ...DEFAULT_ENGINES, kind: "codex" })
-    select("Codex analysis model", "__custom__")
+    await mount("claude-code", { ...DEFAULT_ENGINES, kind: "claude-code" })
+    select("Claude Code analysis model", "__custom__")
     for (const invalid of ["", "bad model", "-option", "a".repeat(151)]) {
-      enter("Codex analysis custom model ID", invalid)
+      enter("Claude Code analysis custom model ID", invalid)
       expect(button("Save models").disabled).toBe(true)
       expect(button("Save & test models (uses plan)").disabled).toBe(true)
     }
-    enter("Codex analysis custom model ID", "gpt-5.6-sol")
+    enter("Claude Code analysis custom model ID", "sonnet")
     expect(button("Save models").disabled).toBe(false)
     enter("Timeout per request (seconds)", "0")
     expect(button("Save models").disabled).toBe(true)

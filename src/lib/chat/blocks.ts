@@ -1,5 +1,8 @@
 import { z } from "zod"
 
+export const REVIEW_INTRO = "Manage your review and follow its progress below."
+export const LEGACY_REVIEW_INTRO = "Here is the review brief. Adjust the scope or context, then start when you're ready. No research calls have started."
+
 /** Isomorphic storage contract: validate rich history before rendering it. */
 export const PaperSnapshotSchema = z.object({
   ids: z.object({ doi: z.string().optional(), arxiv: z.string().optional(), openalex: z.string().optional(), s2: z.string().optional(), pmid: z.string().optional() }),

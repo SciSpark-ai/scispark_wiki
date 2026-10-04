@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   if (!parsed.success) return Response.json({ error: "Choose Codex or Claude Code." }, { status: 400 })
   const status = await localEngineStatus(parsed.data.engine)
   if (status.engine === "codex" && status.state === "ready") {
-    try { status.models = await codexModels() }
+    try { status.models = await codexModels(true) }
     catch { status.modelsError = "Could not load available models from this Codex CLI. Check the connection again." }
   }
   return Response.json({ status }, { headers: { "Cache-Control": "no-store" } })

@@ -6,6 +6,7 @@ import { cn } from "@/components/ui/cn"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { displayTitle } from "@/lib/papers/title"
 import type { ChatMessage } from "@/lib/chat/session"
+import { REVIEW_INTRO, LEGACY_REVIEW_INTRO } from "@/lib/chat/blocks"
 import { CitationChips } from "./CitationChips"
 import { PaperResultsBlock } from "./PaperResultsBlock"
 import { ReviewBlock } from "./ReviewBlock"
@@ -47,6 +48,9 @@ function labelFor(id: string, pageTitleById: Record<string, string>): string {
  */
 export function MessageBubble({ message, pageTitleById, onSave, saving }: MessageBubbleProps) {
   const isAssistant = message.role === "assistant"
+  // Render old brief messages neutrally without rewriting saved transcripts.
+  const content = isAssistant && message.blocks?.some((block) => block.type === "review") && message.content === LEGACY_REVIEW_INTRO
+    ? REVIEW_INTRO : message.content
   const hasContent = message.content.trim() !== ""
   const citedPageIds = message.citedPageIds ?? []
   const skippedPageIds = message.skippedPageIds ?? []
@@ -71,7 +75,7 @@ export function MessageBubble({ message, pageTitleById, onSave, saving }: Messag
 
         {hasContent && (
           <p className="mt-1 whitespace-pre-wrap text-[14px] leading-[1.5] text-espresso tracking-body">
-            {message.content}
+            {content}
           </p>
         )}
         {isAssistant && message.blocks?.map((block, index) => block.type === "review-citations" ? <button key={index} className="mt-3 text-sm text-accent-ink" onClick={() => window.dispatchEvent(new CustomEvent("open-review-report", { detail: { runId: block.runId, versionId: block.versionId } }))}>View saved review sources{block.sourceIds.length ? ` · ${block.sourceIds.join(", ")}` : ""}</button> : block.type === "review" ? <ReviewBlock key={index} id={block.runId} /> : block.type === "paper-results"

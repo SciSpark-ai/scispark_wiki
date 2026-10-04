@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from "vitest"
+import { afterEach, describe, it, expect, vi } from "vitest"
 import { act } from "react"
-import { createRoot } from "react-dom/client"
+import { createRoot, type Root } from "react-dom/client"
 import { useUIStore } from "@/stores/ui-store"
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -11,10 +11,18 @@ vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({}), { stat
 
 import SettingsModal from "../SettingsModal"
 
+const roots: Root[] = []
+afterEach(() => {
+  for (const root of roots.splice(0)) act(() => root.unmount())
+  useUIStore.getState().closeSettingsModal()
+  document.body.innerHTML = ""
+})
+
 function mount() {
   const host = document.createElement("div")
   document.body.appendChild(host)
   const root = createRoot(host)
+  roots.push(root)
   act(() => root.render(<SettingsModal />))
   return { host, root }
 }

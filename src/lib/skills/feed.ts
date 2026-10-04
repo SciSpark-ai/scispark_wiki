@@ -1,4 +1,5 @@
 import { addCosts } from "../llm/pricing"
+import { feedTopicLabels } from "../recommendation/topic-labels"
 import { FEED_CACHE_PATH, StrategySchema, type FeedStrategy, type FeedBadge } from "./feed-cache"
 export { FEED_CACHE_PATH, StrategySchema, FEED_BADGE_VALUES, normalizeFeedBadge, loadFeed, type FeedStrategy, type FeedBadge } from "./feed-cache"
 import { readUserModel } from "../usermodel/pages"
@@ -427,7 +428,7 @@ export async function runFeed(
     items: selected.map(({ paper, ranking }) => ({
       paper, ranking, score: ranking.total ?? 0,
       // Empty legacy fields retain old cache/client compatibility without fabricated prose.
-      whyThis: "", whyYou: "", whyNow: "", tags: ranking.matchedTopics.slice(0, 5),
+      whyThis: "", whyYou: "", whyNow: "", tags: feedTopicLabels(ranking.matchedTopics, paper.fields),
     })),
     costUsd, strategy, stats: { retrieved: retrieved.candidates.length, ranked: assessedCount },
     recommendation: {

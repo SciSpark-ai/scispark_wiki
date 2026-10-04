@@ -12,10 +12,10 @@ const catalogs = new Map<string, { expires: number; pending: Promise<EngineModel
 
 /** Read the installed CLI's catalog, not another app/version's shared cache.
  * Only initialize and model/list are sent; no thread, turn or model inference. */
-export async function codexModels(): Promise<EngineModel[]> {
+export async function codexModels(refresh = false): Promise<EngineModel[]> {
   const executable = await engineExecutable("codex")
   const cached = catalogs.get(executable)
-  if (cached && cached.expires > Date.now()) return cached.pending
+  if (!refresh && cached && cached.expires > Date.now()) return cached.pending
   const pending = readCatalog(executable).catch(() => {
     if (catalogs.get(executable)?.pending === pending) catalogs.delete(executable)
     throw new LLMError("Could not read this Codex CLI's available models. Check the connection again before starting a request.")

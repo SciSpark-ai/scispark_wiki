@@ -43,9 +43,14 @@ for (const engine of ["codex", "claude-code"] as const) {
       await expect(page.getByRole("button", { name: label, exact: true })).toHaveAttribute("aria-pressed", "true")
       await expect(page.getByRole("combobox", { name: `${label} analysis model`, exact: true })).toHaveValue(selectedModels.strong)
       await expect(page.getByRole("combobox", { name: `${label} quick model`, exact: true })).toHaveValue(selectedModels.fast)
-      // Custom IDs survive the same settings path and are not replaced by a preset.
-      await page.getByRole("combobox", { name: `${label} analysis model`, exact: true }).selectOption("__custom__")
-      await page.getByRole("textbox", { name: `${label} analysis custom model ID`, exact: true }).fill("fixture/custom-model")
+      // Codex uses its discovered catalog; Claude also supports custom IDs.
+      if (engine === "codex") {
+        await expect(page.locator('option[value="__custom__"]')).toHaveCount(0)
+        await page.getByRole("combobox", { name: `${label} analysis model`, exact: true }).selectOption("fixture/custom-model")
+      } else {
+        await page.getByRole("combobox", { name: `${label} analysis model`, exact: true }).selectOption("__custom__")
+        await page.getByRole("textbox", { name: `${label} analysis custom model ID`, exact: true }).fill("fixture/custom-model")
+      }
       await page.getByRole("button", { name: "Save models", exact: true }).click()
       await expect(page.getByRole("status").filter({ hasText: "Models saved for new requests" })).toBeVisible()
       await page.reload()
