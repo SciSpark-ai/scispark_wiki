@@ -13,7 +13,7 @@ function engineFailureMessage(engine: LocalEngine, diagnostic: string): string |
   const label = engineLabel(engine)
   let reason: string
   if (/model.*not supported|model.*not found|model.*does not exist/i.test(diagnostic)) reason = `${label} rejected the selected model. Choose a model available to your account in Settings → Connect your AI.`
-  else if (/invalid.*schema|schema.*invalid/i.test(diagnostic)) reason = `${label} rejected the response schema. This is an integration error.`
+  else if (/invalid.*schema|schema.*(?:invalid|not a valid)|no schema with key or ref/i.test(diagnostic)) reason = `${label} rejected the response schema. This is an integration error.`
   else if (/usage limit|rate.?limit|quota|too many requests|\b429\b/i.test(diagnostic)) reason = `${label} reported a usage limit. Check your plan in the CLI before resuming.`
   else if (/token.*expired|unauthorized|authentication.*failed|sign in again|\b401\b/i.test(diagnostic)) reason = `${label} sign-in expired or was rejected. Sign in again through the CLI before resuming.`
   else if (/\b(?:500|502|503|504)\b|service unavailable|server error|overloaded/i.test(diagnostic)) reason = `${label}'s service is temporarily unavailable. Try resuming later.`
@@ -96,8 +96,12 @@ export class CompletionEvents {
 export class LocalEngineProvider implements LLMProvider {
   readonly id
   readonly billingMode = "subscription" as const
+  readonly jsonSchemaTarget: LLMProvider["jsonSchemaTarget"]
   constructor(private engine: LocalEngine, private settings: EngineSettings) {
     this.id = engine === "codex" ? "openai" as const : "anthropic" as const
+    // Claude CLI validates --json-schema with a Draft 7 validator. Generate the
+    // dialect from Zod; removing $schema alone would lose tuple/ref semantics.
+    this.jsonSchemaTarget = engine === "claude-code" ? "draft-07" : undefined
   }
   async preflight(model: string): Promise<void> {
     const status = await localEngineStatus(this.engine)

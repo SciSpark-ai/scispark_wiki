@@ -35,7 +35,7 @@ export async function localReviewComplete<T>(storage: VaultStorage, id: string, 
     await guard()
     const rows = await read(storage, id)
     const persist = () => storage.write(path(id), JSON.stringify(rows))
-    const wrapped: LLMProvider = { id: provider.id, billingMode: "subscription", complete: async (model, request) => {
+    const wrapped: LLMProvider = { id: provider.id, billingMode: "subscription", jsonSchemaTarget: provider.jsonSchemaTarget, complete: async (model, request) => {
       await guard()
       const signature = hashReviewData({ model: brief.model, messages: request.messages, schema: request.jsonSchema })
       const prior = rows.find((r) => r.signature === signature && r.step === step && r.state === "settled")

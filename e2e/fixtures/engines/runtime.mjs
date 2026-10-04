@@ -27,6 +27,12 @@ export async function fixture(engine) {
   const conversation = input.split("Conversation (JSON):\n")[1]
   const schema = args.includes(schemaFlag) ? JSON.parse(engine === "codex" ? readFileSync(raw, "utf8") : raw)
     : input.includes("Return ONLY a JSON value matching this exact schema") ? JSON.parse(input.slice(input.lastIndexOf("\n") + 1)) : null
+  // Match the installed Claude CLI's validator, so fixtures catch unsupported
+  // dialects before chat, feed or review can falsely appear to succeed.
+  if (engine === "claude-code" && schema?.$schema === "https://json-schema.org/draft/2020-12/schema") {
+    console.error(`Error: --json-schema is not a valid JSON Schema: no schema with key or ref "${schema.$schema}"`)
+    process.exitCode = 1; return
+  }
   const messages = JSON.parse(conversation.split("\n")[0])
   // Keep the first planning call in flight while the browser leaves/reopens it.
   if (input.includes("FIXTURE_REVIEW_SLOW") && messages.some(m => m.content.startsWith("Define the essential"))) await new Promise(resolve => setTimeout(resolve, 15_000))

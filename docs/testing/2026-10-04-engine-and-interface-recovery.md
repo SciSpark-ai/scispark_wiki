@@ -10,7 +10,7 @@ research interactions, and explicit review-usage recovery remain intact.
 | Engine | Installed version | Native status | Real completion evidence |
 | --- | --- | --- | --- |
 | Codex | 0.159.0 | Ready | Four successful synthetic calls: structured response, feed strategy, feed assessment, review planning |
-| Claude Code | 2.1.282 | Signed out | Not live-verified; native `claude auth status --json` reports `loggedIn: false`, `authMethod: none` |
+| Claude Code | 2.1.282 | Ready after native sign-in | Four successful synthetic calls through SciSpark: structured response, feed strategy, feed assessment, review planning |
 
 Codex's structured-response check used GPT-6-Astra with a 60-second timeout,
 low reasoning effort and a requested 512-token output limit. It returned the
@@ -28,10 +28,28 @@ planning/reuse. They do not establish completion or scientific quality of a
 whole live literature review. No new Codex completion failure was reproduced.
 The user's existing failed review was not retried or acknowledged.
 
-Claude needs the user to complete `claude auth login` before its equivalent
-live gates can run. Both engines passed deterministic browser flows with CLI
-fixtures; those are not evidence of a real Claude response. No API fallback or
-credential copying was used.
+After native Claude sign-in, the first SciSpark request revealed a real
+integration failure: Zod emitted a Draft 2020-12 JSON Schema, which Claude's
+`--json-schema` validator rejected before inference. A direct synthetic CLI
+completion succeeded, isolating the failure to SciSpark's schema dialect.
+
+The local Claude provider now requests Draft 7 generation from Zod, and the
+skill/review wrappers preserve that capability. Codex and API providers retain
+their existing schema dialect. Generating Draft 7, rather than deleting the
+`$schema` field, preserves tuple and optional-field constraints. Responses still
+pass the original Zod validation; subscription failures are not automatically
+retried. The error classifier recognizes the CLI's schema rejection without
+exposing raw diagnostics.
+
+Claude then passed the structured-response and review-planning/reuse gates with
+Sonnet, and feed strategy/assessment with Sonnet/Haiku. The feed cached one
+synthetic ranked paper with subscription billing; the review ledger recorded
+one settled call, no uncertain usage and zero API-dollar spending. These were
+four real SciSpark calls, in addition to the direct diagnostic completion.
+Both engines also passed deterministic browser flows with CLI fixtures; fixture
+results are reported separately from real model responses. No API fallback or
+credential copying was used. The user's saved engine/model choices and paused
+review's three-call record were left untouched.
 
 The opt-in tests now support either installed engine:
 
@@ -76,11 +94,18 @@ The real saved conversation also restored after Wiki → Sparky navigation.
 
 - TypeScript: `npx tsc --noEmit` passed.
 - ESLint: zero errors; one unchanged `ConnectAiCard.tsx:178` exhaustive-deps warning.
-- Vitest: **2,657 passed / 19 gated skips**, 268 passing test files.
-- Production build: `npm run build` passed using `.next-oct4-final` and scheduling off.
+- Vitest: **2,660 passed / 19 gated skips**, 268 passing test files after the
+  Claude schema fix (the earlier interface gate passed 2,657 tests).
+- Production build: `npm run build` passed using `.next-claude-schema-fix` and
+  scheduling off; the earlier interface gate used `.next-oct4-final`.
 - Seven affected production-browser scenarios passed: design recovery; History/
   Sparky desktop and mobile; feed navigation/reload; model selection for each
   fixture engine; background review/recovery for each fixture engine.
+- After the Claude schema fix, all five affected production-browser scenarios
+  passed again on the new build: connection/model persistence for both engines,
+  background review/navigation/reload/recovery for both engines, and server feed
+  completion plus preservation of the previous cache after a failed refresh.
+  These use disposable vaults, deterministic sources and subprocess fixtures.
 
 The final seven-scenario run passed six scenarios; the design test initially
 asserted before the responsive media-query event was handled. Its assertion now
@@ -97,4 +122,10 @@ existing review's corrected introduction. They contain test or local vault
 content and are not published in this repository. The local preview was
 restarted from the tested production build on loopback with scheduling off.
 
-Remaining prerequisite: native Claude sign-in and the corresponding live gates.
+The Claude dialect regression failed before implementation. A faithful CLI
+fixture now rejects Draft 2020-12 for Claude, catching missing dialect
+propagation through real skill/review wrappers. All 48 focused tests passed
+after implementation, including original-contract validation and redacted
+schema-error handling. Native sign-in and the corresponding live gates are
+complete. Whole live literature-review completion and scientific-quality
+acceptance remain outside these bounded transport/orchestration checks.

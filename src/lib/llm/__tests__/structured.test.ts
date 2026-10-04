@@ -16,6 +16,23 @@ const result = (overrides: Partial<LLMResult>): LLMResult => ({
 })
 
 describe("completeStructured", () => {
+  it("generates the provider's schema dialect without losing tuple or optional-field constraints", async () => {
+    const p = Object.assign(new MockProvider([result({ json: { name: "ready", range: [1, 2] } })]), { jsonSchemaTarget: "draft-07" as const })
+    const tupleSchema = z.object({ name: z.string(), range: z.tuple([z.number(), z.number()]), note: z.string().optional() }).strict()
+    await completeStructured(p, "m", { messages: [{ role: "user", content: "go" }] }, tupleSchema)
+    expect(p.calls[0].req.jsonSchema).toMatchObject({
+      $schema: "http://json-schema.org/draft-07/schema#", additionalProperties: false, required: ["name", "range"],
+      properties: { range: { items: [{ type: "number" }, { type: "number" }] }, note: { type: "string" } },
+    })
+  })
+
+  it("still validates the original contract after changing schema dialect", async () => {
+    const p = Object.assign(new MockProvider([result({ json: { range: [1, 2, 3] } })]), { jsonSchemaTarget: "draft-07" as const, billingMode: "subscription" as const })
+    await expect(completeStructured(p, "m", { messages: [{ role: "user", content: "go" }] }, z.object({ range: z.tuple([z.number(), z.number()]) })))
+      .rejects.toBeInstanceOf(StructuredOutputError)
+    expect(p.calls).toHaveLength(1)
+  })
+
   it("returns the parsed value and usage on a valid first try, with exactly one call", async () => {
     const p = new MockProvider([
       result({ text: JSON.stringify({ name: "widget", count: 3 }) }),

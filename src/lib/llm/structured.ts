@@ -58,7 +58,7 @@ export async function completeStructured<T>(
   schema: z.ZodType<T>,
   opts?: StructuredOutputOptions,
 ): Promise<{ value: T; usage: LLMUsage }> {
-  const jsonSchema = z.toJSONSchema(schema)
+  const jsonSchema = z.toJSONSchema(schema, { target: provider.jsonSchemaTarget ?? "draft-2020-12" })
   const attempts: string[] = []
   let usage: LLMUsage | undefined
   let messages = req.messages

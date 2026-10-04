@@ -145,6 +145,7 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
       const retryingProvider: LLMProvider = {
         id: provider.id,
         billingMode: provider.billingMode,
+        jsonSchemaTarget: provider.jsonSchemaTarget,
         complete: (m, r) => callProvider(provider, m, r),
       }
       try {

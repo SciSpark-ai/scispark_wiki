@@ -69,7 +69,7 @@ export async function reviewComplete<T>(storage: VaultStorage, runId: string, br
       }
       row.metered = true; await persist()
     }
-    const guarded: LLMProvider = { id: provider.id, complete: async (model, request) => {
+    const guarded: LLMProvider = { id: provider.id, jsonSchemaTarget: provider.jsonSchemaTarget, complete: async (model, request) => {
       await guard()
       const signature = hashReviewData({ model, request: { ...request, onText: undefined } })
       const prior = rows.find((a) => a.runId === runId && a.step === step && a.signature === signature && a.state === "settled")

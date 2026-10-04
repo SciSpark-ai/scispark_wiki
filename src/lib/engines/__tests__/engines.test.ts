@@ -88,6 +88,13 @@ describe("engine boundary", () => {
     expect(onText).not.toHaveBeenCalled()
     expect(events.text).toBe("")
   })
+  it("explains Claude's schema-dialect rejection without exposing raw diagnostics", () => {
+    const events = new CompletionEvents("claude-code")
+    events.accept(JSON.stringify({ type: "result", subtype: "error_during_execution", is_error: true,
+      errors: ['Error: --json-schema is not a valid JSON Schema: no schema with key or ref "https://json-schema.org/draft/2020-12/schema" credential=DO-NOT-LEAK'] }))
+    expect(events.failureMessage).toContain("rejected the response schema")
+    expect(events.failureMessage).not.toContain("DO-NOT-LEAK")
+  })
   it("does not inherit credentials, endpoints or agent customizations", () => {
     const env = engineEnvironment({ NODE_ENV: "test", HOME: "/tmp", PATH: "/usr/bin", OPENAI_API_KEY: "secret", ANTHROPIC_API_KEY: "secret", CLAUDECODE: "1", CODEX_HOME: "/private", NODE_OPTIONS: "--require malicious", ANTHROPIC_BASE_URL: "evil" })
     for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "CLAUDECODE", "CODEX_HOME", "NODE_OPTIONS", "ANTHROPIC_BASE_URL"]) expect(env[key]).toBeUndefined()
