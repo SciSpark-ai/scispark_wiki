@@ -196,3 +196,80 @@ fixtures cover all three terminal states, direct claims, wrapper rejection,
 no external callback, no dispatchedAt write, and retained usage. A deterministic
 queued cancellation covers the reservation-to-claim boundary. No changes beyond
 the reported finding. The original Task 3 commit is amended for scoped re-review.
+
+### Task 4 — durable coordinator and safe restart recovery
+
+Added typed WorkflowAdapter/WorkflowIO, durable start/action/step journals,
+PID-fenced random leases, profile FIFO queues, cancellation and explicit resume,
+and registry-wide startup recovery. Completed response checkpoints are hash-checked
+and reused; pending model/command outcomes and dispatched holds require attention.
+Recovery preserves all user-action gates and never replaces a captured version or
+model. Browser observation does not own execution. Instrumentation returns promptly
+while preserving review recovery and scheduler startup; builds and Edge skip it.
+
+Narrow Task 3 integrations add root AbortSignal inheritance, paused/action dispatch
+claim checks, and a run/step-specific pre-dispatch WorkflowLimitError. That error
+allows safe paused-limit recovery only before the matching step dispatches; it
+cannot convert an unknown outcome into a replayable step. Generic run writes cannot
+bypass journal-owned lifecycle status. Task 6 still owns typed artifact publication;
+Task 17 owns uncertainty/helper actions and host continuation integration.
+
+| Check | Result |
+| --- | --- |
+| Initial focused RED | Missing adapters module; one failed recovery suite |
+| Root signal RED | 1 failed/15 passed: nested attempt dispatched after paused_limit |
+| Instrumentation RED | 1 failed/2 passed: register waited for pending review recovery |
+| Lifecycle ownership RED | 1 failed/28 passed: generic run write resurrected cancelled status |
+| Final focused workflow GREEN | 60 passed across 5 files; pristine output |
+| `npx tsc --noEmit` | Exit 0; 3.42 seconds |
+| `npm run lint` | Exit 0; existing ConnectAiCard warning and generated-cards Babel note only; 15.85 seconds |
+| `npx vitest run` | 2799 passed/19 gated skips; 281 passed/7 skipped files; command 30.39 seconds |
+| `git diff --check` | Exit 0 |
+
+Full gate: `python3 .superpowers/sdd/2026-10-05-modular-workspace/verify-task.py task-4`.
+Exact logs/results: `.superpowers/sdd/2026-10-05-modular-workspace/verification/task-4/`.
+Focused logs: `/tmp/task4-{red,signal-red,startup-red,startup-green,lifecycle-red,focused-green}.log`.
+
+29 recovery cases and 3 instrumentation cases cover real disposable disks,
+independent owners, same-operation conflicts, equal-clock FIFO, safe checkpoint
+reuse, corrupt checkpoint hashes, partial-write recovery, preserved pause/choice/
+setup/cancellation states, cumulative usage after idempotent extension and resume,
+captured-model preflight, all registered profile roots and startup singleton.
+A separate Node/Vite-loaded coordinator process runs the actual implementation
+with a synthetic model callback: a fake-clock-expired live lease is not stolen;
+after SIGKILL, disk reopen yields needs_attention with exactly one consumed call
+and no adapter replay. This verifies real process recovery with synthetic work,
+not live model/provider acceptance. No human vault, installed-skill scan, live LLM
+request, install, push or merge was used.
+
+#### Task 4 independent-review fix 1 — authorize from the lifecycle journal
+
+Review reproduced a cancellation journal commit followed by run.json mirror
+failure: attempt claims and new reservations still read the stale running mirror.
+Usage state now validates the authoritative lifecycle record and its owning
+run/profile/vault inside the existing workflow-ID lock. It uses that status for
+reservation/claim gates and subsequent usage mirror writes, without recursively
+locking a repair reader. Existing-ticket readback remains idempotent. The original
+strict lifecycle/lease schemas moved to shared contracts to avoid duplicate
+validators or an import cycle; these internal records are not public API DTOs.
+
+| Check | Result |
+| --- | --- |
+| RED: recovery test | 9 failed/29 passed: stale-mirror claims, independent wrapper callback, new reservations and malformed/foreign lifecycle records were accepted |
+| GREEN: recovery + usage tests | 55 passed across 2 files; pristine output |
+| `npx tsc --noEmit` | Exit 0; 2.77 seconds |
+| `npm run lint` | Exit 0; existing ConnectAiCard warning and generated-cards Babel note only; 15.54 seconds |
+| `npx vitest run` | 2808 passed/19 gated skips; 281 passed/7 skipped files; command 31.26 seconds |
+| `git diff --check` | Exit 0 |
+
+Full command: `python3 .superpowers/sdd/2026-10-05-modular-workspace/verify-task.py task-4-fix-1`.
+Full logs/results: `verification/task-4-fix-1/` under the local SDD directory.
+Focused logs: `/tmp/task4-fix1-{red,green}.log`.
+
+The new disk-reopen regressions check cancelled, paused_limit, waiting_for_choice,
+waiting_for_setup and needs_attention immediately after a committed journal with
+failed mirror, before observe/recover repair. Prior tickets remain readable, direct
+claims and an independently reserved wrapper are denied, callbacks never run, new
+reservations consume no usage, and usage.json stays byte-identical. Separate
+runId/profileId/vaultId/status corruptions fail closed. Only this review finding
+was changed; Task 4's existing unpushed commit is amended for scoped rereview.

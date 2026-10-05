@@ -10,14 +10,15 @@ import { modelEndpoint, settingsForRunModel } from "./model"
 import { readRun } from "./store"
 import { claimAttemptDispatch, getRunUsage, reserveAttempt, settleAttempt } from "./usage"
 
-const scope = new AsyncLocalStorage<{ ctx: WorkflowContext; runId: string }>()
+const scope = new AsyncLocalStorage<{ ctx: WorkflowContext; runId: string; signal?: AbortSignal }>()
 /** Native bridge hooks: supporting skills inherit the original root and owner. */
 export const currentRunAttemptScope = () => scope.getStore()
-export async function withRunAttemptScope<T>(ctx: WorkflowContext, runId: string, work: () => Promise<T>): Promise<T> {
+export async function withRunAttemptScope<T>(ctx: WorkflowContext, runId: string, work: () => Promise<T>, signal?: AbortSignal): Promise<T> {
   const parent = scope.getStore()
   if (parent && (parent.runId !== runId || parent.ctx.profileId !== ctx.profileId || parent.ctx.vaultId !== ctx.vaultId)) throw new Error("Supporting skills must share their root workflow and owner")
   if (!await readRun(ctx, runId)) throw new Error("Workflow run not found")
-  return scope.run({ ctx, runId }, work)
+  const signals = [parent?.signal, signal].filter((value): value is AbortSignal => value !== undefined)
+  return scope.run({ ctx, runId, ...(signals.length ? { signal: AbortSignal.any(signals) } : {}) }, work)
 }
 
 /** Work receives an abort signal and the stable identity for any native ledger.
@@ -26,6 +27,7 @@ export async function withWorkflowAttempt<T>(ctx: WorkflowContext, runId: string
   work: (signal: AbortSignal, ticket: AttemptTicket) => Promise<{ value: T; result: AttemptResult }>, signal?: AbortSignal): Promise<T> {
   const parent = scope.getStore()
   if (parent && (parent.runId !== runId || parent.ctx.profileId !== ctx.profileId || parent.ctx.vaultId !== ctx.vaultId)) throw new Error("Supporting attempts must share their root workflow and owner")
+  if (parent?.signal) signal = signal ? AbortSignal.any([parent.signal, signal]) : parent.signal
   if (signal?.aborted) throw signal.reason ?? new Error("Attempt cancelled")
   const ticket = await reserveAttempt(ctx, runId, step, estimate)
   await claimAttemptDispatch(ctx, ticket)

@@ -15,6 +15,17 @@ export const RunStatusSchema = z.enum([
   "needs_attention", "completed", "failed", "cancelled",
 ])
 export type RunStatus = z.infer<typeof RunStatusSchema>
+/** Internal durable coordination records, never an authenticated API response DTO. */
+export const WorkflowLeaseSchema = z.object({
+  id: UuidSchema, processId: UuidSchema, pid: z.number().int().positive(), expiresAt: z.number().finite(),
+}).strict()
+export type WorkflowLease = z.infer<typeof WorkflowLeaseSchema>
+export const WorkflowJournalSchema = z.object({
+  schemaVersion: z.literal(1), runId: UuidSchema, profileId: ProfileIdSchema, vaultId: DigestSchema,
+  status: RunStatusSchema, lease: WorkflowLeaseSchema.nullable(),
+  actions: z.array(z.object({ operationId: UuidSchema, type: z.enum(["cancel", "resume"]) }).strict()),
+}).strict()
+export type WorkflowJournal = z.infer<typeof WorkflowJournalSchema>
 const WriteIntentSchema = z.enum(["outputs_only", "update_wiki"])
 export const StartRunInputSchema = z.object({
   operationId: UuidSchema, tool: ToolRefSchema, input: z.record(z.string(), z.unknown()),

@@ -4,14 +4,27 @@ import { Meter } from "../llm/metering"
 import { loadSettings } from "../llm/settings"
 import { withVaultExclusive } from "../vault/exclusive"
 import type { WorkflowContext } from "./context"
-import { AttemptEstimateSchema, AttemptResultSchema, AttemptTicketSchema, RunAllowanceSchema, StepIntentSchema, ToolRunSchema, UsageJournalSchema,
+import { AttemptEstimateSchema, AttemptResultSchema, AttemptTicketSchema, RunAllowanceSchema, StepIntentSchema, ToolRunSchema, UsageJournalSchema, WorkflowJournalSchema,
   type AttemptEstimate, type AttemptResult, type AttemptTicket, type RunAllowance, type RunUsage, type StepIntent, type ToolRun, type UsageJournal } from "./contracts"
 import { readRun } from "./store"
 
+/** A rejected reservation has not authorized or dispatched external work. */
+export class WorkflowLimitError extends Error {
+  constructor(message: string, readonly runId: string, readonly stepId: string) { super(message) }
+}
+
 const usagePath = (id: string) => `.scispark/tool-runs/${UuidSchema.parse(id)}/usage.json`
 async function state(ctx: WorkflowContext, id: string): Promise<{ run: ToolRun; journal: UsageJournal }> {
-  const run = await readRun(ctx, id)
+  let run = await readRun(ctx, id)
   if (!run) throw new Error("Workflow run not found")
+  // Every caller holds workflow-<id>. Lifecycle commits precede the run mirror,
+  // so authorization must read its authoritative status without a nested lock.
+  const lifecycleRaw = await ctx.storage.read(`.scispark/tool-runs/${UuidSchema.parse(id)}/journal.json`)
+  if (lifecycleRaw !== null) {
+    const lifecycle = WorkflowJournalSchema.parse(JSON.parse(lifecycleRaw))
+    if (lifecycle.runId !== id || lifecycle.profileId !== ctx.profileId || lifecycle.vaultId !== ctx.vaultId) throw new Error("Workflow journal owner mismatch")
+    run = { ...run, status: lifecycle.status }
+  }
   const raw = await ctx.storage.read(usagePath(id))
   const journal = raw === null ? UsageJournalSchema.parse({ schemaVersion: 1, runId: id, profileId: ctx.profileId, vaultId: ctx.vaultId,
     baseUsage: run.usage, allowance: run.allowance, attempts: [], extensions: [] }) : UsageJournalSchema.parse(JSON.parse(raw))
@@ -72,14 +85,15 @@ export async function reserveAttempt(ctx: WorkflowContext, runId: string, stepIn
     if (run.model.engine !== "api" && estimate.costUsd !== null) throw new Error("Subscription cost must remain null")
     const used = totals(journal, run.model.engine !== "api"), cap = journal.allowance
     if (used.uncertain) throw new Error("A previous attempt has an uncertain outcome; reconcile before dispatch")
+    if (!["queued", "running"].includes(run.status)) throw new Error("Workflow is paused or requires user action")
     if (used.modelCalls + estimate.modelCalls > cap.modelCalls || used.commandCalls + estimate.commandCalls > cap.commandCalls
       || used.activeSeconds + used.heldActiveSeconds + estimate.activeSeconds > cap.activeSeconds
-      || (cap.costUsd !== null && ((used.costUsd === null && run.model.engine === "api") || (used.costUsd ?? 0) + used.heldCostUsd + (estimate.costUsd ?? 0) > cap.costUsd))) throw new Error("Workflow allowance limit reached")
+      || (cap.costUsd !== null && ((used.costUsd === null && run.model.engine === "api") || (used.costUsd ?? 0) + used.heldCostUsd + (estimate.costUsd ?? 0) > cap.costUsd))) throw new WorkflowLimitError("Workflow allowance limit reached", runId, step.id)
     if (estimate.accountingOwner === "workflow" && run.model.engine === "api" && estimate.modelCalls > 0) {
       const meter = new Meter(ctx.storage), settings = await loadSettings(ctx.storage)
       const daily = await meter.spendingToday()
       if (daily.unpricedCount) throw new Error("Daily spending includes unknown pricing")
-      if (daily.knownUsd + await meter.reviewReservationsToday() + await meter.workflowReservationsToday() + (estimate.costUsd ?? 0) >= settings.dailyBudgetUsd) throw new Error("Daily budget limit reached")
+      if (daily.knownUsd + await meter.reviewReservationsToday() + await meter.workflowReservationsToday() + (estimate.costUsd ?? 0) >= settings.dailyBudgetUsd) throw new WorkflowLimitError("Daily budget limit reached", runId, step.id)
     }
     const ticket = AttemptTicketSchema.parse({ id: randomUUID(), runId, step, estimate, reservedAt: new Date().toISOString() })
     journal.attempts.push({ ticket, state: "reserved" })
@@ -153,6 +167,7 @@ export async function claimAttemptDispatch(ctx: WorkflowContext, input: AttemptT
     // Authorization can change after reservation (including an idempotent
     // readback), so recheck it under the lock that consumes dispatch permission.
     if (["completed", "failed", "cancelled"].includes(run.status)) throw new Error("Workflow run is terminal")
+    if (!["queued", "running"].includes(run.status)) throw new Error("Workflow is paused or requires user action")
     row.dispatchedAt = new Date().toISOString()
     await persist(ctx, run, journal)
   })

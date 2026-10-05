@@ -28,6 +28,9 @@ export async function writeRun(ctx: WorkflowContext, input: ToolRun): Promise<vo
   await withVaultExclusive(ctx.storage, `workflow-${run.id}`, async () => {
     const previous = await readRun(ctx, run.id)
     if (previous) {
+      if (previous.status !== run.status && await ctx.storage.read(`${root}/journal.json`) !== null) {
+        throw new Error("Workflow lifecycle is owned by the coordinator journal")
+      }
       if (await ctx.storage.read(`${root}/usage.json`) !== null
         && (JSON.stringify(previous.usage) !== JSON.stringify(run.usage) || JSON.stringify(previous.allowance) !== JSON.stringify(run.allowance))) {
         throw new Error("Workflow usage and allowance are owned by the attempt journal")
