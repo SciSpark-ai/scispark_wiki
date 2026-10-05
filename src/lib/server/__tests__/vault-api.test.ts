@@ -102,6 +102,9 @@ describe("vault API", () => {
     ".scispark/tools", ".scispark/tool-runs", "./.scispark/tools/state.json/",
     ".SciSpark/TOOLS/state.json", "x/../.scispark/tool-runs/run/events/1.json",
     ".scispark//tool-runs/run/artifacts/private.md",
+    ".scispark/changeset-transactions/pending.json", ".SciSpark/CHANGESET-TRANSACTIONS/pending.json",
+    ".scispark/tool-runs/44444444-4444-4444-8444-444444444444/outputs.json",
+    ".scispark/tool-runs/44444444-4444-4444-8444-444444444444/artifacts/private.bin",
   ])("keeps new workflow state private through generic file routes: %s", async (path) => {
     await storage.write(path, "private workflow state")
     const url = "http://x/api/vault/file?path=" + encodeURIComponent(path)
@@ -112,7 +115,7 @@ describe("vault API", () => {
   })
 
   it("omits new workflow paths from lists while preserving unrelated existing records", async () => {
-    for (const path of [".scispark/tools/state.json", ".SciSpark/TOOL-RUNS/run/run.json", ".scispark/usage/x.jsonl", "wiki/a.md", ".scispark/tools-other/file.json"]) {
+    for (const path of [".scispark/changeset-transactions/pending.json", ".scispark/tool-runs/run/outputs.json", ".scispark/tool-runs/run/artifacts/private.bin", ".scispark/tools/state.json", ".SciSpark/TOOL-RUNS/run/run.json", ".scispark/usage/x.jsonl", "wiki/a.md", ".scispark/tools-other/file.json"]) {
       await storage.write(path, "fixture")
     }
     expect(await (await listRoute.GET(new Request("http://x/api/vault/list"))).json()).toEqual({
@@ -593,7 +596,7 @@ describe("generic filesystem vault routes reject symlink traversal", () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it.each(["tools", "tool-runs"])("denies existing and new leaves via aliases of %s", async (namespace) => {
+  it.each(["tools", "tool-runs", "changeset-transactions"])("denies existing and new leaves via aliases of %s", async (namespace) => {
     const privatePath = `.scispark/${namespace}/state.json`
     await storage.write(privatePath, "private workflow state")
     await symlink(join(root, ".scispark", namespace), join(root, "wiki", "private"))

@@ -3,6 +3,8 @@ export interface VaultStorage {
   readonly coordinationKey?: string
   /** Server backends provide cross-process exclusion; browser proxies never execute jobs. */
   exclusive?<T>(name: string, work: () => Promise<T>): Promise<T>
+  /** Filesystem backends can reject existing symbolic-link components. */
+  hasSymlinkTraversal?(path: string): Promise<boolean>
   read(path: string): Promise<string | null>
   write(path: string, content: string): Promise<void>
   /** Reads raw bytes. Works for paths written via either write() or writeBinary() —

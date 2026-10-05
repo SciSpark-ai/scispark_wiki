@@ -5,7 +5,11 @@ import { getToolManifest } from "../extensions/registry"
 import { readProfileTools } from "../extensions/store"
 import { buildProvider } from "../llm/settings"
 import { initializeLocalProfiles } from "../server/local-profiles"
+import { ChangesetRecoveryConflictError } from "../vault/changesets"
 import { withVaultExclusive } from "../vault/exclusive"
+import { publishArtifact } from "./artifacts"
+import { markWorkflowOutputsCompleted, saveAuthorizedWorkflowOutputs, submitWikiProposal, workflowOutputsCompleted } from "./wiki-save"
+import type { WorkflowIO } from "./adapters"
 import { getWorkflowAdapter } from "./adapters"
 import { withRunAttemptScope } from "./attempt-scope"
 import { resolveWorkflowContext, type WorkflowContext } from "./context"
@@ -190,14 +194,17 @@ async function executeOwned(ctx: WorkflowContext, id: string, lease: WorkflowLea
   heartbeat.unref?.()
   try {
     const run = (await readRun(ctx, id))!
-    let adapter: ReturnType<typeof adapterFor>
+    const outputsCompleted = await workflowOutputsCompleted(ctx, id)
+    let adapter: ReturnType<typeof adapterFor> | undefined
     try {
-      adapter = adapterFor(run)
-      // Preflight the captured choices only, outside all state/profile locks.
-      // API model access remains provider-enforced; no probe spends a model call.
-      for (const tier of ["fast", "strong"] as const) {
-        const provider = buildProvider(await settingsForRunModel(ctx, run.model, tier), tier)
-        await provider.preflight?.(run.model.tierModels[tier].model)
+      if (!outputsCompleted) {
+        adapter = adapterFor(run)
+        // Preflight the captured choices only, outside all state/profile locks.
+        // API model access remains provider-enforced; no probe spends a model call.
+        for (const tier of ["fast", "strong"] as const) {
+          const provider = buildProvider(await settingsForRunModel(ctx, run.model, tier), tier)
+          await provider.preflight?.(run.model.tierModels[tier].model)
+        }
       }
     } catch { throw new WorkflowSetupError("Restore the captured tool, model or connection before resuming.") }
     if (await runCancellationRequested(ctx, id, lease)) { await finishCancellation(); return }
@@ -216,7 +223,21 @@ async function executeOwned(ctx: WorkflowContext, id: string, lease: WorkflowLea
       await actionOnRun(ctx, id, operationId, "cancel")
       await finishCancellation()
     })
-    const io = {
+    const io: WorkflowIO = {
+      publishArtifact: async input => {
+        let artifact!: Awaited<ReturnType<typeof publishArtifact>>
+        await serializeEmission(async () => {
+          abort.signal.throwIfAborted()
+          artifact = await publishArtifact(ctx, id, input, lease)
+          await text.flush()
+          await emitRunEvent(ctx, id, lease, { type: "artifact", artifact })
+        })
+        return artifact
+      },
+      submitWikiProposal: input => {
+        abort.signal.throwIfAborted()
+        return submitWikiProposal(ctx, id, input, lease)
+      },
       signal: abort.signal,
       step: <T>(intent: Parameters<typeof journalStep>[3], work: () => Promise<T>) => {
         abort.signal.throwIfAborted()
@@ -231,9 +252,15 @@ async function executeOwned(ctx: WorkflowContext, id: string, lease: WorkflowLea
         if (event.type === "status") abort.abort(new Error("Workflow waiting for user action"))
       }),
     }
-    await withRunAttemptScope(ctx, id, () => adapter.execute(ctx, run, io), abort.signal)
+    if (!outputsCompleted) {
+      await withRunAttemptScope(ctx, id, () => adapter!.execute(ctx, run, io), abort.signal)
+      if (!abort.signal.aborted && (await readWorkflowJournal(ctx, id)).status === "running" && !await hasUncertainWork(ctx, id)) {
+        await markWorkflowOutputsCompleted(ctx, id, lease)
+      }
+    }
     if (await runCancellationRequested(ctx, id, lease)) { await finishCancellation(); return }
     await text.flush()
+    if (!abort.signal.aborted && !await hasUncertainWork(ctx, id)) await saveAuthorizedWorkflowOutputs(ctx, id, lease)
     if ((await readWorkflowJournal(ctx, id)).status === "running") {
       await transitionRun(ctx, id, await hasUncertainWork(ctx, id) ? "needs_attention" : abort.signal.aborted ? "interrupted" : "completed", lease)
     }
@@ -242,11 +269,12 @@ async function executeOwned(ctx: WorkflowContext, id: string, lease: WorkflowLea
     await text.flush().catch(() => {})
     const current = await readWorkflowJournal(ctx, id)
     if (current.status === "running" && current.lease?.id === lease.id) {
-      const uncertain = error instanceof UncertainWorkflowError || await hasUncertainWork(ctx, id)
+      const recoveryConflict = error instanceof ChangesetRecoveryConflictError
+      const uncertain = recoveryConflict || error instanceof UncertainWorkflowError || await hasUncertainWork(ctx, id)
       const limit = error instanceof WorkflowLimitError
       const status = uncertain ? "needs_attention" : error instanceof WorkflowSetupError ? "waiting_for_setup" : limit ? "paused_limit" : abort.signal.aborted ? "interrupted" : "failed"
-      await emitRunEvent(ctx, id, lease, { type: "error", code: status,
-        message: status === "needs_attention" ? "An attempt needs reconciliation before this run can continue."
+      await emitRunEvent(ctx, id, lease, { type: "error", code: recoveryConflict ? error.code : status,
+        message: recoveryConflict ? error.message : status === "needs_attention" ? "An attempt needs reconciliation before this run can continue."
           : status === "waiting_for_setup" ? "Restore the captured tool, model or connection before resuming."
           : status === "paused_limit" ? "This run reached its allowance. Extend the allowance before resuming." : "The workflow stopped. Its saved checkpoints are preserved." })
       await transitionRun(ctx, id, status, lease)
@@ -272,7 +300,7 @@ export async function recoverWorkflowRuns(contexts: WorkflowContext[]): Promise<
         const journal = await readWorkflowJournal(ctx, run.id)
         if (!["queued", "running", "interrupted"].includes(journal.status)) continue
         if (await hasUncertainWork(ctx, run.id)) { await transitionRun(ctx, run.id, "needs_attention"); continue }
-        try { adapterFor(run) } catch { await transitionRun(ctx, run.id, "waiting_for_setup"); continue }
+        try { if (!await workflowOutputsCompleted(ctx, run.id)) adapterFor(run) } catch { await transitionRun(ctx, run.id, "waiting_for_setup"); continue }
         const lease = await claimRunLease(ctx, run.id)
         if (lease) return { id: run.id, lease }
       }

@@ -4,6 +4,7 @@ import { randomUUID, createHash } from "node:crypto"
 import { mkdtemp, rm, access } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { ChangesetRecoveryConflictError } from "../../vault/changesets"
 import { NodeFsVaultStorage } from "../../vault/node-fs-storage"
 import * as toolsRoute from "@/app/api/tools/route"
 import * as runsRoute from "@/app/api/tools/runs/route"
@@ -306,4 +307,13 @@ describe("authenticated workflow HTTP APIs", () => {
     expect(new Set(resumed).size).toBe(resumed.length)
     expect(resumed.at(-1)).toBe((await readRun(f.ctx, run.id))?.eventCursor)
   })
+})
+
+
+it("returns actionable recovery conflicts without discarding the owning run or affected paths", async () => {
+  const changesetId = randomUUID()
+  vi.mocked(contexts.resolveWorkflowContext).mockRejectedValue(new ChangesetRecoveryConflictError(f.run.id, changesetId, ["wiki/notes/edited.md"]))
+  const response = await runsRoute.GET(request("/runs"))
+  expect(response.status).toBe(409)
+  expect(await response.json()).toMatchObject({ code: "changeset_recovery_conflict", runId: f.run.id, changesetId, conflicts: ["wiki/notes/edited.md"] })
 })

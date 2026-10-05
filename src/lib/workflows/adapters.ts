@@ -1,9 +1,11 @@
 import type { WorkflowContext } from "./context"
-import type { RunEventInput, StepIntent, ToolRun } from "./contracts"
+import type { Artifact, ArtifactInput, WikiProposalInput, RunEventInput, StepIntent, ToolRun } from "./contracts"
 
 export interface WorkflowIO {
   step<T>(intent: StepIntent, work: () => Promise<T>): Promise<T>
   emit(event: RunEventInput): Promise<void>
+  publishArtifact(input: ArtifactInput): Promise<Artifact>
+  submitWikiProposal(input: WikiProposalInput): Promise<void>
   signal: AbortSignal
 }
 export interface WorkflowAdapter {

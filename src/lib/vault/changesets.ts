@@ -1,3 +1,5 @@
+import { z } from "zod"
+import { withVaultExclusive } from "./exclusive"
 import type { VaultStorage } from "./storage"
 import type { Changeset, FileChange } from "./types"
 import { isSafeVaultRelativePath } from "./safe-path"
@@ -7,19 +9,28 @@ const CHANGESET_AUDIT_PREFIX = ".scispark/changesets/"
 const CHANGESET_ID_RE = /^[A-Za-z0-9_-]{1,128}$/
 const ISO_TIMESTAMP_RE =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/
-const changesetMutationQueues = new WeakMap<VaultStorage, Promise<void>>()
+const MUTATION_LOCK = "changeset-mutations"
+const PENDING_APPLY_PATH = ".scispark/changeset-transactions/pending.json"
 
-async function withChangesetMutation<T>(
-  storage: VaultStorage,
-  work: () => Promise<T>,
-): Promise<T> {
-  const previous = changesetMutationQueues.get(storage) ?? Promise.resolve()
-  const current = previous.then(work)
-  changesetMutationQueues.set(
-    storage,
-    current.then(() => undefined, () => undefined),
-  )
-  return current
+/** Workflow callers acquire their run journal lock FIRST, then this canonical
+ * vault lock. Shared transaction code never acquires a workflow lock. Every
+ * changeset apply/revert/undo uses this same storage-backed cross-process lock. */
+async function withChangesetMutation<T>(storage: VaultStorage, work: () => Promise<T>): Promise<T> {
+  await assertMutationPath(storage, `.scispark/locks/${MUTATION_LOCK}`)
+  return withVaultExclusive(storage, MUTATION_LOCK, async () => {
+    await reconcilePendingApply(storage)
+    return work()
+  })
+}
+async function assertMutationPath(storage: VaultStorage, path: string): Promise<void> {
+  try {
+    if (await storage.hasSymlinkTraversal?.(path)) throw new ChangesetInvalidError("Changeset symlink traversal is forbidden")
+  } catch (error) {
+    // Legacy scaffolding creates a not-yet-existing vault lazily. The initial
+    // lock write creates that root; all transaction/target checks run again
+    // afterward. Missing leaf components already return false in the backend.
+    if ((error as { code?: string }).code !== "ENOENT") throw error
+  }
 }
 
 function findProtectedPaths(changes: FileChange[]): string[] {
@@ -48,6 +59,16 @@ export class ChangesetConflictError extends Error {
  * or an id that collides with an already-persisted record). Thrown before
  * any write or conflict check is performed. */
 export class ChangesetInvalidError extends Error {}
+
+/** A durable owned transaction encountered real user divergence. Keep its images
+ * available for recovery; consumers can explain the affected run and paths. */
+export class ChangesetRecoveryConflictError extends ChangesetConflictError {
+  readonly code = "changeset_recovery_conflict"
+  constructor(readonly runId: string, readonly changesetId: string, conflicts: string[]) {
+    super(conflicts)
+    this.message = `Save recovery for run ${runId} conflicts at: ${conflicts.join(", ")}`
+  }
+}
 
 export class ChangesetNotFoundError extends Error {}
 
@@ -213,10 +234,82 @@ function changesetRecordPath(id: string): string {
   return `${CHANGESET_AUDIT_PREFIX}${id}.json`
 }
 
+const PendingApplySchema = z.object({
+  schemaVersion: z.literal(1), owner: z.object({ kind: z.literal("workflow"), runId: z.uuid() }).strict(),
+  changeset: z.unknown().transform(value => parseChangeset(value)),
+}).strict()
+function sameChangeset(a: Changeset, b: Changeset): boolean {
+  return a.id === b.id && a.skill === b.skill && a.model === b.model && a.timestamp === b.timestamp
+    && a.changes.length === b.changes.length && a.changes.every((c, i) => {
+      const other = b.changes[i]
+      return c.path === other.path && c.before === other.before && c.after === other.after
+    })
+}
+async function readMatchingAudit(storage: VaultStorage, cs: Changeset): Promise<boolean> {
+  const path = changesetRecordPath(cs.id)
+  await assertMutationPath(storage, path)
+  const raw = await storage.read(path)
+  if (raw === null) return false
+  if (!sameChangeset(parseChangeset(JSON.parse(raw)), cs)) throw new ChangesetInvalidError("Changeset audit identity conflict")
+  return true
+}
+/** Only a durable intent written AFTER locked before-image validation owns a
+ * partial after-image. A fresh proposal never gains ownership by matching it. */
+async function reconcilePendingApply(storage: VaultStorage): Promise<void> {
+  await assertMutationPath(storage, PENDING_APPLY_PATH)
+  const raw = await storage.read(PENDING_APPLY_PATH)
+  if (raw === null) return
+  const pending = PendingApplySchema.parse(JSON.parse(raw)), cs = pending.changeset
+  if (!await readMatchingAudit(storage, cs)) {
+    const current: Array<string | null> = []
+    for (const change of cs.changes) {
+      await assertMutationPath(storage, change.path)
+      current.push(await storage.read(change.path))
+    }
+    const divergent = cs.changes.filter((c, i) => current[i] !== c.before && current[i] !== c.after).map(c => c.path)
+    if (divergent.length) throw new ChangesetRecoveryConflictError(pending.owner.runId, cs.id, divergent)
+    for (const [index, change] of cs.changes.entries()) {
+      if (current[index] === change.after) continue
+      if (change.after === null) await storage.delete(change.path)
+      else await storage.write(change.path, change.after)
+    }
+    await storage.write(changesetRecordPath(cs.id), JSON.stringify(cs, null, 2))
+  }
+  // A matching audit also settles an intent after the pages were subsequently
+  // edited/undone. Never reapply an already audited transaction.
+  await storage.delete(PENDING_APPLY_PATH)
+}
+/** Workflow-only durable apply. The caller must already have persisted its
+ * operation and stable changeset identity; this vault intent owns the writes. */
+export async function applyRecoverableChangeset(storage: VaultStorage, input: Changeset, runId: string): Promise<void> {
+  const pending = PendingApplySchema.parse({ schemaVersion: 1, owner: { kind: "workflow", runId }, changeset: input })
+  const cs = pending.changeset
+  await withChangesetMutation(storage, async () => {
+    if (await readMatchingAudit(storage, cs)) return
+    const conflicts: string[] = []
+    for (const change of cs.changes) {
+      await assertMutationPath(storage, change.path)
+      if (await storage.read(change.path) !== change.before) conflicts.push(change.path)
+    }
+    if (conflicts.length) throw new ChangesetConflictError(conflicts)
+    await storage.write(PENDING_APPLY_PATH, JSON.stringify(pending))
+    try {
+      await applyChangesetUnlocked(storage, cs)
+    } catch (error) {
+      // Preserve ordinary in-process rollback semantics. Incomplete rollback or
+      // process death keeps the durable intent for a later locked recovery.
+      if (error instanceof ChangesetApplyError && error.rolledBack) await storage.delete(PENDING_APPLY_PATH)
+      throw error
+    }
+    await storage.delete(PENDING_APPLY_PATH)
+  })
+}
+
 async function applyChangesetUnlocked(storage: VaultStorage, cs: Changeset): Promise<void> {
   parseChangeset(cs)
   // 1. Structural validation happens in parseChangeset before any read/write.
   const recordPath = changesetRecordPath(cs.id)
+  await assertMutationPath(storage, recordPath)
   const existingRecord = await storage.read(recordPath)
   if (existingRecord !== null) {
     throw new ChangesetInvalidError(
@@ -227,6 +320,7 @@ async function applyChangesetUnlocked(storage: VaultStorage, cs: Changeset): Pro
   // 2. Conflict check — all-or-nothing, before any write.
   const conflicts: string[] = []
   for (const ch of cs.changes) {
+    await assertMutationPath(storage, ch.path)
     const current = await storage.read(ch.path)
     if (current !== ch.before) conflicts.push(ch.path)
   }
@@ -275,6 +369,7 @@ async function revertChangesetUnlocked(
   parseChangeset(cs)
   const conflicts: string[] = []
   for (const ch of cs.changes) {
+    await assertMutationPath(storage, ch.path)
     const current = await storage.read(ch.path)
     if (current !== ch.after) conflicts.push(ch.path)
   }

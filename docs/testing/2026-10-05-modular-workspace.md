@@ -381,3 +381,124 @@ replay delivers sequences exactly once and never calls actions; auth/owner/schem
 failures and retry detachment are covered. Public pending projection is read-only
 and excludes the private operation/lease IDs. No live models, human vault,
 installed-skill scan, package installation, push or merge occurred.
+
+### Task 6 — artifacts and authorized wiki saves
+
+Artifacts now have bounded, host-allocated content identities (25 MiB maximum),
+atomic binary-then-metadata publication, SHA-256 verification, profile/vault owner
+checks, and symlink guards. Replayed identical publication repairs a missing run
+reference without creating another artifact. Authenticated artifact GET returns
+attachment-only bytes with `nosniff`, `no-store` and sandbox CSP; filenames use
+UUIDs, never untrusted titles. Existing generic private-state guards already deny
+all artifact/output-journal paths; new regressions extend that coverage.
+
+`WorkflowIO.publishArtifact(input)` publishes and emits an artifact event.
+`WorkflowIO.submitWikiProposal({artifactIds, changes})` is the Task 10/14 handoff:
+DeepSpark/hosts submit their complete proposed before/after changes without applying
+them. The server validates the exact artifact selection, wiki schema routing,
+frontmatter, source-reference preservation and protected paths, then persists one
+immutable proposal with a host-allocated changeset ID. An explicit subset cannot
+silently apply a full proposal. Native evidence limitations must remain in its
+proposed page content; publication does not upgrade evidence quality.
+
+Explicit save accepts artifact IDs and an operation UUID only. Without a proposal,
+supported Markdown/papers/BibTeX outputs become provenance-bearing new note pages
+using the existing `serializeDocument` and schema routing. File/HTML/SVG selections
+fail explicitly, and original papers remain untouched. Both explicit and authorized
+automatic saves persist the same stable changeset identity before `applyChangeset`.
+A crash after the audit commit is reconciled once, including after subsequent user
+edits or undo; retries never reapply the change. Existing persisted undo remains
+divergence-aware. Partial mutation without an audit fails closed through the
+existing conflict checks rather than overwriting user data.
+
+The coordinator records output completion before saving and only triggers automatic
+writes for captured `update_wiki`. Recovery after that checkpoint skips adapter/model
+preflight and replay, then finishes the authorized save under the existing lifecycle
+lease lock. `outputs_only` does not automatically save. Cancellation intent still
+belongs to the original journal and fences owned publication/proposals/saves; usage,
+allowance, dispatch accounting and public cancellation projection are unchanged.
+
+| Check | Result |
+| --- | --- |
+| Focused RED | New artifact suite failed on missing implementation module; existing vault suite 79 passed |
+| Final focused GREEN | 138 passed across artifact, real HTTP, recovery and vault API suites |
+| `npx tsc --noEmit` | Exit 0; 3.66 seconds |
+| `npm run lint` | Exit 0; 16.15 seconds; existing ConnectAiCard warning and generated-card Babel note only |
+| `npx vitest run` | 2852 passed / 19 gated skips; 284 passed / 7 skipped files; command 30.62 seconds |
+| Isolated production build | Exit 0; compilation 9.8 seconds, TypeScript 8.3 seconds, 66 pages; both new routes included |
+| `git diff --check` | Exit 0 |
+
+Phase-6 evidence is a real loopback HTTP integration test using the actual Next
+route exports, real disposable profile/session/context/storage, and a deterministic
+registered adapter. It exercises authenticated start, disconnected observation,
+continued completion, allowance refusal before dispatch then extension/resume,
+retrievable artifacts, hostile HTML download headers, duplicate explicit save and
+persisted undo. Separate filesystem-reopen recovery tests cover detached authorized
+completion, publication/completion-before-save, and applied-audit-before-settlement
+without adapter replay or duplicate mutation. This does not claim a production Next
+browser or process-restart acceptance gate; Task 19 owns that layer.
+
+The sandbox denied loopback binding (`EPERM`); scoped elevated focused/full tests
+passed. Subsequent full gates include this test-only listener and need the same
+local binding permission on this host. The isolated build used
+`.next-modular-task-6`, `/tmp/scispark-modular-task-6/{vault,profiles}` and scheduler
+off. Task-local config backups prove only the generated dist includes/imports were
+restored; the normal build output was preserved. Exact logs are in local SDD
+`verification/task-6/` and `task-6-build/`. No human vault, live model, real installed
+skills, package installation, push or merge was used.
+
+#### Task 6 independent-review fix 1 — shared transaction and interrupted-apply recovery
+
+The review found two concrete gaps in the initial save implementation: mixed or
+all-after pages without an audit could not recover, and distinct run/storage locks
+could both accept the same before-image. These are now fixed in the shared changeset
+boundary. Every ordinary apply, revert, persisted undo and workflow save uses the
+same storage-backed `changeset-mutations` lock for its canonical vault. Lock order
+is workflow journal lock first, vault mutation lock second; shared transaction code
+never takes a workflow lock.
+
+Workflow saves validate all fresh before-images under that lock before writing a
+strict private `.scispark/changeset-transactions/pending.json` intent with the owning
+run and exact changeset. Matching after-images alone never establish ownership.
+Before any subsequent changeset mutation, an owned pending intent is reconciled:
+known before/after states complete missing page writes and the same audit; an exact
+existing audit settles the intent without reapplication. Ordinary in-process
+rollback remains intact. Failed rollback or process death retains the intent.
+Normal persisted undo can recover the audit and then undo the complete change.
+
+Real third-state edits are neither overwritten nor discarded. The preserved intent
+and output journal retain recovery images; `changeset_recovery_conflict` identifies
+the owning run, changeset and affected paths. Workflow HTTP responses expose those
+fields with 409, and automatic coordinator recovery emits the specific error and
+requires attention. File/list APIs deny the new transaction namespace and its
+normalized/symlink aliases. This supersedes the initial report's partial-write
+limitation: safe owned mixed/all-after states now recover, rather than merely fail
+closed. Actual divergence still requires an explicit resolution.
+
+| Check | Result |
+| --- | --- |
+| Behavioral RED | 3 failed / 36 passed: mixed/no-audit, all-after/no-audit, and both concurrent saves falsely successful |
+| Final focused GREEN | 206 passed / 6 files, including existing lazy-profile creation, rollback and undo |
+| `npx tsc --noEmit` | Exit 0; 3.35 seconds |
+| `npm run lint` | Exit 0; 16.01 seconds; baseline warning/Babel note only |
+| `npx vitest run` | 2866 passed / 19 gated skips; 284 passed / 7 skipped files; command 31.28 seconds |
+
+Focused cases use real disk reopen and separate storage contexts: mixed two-page
+and all-after/no-audit recovery, coordinator recovery without adapter replay,
+normal undo, genuine user divergence with retained intent, workflow-vs-workflow
+and workflow-vs-ordinary changeset concurrency, refusing unowned after-images,
+strict intent validation, exact audit content validation, and actionable HTTP
+conflict metadata. The first master run caught a missing-root compatibility issue
+in the initial symlink check; the guard now preserves lazy vault creation and
+checks transaction/target paths after the lock creates the root. That failing
+master output is retained in `verification/task-6-fix-1-initial/`.
+
+Final command: `python3 .superpowers/sdd/2026-10-05-modular-workspace/verify-task.py task-6-fix-1`.
+Exact RED/GREEN/master outputs are in `verification/task-6-fix-1/` in the local SDD
+folder. Full tests use the scoped elevation required by the existing loopback phase
+harness. No human vault, provider, real installed skills, push or merge was used.
+The final isolated production build also passed (compile 9.8 seconds, TypeScript
+8.3 seconds, 66 pages) using `.next-modular-task-6-fix-1`, disposable
+`/tmp/scispark-modular-task-6-fix-1/{vault,profiles}` and scheduler off. Exact logs,
+exit status, fresh config backups and verified generated-config cleanup are in
+`task-6-fix-1-build/`. `git diff --check` passed.

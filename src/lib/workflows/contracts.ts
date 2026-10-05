@@ -44,6 +44,23 @@ export const ArtifactSchema = z.object({
   path: ArtifactPathSchema, sha256: DigestSchema, mediaType: z.string().min(1), sourceRefs: z.array(z.string().min(1)),
 }).strict()
 export type Artifact = z.infer<typeof ArtifactSchema>
+/** No caller-controlled paths. Limits apply to actual bytes before persistence. */
+export const MAX_ARTIFACT_BYTES = 25 * 1024 * 1024
+export const ArtifactInputSchema = ArtifactSchema.pick({ kind: true, title: true, mediaType: true, sourceRefs: true }).extend({
+  title: z.string().trim().min(1).max(500),
+  mediaType: z.string().max(127).regex(/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i),
+  sourceRefs: z.array(z.string().min(1).max(2048)).max(1000),
+  bytes: z.instanceof(Uint8Array).refine(bytes => bytes.byteLength <= MAX_ARTIFACT_BYTES, "Artifact exceeds 25 MiB"),
+}).strict()
+export type ArtifactInput = z.infer<typeof ArtifactInputSchema>
+export const ArtifactIdsSchema = z.array(UuidSchema).min(1).max(100).refine(ids => new Set(ids).size === ids.length, "Duplicate artifact IDs")
+export const WikiProposalInputSchema = z.object({
+  artifactIds: ArtifactIdsSchema,
+  changes: z.array(z.object({ path: z.string().min(1).max(1024), before: z.string().max(MAX_ARTIFACT_BYTES).nullable(), after: z.string().max(MAX_ARTIFACT_BYTES).nullable() }).strict()).min(1).max(100),
+}).strict()
+export type WikiProposalInput = z.infer<typeof WikiProposalInputSchema>
+export const SaveRunInputSchema = z.object({ artifactIds: ArtifactIdsSchema, operationId: UuidSchema }).strict()
+
 export const RunModelSchema = z.object({
   engine: z.enum(["api", "codex", "claude-code"]), tierModels: TierModelsSchema,
   roleTiers: RoleTiersSchema, timeoutSeconds: z.number().int().min(30).max(600).optional(),

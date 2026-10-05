@@ -17,6 +17,10 @@ import { startRun, observeRun, cancelRun, resumeRun, recoverWorkflowRuns, waitFo
 import { claimRunLease, releaseRunLease, journalStep, readWorkflowJournal, transitionRun } from "../journal"
 import { reserveAttempt, claimAttemptDispatch, getRunUsage, extendAllowance } from "../usage"
 import { withWorkflowAttempt } from "../attempt-scope"
+import { publishArtifact } from "../artifacts"
+import { markWorkflowOutputsCompleted, submitWikiProposal, saveRunToWiki } from "../wiki-save"
+import { serializeDocument } from "../../vault/frontmatter"
+import { loadChangeset, revertPersistedChangeset } from "../../vault/changesets"
 import type { StepIntent, RunStatus } from "../contracts"
 
 const cleanups: Array<() => Promise<unknown> | unknown> = []
@@ -505,4 +509,89 @@ describe("durable workflow recovery", () => {
     await expect(journalStep(f.ctx, f.run.id, lease, step(), async () => "late")).rejects.toThrow(/lease/i)
     await expect(transitionRun(f.ctx, f.run.id, "completed", lease)).rejects.toThrow(/lease/i)
   })
+})
+
+
+describe("authorized output completion", () => {
+  const artifactInput = { kind: "markdown" as const, title: "Evidence", mediaType: "text/markdown", sourceRefs: ["https://example.org/paper"], bytes: new TextEncoder().encode("# Evidence") }
+  it.each(["outputs_only", "update_wiki"] as const)("detached %s completion obeys captured authorization", async writeIntent => {
+    const f = await fixture()
+    registerWorkflowAdapter(f.tool.entrypoint, { execute: async (_ctx, _run, io) => { await io.publishArtifact(artifactInput) } })
+    const run = await startRun(f.ctx, { ...f.request, writeIntent })
+    await waitForWorkflowIdle() // No observers attached to execution.
+    expect((await observeRun(f.reopen(), run.id)).status).toBe("completed")
+    expect(await f.ctx.storage.list("wiki/notes/")).toHaveLength(writeIntent === "update_wiki" ? 1 : 0)
+  })
+  it("reopens after publication/completion before save without replaying adapter or changing changeset identity", async () => {
+    const f = await fixture(); await writeRun(f.ctx, { ...f.run, writeIntent: "update_wiki", status: "running" })
+    const lease = (await claimRunLease(f.ctx, f.run.id))!
+    const a = await publishArtifact(f.ctx, f.run.id, artifactInput)
+    const page = serializeDocument({ type: "idea", title: "Proposal", created: "2026-10-05", updated: "2026-10-05", tags: [], related: [], sources: artifactInput.sourceRefs }, "Grounded proposal")
+    await submitWikiProposal(f.ctx, f.run.id, { artifactIds: [a.id], changes: [{ path: "wiki/ideas/proposal.md", before: null, after: page }] })
+    const savedBefore = JSON.parse((await f.ctx.storage.read(`.scispark/tool-runs/${f.run.id}/outputs.json`))!)
+    await markWorkflowOutputsCompleted(f.ctx, f.run.id, lease)
+    await releaseRunLease(f.ctx, f.run.id, lease)
+    const execute = vi.fn(); registerWorkflowAdapter(f.tool.entrypoint, { execute })
+    await recoverWorkflowRuns([f.reopen()]); await waitForWorkflowIdle()
+    expect(execute).not.toHaveBeenCalled()
+    expect((await observeRun(f.ctx, f.run.id)).status).toBe("completed")
+    const cs = (await loadChangeset(f.ctx.storage, savedBefore.proposal.changeset.id))!
+    expect(cs.changes[0].after).toBe(page)
+    expect((await saveRunToWiki(f.ctx, f.run.id, [a.id], randomUUID())).changesetId).toBe(cs.id)
+    await revertPersistedChangeset(f.ctx.storage, cs.id)
+    expect(await f.ctx.storage.read("wiki/ideas/proposal.md")).toBeNull()
+  })
+})
+
+
+it("recovers an authorized save's applied audit after a settlement crash without duplicate application", async () => {
+  const f = await fixture(); await writeRun(f.ctx, { ...f.run, writeIntent: "update_wiki", status: "running" })
+  const lease = (await claimRunLease(f.ctx, f.run.id))!
+  const a = await publishArtifact(f.ctx, f.run.id, { kind: "markdown", title: "Recovery", mediaType: "text/markdown", sourceRefs: [], bytes: new TextEncoder().encode("Saved once") })
+  await markWorkflowOutputsCompleted(f.ctx, f.run.id, lease)
+  const write = f.ctx.storage.write.bind(f.ctx.storage)
+  const crash = vi.spyOn(f.ctx.storage, "write").mockImplementation(async (path, content) => {
+    if (path.endsWith("/outputs.json") && content.includes('"state":"saved"')) throw new Error("settlement crash")
+    await write(path, content)
+  })
+  await expect(saveRunToWiki(f.ctx, f.run.id, [a.id], randomUUID())).rejects.toThrow("settlement crash")
+  crash.mockRestore(); await releaseRunLease(f.ctx, f.run.id, lease)
+  const records = await f.ctx.storage.list(".scispark/changesets/")
+  const execute = vi.fn(); registerWorkflowAdapter(f.tool.entrypoint, { execute })
+  await recoverWorkflowRuns([f.reopen()]); await waitForWorkflowIdle()
+  expect((await observeRun(f.ctx, f.run.id)).status).toBe("completed")
+  expect(await f.ctx.storage.list(".scispark/changesets/")).toEqual(records)
+  expect(records).toHaveLength(1); expect(execute).not.toHaveBeenCalled()
+})
+
+it.each([false, true])("coordinator reconciles partial authorized saves and preserves genuine divergence=%s", async diverged => {
+  const f = await fixture(); await writeRun(f.ctx, { ...f.run, writeIntent: "update_wiki", status: "running" })
+  const lease = (await claimRunLease(f.ctx, f.run.id))!
+  const a = await publishArtifact(f.ctx, f.run.id, { kind: "markdown", title: "Recovery", mediaType: "text/markdown", sourceRefs: [], bytes: new TextEncoder().encode("Evidence") })
+  const document = serializeDocument({ type: "note", title: "Recovered", created: "2026-10-05", updated: "2026-10-05", tags: [], related: [], sources: [] }, "Saved")
+  const changes = ["first", "second"].map(name => ({ path: `wiki/notes/${name}.md`, before: null, after: document }))
+  await submitWikiProposal(f.ctx, f.run.id, { artifactIds: [a.id], changes })
+  await markWorkflowOutputsCompleted(f.ctx, f.run.id, lease)
+  const write = f.ctx.storage.write.bind(f.ctx.storage)
+  const writeFailure = vi.spyOn(f.ctx.storage, "write").mockImplementation(async (path, content) => {
+    if (path === changes[1].path) throw new Error("process unavailable")
+    await write(path, content)
+  })
+  const remove = f.ctx.storage.delete.bind(f.ctx.storage)
+  const rollbackFailure = vi.spyOn(f.ctx.storage, "delete").mockImplementation(async path => {
+    if (path === changes[0].path) throw new Error("process unavailable")
+    await remove(path)
+  })
+  await expect(saveRunToWiki(f.ctx, f.run.id, [a.id], randomUUID())).rejects.toThrow()
+  writeFailure.mockRestore(); rollbackFailure.mockRestore()
+  if (diverged) await f.ctx.storage.write(changes[0].path, "User revision")
+  await releaseRunLease(f.ctx, f.run.id, lease)
+  const execute = vi.fn(); registerWorkflowAdapter(f.tool.entrypoint, { execute })
+  await recoverWorkflowRuns([f.reopen()]); await waitForWorkflowIdle()
+  expect(execute).not.toHaveBeenCalled()
+  expect((await observeRun(f.ctx, f.run.id)).status).toBe(diverged ? "needs_attention" : "completed")
+  expect(await f.ctx.storage.read(changes[0].path)).toBe(diverged ? "User revision" : document)
+  expect(await f.ctx.storage.read(changes[1].path)).toBe(diverged ? null : document)
+  if (diverged) expect((await listRunEvents(f.ctx, f.run.id, 0)).find(event => event.type === "error")).toMatchObject({ code: "changeset_recovery_conflict", message: expect.stringContaining(changes[0].path) })
+  else expect(await f.ctx.storage.list(".scispark/changesets/")).toHaveLength(1)
 })

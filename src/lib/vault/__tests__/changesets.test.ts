@@ -466,3 +466,25 @@ describe("loadChangeset", () => {
     )
   })
 })
+
+
+describe("shared durable apply recovery boundary", () => {
+  const path = ".scispark/changeset-transactions/pending.json"
+  const owner = { kind: "workflow", runId: "44444444-4444-4444-8444-444444444444" }
+  it("rejects unknown transaction fields without touching pages or recovery evidence", async () => {
+    const storage = new MemoryVaultStorage(), pending = JSON.stringify({ schemaVersion: 1, owner, changeset: cs([{ path: "wiki/notes/a.md", before: null, after: "authorized" }]), extra: "untrusted" })
+    await storage.write(path, pending)
+    await expect(applyChangeset(storage, cs([{ path: "wiki/notes/b.md", before: null, after: "other" }], "other"))).rejects.toThrow()
+    expect(await storage.read(path)).toBe(pending)
+    expect(await storage.list("wiki/")).toEqual([])
+  })
+  it("requires exact audit metadata and images before settling a pending identity", async () => {
+    const storage = new MemoryVaultStorage(), original = cs([{ path: "wiki/notes/a.md", before: null, after: "authorized" }])
+    const pending = JSON.stringify({ schemaVersion: 1, owner, changeset: original })
+    await storage.write(path, pending)
+    await storage.write(`.scispark/changesets/${original.id}.json`, JSON.stringify({ ...original, model: "different" }))
+    await expect(revertChangeset(storage, original)).rejects.toThrow(/identity conflict/)
+    expect(await storage.read(path)).toBe(pending)
+    expect(await storage.read("wiki/notes/a.md")).toBeNull()
+  })
+})

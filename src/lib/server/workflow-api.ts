@@ -1,3 +1,4 @@
+import { ChangesetRecoveryConflictError } from "../vault/changesets"
 import { z } from "zod"
 import type { NextRequest } from "next/server"
 import { PROFILE_COOKIE, PROFILE_HEADER } from "../local-profile-contract"
@@ -21,6 +22,10 @@ export async function workflowApi(request: NextRequest, work: (ctx: WorkflowCont
     })
     return await work(await resolveWorkflowContext(profile, process.env, request.method === "GET"))
   } catch (error) {
+    if (error instanceof ChangesetRecoveryConflictError) return Response.json({
+      error: "A pending wiki save conflicts with edited pages. Review its preserved recovery record before retrying.",
+      code: error.code, runId: error.runId, changesetId: error.changesetId, conflicts: error.conflicts,
+    }, { status: 409, headers: { "cache-control": "no-store" } })
     const status = error instanceof HttpError ? error.status : error instanceof z.ZodError || error instanceof SyntaxError ? 400
       : error instanceof Error && error.message === "Workflow run not found" ? 404 : 409
     // Provider/configuration and filesystem errors are never returned verbatim.
