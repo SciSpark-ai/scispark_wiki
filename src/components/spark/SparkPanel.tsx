@@ -2,7 +2,10 @@
 
 import { formatCost } from "@/lib/llm/pricing"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { observeSkillJob } from "@/lib/skills/job-client"
+import type { QuickSparkResult } from "@/lib/spark/quick"
+import type { DeepSparkResult } from "@/lib/spark/deep"
 import Link from "next/link"
 import type { Seed } from "@/lib/spark/quick"
 import type { DeepSparkOutcome } from "@/lib/spark/deep"
@@ -49,6 +52,31 @@ export function SparkPanel({ clusterPageIds, onIdeaSaved }: SparkPanelProps) {
   const [quickState, setQuickState] = useState<QuickState>({ status: "idle" })
   const [seedUi, setSeedUi] = useState<Record<number, SeedSaveState>>({})
   const [deepState, setDeepState] = useState<DeepRunState>({ status: "idle" })
+  const startedHere = useRef(false)
+  const onSaved = useRef(onIdeaSaved)
+  onSaved.current = onIdeaSaved
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void observeSkillJob("spark-quick", job => {
+      if (startedHere.current) return
+      if (job.status === "running") setQuickState({ status: "loading" })
+      else if (job.status === "completed") {
+        const result = job.result as QuickSparkResult
+        setQuickState({ status: "done", seeds: result.seeds, costUsd: result.costUsd })
+      } else setQuickState({ status: "error", message: job.error ?? "Spark did not complete." })
+    }, controller.signal).catch(error => { if (!controller.signal.aborted && !startedHere.current) setQuickState({ status: "error", message: String(error) }) })
+    void observeSkillJob("spark-deep", job => {
+      if (startedHere.current) return
+      if (job.status === "running") setDeepState({ status: "running", phase: typeof job.progress?.phase === "string" ? job.progress.phase : null })
+      else if (job.status === "completed") {
+        const result = job.result as DeepSparkResult
+        setDeepState({ status: "done", outcome: result.outcome, costUsd: result.costUsd })
+        onSaved.current?.()
+      } else setDeepState({ status: "error", message: job.error ?? "Deep Spark did not complete." })
+    }, controller.signal).catch(error => { if (!controller.signal.aborted && !startedHere.current) setDeepState({ status: "error", message: String(error) }) })
+    return () => controller.abort()
+  }, [])
 
   const quickBusy = quickState.status === "loading"
   const deepBusy = deepState.status === "running"
@@ -70,6 +98,7 @@ export function SparkPanel({ clusterPageIds, onIdeaSaved }: SparkPanelProps) {
   }
 
   async function handleQuickSpark() {
+    startedHere.current = true
     setQuickState({ status: "loading" })
     setSeedUi({})
     setDeepState({ status: "idle" })
@@ -100,6 +129,7 @@ export function SparkPanel({ clusterPageIds, onIdeaSaved }: SparkPanelProps) {
   }) {
     const costUsd = await estimateRemote()
     if (!window.confirm(formatDeepSparkConfirm(costUsd))) return
+    startedHere.current = true
 
     setDeepState({ status: "running", phase: null, seedIndex: opts.seedIndex })
     try {

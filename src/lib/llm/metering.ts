@@ -18,10 +18,6 @@ function dayFilePath(date: string): string {
   return `.scispark/usage/${date}.jsonl`
 }
 
-function utcDateString(d: Date): string {
-  return d.toISOString().slice(0, 10)
-}
-
 // Serializes .scispark/usage/*.jsonl read-modify-write cycles across every Meter
 // instance backed by the same VaultStorage — e.g. two concurrent runSkill() calls
 // each construct their own Meter over one shared storage, and both must not race
@@ -47,7 +43,7 @@ export class Meter {
       costUsd: scopedCostUsd === undefined ? estimateCostUsd(r.model, r.usage) : scopedCostUsd,
     }
 
-    const path = dayFilePath(utcDateString(nowDate))
+    const path = dayFilePath(nowDate.toISOString().slice(0, 10))
 
     // JSONL append = read existing file + append line + write back. Route every
     // read-modify-write through a promise-chain mutex (shared across Meter
@@ -96,7 +92,7 @@ export class Meter {
   }
 
   async spendingToday(): Promise<{ totalUsd: number | null; knownUsd: number; unpricedCount: number }> {
-    const records = (await this.recordsForDay(utcDateString(this.now()))).filter((r) => r.usage?.billingMode !== "subscription")
+    const records = (await this.recordsForDay(this.now().toISOString().slice(0, 10))).filter((r) => r.usage?.billingMode !== "subscription")
     const knownUsd = records.reduce((sum, r) => sum + (typeof r.costUsd === "number" && Number.isFinite(r.costUsd) ? r.costUsd : 0), 0)
     const unpricedCount = records.filter((r) => typeof r.costUsd !== "number" || !Number.isFinite(r.costUsd)).length
     return { totalUsd: unpricedCount ? null : knownUsd, knownUsd, unpricedCount }
@@ -111,7 +107,7 @@ export class Meter {
     if (raw === null) return 0
     const records = JSON.parse(raw) as Array<{ day: string; state: string; reservedUsd: number; metered?: boolean; costUsd?: number | null }>
     if (!Array.isArray(records)) throw new Error("Unreadable review billing record")
-    return records.filter((r) => r.day === utcDateString(this.now()) && !r.metered)
+    return records.filter((r) => r.day === this.now().toISOString().slice(0, 10) && !r.metered)
       .reduce((sum, r) => {
         const cost = r.costUsd ?? r.reservedUsd
         if (!Number.isFinite(cost) || cost < 0) throw new Error("Invalid review reservation")

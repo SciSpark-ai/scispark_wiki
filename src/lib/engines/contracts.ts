@@ -21,5 +21,8 @@ export interface EngineStatus {
   state: "ready" | "missing" | "signed-out" | "unsupported" | "unavailable"
   version?: string
   message: string
+  models?: EngineModel[]
+  modelsError?: string
 }
+export interface EngineModel { id: string; label: string }
 export const engineLabel = (kind: string) => kind === "codex" ? "Codex" : kind === "claude-code" ? "Claude Code" : "API key"

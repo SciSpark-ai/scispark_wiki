@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { createVault } from "../../vault/scaffold"
 import { setServerVaultForTests } from "../vault"
@@ -6,7 +6,8 @@ import { setSkillTestOverrides } from "../skill-route"
 import { readNdjson } from "../ndjson"
 import { MockProvider } from "../../llm/mock-provider"
 import type { LLMResult } from "../../llm/types"
-import type { PaperRecord } from "../../papers/types"
+import { paperKey, type PaperRecord } from "../../papers/types"
+import { sanitizeSlug } from "../../wiki/acquire"
 import type { AnalysisResult } from "../../skills/ingest-analysis"
 import type { GenerationResult } from "../../skills/ingest"
 import { parseDocument } from "../../vault/frontmatter"
@@ -14,6 +15,7 @@ import { paperSlug } from "../../wiki/authoring"
 import { readLedger } from "../../runs/ledger"
 import * as digestRoute from "../../../app/api/skills/digest/route"
 import * as ingestRoute from "../../../app/api/skills/ingest/route"
+import * as jobsRoute from "../../../app/api/skills/jobs/route"
 import * as ingestUndoRoute from "../../../app/api/skills/ingest/undo/route"
 
 const PAPER: PaperRecord = {
@@ -83,7 +85,7 @@ function structured(json: unknown): LLMResult {
 const htmlFetchFn: typeof fetch = async (input) => {
   const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url
   if (raw.includes("/api/fetch")) {
-    const html = `<html><body><p>${"Full text content of the paper. ".repeat(40)}</p></body></html>`
+    const html = `<html><body><article><h1>${PAPER.title}</h1><h2>Methods</h2><p>${"Full text content of the paper. ".repeat(40)}</p><h2>Results</h2><p>Training improved.</p></article></body></html>`
     return new Response(html, { status: 200, headers: { "content-type": "text/html" } })
   }
   return new Response(JSON.stringify({ error: "not found" }), { status: 404 })
@@ -106,13 +108,61 @@ describe("digest + ingest + undo skill routes", () => {
     setSkillTestOverrides()
   })
 
+  it("completes a disconnected ingest once and restores its Undo result through GET", async () => {
+    await storage.write(`.scispark/digests/${paperSlug(PAPER)}.json`, JSON.stringify(SAMPLE_DIGEST))
+    const provider = new MockProvider([structured(SAMPLE_ANALYSIS), structured(sampleGeneration())])
+    const complete = provider.complete.bind(provider)
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    vi.spyOn(provider, "complete").mockImplementation(async (model, input) => { await gate; return complete(model, input) })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, fetchFn: htmlFetchFn })
+    const request = () => new Request("http://x/api/skills/ingest", { method: "POST", body: JSON.stringify({ paper: PAPER }) })
+    const status = async () => (await (await jobsRoute.GET(new Request(`http://x/api/skills/jobs?key=ingest:${paperSlug(PAPER)}`))).json()).result
+    const response = await ingestRoute.POST(request())
+    const reader = response.body!.getReader()
+    await reader.read()
+    const detached = reader.cancel()
+    await vi.waitFor(async () => expect((await status())?.progress?.phase).toBe("ingesting"))
+    const duplicate = await ingestRoute.POST(request())
+    try {
+      expect((await status()).status).toBe("running")
+    } finally { release() }
+    const result = (await readNdjson(duplicate, () => {})) as ingestRoute.IngestRouteResult
+    await detached
+    expect(result.output.status).toBe("ok")
+    expect(provider.calls).toHaveLength(2) // one analysis and one generation, no duplicate pipeline
+    const job = await status()
+    expect(job).toMatchObject({ status: "completed", result })
+    expect(await storage.read(`wiki/papers/${paperSlug(PAPER)}.md`)).not.toBeNull()
+    const ledger = await readLedger(storage)
+    expect(ledger.filter(entry => entry.orchestrator === "ingest")).toHaveLength(1)
+    if (result.output.status === "ok") {
+      const undone = await ingestUndoRoute.POST(new Request("http://x/api/skills/ingest/undo", { method: "POST", body: JSON.stringify({ changesetId: result.output.changesetId }) }))
+      expect(undone.ok).toBe(true)
+      expect(await storage.read(`wiki/papers/${paperSlug(PAPER)}.md`)).toBeNull()
+    }
+  })
+
   describe("POST /api/skills/digest", () => {
+    it("preserves an old digest and spends nothing when full text still cannot be read", async () => {
+      const path = `.scispark/digests/${paperSlug(PAPER)}.json`
+      const saved = JSON.stringify(SAMPLE_DIGEST)
+      await storage.write(path, saved)
+      const provider = new MockProvider([])
+      setSkillTestOverrides({ providerOverride: { strong: provider }, fetchFn: htmlFetchFn })
+      const response = await digestRoute.POST(new Request("http://x/api/skills/digest", { method: "POST", body: JSON.stringify({ paper: PAPER }) }))
+      expect(response.status).toBe(500)
+      expect((await response.json()).error).toContain("Your saved digest is unchanged")
+      expect(await storage.read(path)).toBe(saved)
+      expect(provider.calls).toHaveLength(0)
+    })
+
     it("returns a digest on a miss and fromCache:true on a second call with no further LLM calls", async () => {
       const provider = new MockProvider([structured(SAMPLE_DIGEST)])
-      setSkillTestOverrides({ providerOverride: { strong: provider } })
+      setSkillTestOverrides({ providerOverride: { strong: provider }, fetchFn: htmlFetchFn })
 
       const res1 = await digestRoute.POST(
-        new Request("http://x/api/skills/digest", { method: "POST", body: JSON.stringify({ paper: PAPER }) }),
+        new Request("http://x/api/skills/digest", { method: "POST", body: JSON.stringify({ paper: PAPER_WITH_HTML }) }),
       )
       expect(res1.status).toBe(200)
       const result1 = await jsonResult<{ digest: typeof SAMPLE_DIGEST; fromCache: boolean; costUsd?: number }>(res1)
@@ -120,9 +170,10 @@ describe("digest + ingest + undo skill routes", () => {
       expect(result1.fromCache).toBe(false)
       expect(result1.costUsd).toBeGreaterThan(0)
       expect(provider.calls).toHaveLength(1)
+      expect(provider.calls[0].req.messages.map(m => m.content).join(" ")).toContain("Full text content of the paper.")
 
       const res2 = await digestRoute.POST(
-        new Request("http://x/api/skills/digest", { method: "POST", body: JSON.stringify({ paper: PAPER }) }),
+        new Request("http://x/api/skills/digest", { method: "POST", body: JSON.stringify({ paper: PAPER_WITH_HTML }) }),
       )
       const result2 = await jsonResult<{ digest: typeof SAMPLE_DIGEST; fromCache: boolean }>(res2)
       expect(result2.digest).toEqual(SAMPLE_DIGEST)
@@ -163,6 +214,24 @@ describe("digest + ingest + undo skill routes", () => {
   })
 
   describe("POST /api/skills/ingest", () => {
+    it("reuses verified PDF text from the digest and records full text without another fetch", async () => {
+      const source = { paperKey: paperKey(PAPER), access: "full-text", text: "VERIFIED-PDF-CONTEXT: Methods and results from the saved paper.", locator: `sources/${sanitizeSlug(paperKey(PAPER))}.pdf`, checkedAt: "2026-10-04T00:00:00.000Z", truncated: false, notes: [] }
+      await storage.write(`.scispark/paper-text/${sanitizeSlug(paperKey(PAPER))}.json`, JSON.stringify(source))
+      await storage.write(`.scispark/digests/${paperSlug(PAPER)}.json`, JSON.stringify({ ...SAMPLE_DIGEST, _source: source }))
+      const provider = new MockProvider([structured(SAMPLE_ANALYSIS), structured(sampleGeneration())])
+      const fetchFn = vi.fn<typeof fetch>(async () => { throw new Error("Cached PDF should be reused") })
+      setSkillTestOverrides({ providerOverride: { strong: provider }, fetchFn })
+      const res = await ingestRoute.POST(new Request("http://x/api/skills/ingest", { method: "POST", body: JSON.stringify({ paper: PAPER }) }))
+      const result = await readNdjson(res, () => {}) as { output: { status: string } }
+      expect(result.output.status).toBe("ok")
+      const page = parseDocument((await storage.read(`wiki/papers/${paperSlug(PAPER)}.md`))!)
+      expect(page.frontmatter.full_text).toBe(true)
+      expect(page.frontmatter.sources).toContain(source.locator)
+      expect(JSON.stringify(provider.calls[0])).toContain("VERIFIED-PDF-CONTEXT")
+      expect(provider.calls).toHaveLength(2)
+      expect(fetchFn).not.toHaveBeenCalled()
+    })
+
     it("streams acquiring -> snapshotting -> digesting -> ingesting, applies a changeset, and undo reverts it", async () => {
       const provider = new MockProvider([structured(SAMPLE_DIGEST), structured(SAMPLE_ANALYSIS), structured(sampleGeneration())])
       setSkillTestOverrides({ providerOverride: { strong: provider }, fetchFn: htmlFetchFn })

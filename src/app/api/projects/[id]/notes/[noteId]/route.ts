@@ -1,7 +1,6 @@
 import { deleteProjectNote, updateProjectNote } from "@/lib/projects/repository"
 import {
   deleteProjectNoteSchema,
-  jsonResponse,
   parseJsonBody,
   projectErrorResponse,
   updateProjectNoteSchema,
@@ -14,7 +13,7 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
   try {
     const { id, noteId } = await context.params
     const input = await parseJsonBody(request, updateProjectNoteSchema)
-    return jsonResponse(200, await updateProjectNote(await getServerVault(), id, noteId, input))
+    return Response.json(await updateProjectNote(await getServerVault(), id, noteId, input), { status: 200 })
   } catch (error) {
     return projectErrorResponse(error)
   }
@@ -24,7 +23,7 @@ export async function DELETE(request: Request, context: RouteContext): Promise<R
   try {
     const { id, noteId } = await context.params
     const input = await parseJsonBody(request, deleteProjectNoteSchema)
-    return jsonResponse(200, await deleteProjectNote(await getServerVault(), id, noteId, input))
+    return Response.json(await deleteProjectNote(await getServerVault(), id, noteId, input), { status: 200 })
   } catch (error) {
     return projectErrorResponse(error)
   }

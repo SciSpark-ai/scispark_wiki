@@ -9,11 +9,12 @@ import { Button } from "@/components/ui/Button"
 import { Chip } from "@/components/ui/Chip"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { PaperSaveButton } from "./PaperSaveButton"
+import type { PaperTextInfo } from "@/lib/papers/text-contract"
 
 export type DigestState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "done"; digest: DigestResult; fromCache: boolean; costUsd?: number | null }
+  | { status: "done"; digest: DigestResult; fromCache: boolean; costUsd?: number | null; source?: PaperTextInfo; refreshing?: boolean; refreshError?: string }
   | { status: "error"; message: string }
 
 export type IngestState =
@@ -57,10 +58,6 @@ const INGEST_PHASE_LABEL: Record<IngestPhase, string> = {
 
 export interface PaperActionsProps {
   pageState: PaperPageState
-  /** True only once a paper page's frontmatter has confirmed no full text
-   * was acquired — undefined/false (not yet known, or known available)
-   * leaves "Read full text" enabled. */
-  fullTextKnownFalse: boolean
   saveState: SaveState
   onSave: () => void
   enrichState: EnrichState
@@ -83,7 +80,6 @@ export interface PaperActionsProps {
  */
 export function PaperActions({
   pageState,
-  fullTextKnownFalse,
   saveState,
   onSave,
   enrichState,
@@ -112,12 +108,12 @@ export function PaperActions({
 
         <Button
           onClick={onGenerateDigest}
-          disabled={digestState.status === "loading" || digestState.status === "done"}
+          disabled={digestState.status === "loading" || (digestState.status === "done" && (digestState.refreshing || digestState.source?.access === "full-text"))}
         >
-          {digestState.status === "loading"
+          {digestState.status === "loading" || (digestState.status === "done" && digestState.refreshing)
             ? "Generating…"
             : digestState.status === "done"
-              ? "Digest generated"
+              ? digestState.source?.access === "full-text" ? "Digest generated" : "Update digest from full text"
               : "Generate digest"}
         </Button>
 
@@ -127,21 +123,19 @@ export function PaperActions({
           </Button>
         )}
 
-        <Button variant="secondary" onClick={onReadFullText} disabled={fullTextKnownFalse}>
+        <Button variant="secondary" onClick={onReadFullText}>
           Read full text
         </Button>
         {feedback && <div className="ml-auto max-w-full">{feedback}</div>}
       </div>
 
       {saveState.status === "error" && <LlmErrorMessage message={saveState.message} />}
-      {fullTextKnownFalse && (
-        <div className="mt-3 text-[13px] text-muted-text tracking-body">No open-access full text.</div>
-      )}
       {enrichState.status === "loading" && (
         <div className="mt-3 text-[13px] text-muted-text tracking-body">Summarizing…</div>
       )}
       {enrichState.status === "error" && <LlmErrorMessage message={enrichState.message} />}
       {digestState.status === "error" && <LlmErrorMessage message={digestState.message} />}
+      {digestState.status === "done" && digestState.refreshError && <LlmErrorMessage message={digestState.refreshError} />}
 
       {ingestBusy && (
         <div className="mt-3 text-[13px] text-muted-text tracking-body">{INGEST_PHASE_LABEL[ingestState.phase as IngestPhase]}</div>

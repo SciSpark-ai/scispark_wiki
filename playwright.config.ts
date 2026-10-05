@@ -1,4 +1,6 @@
 import { join } from "node:path"
+import { realpathSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { defineConfig, devices } from "@playwright/test"
 
 const runDir = process.env.SCISPARK_E2E_RUN_DIR
@@ -26,6 +28,8 @@ export default defineConfig({
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL,
+    storageState: join(runDir, "browser-session.json"),
+    extraHTTPHeaders: { "x-scispark-profile": createHash("sha256").update(join(realpathSync(runDir), "vault")).digest("hex").slice(0, 32) },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
@@ -45,12 +49,13 @@ export default defineConfig({
       env: { SCISPARK_E2E_LLM_PORT: String(llmPort) },
     },
     {
-      command: `node node_modules/next/dist/bin/next ${serverMode} --hostname 127.0.0.1 --port ${appPort}`,
-      url: `${baseURL}/api/vault/list`,
+      command: `node ${process.env.SCISPARK_E2E_FEED_FIXTURE === "1" ? "--import ./e2e/fixtures/feed-sources.mjs " : ""}node_modules/next/dist/bin/next ${serverMode} --hostname 127.0.0.1 --port ${appPort}`,
+      url: `${baseURL}/api/local-profiles/session`,
       reuseExistingServer: false,
       timeout: 120_000,
       env: {
         SCISPARK_VAULT: vaultPath,
+        SCISPARK_PROFILES_DIR: join(runDir, "profiles"),
         SCISPARK_LIVE_GATE_DIST_DIR: distDir,
         NEXT_TELEMETRY_DISABLED: "1",
       },

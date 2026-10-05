@@ -4,7 +4,7 @@ import { buildPaperPage, type PaperStatus } from "../../wiki/authoring"
 import { applyChangeset, makeChangesetId } from "../../vault/changesets"
 import { serializeDocument } from "../../vault/frontmatter"
 import { loadBundle } from "../../vault/bundle"
-import { resolvePaperPageState, findPaperPage, isFullTextKnownUnavailable } from "../page-state"
+import { resolvePaperPageState, findPaperPage } from "../page-state"
 import type { PaperRecord } from "../types"
 
 const PAPER: PaperRecord = {
@@ -107,54 +107,5 @@ describe("resolvePaperPageState — schema-routed paper dir (I2)", () => {
     const bundle = await loadBundle(storage)
     const page = findPaperPage(bundle, SLUG)
     expect(page?.id).toBe(`wiki/sources/${SLUG}`)
-  })
-})
-
-// C1 (whole-branch review): full-text availability is only authoritative
-// once a paper is actually ingested — a saved stub's absent `full_text`
-// must never disable "Read full text".
-describe("isFullTextKnownUnavailable (C1)", () => {
-  it("is false when there is no page yet", () => {
-    expect(isFullTextKnownUnavailable(null)).toBe(false)
-  })
-
-  it("is false for a saved page even if full_text happened to be false", async () => {
-    const storage = await vaultWithPaperPage("saved")
-    const bundle = await loadBundle(storage)
-    const page = findPaperPage(bundle, SLUG)
-    // vaultWithPaperPage never sets full_text at all (see buildPaperPage's
-    // C1 fix) — sanity-check that too, alongside the ingested-only guard.
-    expect(page?.frontmatter).not.toHaveProperty("full_text")
-    expect(isFullTextKnownUnavailable(page)).toBe(false)
-  })
-
-  it("is false for an ingested page with full text available", async () => {
-    const storage = new MemoryVaultStorage()
-    const draft = buildPaperPage(PAPER, { today: "2026-07-17", status: "ingested", fullText: true })
-    const content = serializeDocument(draft.frontmatter, draft.body)
-    await applyChangeset(storage, {
-      id: makeChangesetId(),
-      skill: "test",
-      model: "none",
-      timestamp: "2026-07-17T00:00:00.000Z",
-      changes: [{ path: draft.path, before: null, after: content }],
-    })
-    const bundle = await loadBundle(storage)
-    expect(isFullTextKnownUnavailable(findPaperPage(bundle, SLUG))).toBe(false)
-  })
-
-  it("is true only for an ingested page with full_text: false", async () => {
-    const storage = new MemoryVaultStorage()
-    const draft = buildPaperPage(PAPER, { today: "2026-07-17", status: "ingested", fullText: false })
-    const content = serializeDocument(draft.frontmatter, draft.body)
-    await applyChangeset(storage, {
-      id: makeChangesetId(),
-      skill: "test",
-      model: "none",
-      timestamp: "2026-07-17T00:00:00.000Z",
-      changes: [{ path: draft.path, before: null, after: content }],
-    })
-    const bundle = await loadBundle(storage)
-    expect(isFullTextKnownUnavailable(findPaperPage(bundle, SLUG))).toBe(true)
   })
 })

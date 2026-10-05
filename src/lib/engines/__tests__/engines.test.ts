@@ -27,6 +27,30 @@ const request = { messages: [{ role: "user" as const, content: "Please return re
 const schema = z.object({ message: z.literal("ready") }).strict()
 
 describe("engine boundary", () => {
+  it("streams Claude structured output before the result, without streaming reasoning", () => {
+    const onText = vi.fn()
+    const events = new CompletionEvents("claude-code", onText)
+    const send = (event: object) => events.accept(JSON.stringify({ type: "stream_event", event }))
+    send({ type: "content_block_start", index: 0, content_block: { type: "thinking" } })
+    send({ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "private" } })
+    send({ type: "content_block_start", index: 1, content_block: { type: "tool_use", name: "StructuredOutput" } })
+    send({ type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: '{"answer":"Hello' } })
+    expect(onText).toHaveBeenLastCalledWith('{"answer":"Hello')
+    expect(events.done).toBe(false)
+    expect(onText.mock.calls.flat().join("")).not.toContain("private")
+  })
+  it("streams the Codex answer through its app-server before completion", async () => {
+    fixtures()
+    const previews: string[] = []
+    const result = await completeStructured(new LocalEngineProvider("codex", DEFAULT_ENGINES), "model", request,
+      z.object({ answer: z.string(), citedPageIds: z.array(z.string()) }), {
+        streamField: "answer", onText: text => { previews.push(text) },
+      })
+    expect(previews).toContain("Fixture research")
+    expect(previews.at(-1)).toBe(result.value.answer)
+    expect(previews.join("")).not.toContain("private")
+    expect(result.usage).toMatchObject({ reported: true, inputTokens: 100, outputTokens: 20 })
+  })
   it("preserves optional evidence contracts through prompt JSON, using native schemas only when compatible", () => {
     expect(codexNativeSchema(z.toJSONSchema(schema))).toBe(true)
     const jsonSchema = z.toJSONSchema(AssessmentsSchema)
@@ -43,12 +67,57 @@ describe("engine boundary", () => {
     expect(events.done).toBe(true)
     expect(events.usage.reported).toBe(true)
   })
+  it("accepts a completed Codex request after the CLI reconnects internally", async () => {
+    fixtures()
+    const provider = new LocalEngineProvider("codex", DEFAULT_ENGINES)
+    const spy = vi.spyOn(provider, "complete")
+    const result = await provider.complete("model", { messages: [{ role: "user", content: "FIXTURE_RECONNECT_SUCCESS" }] })
+    expect(result.text).toBe("ready")
+    expect(result.usage.reported).toBe(true)
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+  it("still rejects exhausted Codex reconnects", () => {
+    const events = new CompletionEvents("codex")
+    events.accept(JSON.stringify({ type: "error", message: "Reconnecting... 5/5 (stream disconnected before completion)" }))
+    events.accept(JSON.stringify({ type: "turn.failed", error: { message: "stream disconnected before completion" } }))
+    expect(events.failed).toBe(true)
+    expect(events.done).toBe(false)
+    expect(events.failureMessage).toContain("connection failed")
+  })
   it("classifies model rejection without exposing raw CLI diagnostics", () => {
     const events = new CompletionEvents("codex")
     events.accept(JSON.stringify({ type: "error", message: "The model is not supported with ChatGPT. secret-token" }))
     expect(events.failed).toBe(true)
     expect(events.failureMessage).toContain("selected model")
     expect(events.failureMessage).not.toContain("secret-token")
+  })
+  it.each([
+    ["stream disconnected before completion: error sending request", "connection failed"],
+    ["You've hit your usage limit. Try again later", "usage limit"],
+    ["Token has expired. Please sign in again", "sign-in expired"],
+    ["unexpected status 503 Service Unavailable", "temporarily unavailable"],
+  ])("explains a failed Codex turn safely: %s", (message, expected) => {
+    const events = new CompletionEvents("codex")
+    events.accept(JSON.stringify({ type: "turn.failed", error: { message: `${message} credential=DO-NOT-LEAK` } }))
+    expect(events.failed).toBe(true)
+    expect(events.failureMessage).toContain(expected)
+    expect(events.failureMessage).not.toContain("DO-NOT-LEAK")
+  })
+  it("does not stream Claude's failed result as an assistant answer", () => {
+    const onText = vi.fn()
+    const events = new CompletionEvents("claude-code", onText)
+    events.accept(JSON.stringify({ type: "result", subtype: "error_during_execution", is_error: true, result: "connection reset credential=DO-NOT-LEAK" }))
+    expect(events.failed).toBe(true)
+    expect(events.failureMessage).toContain("connection failed")
+    expect(onText).not.toHaveBeenCalled()
+    expect(events.text).toBe("")
+  })
+  it("explains Claude's schema-dialect rejection without exposing raw diagnostics", () => {
+    const events = new CompletionEvents("claude-code")
+    events.accept(JSON.stringify({ type: "result", subtype: "error_during_execution", is_error: true,
+      errors: ['Error: --json-schema is not a valid JSON Schema: no schema with key or ref "https://json-schema.org/draft/2020-12/schema" credential=DO-NOT-LEAK'] }))
+    expect(events.failureMessage).toContain("rejected the response schema")
+    expect(events.failureMessage).not.toContain("DO-NOT-LEAK")
   })
   it("does not inherit credentials, endpoints or agent customizations", () => {
     const env = engineEnvironment({ NODE_ENV: "test", HOME: "/tmp", PATH: "/usr/bin", OPENAI_API_KEY: "secret", ANTHROPIC_API_KEY: "secret", CLAUDECODE: "1", CODEX_HOME: "/private", NODE_OPTIONS: "--require malicious", ANTHROPIC_BASE_URL: "evil" })
@@ -57,6 +126,9 @@ describe("engine boundary", () => {
   it("rejects unvalidated command configuration and unsupported versions", () => {
     expect(EngineSettingsSchema.safeParse({ ...DEFAULT_ENGINES, executable: "evil" }).success).toBe(false)
     expect(supportedVersion("codex", "0.100.0")).toBe(false)
+    expect(supportedVersion("codex", "0.146.0")).toBe(true)
+    expect(supportedVersion("codex", "0.159.0")).toBe(true)
+    expect(supportedVersion("codex", "0.160.0")).toBe(false)
     expect(supportedVersion("claude-code", "2.1.209")).toBe(false)
   })
   it("ignores reasoning and rejects unexpected tool execution", () => {
@@ -69,6 +141,13 @@ describe("engine boundary", () => {
   it("protects process-launch endpoints from cross-origin requests", async () => {
     const response = await statusRoute.POST(new Request("http://localhost:3000/api/settings/engines", { method: "POST", headers: { host: "localhost:3000", origin: "https://evil.test" }, body: JSON.stringify({ engine: "codex" }) }))
     expect(response.status).toBe(403)
+  })
+  it("loads Codex model choices from the installed CLI without inference", async () => {
+    fixtures()
+    const response = await statusRoute.POST(new Request("http://localhost/api/settings/engines", { method: "POST", headers: { host: "localhost" }, body: JSON.stringify({ engine: "codex" }) }))
+    const { status } = await response.json()
+    expect(status.models).toEqual(expect.arrayContaining([expect.objectContaining({ id: "gpt-5.6-sol" })]))
+    expect(status.models.some((m: { id: string }) => m.id === "gpt-6-astra")).toBe(false)
   })
   it("stops a real child process on cancellation", async () => {
     const abort = new AbortController()
@@ -115,6 +194,16 @@ for (const engine of ["codex", "claude-code"] as const) describe(engine, () => {
     const provider = new LocalEngineProvider(engine, DEFAULT_ENGINES)
     await expect(provider.complete("model", { messages: [{ role: "user", content: "FIXTURE_ERROR" }] })).rejects.toThrow("no automatic retry")
     try { await provider.complete("model", { messages: [{ role: "user", content: "FIXTURE_ERROR" }] }) } catch (e) { expect(String(e)).not.toContain("DO-NOT-LEAK") }
+  })
+  it("explains stderr-only connection failures without guessing account limits or leaking diagnostics", async () => {
+    fixtures()
+    const provider = new LocalEngineProvider(engine, DEFAULT_ENGINES)
+    const spy = vi.spyOn(provider, "complete")
+    const failure = await provider.complete("model", { messages: [{ role: "user", content: "FIXTURE_NETWORK_FAILURE" }] }).catch(e => e)
+    expect(failure.message).toContain("connection failed")
+    expect(failure.message).not.toContain("DO-NOT-LEAK")
+    expect(failure.message).not.toContain("account limits")
+    expect(spy).toHaveBeenCalledTimes(1)
   })
   it("records unknown subscription usage after a failed dispatch", async () => {
     fixtures()

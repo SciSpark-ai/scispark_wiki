@@ -17,7 +17,6 @@ export interface AnchorDiscipline {
 
 /** Upper bound on how many anchor disciplines the leaderboard scopes to. */
 export const MAX_ANCHORS = 3
-export const MAX_ANCHOR_LABEL_LENGTH = 120
 
 /** Legacy identity helper for compatibility fixtures; no longer a valid scope. */
 export function customAnchor(label: string): AnchorDiscipline {

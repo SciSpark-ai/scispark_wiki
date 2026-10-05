@@ -1,14 +1,11 @@
+import { tokenize } from "../text"
+import { asStringArray } from "../vault/frontmatter"
 import type { VaultStorage } from "../vault/storage"
 import { loadBundle } from "../vault/bundle"
 import type { PaperRecord } from "../papers/types"
 import { paperSlug } from "../wiki/authoring"
 import { DigestSchema } from "../skills/digest-contract"
 import type { ReadingCompanionInput } from "../skills/reading-companion"
-
-/** Minimum token length counted toward "salient terms" — short function words
- * (the/a/of/is/...) rarely carry topical signal and would otherwise dominate
- * the overlap score against every page's title. */
-const MIN_TOKEN_LENGTH = 4
 const MAX_WIKI_NEIGHBORS = 4
 const WIKI_SNIPPET_CHARS = 300
 /** Title-token matches count for more than tag-token matches — a page whose
@@ -38,20 +35,6 @@ async function loadCachedDigestSummary(storage: VaultStorage, paper: PaperRecord
   }
 }
 
-/** Lowercased, punctuation-split token set, filtered to `MIN_TOKEN_LENGTH`+
- * characters so short function words don't inflate overlap scores. */
-function tokenize(text: string): Set<string> {
-  const tokens = text
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((t) => t.length >= MIN_TOKEN_LENGTH)
-  return new Set(tokens)
-}
-
-function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []
-}
-
 /**
  * Builds the "Title: ...\nAuthors: ...\n..." + summary/abstract block that
  * becomes `ReadingCompanionInput.paperMeta`. Prefers a cached digest's
@@ -74,7 +57,7 @@ async function buildPaperMeta(storage: VaultStorage, paper: PaperRecord): Promis
 }
 
 /**
- * Finds wiki pages whose title/tags share salient (`MIN_TOKEN_LENGTH`+ char)
+ * Finds wiki pages whose title/tags share salient (4+ char)
  * tokens with `selection`, scores them (title matches weighted over tag
  * matches), and returns the top `MAX_WIKI_NEIGHBORS` as compact
  * "id: title\n<first ~300 chars of body>" blocks joined by a separator.

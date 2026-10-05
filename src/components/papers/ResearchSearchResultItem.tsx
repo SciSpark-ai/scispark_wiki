@@ -56,7 +56,7 @@ export function ResearchSearchResultItem({
         </span>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {sources.map((source) => (
-            <span key={source} className="rounded-pill bg-card-surface px-2.5 py-1 text-[11px] text-secondary-dark">
+            <span key={source} className="rounded-badge bg-card-surface px-2.5 py-1 text-[11px] text-secondary-dark">
               {SOURCE_LABELS[source] ?? source}
             </span>
           ))}

@@ -52,6 +52,10 @@ export interface LLMResult {
 export interface LLMProvider {
   readonly id: ProviderId
   readonly billingMode?: "subscription"
+  /** Native schema dialect; omitted providers retain Zod's 2020-12 default. */
+  readonly jsonSchemaTarget?: "draft-07" | "draft-2020-12"
+  /** Optional read-only readiness check, before reserving a billable attempt. */
+  preflight?(model: string): Promise<void>
   complete(model: string, req: LLMRequest): Promise<LLMResult>
 }
 

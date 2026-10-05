@@ -25,13 +25,6 @@ export { readNdjson } from "./ndjson"
  * down to "assemble deps, call the orchestrator".
  */
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  })
-}
-
 /**
  * `req.json()` → `getServerVault()` → `handler(input, vault)` → `200 {result}`.
  * Any throw anywhere in that chain (malformed body, vault failure, handler
@@ -47,9 +40,9 @@ export function jsonSkillRoute<TIn, TOut>(
       const input = (await req.json()) as TIn
       const vault = await getServerVault()
       const result = await handler(input, vault)
-      return jsonResponse(200, { result })
+      return Response.json({ result }, { status: 200 })
     } catch (err) {
-      return jsonResponse(500, { error: err instanceof Error ? err.message : String(err) })
+      return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
     }
   }
 }
@@ -74,6 +67,7 @@ export function jsonSkillRoute<TIn, TOut>(
  */
 export function ndjsonSkillRoute<TIn>(
   handler: (input: TIn, vault: VaultStorage, emit: (event: object) => void) => Promise<unknown>,
+  parseInput: (request: Request) => Promise<TIn> = (request) => request.json(),
 ): (req: Request) => Promise<Response> {
   return async (req: Request): Promise<Response> => {
     const encoder = new TextEncoder()
@@ -92,7 +86,7 @@ export function ndjsonSkillRoute<TIn>(
           controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))
         }
         try {
-          const input = (await req.json()) as TIn
+          const input = await parseInput(req)
           const vault = await getServerVault()
           const result = await handler(input, vault, emit)
           emit({ type: "result", payload: result })

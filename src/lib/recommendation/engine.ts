@@ -5,7 +5,7 @@ import { FEEDBACK_LIMIT, preferenceEffects } from "./preference-effects"
 import type { SearchFn, FeedStrategy } from "../skills/feed"
 import {
   AssessmentSchema, VenueSignalSchema, RECOMMENDATION_VERSION,
-  type Assessment, type FeedbackEntry, type RecommendationPreferences,
+  type Assessment, type RecommendationPreferences,
   type RecommendationRun, type ScoreBreakdown, type VenueSignal,
   type ResearchFieldPreference,
 } from "./contract"
@@ -83,31 +83,6 @@ export function interleaveCandidates(groups: Candidate[][], excluded: Set<string
     )
     return ![paperKey(paper), ...aliases, `title:${fold(paper.title)}`].some((key) => excluded.has(key))
   })
-}
-
-/** One latest vote per paper; repeated clicking cannot manufacture evidence.
- * At least two different papers per topic; 30-day decay; total influence <=5 points. */
-export function learnTopicAdjustments(entries: FeedbackEntry[], preferences: RecommendationPreferences, now: Date): RecommendationRun["learnedTopics"] {
-  if (!preferences.learnFromFeedback) return []
-  const latest = new Map<string, FeedbackEntry>()
-  for (const entry of entries) {
-    if (entry.at > now.toISOString() || (preferences.resetAt && entry.at <= preferences.resetAt)) continue
-    if (!latest.has(entry.paperKey) || latest.get(entry.paperKey)!.at <= entry.at) latest.set(entry.paperKey, entry)
-  }
-  const topics = new Map<string, { sum: number; examples: number }>()
-  for (const entry of latest.values()) {
-    const direction = entry.reason === "more_like_this" ? 1 : entry.reason === "not_my_topic" ? -1 : 0
-    if (!direction) continue
-    const age = (now.getTime() - Date.parse(entry.at)) / DAY
-    if (age > 180) continue
-    for (const topic of new Set(entry.topics.map(fold))) {
-      const previous = topics.get(topic) ?? { sum: 0, examples: 0 }
-      topics.set(topic, { sum: previous.sum + direction * 2 ** (-age / 30), examples: previous.examples + 1 })
-    }
-  }
-  return [...topics].filter(([, value]) => value.examples >= 2)
-    .map(([topic, value]) => ({ topic, adjustment: round(clamp(value.sum * 2, 5)), examples: value.examples }))
-    .sort((a, b) => a.topic.localeCompare(b.topic))
 }
 
 export function candidateText(paper: PaperRecord): string {

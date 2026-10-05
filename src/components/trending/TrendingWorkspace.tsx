@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import type { TrendingBoard } from "@/lib/trending/types"
+import { MAX_LEADERBOARD_TOPICS } from "@/lib/trending/topics"
 import { openAlexSubfield } from "@/lib/trending/openalex-subfields"
 import { Leaderboard } from "./Leaderboard"
 import { BreakoutPapers } from "./BreakoutPapers"
@@ -11,7 +12,7 @@ export function TrendingWorkspace({ board }: { board: TrendingBoard }) {
   const [field, setField] = useState<string | null>(null)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const selected = board.anchors.find((anchor) => anchor.id === field)
-  const topics = selected ? board.topics.filter((topic) => topic.discipline === selected.label) : board.topics
+  const topics = selected ? board.topics.filter((topic) => topic.discipline === selected.label) : board.topics.slice(0, MAX_LEADERBOARD_TOPICS)
   const scopes = selected ? [selected] : board.anchors
   function chooseField(id: string | null) { setField(id); setExpandedKey(null) }
 
@@ -26,6 +27,11 @@ export function TrendingWorkspace({ board }: { board: TrendingBoard }) {
           </button>
         ))}
       </div>
+      {board.topicCoverage !== "per-field" && board.anchors.length > 1 && (!selected || topics.length > 0) && (
+        <p role="status" className="mt-3 text-[13px] leading-relaxed text-secondary-dark">
+          Refresh to update all fields.
+        </p>
+      )}
       {scopes.length > 0 && (
         <details className="mt-3 text-[12px] text-secondary-dark" key={selected?.id ?? "all"}>
           <summary className="w-fit cursor-pointer rounded py-1 focus-visible:outline-2 focus-visible:outline-orange">
@@ -51,15 +57,10 @@ export function TrendingWorkspace({ board }: { board: TrendingBoard }) {
             <h2 id="trending-topics-heading" className="font-heading text-[24px] text-espresso tracking-heading-card">Topic activity</h2>
             <span className="text-[12px] text-muted-text">{topics.length} {topics.length === 1 ? "topic" : "topics"} in this selection</span>
           </div>
-          <p className="mb-4 text-[13px] leading-relaxed text-secondary-dark">
-            <span className="inline-block">Growth tracks publication share.</span>{" "}
-            <span className="inline-block">It does not measure paper-count growth.</span>
-          </p>
-          {selected && !topics.length && board.topics.length > 0 ? (
+          {selected && !topics.length && board.topicCoverage !== "per-field" ? (
             <div role="status" className="rounded-btn border border-dashed border-border-warm p-6">
-              <h3 className="text-[15px] font-medium text-espresso">No {selected.label} topics in this ranked selection</h3>
-              <p className="mt-2 text-[13px] leading-relaxed text-secondary-dark">This update shows the top {board.topics.length} topics across your fields. It does not mean this field has no activity.</p>
-              {board.dataError && <p className="mt-2 text-[13px] text-secondary-dark">Some activity data is also unavailable for this update.</p>}
+              <h3 className="text-[15px] font-medium text-espresso">Refresh to load {selected.label} topics</h3>
+              {board.dataError && <p className="mt-2 text-[13px] text-secondary-dark">Some activity data is unavailable.</p>}
               <button type="button" onClick={() => chooseField(null)} className="mt-4 rounded text-[13px] font-medium text-accent-ink underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-orange">Show all topics</button>
             </div>
           ) : (
@@ -67,6 +68,10 @@ export function TrendingWorkspace({ board }: { board: TrendingBoard }) {
           )}
           <details className="mt-4 text-[12px] leading-relaxed text-muted-text">
             <summary className="w-fit cursor-pointer rounded py-1 focus-visible:outline-2 focus-visible:outline-orange">How to read these trends</summary>
+            <p className="mt-2">
+              <span className="inline-block">Growth tracks publication share.</span>{" "}
+              <span className="inline-block">It does not measure paper-count growth.</span>
+            </p>
             <p className="mt-2">Growth compares the two publication windows shown above, within each field’s selected scope. A large percentage can start from a small baseline. “New” means earlier activity is too limited for a reliable comparison.</p>
             <p className="mt-2">OpenAlex indexing can lag behind publication. Counts may change as more papers are indexed. Matching your interests is a topic signal, not a judgment of research quality.</p>
           </details>

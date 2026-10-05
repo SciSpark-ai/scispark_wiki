@@ -3,10 +3,10 @@ import type { TopWorksFn, TopicGroupFn } from "../papers/node-search"
 import type { CountFn } from "../trending/counts"
 import { loadSettings } from "../llm/settings"
 import { withLedger, readLedger } from "../runs/ledger"
-import { maybeAutoRefreshTrending, REFRESH_FAILURE_PATH } from "../trending/auto-refresh"
+import { maybeAutoRefreshTrending, readRefreshFailureReason } from "../trending/auto-refresh"
 import { runConsolidation } from "../skills/consolidation"
 import { runLintDeterministic } from "../lint/run"
-import { getServerVault } from "../server/vault"
+import { getDefaultServerVault } from "../server/vault"
 import { nodeTopWorksFn, nodeCountFn, nodeTopicGroupFn, nodeTopicFieldGroupFn } from "../papers/node-search"
 
 // ---------------------------------------------------------------------------
@@ -20,21 +20,6 @@ import { nodeTopWorksFn, nodeCountFn, nodeTopicGroupFn, nodeTopicFieldGroupFn } 
 // its own 24h gate here, so a heartbeat tick that fires while nothing is due
 // is nearly free.
 // ---------------------------------------------------------------------------
-
-/** Best-effort read of the trending failure marker's `lastError`, for the
- * ledger's "failed" reason — copied from
- * src/app/api/skills/trending/auto-refresh/route.ts so the schedule-triggered
- * ledger record carries the same diagnostic as the user-triggered one. */
-async function readFailureReason(storage: VaultStorage): Promise<string | undefined> {
-  try {
-    const raw = await storage.read(REFRESH_FAILURE_PATH)
-    if (raw == null) return undefined
-    const parsed = JSON.parse(raw) as { lastError?: unknown }
-    return typeof parsed.lastError === "string" ? parsed.lastError : undefined
-  } catch {
-    return undefined
-  }
-}
 
 /** Test-only overrides for the three job orchestrators. Not part of the
  * binding `HeartbeatDeps` shape used by callers/tests exercising the real
@@ -146,7 +131,7 @@ async function runHeartbeatTickInner(deps: HeartbeatDeps): Promise<void> {
       })
       if (result === "refreshed") return { result, status: "ok" as const }
       if (result === "failed") {
-        return { result, status: "failed" as const, reason: await readFailureReason(deps.storage) }
+        return { result, status: "failed" as const, reason: await readRefreshFailureReason(deps.storage) }
       }
       // "fresh" | "no-fields" | "backoff"
       return { result, status: "skipped" as const, reason: result }
@@ -206,7 +191,7 @@ const INITIAL_DELAY_MS = 60 * 1000
  * a bad tick can never crash the interval or the process. */
 async function tick(): Promise<void> {
   try {
-    const storage = await getServerVault()
+    const storage = await getDefaultServerVault()
     await runHeartbeatTick({
       storage,
       topWorksFn: nodeTopWorksFn(),

@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { observeSkillJob } from "@/lib/skills/job-client"
 import Link from "next/link"
 import { displayTitle } from "@/lib/papers/title"
 import { getOpenVault } from "@/lib/vault/get-vault"
@@ -49,6 +50,7 @@ export default function WikiInboxPage() {
   const [error, setError] = useState<string | null>(null)
   const [lintState, setLintState] = useState<LintState>({ status: "idle" })
   const [deepEstimate, setDeepEstimate] = useState<number | null>(null)
+  const startedHere = useRef(false)
   // Ids of items whose last Fix click came back "needs-manual" (see
   // applyLintFixRemote/applyLintFix): the vault changed since lint ran and
   // this finding is no longer mechanically fixable, but it's still real — the
@@ -73,6 +75,17 @@ export default function WikiInboxPage() {
 
   useEffect(() => {
     refresh()
+    const controller = new AbortController()
+    void observeSkillJob("lint", async job => {
+      if (startedHere.current) return
+      if (job.status === "running") setLintState({ status: "running-deep", ...(typeof job.progress?.index === "number" && typeof job.progress?.total === "number" ? { progress: { index: job.progress.index, total: job.progress.total } } : {}) })
+      else if (job.status === "completed") {
+        const result = job.result as { findings: unknown[] }
+        setLintState({ status: "done", count: result.findings.length })
+        await refresh()
+      } else setLintState({ status: "error", message: job.error ?? "The check did not complete." })
+    }, controller.signal).catch(error => { if (!controller.signal.aborted && !startedHere.current) setLintState({ status: "error", message: String(error) }) })
+    return () => controller.abort()
   }, [])
 
   // Loads the deep-lint cost estimate for the button label only (best-effort
@@ -138,6 +151,7 @@ export default function WikiInboxPage() {
   /** Instant deterministic lint pass (orphans, broken links, bad frontmatter,
    * index drift) — writes findings straight to the inbox, no cost/confirm. */
   async function handleLintVault() {
+    startedHere.current = true
     setLintState({ status: "running-deterministic" })
     try {
       const result = await runLintDeterministicRemote()
@@ -159,6 +173,7 @@ export default function WikiInboxPage() {
         setLintState({ status: "idle" })
         return
       }
+      startedHere.current = true
       const result = await runLintLlmRemote((progress) =>
         setLintState((prev) =>
           prev.status === "running-deep" ? { ...prev, progress: { index: progress.index, total: progress.total } } : prev,
@@ -227,11 +242,11 @@ export default function WikiInboxPage() {
             <div key={item.id} className="border border-border-warm rounded-card px-3 py-2 bg-light-surface">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-pill bg-card-surface text-muted-text">
+                  <span className="text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-badge bg-card-surface text-muted-text">
                     {KIND_LABEL[item.kind]}
                   </span>
                   {item.lintKind && (
-                    <span className="text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-pill bg-card-surface text-muted-text">
+                    <span className="text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-badge bg-card-surface text-muted-text">
                       {lintKindLabel(item.lintKind)}
                     </span>
                   )}

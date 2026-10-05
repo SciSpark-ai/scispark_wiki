@@ -1,0 +1,21 @@
+.dots { display: inline-flex; align-items: center; gap: 5px; color: var(--accent-ink); }
+.dots span { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.streaming > :last-child:not(ol, ul, pre)::after,
+.streaming > :is(ol, ul):last-child > li:last-child::after,
+.streaming > pre:last-child > code::after {
+  content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 4px; vertical-align: -0.1em; background: var(--accent-ink);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dots span { animation: thinking 1.4s ease-in-out infinite; }
+  .dots span:nth-child(2) { animation-delay: 160ms; }
+  .dots span:nth-child(3) { animation-delay: 320ms; }
+  .streaming > :last-child:not(ol, ul, pre)::after,
+  .streaming > :is(ol, ul):last-child > li:last-child::after,
+  .streaming > pre:last-child > code::after { animation: writing 1s ease-in-out infinite; }
+}
+@keyframes thinking {
+  0%, 60%, 100% { opacity: 0.4; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+@keyframes writing { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }

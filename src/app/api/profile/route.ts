@@ -25,13 +25,6 @@ const updateSchema = answersSchema.extend({
   avatarDataUrl: z.string().nullable(),
 }).strict()
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  })
-}
-
 async function parseBody<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
   let body: unknown
   try {
@@ -46,20 +39,20 @@ async function parseBody<T>(request: Request, schema: z.ZodType<T>): Promise<T> 
 
 function errorResponse(error: unknown): Response {
   if (error instanceof UserProfileValidationError || error instanceof ChangesetInvalidError) {
-    return jsonResponse(400, { error: error.message })
+    return Response.json({ error: error.message }, { status: 400 })
   }
   if (error instanceof UserProfileNotFoundError) {
-    return jsonResponse(404, { error: error.message })
+    return Response.json({ error: error.message }, { status: 404 })
   }
   if (error instanceof UserProfileConflictError || error instanceof ChangesetConflictError) {
-    return jsonResponse(409, { error: error.message })
+    return Response.json({ error: error.message }, { status: 409 })
   }
-  return jsonResponse(500, { error: error instanceof Error ? error.message : String(error) })
+  return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
 }
 
 export async function GET(): Promise<Response> {
   try {
-    return jsonResponse(200, { profile: await getUserProfile(await getServerVault()) })
+    return Response.json({ profile: await getUserProfile(await getServerVault()) }, { status: 200 })
   } catch (error) {
     return errorResponse(error)
   }
@@ -69,7 +62,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const storage = await getServerVault()
     const input = await parseBody(request, answersSchema)
-    return jsonResponse(201, await createUserProfile(storage, input))
+    return Response.json(await createUserProfile(storage, input), { status: 201 })
   } catch (error) {
     return errorResponse(error)
   }
@@ -78,7 +71,7 @@ export async function POST(request: Request): Promise<Response> {
 export async function PATCH(request: Request): Promise<Response> {
   try {
     const input = await parseBody(request, updateSchema)
-    return jsonResponse(200, await updateUserProfile(await getServerVault(), input))
+    return Response.json(await updateUserProfile(await getServerVault(), input), { status: 200 })
   } catch (error) {
     return errorResponse(error)
   }

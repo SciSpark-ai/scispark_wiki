@@ -1,11 +1,12 @@
 import type { VaultStorage } from "../vault/storage"
-import { ChatBlockSchema, type ChatBlock } from "./blocks"
+import { ChatBlockSchema, ChatPaperContextSchema, ChatSelectionSchema, type ChatSelection, type ChatBlock, type ChatPaperContext } from "./blocks"
 
 export const CHATS_DIR = ".scispark/chats"
 
 export interface ChatMessage {
   role: "user" | "assistant"
   content: string
+  selection?: ChatSelection
   /** Rich server-owned results travel with the transcript, not a feed cache. */
   blocks?: ChatBlock[]
   operationId?: string
@@ -42,6 +43,8 @@ export interface ChatSession {
   projectId?: string
   /** Title at conversation creation time, retained if the project is renamed/deleted. */
   projectTitle?: string
+  /** Paper evidence at conversation creation; never supplied by the client. */
+  paperContext?: ChatPaperContext
 }
 
 const TITLE_MAX_LENGTH = 60
@@ -123,6 +126,7 @@ function isChatMessageShape(value: unknown): value is ChatMessage {
     (v.role === "user" || v.role === "assistant") &&
     typeof v.content === "string" &&
     (v.blocks === undefined || (Array.isArray(v.blocks) && v.blocks.every((block) => ChatBlockSchema.safeParse(block).success))) &&
+    (v.selection === undefined || (v.role === "user" && ChatSelectionSchema.safeParse(v.selection).success)) &&
     isOptionalString(v.operationId) &&
     isOptionalString(v.requestSignature) &&
     (v.citedPageIds === undefined || isStringArray(v.citedPageIds)) &&
@@ -156,7 +160,8 @@ function isChatSessionShape(value: unknown, expectedId: string): value is ChatSe
     Number.isFinite(Date.parse(v.updatedAt)) &&
     Array.isArray(v.messages) &&
     v.messages.every(isChatMessageShape) &&
-    projectFieldsValid
+    projectFieldsValid &&
+    (v.paperContext === undefined || (v.projectId === undefined && ChatPaperContextSchema.safeParse(v.paperContext).success))
   )
 }
 

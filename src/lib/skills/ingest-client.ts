@@ -1,7 +1,9 @@
+import { readErrorMessage } from "../http"
 import { readNdjson } from "../server/ndjson"
 import type { PaperRecord } from "../papers/types"
 import { paperSlug } from "../wiki/authoring"
 import type { DigestResult } from "./digest"
+import type { PaperTextInfo } from "../papers/text-contract"
 import type { IngestOutput } from "./ingest"
 
 /**
@@ -25,19 +27,12 @@ export interface DigestRemoteResult {
   digest: DigestResult
   fromCache: boolean
   costUsd?: number | null
+  source?: PaperTextInfo
 }
 
 interface CachedDigestRemoteResult {
   digest: DigestResult | null
-}
-
-async function readErrorMessage(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await res.json()) as { error?: string }
-    return body?.error ?? fallback
-  } catch {
-    return fallback
-  }
+  source?: PaperTextInfo
 }
 
 /** POST /api/skills/digest with `{paper}`; resolves with `{digest, fromCache, costUsd}`. */
@@ -65,14 +60,14 @@ export async function generateDigestRemote(
 export async function loadCachedDigestRemote(
   paper: PaperRecord,
   fetchFn: typeof fetch = fetch,
-): Promise<DigestResult | null> {
+): Promise<(DigestResult & { source?: PaperTextInfo }) | null> {
   const slug = encodeURIComponent(paperSlug(paper))
   const res = await fetchFn(`/api/skills/digest?slug=${slug}`, { method: "GET" })
   if (!res.ok) {
     throw new Error(await readErrorMessage(res, `saved digest lookup failed (${res.status})`))
   }
   const body = (await res.json()) as { result: CachedDigestRemoteResult }
-  return body.result.digest
+  return body.result.digest ? { ...body.result.digest, ...(body.result.source ? { source: body.result.source } : {}) } : null
 }
 
 export type IngestPhase = "acquiring" | "snapshotting" | "digesting" | "ingesting"

@@ -1,3 +1,4 @@
+import { readErrorMessage } from "../http"
 import { readNdjson } from "../server/ndjson"
 import type { Seed, QuickSparkResult } from "./quick"
 import type { DeepSparkResult } from "./deep"
@@ -23,15 +24,6 @@ import type { DeepSparkResult } from "./deep"
  * server-only deps (vault storage, skill runner) — `import type` is erased at
  * compile time, so none of that runtime code reaches the client bundle.
  */
-
-async function readErrorMessage(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await res.json()) as { error?: string }
-    return body?.error ?? fallback
-  } catch {
-    return fallback
-  }
-}
 
 /**
  * POST /api/skills/spark/quick with `{direction, clusterPageIds?}`; resolves

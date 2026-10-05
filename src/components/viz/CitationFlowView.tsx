@@ -1,7 +1,6 @@
 "use client"
 
 import { useId, useMemo, useState } from "react"
-import { linkHorizontal } from "d3-shape"
 import { displayTitle } from "@/lib/papers/title"
 import type { CitationEdge, CitationFlow } from "@/lib/viz/citations"
 import { yearColumns } from "@/lib/viz/layout"
@@ -51,14 +50,18 @@ interface CitationFlowViewProps {
   onSelect?: (id: string | null) => void
 }
 
-const linkGen = linkHorizontal()
+/** Cubic "sankey" link: horizontal tangents at both ends, control points at the midpoint x. */
+function linkPath(sx: number, sy: number, tx: number, ty: number): string {
+  const mx = (sx + tx) / 2
+  return `M${sx},${sy}C${mx},${sy} ${mx},${ty} ${tx},${ty}`
+}
 
 /**
  * Papers-as-nodes-in-year-columns citation graph. Only papers that appear
  * in at least one citation edge are placed on the canvas (`yearColumns`,
  * oldest column first, stacked within a column); papers with no edges are
  * listed in a side strip instead of floated in the canvas. Directed edges
- * (`citing -> cited`) are cubic curves via `d3-shape`'s `linkHorizontal`
+ * (`citing -> cited`) are cubic curves (`linkPath`)
  * with an arrowhead marker; hovering an edge or a node highlights the
  * related pair/neighborhood and dims everything else. Header shows
  * coverage ("citation data for N of M papers") and owns nothing about
@@ -220,8 +223,7 @@ export default function CitationFlowView({
                     const s = positions.get(edge.citing)
                     const t = positions.get(edge.cited)
                     if (!s || !t) return null
-                    const d = linkGen({ source: [s.x, s.y], target: [t.x, t.y] })
-                    if (!d) return null
+                    const d = linkPath(s.x, s.y, t.x, t.y)
                     const highlighted = isEdgeHighlighted(edge)
                     return (
                       <path

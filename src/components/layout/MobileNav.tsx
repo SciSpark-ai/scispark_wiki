@@ -1,14 +1,26 @@
 "use client";
 
-import { Menu, X } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { Menu } from "lucide-react";
+import { useCallback, useEffect, useRef } from "react";
 import { useUIStore } from "@/stores/ui-store";
 import { Sidebar } from "./Sidebar";
 import { ThemeToggle } from "./ThemeToggle";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { useModalFocus } from "@/components/ui/useModalFocus";
 
 export function MobileNav() {
   const { sidebarOpen, setSidebarOpen } = useUIStore();
+  const panel = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setSidebarOpen(false), [setSidebarOpen]);
+  useModalFocus(panel, sidebarOpen, close);
+
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const dismissOnDesktop = () => { if (desktop.matches) close(); };
+    dismissOnDesktop();
+    desktop.addEventListener("change", dismissOnDesktop);
+    return () => desktop.removeEventListener("change", dismissOnDesktop);
+  }, [close]);
 
   return (
     <>
@@ -27,39 +39,25 @@ export function MobileNav() {
         <ThemeToggle />
       </div>
 
-      {/* Slide-over sidebar */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="lg:hidden fixed inset-0 z-50 bg-espresso/30 backdrop-blur-sm"
-              onClick={() => setSidebarOpen(false)}
-            />
-            <motion.div
-              initial={{ x: -240 }}
-              animate={{ x: 0 }}
-              exit={{ x: -240 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className="lg:hidden fixed top-0 left-0 bottom-0 z-50 w-[240px]"
-            >
-              <div className="h-full relative">
-                <button
-                  onClick={() => setSidebarOpen(false)}
-                  className="absolute top-4 right-3 p-1 text-muted-text hover:text-espresso z-10"
-                  aria-label="Close menu"
-                >
-                  <X size={18} />
-                </button>
-                <Sidebar />
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      {/* Slide-over sidebar: kept mounted so open and close both transition;
+          `inert` keeps the closed drawer out of the tab order and screen readers. */}
+      <div
+        ref={panel}
+        role="dialog"
+        aria-label="Navigation menu"
+        aria-modal={sidebarOpen ? true : undefined}
+        tabIndex={-1}
+        inert={!sidebarOpen}
+        className={`lg:hidden fixed inset-0 z-50 ${sidebarOpen ? "visible" : "invisible"}`}
+      >
+        <div
+          onClick={close}
+          className={`absolute inset-0 bg-espresso/30 backdrop-blur-sm transition-opacity duration-200 ${sidebarOpen ? "opacity-100" : "opacity-0"}`}
+        />
+        <div className={`relative h-full w-[240px] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+          {sidebarOpen && <Sidebar onNavigate={close} />}
+        </div>
+      </div>
     </>
   );
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { AnthropicProvider } from "../providers/anthropic"
-import { LLMAuthError, LLMRateLimitError, LLMTransientError } from "../types"
+import { LLMAuthError, LLMBadRequestError, LLMRateLimitError, LLMTransientError } from "../types"
 
 function fakeFetch(status: number, body: unknown, responseHeaders?: Record<string, string>): { fn: typeof fetch; captured: { url?: string; init?: RequestInit } } {
   const captured: { url?: string; init?: RequestInit } = {}
@@ -91,4 +91,55 @@ describe("AnthropicProvider", () => {
     await expect(p.complete("claude-haiku-4-5", { messages: [{ role: "user", content: "hi" }] }))
       .rejects.toThrow(LLMTransientError)
   })
+  it("authenticates with x-api-key and pins the API version", async () => {
+    const { fn, captured } = fakeFetch(200, OK_MESSAGE)
+    await new AnthropicProvider("sk-test", fn).complete("claude-haiku-4-5", { messages: [{ role: "user", content: "hi" }] })
+    const headers = captured.init?.headers as Record<string, string>
+    expect(headers["x-api-key"]).toBe("sk-test")
+    expect(headers["anthropic-version"]).toBe("2023-06-01")
+    expect(headers["content-type"]).toBe("application/json")
+  })
+
+  it.each([false, true])("maps a mid-body timeout to LLMTransientError (streaming: %s)", async (streaming) => {
+    const fetchFn = (async (_url, init) => new Response(new ReadableStream({
+      start(controller) {
+        // A fake fetch must reproduce native fetch's signal-driven body abort.
+        const signal = init?.signal
+        signal?.addEventListener("abort", () => controller.error(signal.reason), { once: true })
+      },
+    }), { headers: { "content-type": streaming ? "text/event-stream" : "application/json" } })) as typeof fetch
+    const provider = new AnthropicProvider("sk-test", fetchFn, 10)
+    await expect(provider.complete("claude-haiku-4-5", {
+      messages: [{ role: "user", content: "hi" }],
+      ...(streaming ? { onText: () => {} } : {}),
+    })).rejects.toThrow(LLMTransientError)
+  })
+
+  it.each([false, true])("maps malformed body JSON to LLMBadRequestError (streaming: %s)", async (streaming) => {
+    const fetchFn = (async () => new Response(streaming ? "data: not-json\n\n" : "not-json")) as typeof fetch
+    const provider = new AnthropicProvider("sk-test", fetchFn)
+    await expect(provider.complete("claude-haiku-4-5", {
+      messages: [{ role: "user", content: "hi" }],
+      ...(streaming ? { onText: () => {} } : {}),
+    })).rejects.toThrow(LLMBadRequestError)
+  })
+
+  it("preserves the stream's own transient errors", async () => {
+    const fetchFn = (async () => new Response('data: {"type":"error","error":{"message":"overloaded"}}\n\n')) as typeof fetch
+    const provider = new AnthropicProvider("sk-test", fetchFn)
+    await expect(provider.complete("claude-haiku-4-5", {
+      messages: [{ role: "user", content: "hi" }], onText: () => {},
+    })).rejects.toThrow(LLMTransientError)
+  })
+
+  it("marks omitted usage as unreported rather than free work", async () => {
+    const body: Partial<typeof OK_MESSAGE> = { ...OK_MESSAGE }
+    delete body.usage
+    const { fn } = fakeFetch(200, body)
+    const result = await new AnthropicProvider("sk-test", fn).complete("claude-haiku-4-5", {
+      messages: [{ role: "user", content: "hi" }],
+    })
+    expect(result.usage.reported).toBe(false)
+  })
+
 })

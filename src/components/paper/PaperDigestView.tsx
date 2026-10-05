@@ -1,71 +1,74 @@
 import type { DigestResult } from "@/lib/skills/digest"
 import { Card } from "@/components/ui/Card"
+import styles from "./PaperLayout.module.css"
+import type { PaperTextInfo } from "@/lib/papers/text-contract"
 
-/**
- * Full-page rendering of a generated digest's six sections (summary, key
- * points, lay summary, methods, limitations, field context) plus its cache
- * provenance line. Content lifted from `DigestPanel` (the cramped
- * search-sidebar version) but full-width with no nested card — this IS the
- * page's main content, not a side panel.
- */
-export function PaperDigestView({ digest, fromCache }: { digest: DigestResult; fromCache: boolean }) {
+function digestSections(digest: DigestResult) {
+  return [
+    { id: "digest-summary", label: "Overview", present: true },
+    { id: "digest-key-points", label: "Key points", present: digest.keyPoints.length > 0 },
+    { id: "digest-plain-language", label: "In plain language", present: Boolean(digest.laySummary) },
+    { id: "digest-methods", label: "Methods", present: Boolean(digest.methods) },
+    { id: "digest-limitations", label: "Limitations", present: Boolean(digest.limitations) },
+    { id: "digest-field-context", label: "Field context", present: Boolean(digest.fieldContext) },
+  ].filter(section => section.present)
+}
+
+export function PaperDigestNavigation({ digest, compact = false }: { digest: DigestResult; compact?: boolean }) {
+  const links = (
+    <nav aria-label="Digest sections" className={styles.contents}>
+      {digestSections(digest).map(section => <a key={section.id} href={`#${section.id}`}>{section.label}</a>)}
+    </nav>
+  )
+  return compact ? (
+    <details className={styles.mobileContents}>
+      <summary>On this page</summary>
+      {links}
+    </details>
+  ) : (
+    <div className={styles.railNavigation}>
+      <p className="mb-2 text-[13px] font-medium text-espresso">On this page</p>
+      {links}
+    </div>
+  )
+}
+
+/** A single reading measure for every section, including long methods/caveats. */
+export function PaperDigestView({ digest, fromCache, source }: { digest: DigestResult; fromCache: boolean; source?: PaperTextInfo }) {
+  const sections = [
+    { id: "digest-plain-language", title: "In plain language", text: digest.laySummary },
+    { id: "digest-methods", title: "Methods", text: digest.methods },
+    { id: "digest-limitations", title: "Limitations", text: digest.limitations },
+    { id: "digest-field-context", title: "Field context", text: digest.fieldContext },
+  ]
+
   return (
-    <section className="mt-8 border-t border-border-warm pt-8">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="font-heading text-[28px] text-espresso tracking-heading">Paper digest</h2>
-        <div className="text-[11px] uppercase tracking-wide text-muted-text">{fromCache ? "Cached" : "Freshly generated"}</div>
-      </div>
-
-      <div className="mt-4 max-w-[78ch] whitespace-pre-wrap text-[17px] leading-[1.75] text-espresso tracking-body">
-        {digest.summary}
-      </div>
+    <section aria-labelledby="digest-title">
+      <section id="digest-summary" tabIndex={-1} className={styles.section}>
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 id="digest-title" className="font-heading text-[28px] leading-tight text-espresso">Paper digest</h2>
+          {source && <span className="text-[12px] text-muted-text">{fromCache ? "Saved" : "Generated"} · {source.access === "full-text" ? source.truncated ? "Full-text excerpt" : "Full text" : "Abstract only"}</span>}
+        </div>
+        <p className="whitespace-pre-wrap text-[17px] leading-[1.8] text-espresso">{digest.summary}</p>
+      </section>
 
       {digest.keyPoints.length > 0 && (
-        <Card className="mt-7 p-5 sm:p-6">
-          <h3 className="text-[13px] font-medium text-espresso">Key points</h3>
-          <ul className="mt-3 list-outside list-disc space-y-2 pl-5 text-[14px] leading-[1.65] text-espresso tracking-body marker:text-accent-ink">
-            {digest.keyPoints.map((point, i) => (
-              <li key={i}>{point}</li>
-            ))}
-          </ul>
-        </Card>
+        <section id="digest-key-points" tabIndex={-1} className={styles.section}>
+          <Card className="p-5 sm:p-6">
+            <h3>Key points</h3>
+            <ul className="list-outside list-disc space-y-3 pl-5 text-[15px] leading-[1.75] text-espresso marker:text-accent-ink">
+              {digest.keyPoints.map((point, i) => <li key={i}>{point}</li>)}
+            </ul>
+          </Card>
+        </section>
       )}
 
-      <div className="mt-8 grid gap-x-10 gap-y-8 md:grid-cols-2">
-        {digest.laySummary && (
-          <div className="md:col-span-2">
-            <h3 className="text-[13px] font-medium text-espresso">In plain language</h3>
-            <div className="mt-2 max-w-[78ch] whitespace-pre-wrap text-[15px] leading-[1.7] text-muted-text tracking-body">
-              {digest.laySummary}
-            </div>
-          </div>
-        )}
-
-        {digest.methods && (
-          <div>
-            <h3 className="text-[13px] font-medium text-espresso">Methods</h3>
-            <div className="mt-2 whitespace-pre-wrap text-[14px] leading-[1.7] text-muted-text tracking-body">{digest.methods}</div>
-          </div>
-        )}
-
-        {digest.limitations && (
-          <div>
-            <h3 className="text-[13px] font-medium text-espresso">Limitations</h3>
-            <div className="mt-2 whitespace-pre-wrap text-[14px] leading-[1.7] text-muted-text tracking-body">
-              {digest.limitations}
-            </div>
-          </div>
-        )}
-
-        {digest.fieldContext && (
-          <div className="md:col-span-2">
-            <h3 className="text-[13px] font-medium text-espresso">Field context</h3>
-            <div className="mt-2 max-w-[78ch] whitespace-pre-wrap text-[14px] leading-[1.7] text-muted-text tracking-body">
-              {digest.fieldContext}
-            </div>
-          </div>
-        )}
-      </div>
+      {sections.filter(section => section.text).map(section => (
+        <section key={section.id} id={section.id} tabIndex={-1} className={`${styles.section} border-t border-border-warm pt-6`}>
+          <h3>{section.title}</h3>
+          <p className={styles.prose}>{section.text}</p>
+        </section>
+      ))}
     </section>
   )
 }

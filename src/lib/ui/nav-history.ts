@@ -22,10 +22,7 @@ export const NAV_CURRENT_KEY = "scispark:nav-current"
 export const NAV_DEPTH_KEY = "scispark:nav-depth"
 
 /** Minimal surface of sessionStorage this module needs, so tests can pass a fake. */
-export interface NavStore {
-  getItem(key: string): string | null
-  setItem(key: string, value: string): void
-}
+export type NavStore = Pick<Storage, "getItem" | "setItem">
 
 function defaultStore(): NavStore | null {
   try {

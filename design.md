@@ -23,6 +23,17 @@ creation. The local runtime owns the vault, model calls and research mutations.
 Visual changes must preserve sources, evidence limits, cost disclosures, recovery,
 version history and undo. Attractive output is not evidence of scientific validity.
 
+## Interface copy — October 4 user update
+
+Keep default screens concise. Show the current context, meaningful status and
+next action; omit repeated introductions and explanations of automatic behavior.
+Sparky can show the paper title without narrating how it uses that context.
+Prefer short source labels such as “Full text” and “Abstract only” to explanatory
+paragraphs. Put optional methodology and technical detail in disclosures.
+Keep evidence limits, actionable errors, cost decisions and recovery controls
+visible when relevant. Concise copy must not imply stronger evidence or hide a
+choice the user needs to make. Check wrapping on desktop and phone.
+
 ## Brand sources
 
 The design system is derived from five user-supplied sheets. Originals are kept
@@ -145,9 +156,16 @@ The real AppShell owns the layout: 240px expanded / 60px collapsed desktop rail,
 main workspace, existing right panel, and 50px mobile top bar below the 1024px
 breakpoint. Preserve these dimensions and navigation patterns.
 
-Keep the current shape tokens: card 28px, badge 8px, button 12px, pill 50px,
-FAQ/panel 16px. Existing cards, page spacing and content density are the baseline.
-Do not replace them with the previous preview's compact rows or 6px buttons.
+**October 4 user correction:** content boxes must look like rounded rectangles,
+not pills. Reserve the 50px pill shape for action buttons (including links styled
+as actions). Paper references, cited pages and suggested questions use 12px
+corners with left-aligned, wrapping text; clickability alone does not make a
+content option an action button. Tags and status labels use the 8px badge radius;
+inputs and compact boxes use 12px; chat replies and toolbars use 16px. Larger
+cards retain 28px corners where they still read as boxes. Circles for avatars,
+Sparky, toggle knobs and diagram/status markers retain their distinct roles.
+Preserve existing page spacing and content density. Do not replace them with
+the previous preview's compact rows or 6px buttons.
 Preserve the existing motion character, while honoring reduced motion and keeping
 focus, reading position, selection and streaming stable.
 
@@ -243,6 +261,11 @@ stays steady orange. Only the spark moves; the circle stays still. Reduced-motio
 preferences disable breathing. Remove idle bobbing and celebration pulses.
 State follows existing request/stream state; no research behavior is changed.
 
+October 4: show a short activity label and three staggered orange dots while a
+reply is waiting. Once answer text arrives, replace the dots with an inline
+cursor. Both effects stop with reduced motion. Render actual answer chunks as
+they arrive; never expose reasoning or delay a completed answer to simulate typing.
+
 ### Sparky start page — September 9 layout follow-up
 
 The user explicitly requested a ChatGPT-like starting layout, superseding the
@@ -274,3 +297,16 @@ are #452918, #50301A, #442C24 and #42341A, respectively. Use dedicated
 Header labels retain theme text color and pass 4.5:1 on these surfaces. This
 supersedes the former pale green/teal feed headers; graph and other categorical
 visualizations keep their existing palette. No category inference logic changes.
+
+### Paper digest layout — October 4 user update
+
+The user explicitly requested a redesign of the paper digest page. This overrides
+the preserve-composition rule for `/paper/[key]` only. Keep the existing brand,
+shell, source content and research actions. Put the generated digest before
+supporting context, with a consistent 70ch reading column, Halant section
+headings and vertically ordered Methods and Limitations. Key points receive the
+main emphasized surface. A 224px section-navigation/context rail appears only
+when the workspace has enough room; smaller screens use a compact contents
+disclosure and put saved-paper context after the article. The original abstract
+is independently expandable, and opens by default before a digest or synthesis
+exists. See `docs/testing/2026-10-04-paper-digest-layout.md` for verification.

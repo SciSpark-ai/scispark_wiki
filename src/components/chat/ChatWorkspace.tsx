@@ -6,7 +6,8 @@ import { BookOpen, Search, Layers, Clock } from "lucide-react"
 import Link from "next/link"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { listSessions, loadSession, type ChatSession } from "@/lib/chat/session"
-import { askChatRemote, type ChatStage } from "@/lib/chat/client"
+import { askChatRemote, CHAT_STAGE_LABELS as STAGE_LABELS, type ChatStage } from "@/lib/chat/client"
+import { observeSkillJob } from "@/lib/skills/job-client"
 import { saveAnswerAsQueryRemote } from "@/lib/chat/save-query-client"
 import { loadBundle } from "@/lib/vault/bundle"
 import { getProjectRemote } from "@/lib/projects/client"
@@ -23,14 +24,12 @@ import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { prepareReview } from "@/lib/review/client"
 import { ReviewReport } from "./ReviewReport"
 
-const STAGE_LABELS: Record<ChatStage, string> = {
-  selecting: "Reading your knowledge base…", answering: "Answering…",
-  planning: "Understanding your question…", searching: "Searching the literature…", ranking: "Reading the strongest matches…",
-}
 const SOURCE_LABELS: Record<SourceId, string> = { arxiv: "arXiv", openalex: "OpenAlex", s2: "Semantic Scholar", pubmed: "PubMed" }
+// Per-tab navigation only; ProfileGate clears this with drafts on profile changes.
+const ACTIVE_CHAT_KEY = "scispark:active-chat"
 
-export function ChatWorkspace({ sessionId, initialMode = "chat" }: {
-  sessionId?: string; fresh?: boolean; initialMode?: "chat" | "search"
+export function ChatWorkspace({ sessionId, fresh = false, resume = false, initialMode = "chat" }: {
+  sessionId?: string; fresh?: boolean; resume?: boolean; initialMode?: "chat" | "search"
 }) {
   const router = useRouter()
   const openSettings = useUIStore((s) => s.openSettingsModal)
@@ -102,6 +101,7 @@ export function ChatWorkspace({ sessionId, initialMode = "chat" }: {
     if (sessionId && !loaded) throw new Error("Conversation not found. It may have been removed or could not be read.")
     if (!mounted.current) return
     setSession(loaded)
+    if (loaded) { try { sessionStorage.setItem(ACTIVE_CHAT_KEY, loaded.id) } catch {} }
     if (loaded?.projectId) {
       try { await getProjectRemote(loaded.projectId); setScopeError(null) }
       catch { setScopeError("This project's scope is unavailable. The transcript is preserved, but cannot continue.") }
@@ -111,20 +111,32 @@ export function ChatWorkspace({ sessionId, initialMode = "chat" }: {
   }, [sessionId])
   useEffect(() => {
     let alive = true
+    let resuming = false
     setLoading(true); setError(null)
     ;(async () => {
       try {
         if (sessionId) await reload()
         else {
+          let activeId: string | null = null
+          try {
+            if (fresh) sessionStorage.removeItem(ACTIVE_CHAT_KEY)
+            else if (resume) activeId = sessionStorage.getItem(ACTIVE_CHAT_KEY)
+          } catch { /* Browser storage is optional; History remains available. */ }
           const sessions = await listSessions(await getOpenVault())
           if (!alive) return
+          if (activeId && sessions.some((saved) => saved.id === activeId)) {
+            resuming = true
+            router.replace(`/chat/${activeId}`)
+            return
+          }
+          if (activeId) { try { sessionStorage.removeItem(ACTIVE_CHAT_KEY) } catch {} }
           setRecent(sessions.slice(0, 8)); setSession(null)
         }
       } catch (e) { if (alive) { setError(sessionId ? "Conversation not found. It may have been removed or could not be read." : e instanceof Error ? e.message : String(e)); if (sessionId) setScopeError("Open a saved conversation from History or start a new chat.") } }
-      finally { if (alive) setLoading(false) }
+      finally { if (alive && !resuming) setLoading(false) }
     })()
     return () => { alive = false }
-  }, [sessionId, reload])
+  }, [sessionId, fresh, resume, reload, router])
 
   useEffect(() => {
     let alive = true
@@ -146,6 +158,27 @@ export function ChatWorkspace({ sessionId, initialMode = "chat" }: {
 
   // Reading a pending snapshot never repeats its model/search request.
   useEffect(() => {
+    if (!sessionId) return
+    const controller = new AbortController()
+    void observeSkillJob(`chat:${sessionId}`, async job => {
+      if (sending.current || controller.signal.aborted) return
+      if (job.status === "running") {
+        setBusy(true)
+        if (typeof job.progress?.text === "string") setDraft(job.progress.text)
+        const value = job.progress?.stage
+        setStage(typeof value === "string" && value in STAGE_LABELS ? value as ChatStage : null)
+      } else {
+        setBusy(false); setStage(null); setDraft("")
+        if (job.status === "completed") await reload()
+        else setError(job.error ?? "The response did not complete.")
+      }
+    }, controller.signal).catch(error => {
+      if (!controller.signal.aborted && !sending.current) { setBusy(false); setError(String(error)) }
+    })
+    return () => controller.abort()
+  }, [sessionId, reload])
+
+  useEffect(() => {
     if (!sessionId || busy || session?.messages.at(-1)?.role !== "user") return
     const timer = window.setInterval(() => { void reload().catch(() => undefined) }, 2000)
     return () => window.clearInterval(timer)
@@ -156,9 +189,12 @@ export function ChatWorkspace({ sessionId, initialMode = "chat" }: {
 
   async function submit() {
     const q = question.trim()
-    if (!q || sending.current || scopeError || (mode !== "chat" && (!sources.length || sourcesError))) return
+    if (!q || busy || sending.current || scopeError || (mode !== "chat" && (!sources.length || sourcesError))) return
     sending.current = true; setBusy(true); setError(null); setStage(null); setDraft("")
     const id = sessionId ?? `chat_${crypto.randomUUID()}`
+    // Remember the submitted conversation before waiting for its result, so
+    // leaving during a response can reopen the server's saved pending turn.
+    try { sessionStorage.setItem(ACTIVE_CHAT_KEY, id) } catch {}
     try { sessionStorage.setItem(`scispark:chat-draft:${id}:options`, JSON.stringify(draftOptions.current)) } catch {}
     try {
       if (mode === "review") {
@@ -239,13 +275,19 @@ export function ChatWorkspace({ sessionId, initialMode = "chat" }: {
     <div className={`${reportId ? "hidden max-w-[520px] lg:flex" : "flex max-w-[1180px]"} mx-auto h-full min-h-0 min-w-0 w-full flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6`}>
     <header className="mb-4 flex shrink-0 flex-col items-start justify-between gap-3 border-b border-border-warm pb-4 sm:flex-row sm:gap-4">
       <div className="min-w-0"><h1 className="font-heading text-[28px] leading-tight text-espresso sm:text-[34px]">{reportId ? "Review conversation" : session?.title ?? "Sparky"}</h1>
-        <p className="mt-1 text-sm text-muted-text">{reportId ? "Ask questions. Refine your draft." : session?.projectId ? `Project conversation · ${session.projectTitle}. Scoped to current members.` : "Find papers. Discuss findings. Continue anytime."}</p></div>
+        {!reportId && (session?.projectId || session?.paperContext) && (
+          <p className="mt-1 text-sm text-muted-text">
+            {session.projectId ? `Project · ${session.projectTitle}` : session.paperContext && <>
+              Paper · <Link className="text-accent-ink hover:underline" href={`/paper/${session.paperContext.slug}`}>{session.paperContext.paper.title}</Link>
+              {session.paperContext.source && <> · {session.paperContext.source.access === "full-text" ? session.paperContext.source.truncated ? "Full-text excerpt" : "Full text" : "Abstract only"}</>}
+            </>}
+          </p>
+        )}</div>
       <nav className="flex shrink-0 flex-wrap gap-3 text-sm text-accent-ink"><Link href="/history?tab=conversations" className="inline-flex items-center gap-2"><Clock size={16} aria-hidden="true" />History</Link><Link href="/chat?new=1">New chat</Link></nav>
     </header>
     <div ref={scroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1" aria-label="Conversation">
       {loading ? <LoadingState label="Loading conversation…" /> : session ? <MessageList messages={session.messages} pageTitleById={titles} onSaveMessage={save} savingIndex={savingIndex} /> : <div className="flex min-h-full flex-col justify-center py-6">
         <h2 className="font-heading text-[28px] text-espresso">What would you like to explore?</h2>
-        <p className="mt-2 text-sm leading-relaxed text-muted-text">Search scholarly sources or discuss your saved research. Every conversation stays in History.</p>
         {recent.length > 0 && <section className="mt-8"><h3 className="text-sm text-muted-text">Recent conversations</h3><ul className="mt-2 divide-y divide-border-warm">{recent.map((s) => <li key={s.id}><Link className="block py-3 text-sm text-espresso hover:text-accent-ink" href={`/chat/${s.id}`}>{s.title}</Link></li>)}</ul></section>}
       </div>}
       {busy && <div className="mt-4"><StreamingReply text={draft} label={stage ? STAGE_LABELS[stage] : "Thinking…"} /></div>}
@@ -255,7 +297,7 @@ export function ChatWorkspace({ sessionId, initialMode = "chat" }: {
       {error && <LlmErrorMessage message={error} />}
       {savedPage && <p className="mb-2 text-sm text-muted-text">Added to your knowledge base. <Link className="text-accent-ink" href={wikiHref(savedPage)}>View page</Link></p>}
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <label className="text-sm text-muted-text">Mode <select aria-label="Chat mode" disabled={busy} value={mode} onChange={(e) => { const next = e.target.value as "chat" | "search" | "review"; setMode(next); setReadSourcesOnly(false); saveDraftOptions({ mode: next, readSourcesOnly: false }) }} className="ml-2 rounded-pill border border-border-warm bg-light-surface px-3 py-1.5 text-espresso"><option value="chat">Discuss research</option><option value="search">Find papers</option><option value="review">Deep literature review</option></select></label>
+        <label className="text-sm text-muted-text">Mode <select aria-label="Chat mode" disabled={busy} value={mode} onChange={(e) => { const next = e.target.value as "chat" | "search" | "review"; setMode(next); setReadSourcesOnly(false); saveDraftOptions({ mode: next, readSourcesOnly: false }) }} className="ml-2 rounded-btn border border-border-warm bg-light-surface px-3 py-1.5 text-espresso"><option value="chat">Discuss research</option><option value="search">Find papers</option><option value="review">Deep literature review</option></select></label>
         {mode !== "chat" ? <><button type="button" className="text-sm text-muted-text hover:text-accent-ink" aria-expanded={showSources} onClick={() => setShowSources(!showSources)}>Search scope</button><button type="button" onClick={() => openSettings("sources")} className="text-sm text-accent-ink">Manage sources</button></> : <SourcesToggle value={readSourcesOnly} onChange={(value) => { setReadSourcesOnly(value); saveDraftOptions({ readSourcesOnly: value }) }} />}
       </div>
       {mode !== "chat" && showSources && <div className="mb-3 flex flex-wrap gap-3">{enabledSources.map((s) => <label key={s} className="flex items-center gap-1.5 text-sm text-espresso"><input type="checkbox" disabled={busy} checked={sources.includes(s)} onChange={() => { const next = sources.includes(s) ? sources.filter((p) => p !== s) : [...sources, s]; setSources(next); saveDraftOptions({ sources: next }) }} />{SOURCE_LABELS[s]}</label>)}</div>}

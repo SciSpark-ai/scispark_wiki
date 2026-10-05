@@ -1,0 +1,142 @@
+.page {
+  container: paper / inline-size;
+}
+
+.layout {
+  display: grid;
+  gap: 2.5rem;
+  margin-top: 2rem;
+  align-items: start;
+}
+
+.reading {
+  min-width: 0;
+  max-width: 70ch;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.rail {
+  min-width: 0;
+}
+
+.railNavigation,
+.navigationOnly {
+  display: none;
+}
+
+.contents a {
+  display: block;
+  padding: 0.5rem 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.4;
+  text-decoration: none;
+}
+
+.contents a:hover {
+  color: var(--accent-ink);
+}
+
+.contents a:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+.mobileContents {
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1rem;
+}
+
+.mobileContents summary {
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.mobileContents .contents {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1rem;
+  margin-top: 0.75rem;
+}
+
+.section {
+  scroll-margin-top: 1.5rem;
+}
+
+.section + .section {
+  margin-top: 2rem;
+}
+
+.section h3 {
+  margin-bottom: 0.75rem;
+  font-family: var(--font-halant), Georgia, serif;
+  font-size: 24px;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+
+.prose {
+  white-space: pre-wrap;
+  font-size: 16px;
+  line-height: 1.8;
+  color: var(--text-primary);
+}
+
+.abstract {
+  margin-top: 2.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1.5rem;
+}
+
+.abstract:first-child {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.abstract summary {
+  cursor: pointer;
+  color: var(--text-primary);
+  font-family: var(--font-halant), Georgia, serif;
+  font-size: 24px;
+}
+
+.abstract summary:focus-visible,
+.mobileContents summary:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 5px;
+}
+
+/* Use the actual workspace width: an expanded sidebar must not squeeze the
+   reading column into desktop columns intended for a wider canvas. */
+@container paper (min-width: 54rem) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr) 224px;
+    column-gap: 3rem;
+    margin-top: 2.5rem;
+  }
+
+  .mobileContents {
+    display: none;
+  }
+
+  .railNavigation,
+  .navigationOnly {
+    display: block;
+  }
+
+  .rail {
+    position: sticky;
+    top: 1.5rem;
+    max-height: calc(100dvh - 3rem);
+    overflow-y: auto;
+    border-left: 1px solid var(--border);
+    padding-left: 1.5rem;
+    padding-bottom: 0.5rem;
+  }
+}

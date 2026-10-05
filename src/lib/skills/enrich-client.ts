@@ -7,7 +7,7 @@ import type { EnrichResult } from "./enrich"
  *
  * Deliberately imports only the `EnrichResult` TYPE from `./enrich` (erased
  * at build time) — never `enrichSkill`, which pulls the LLM harness — so
- * this stays a clean client module, matching `search-intent-client.ts`.
+ * this stays a clean client module, matching `feed-client.ts`.
  *
  * Never throws: any failure (network, non-200, malformed body) resolves to
  * `{applied: false}`, so a flaky enrich run can never surface as an error to

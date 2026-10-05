@@ -99,7 +99,7 @@ export function PaperSourcesCard() {
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-base font-medium text-espresso">Semantic Scholar</h3>
-              <span className="rounded-pill bg-card-surface px-3 py-1 text-[12px] text-secondary-dark">
+              <span className="rounded-badge bg-card-surface px-3 py-1 text-[12px] text-secondary-dark">
                 {status.mode === "authenticated" ? "API key configured" : "Anonymous access"}
               </span>
             </div>

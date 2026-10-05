@@ -1,5 +1,3 @@
-import { scaleLinear } from "d3-scale"
-
 export interface SpendBar {
   x: number
   y: number
@@ -25,14 +23,11 @@ export function spendBarLayout(
   const gap = opts.gap ?? 2
   const slot = opts.width / days.length
   const w = Math.max(0, slot - gap)
-  const maxUsd = Math.max(0, ...days.map((d) => d.totalUsd ?? 0))
-  // Tallest bar fills `height`; the tallest is the actual max spend (not a
-  // floored-to-1 count like trending, since USD maxima are typically < $1).
-  // When every day is $0 the denominator is irrelevant — all bars are height 0
-  // — so any positive fallback avoids a divide-by-zero → NaN.
-  const y = scaleLinear().domain([0, maxUsd > 0 ? maxUsd : 1]).range([opts.height, 0])
+  // Tallest bar fills `height`; when every day is $0 any positive denominator
+  // works (all bars are height 0), so `|| 1` only avoids a divide-by-zero.
+  const max = Math.max(0, ...days.map((d) => d.totalUsd ?? 0)) || 1
   return days.map((d, i) => {
-    const top = y(d.totalUsd ?? 0)
+    const top = opts.height - ((d.totalUsd ?? 0) / max) * opts.height
     return { x: i * slot, y: top, w, h: opts.height - top, date: d.date, totalUsd: d.totalUsd }
   })
 }

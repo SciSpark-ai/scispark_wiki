@@ -7,8 +7,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Check, Loader2 } from "lucide-react"
 import type { VaultStorage } from "@/lib/vault/storage"
 import type { FeedResult, FeedStage } from "@/lib/skills/feed"
-import { refreshFeed } from "@/lib/skills/feed-client"
+import { refreshFeed, resumeFeedRefresh } from "@/lib/skills/feed-client"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
+import { useUIStore } from "@/stores/ui-store"
 
 const STAGE_ORDER: FeedStage[] = ["strategy", "retrieval", "rank", "rerank"]
 
@@ -22,6 +23,7 @@ const STAGE_LABELS = [
 type RefreshPhase = "memory" | FeedStage
 
 type RefreshState =
+  | { status: "checking" }
   | { status: "idle" }
   | { status: "running"; phase: RefreshPhase; startedAt: number }
   | { status: "done"; costUsd: number | null; billingMode?: "subscription"; engine?: string; unranked?: boolean }
@@ -35,16 +37,45 @@ export function FeedRefreshBar({
   autoStart = false,
   variant = "compact",
   onComplete,
+  feedGeneratedAt,
 }: {
   storage?: VaultStorage
   onUpdated: (feed: FeedResult) => void
   autoStart?: boolean
   variant?: "compact" | "initialization"
   onComplete?: (feed: FeedResult) => void
+  feedGeneratedAt?: string
 }) {
-  const [state, setState] = useState<RefreshState>({ status: "idle" })
+  const [state, setState] = useState<RefreshState>({ status: "checking" })
+  const openSettings = useUIStore((state) => state.openSettingsModal)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const autoStarted = useRef(false)
+  const initiallyLoadedFeed = useRef(feedGeneratedAt ?? "")
+  const observer = useRef<AbortController | null>(null)
+  const callbacks = useRef({ onUpdated, onComplete })
+  useEffect(() => { callbacks.current = { onUpdated, onComplete } }, [onUpdated, onComplete])
+
+  const complete = useCallback((feed: FeedResult) => {
+    setState({ status: "done", costUsd: feed.costUsd, billingMode: feed.billingMode, engine: feed.engine, unranked: feed.recommendation?.status === "unranked" })
+    callbacks.current.onUpdated(feed)
+    callbacks.current.onComplete?.(feed)
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    observer.current = controller
+    void resumeFeedRefresh((stage, startedAt) => {
+      if (!controller.signal.aborted) setState({ status: "running", phase: stage && STAGE_ORDER.includes(stage) ? stage : "memory", startedAt: startedAt ?? Date.now() })
+    }, fetch, controller.signal, initiallyLoadedFeed.current).then((feed) => {
+      if (controller.signal.aborted) return
+      if (feed) complete(feed)
+      else setState({ status: "idle" })
+    }).catch((error) => {
+      if (!controller.signal.aborted) setState({ status: "error", message: error instanceof Error ? error.message : String(error) })
+    })
+    // Detach the page's observer. The server owns and persists the active run.
+    return () => controller.abort()
+  }, [complete])
 
   useEffect(() => {
     if (state.status !== "running") return
@@ -55,6 +86,8 @@ export function FeedRefreshBar({
   }, [state])
 
   const handleRefresh = useCallback(async () => {
+    const signal = observer.current?.signal
+    if (!signal || signal.aborted) return
     const startedAt = Date.now()
     setElapsedSeconds(0)
     setState({ status: "running", phase: "memory", startedAt })
@@ -63,19 +96,17 @@ export function FeedRefreshBar({
       // Explicit profile answers stay user-owned. Feed learning is deterministic
       // and bounded; do not run the legacy profile-rewriting consolidation here.
 
-      const feed = await refreshFeed((stage) => {
-        if (STAGE_ORDER.includes(stage)) setState({ status: "running", phase: stage, startedAt })
-      })
-      setState({ status: "done", costUsd: feed.costUsd, billingMode: feed.billingMode, engine: feed.engine, unranked: feed.recommendation?.status === "unranked" })
-      onUpdated(feed)
-      onComplete?.(feed)
+      const feed = await refreshFeed((stage, serverStartedAt) => {
+        if (!signal.aborted) setState({ status: "running", phase: stage && STAGE_ORDER.includes(stage) ? stage : "memory", startedAt: serverStartedAt ?? startedAt })
+      }, fetch, signal)
+      if (!signal.aborted) complete(feed)
     } catch (err) {
-      setState({ status: "error", message: err instanceof Error ? err.message : String(err) })
+      if (!signal.aborted) setState({ status: "error", message: err instanceof Error ? err.message : String(err) })
     }
-  }, [onComplete, onUpdated])
+  }, [complete])
 
   useEffect(() => {
-    if (!autoStart || autoStarted.current) return
+    if (!autoStart || autoStarted.current || state.status !== "idle") return
     const start = window.setTimeout(() => {
       // An effect cleanup can cancel this timer (StrictMode replay or changed
       // callbacks). Only latch once work actually begins, so it can reschedule.
@@ -84,7 +115,7 @@ export function FeedRefreshBar({
       void handleRefresh()
     }, 0)
     return () => window.clearTimeout(start)
-  }, [autoStart, handleRefresh])
+  }, [autoStart, handleRefresh, state.status])
 
   const running = state.status === "running"
   const progressLabel = state.status === "running"
@@ -140,7 +171,7 @@ export function FeedRefreshBar({
 
         {running && elapsedSeconds >= 20 && (
           <p className="mt-5 text-[12px] leading-relaxed text-muted-text">
-            Your provider is still working. Keep this page open; SciSpark will show the feed when it is ready.
+            Your feed is refreshing in the background. You can leave this page and return to see its progress.
           </p>
         )}
         {state.status === "error" && (
@@ -161,10 +192,10 @@ export function FeedRefreshBar({
         <button
           type="button"
           onClick={handleRefresh}
-          disabled={running}
+          disabled={running || state.status === "checking"}
           className="text-[13px] text-on-accent bg-orange hover:bg-orange/90 rounded-pill px-4 py-1.5 font-medium disabled:opacity-50"
         >
-          {running ? "Refreshing…" : "Refresh feed"}
+          {running ? "Refreshing…" : state.status === "checking" ? "Checking refresh…" : "Refresh feed"}
         </button>
         {running && (
           <span className="text-[13px] text-muted-text tracking-body" role="status" aria-live="polite">
@@ -181,10 +212,14 @@ export function FeedRefreshBar({
       </div>
       {running && elapsedSeconds >= 20 && (
         <p className="text-[12px] text-muted-text">
-          Your provider is still working. You can keep browsing; another refresh will join this one.
+          Your feed is refreshing in the background. You can leave this page and return to see its progress.
         </p>
       )}
-      {state.status === "error" && <LlmErrorMessage message={state.message} />}
+      {state.status === "error" && <div role="alert">
+        <p className="text-[13px] font-medium text-espresso">Feed refresh needs attention. Your saved papers remain available.</p>
+        <LlmErrorMessage message={state.message} />
+        <button type="button" onClick={() => openSettings("ai")} className="mt-2 text-[13px] text-accent-ink underline">Check AI settings</button>
+      </div>}
     </div>
   )
 }

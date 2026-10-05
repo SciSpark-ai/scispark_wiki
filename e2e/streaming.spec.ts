@@ -1,15 +1,53 @@
 import { expect, test } from "@playwright/test"
+import { DEFAULT_ENGINES } from "../src/lib/engines/contracts"
+
+for (const engine of ["api", "codex"] as const) test(`${engine}: shows thinking, streams, and reconnects to partial text`, async ({ page, request }, testInfo) => {
+  test.skip(engine === "codex" && !process.env.SCISPARK_CODEX_PATH?.includes("fixtures/engines/"), "Requires disposable CLI fixture; never use real plan capacity")
+  const before = (await (await request.get("/api/settings")).json()).settings.engines
+  try {
+    if (engine === "codex") expect((await request.put("/api/settings", { data: { patch: { engines: { ...DEFAULT_ENGINES, kind: "codex" } } } })).ok()).toBe(true)
+    await page.setViewportSize(engine === "api" ? { width: 1440, height: 1000 } : { width: 390, height: 844 })
+    await page.goto("/paper/e2e-grounding-paper")
+    await page.getByRole("button", { name: "Open Sparky chat", exact: true }).click()
+    const panel = page.getByRole("dialog", { name: "Chat with Sparky" })
+    await panel.getByLabel("Message Sparky").fill("STREAMING-FIXTURE: Explain this paper.")
+    await panel.getByRole("button", { name: "Send", exact: true }).click()
+    const dots = panel.locator("[data-thinking-dots] span")
+    await expect(dots).toHaveCount(3)
+    expect(await dots.first().evaluate(el => getComputedStyle(el).animationName)).not.toBe("none")
+    await page.screenshot({ path: testInfo.outputPath(`${engine}-thinking.png`) })
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    expect(await dots.first().evaluate(el => getComputedStyle(el).animationName)).toBe("none")
+    await page.emulateMedia({ reducedMotion: "no-preference" })
+    const draft = panel.locator("[data-streaming-text]")
+    await expect(draft).toContainText(engine === "api" ? "The disposable paper" : "Fixture research")
+    await expect(panel.locator("[data-thinking-dots]")).toHaveCount(0)
+    await expect(panel.getByRole("button", { name: "Save to knowledge base", exact: true })).toBeHidden()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({ path: testInfo.outputPath(`${engine}-streaming.png`) })
+    // Opening the full conversation unmounts this observer, not the server job.
+    await panel.getByRole("link", { name: "Open full conversation" }).click()
+    await expect(page).toHaveURL(/\/chat\/chat_/)
+    await expect(page.locator("[data-streaming-text]")).toContainText(engine === "api" ? "The disposable paper" : "Fixture research")
+    await page.reload()
+    await expect(page.locator("[data-streaming-text]")).toContainText(engine === "api" ? "The disposable paper" : "Fixture research")
+    await expect(page.locator("[data-streaming-reply]")).toBeHidden({ timeout: 15_000 })
+    await expect(page.getByRole("button", { name: "Save to knowledge base", exact: true })).toBeVisible()
+  } finally {
+    if (engine === "codex") await request.put("/api/settings", { data: { patch: { engines: before ?? DEFAULT_ENGINES } } })
+  }
+})
 
 test("streams a reading answer from a selected passage before showing sources", async ({ page }) => {
   await page.goto("/paper/e2e-grounding-paper")
   await page.getByRole("heading", { name: "E2E Grounding Paper" }).click({ clickCount: 3 })
-  await page.getByRole("toolbar", { name: "Selection actions" }).getByRole("button", { name: "Ask", exact: true }).click()
-  const panel = page.getByRole("dialog", { name: "Ask panel" })
+  await page.getByRole("toolbar", { name: "Selection actions" }).getByRole("button", { name: "Ask Sparky", exact: true }).click()
+  const panel = page.getByRole("dialog", { name: "Chat with Sparky" })
   await expect(panel.locator("[data-streaming-reply]")).toContainText("The disposable paper")
   await expect(panel.getByText("Sources", { exact: true })).toBeHidden()
   await expect(panel.locator("[data-streaming-reply]")).toBeHidden()
   await expect(panel.getByText("The disposable paper supports this project-scoped answer.", { exact: true })).toBeVisible()
-  await expect(panel.getByText("Sources", { exact: true })).toBeVisible()
+  await expect(panel.getByRole("button", { name: "Save to knowledge base", exact: true })).toBeVisible()
 })
 
 test("streams new and existing Chat turns before completing, then reloads the saved answer", async ({ page }) => {

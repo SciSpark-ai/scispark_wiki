@@ -1,3 +1,4 @@
+import { readErrorMessage } from "../http"
 import type { CompanionUtterance } from "./run"
 import { readNdjson } from "../server/ndjson"
 
@@ -17,15 +18,6 @@ export interface CompanionRemoteInput {
   route: string
   sessionShownCount?: number
   lastShownTs?: Record<string, string>
-}
-
-async function readErrorMessage(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await res.json()) as { error?: string }
-    return body?.error ?? fallback
-  } catch {
-    return fallback
-  }
 }
 
 /**

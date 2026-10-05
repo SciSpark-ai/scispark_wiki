@@ -110,23 +110,6 @@ export async function addHighlight(storage: VaultStorage, paperKey: string, h: H
   })
 }
 
-/** Patches an existing highlight's color and/or note. No-op when `id` isn't
- * found (never throws). */
-export async function updateHighlight(
-  storage: VaultStorage,
-  paperKey: string,
-  id: string,
-  patch: Partial<Pick<Highlight, "color" | "note">>,
-): Promise<void> {
-  return withWriteQueue(storage, async () => {
-    const current = await readHighlightsRaw(storage, paperKey)
-    const idx = current.findIndex((h) => h.id === id)
-    if (idx === -1) return
-    current[idx] = { ...current[idx], ...patch }
-    await storage.write(highlightsPath(paperKey), JSON.stringify(current, null, 2))
-  })
-}
-
 /** Removes a highlight by id. No-op when `id` isn't found (never throws). */
 export async function removeHighlight(storage: VaultStorage, paperKey: string, id: string): Promise<void> {
   return withWriteQueue(storage, async () => {

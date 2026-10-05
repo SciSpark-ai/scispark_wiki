@@ -1028,6 +1028,33 @@ describe("dataError — the deterministic layer fails honestly too", () => {
 })
 
 describe("loadBoard", () => {
+  it("stores independently ranked smaller-field topics for cached filtering", async () => {
+    const storage = new MemoryVaultStorage()
+    await seedAnchors(storage, [CS, NEURO])
+    const spec: GroupSpec = Object.fromEntries([CS, NEURO].map((anchor, field) => {
+      const recent = Array.from({ length: 25 }, (_, i) => ({ key: `T${field}-${i}`, label: `${anchor.label} topic ${i}`, count: (field === 0 ? 500 : 20) + i }))
+      return [anchor.label, { recent, prior: Object.fromEntries(recent.map(topic => [topic.key, 10])) }]
+    }))
+    const requests: Array<Parameters<CountFn>[0]> = []
+    const count = countFnFor(spec, 20_000)
+    const briefs = { topics: Array.from({ length: 10 }, (_, i) => ({ key: `topic-${i + 1}`, why: "Fixture explanation." })) }
+    const provider = new MockProvider([structured(briefs), structured(briefs)])
+    const result = await runTrendingBoard(storage, baseOpts({
+      topicGroupFn: topicGroupFnFor(spec),
+      countFn: async query => { requests.push(query); return count(query) },
+      providerOverride: { strong: provider },
+    }))
+    expect(result.topics.slice(0, 10).every(topic => topic.discipline === CS.label)).toBe(true)
+    expect(result.topics.filter(topic => topic.discipline === NEURO.label)).toHaveLength(10)
+    for (const anchor of [CS, NEURO]) {
+      expect(requests.filter(q => q.topicId && q.fieldId === anchor.id)).toHaveLength(20)
+    }
+    expect(provider.calls).toHaveLength(2)
+    const cached = await loadBoard(storage)
+    expect(cached?.topicCoverage).toBe("per-field")
+    expect(cached?.topics).toEqual(result.topics)
+  })
+
   it("returns null when nothing is cached", async () => {
     expect(await loadBoard(new MemoryVaultStorage())).toBeNull()
   })

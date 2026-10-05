@@ -13,6 +13,8 @@ import type { TrendingBoard } from "./types"
  * start. Version 3 replaced weekly sparklines with prior counts. Version 4
  * changed growth and bar sizing to discipline-corpus shares. Version 5 uses
  * canonical field-ID scopes instead of label searches for all trend metrics.
+ * Additive topicCoverage metadata identifies per-field rankings; older v5
+ * boards stay readable and offer an explicit refresh, without a migration run.
  */
 export const TRENDING_BOARD_VERSION = 5
 

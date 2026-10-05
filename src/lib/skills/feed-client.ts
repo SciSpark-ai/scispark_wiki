@@ -1,6 +1,31 @@
 import { readNdjson } from "../server/ndjson"
 import type { FeedResult, FeedStage } from "./feed"
 
+type FeedProgress = (stage: FeedStage | null, startedAt?: number) => void
+
+function progressListener(onStage?: FeedProgress) {
+  return (event: { type?: string; [key: string]: unknown }) => {
+    if (event.type === "progress" && (event.stage === null || typeof event.stage === "string")) {
+      onStage?.(event.stage as FeedStage | null, typeof event.startedAt === "number" ? event.startedAt : undefined)
+    }
+  }
+}
+
+/** Read-only attachment: no active refresh resolves to null, never a new run.
+ * Aborting this stream disconnects the browser, not the server-owned pipeline. */
+export async function resumeFeedRefresh(
+  onStage?: FeedProgress,
+  fetchFn: typeof fetch = fetch,
+  signal?: AbortSignal,
+  cachedGeneratedAt?: string,
+): Promise<FeedResult | null> {
+  const res = await fetchFn("/api/skills/feed/refresh", { method: "GET", cache: "no-store", signal,
+    ...(cachedGeneratedAt === undefined ? {} : { headers: { "x-feed-generated-at": cachedGeneratedAt } }),
+  })
+  if (!res.ok) throw new Error(`Could not reconnect to the feed refresh (${res.status}).`)
+  return readNdjson(res, progressListener(onStage)) as Promise<FeedResult | null>
+}
+
 /**
  * Browser-side callers for the feed + consolidation skill routes (M11 Task 6).
  * FeedRefreshBar used to build the orchestrators' deps itself (loadSettings +
@@ -22,17 +47,17 @@ import type { FeedResult, FeedStage } from "./feed"
  * "retrieval" -> "rank" -> "rerank") and resolves with the finished FeedResult.
  */
 export async function refreshFeed(
-  onStage?: (stage: FeedStage) => void,
+  onStage?: FeedProgress,
   fetchFn: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<FeedResult> {
   const res = await fetchFn("/api/skills/feed/refresh", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({}),
+    signal,
   })
-  return readNdjson(res, (event) => {
-    if (event?.type === "progress" && typeof event.stage === "string") onStage?.(event.stage as FeedStage)
-  }) as Promise<FeedResult>
+  return readNdjson(res, progressListener(onStage)) as Promise<FeedResult>
 }
 
 export interface ConsolidationRunResult {

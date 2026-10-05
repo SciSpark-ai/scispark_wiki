@@ -54,6 +54,14 @@ const FILE_EXTENSIONS = new Set([".ts", ".tsx"])
  * is added, add its path here.
  */
 const CLIENT_LIB_FILES = [
+  "src/lib/skills/job-contract.ts",
+  "src/lib/skills/job-client.ts",
+  "src/lib/papers/text-contract.ts",
+  "src/lib/recommendation/topic-labels.ts",
+  join("src", "lib", "local-profile-client.ts"),
+  join("src", "lib", "local-profile-contract.ts"),
+  join("src", "lib", "text.ts"),
+  join("src", "lib", "http.ts"),
   join("src", "lib", "skills", "feed-cache.ts"),
   join("src", "lib", "skills", "digest-contract.ts"),
   join("src", "lib", "reader", "ask-context.ts"),
@@ -63,8 +71,6 @@ const CLIENT_LIB_FILES = [
   join("src", "lib", "spark", "client.ts"),
   join("src", "lib", "skills", "feed-client.ts"),
   join("src", "lib", "skills", "ingest-client.ts"),
-  join("src", "lib", "skills", "search-intent-client.ts"),
-  join("src", "lib", "skills", "research-search-client.ts"),
   join("src", "lib", "skills", "research-search-contract.ts"),
   join("src", "lib", "skills", "enrich-client.ts"),
   join("src", "lib", "companion", "client.ts"),

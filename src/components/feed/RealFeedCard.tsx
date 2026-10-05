@@ -16,6 +16,7 @@ import { PaperSaveButton } from "@/components/paper/PaperSaveButton"
 import { Card } from "@/components/ui/Card"
 import { Chip } from "@/components/ui/Chip"
 import { GrainOverlay } from "@/components/shared/GrainOverlay"
+import { feedTopicLabels } from "@/lib/recommendation/topic-labels"
 
 const CATEGORY_COLOR: Record<PaperCategory, string> = {
   "Methods": "bg-paper-header-methods",
@@ -39,7 +40,7 @@ export function RealFeedCard({ item, storage, saved, onSave }: {
   const title = displayTitle(paper.title)
   const metaLine = venueYearLine(paper.venue, paper.year)
   const tldr = item.tldr ?? paper.abstract?.replace(/^abstract\s*:?\s*/i, "").split(". ")[0]
-  const tags = (item.tags?.length ? item.tags : paper.fields).slice(0, 3)
+  const tags = feedTopicLabels(item.tags ?? [], paper.fields)
   function goToPaper() { router.push(`/paper/${paperSlug(paper)}`) }
   function handleCardKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); goToPaper() }
@@ -57,7 +58,7 @@ export function RealFeedCard({ item, storage, saved, onSave }: {
     <div data-paper-category={category} className={`relative isolate flex flex-wrap items-center justify-between gap-2 overflow-hidden px-4 py-2 text-[12px] text-espresso ${CATEGORY_COLOR[category]}`}>
       <GrainOverlay intensity="light" />
       <span className="relative">{category}</span>
-      {publication && <span className="relative rounded-pill border border-border-warm bg-light-surface px-2 py-0.5 text-[11px]">{publication}</span>}
+      {publication && <span className="relative rounded-badge border border-border-warm bg-light-surface px-2 py-0.5 text-[11px]">{publication}</span>}
     </div>
     <div className="flex flex-1 flex-col gap-3 px-4 py-4">
       <h3 className="font-heading text-[19px] leading-snug tracking-heading-card text-espresso line-clamp-3">{title}</h3>

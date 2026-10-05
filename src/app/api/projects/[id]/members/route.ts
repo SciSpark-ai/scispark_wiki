@@ -1,6 +1,5 @@
 import { addProjectMember, removeProjectMember } from "@/lib/projects/repository"
 import {
-  jsonResponse,
   membershipSchema,
   parseJsonBody,
   projectErrorResponse,
@@ -13,7 +12,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   try {
     const { id } = await context.params
     const input = await parseJsonBody(request, membershipSchema)
-    return jsonResponse(200, await addProjectMember(await getServerVault(), id, input))
+    return Response.json(await addProjectMember(await getServerVault(), id, input), { status: 200 })
   } catch (error) {
     return projectErrorResponse(error)
   }
@@ -22,7 +21,7 @@ export async function DELETE(request: Request, context: RouteContext): Promise<R
   try {
     const { id } = await context.params
     const input = await parseJsonBody(request, membershipSchema)
-    return jsonResponse(200, await removeProjectMember(await getServerVault(), id, input))
+    return Response.json(await removeProjectMember(await getServerVault(), id, input), { status: 200 })
   } catch (error) {
     return projectErrorResponse(error)
   }

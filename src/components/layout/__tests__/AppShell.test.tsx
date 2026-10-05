@@ -5,21 +5,16 @@ import { describe, expect, it, vi } from "vitest"
 
 const route = vi.hoisted(() => ({ pathname: "/chat" }))
 vi.mock("next/navigation", () => ({ usePathname: () => route.pathname }))
-vi.mock("framer-motion", () => ({
-  motion: { div: ({ children }: { children: ReactNode }) => <div>{children}</div> },
-  AnimatePresence: ({ children }: { children: ReactNode }) => children,
-}))
-vi.mock("@/stores/ui-store", () => ({ useUIStore: (select: (state: object) => unknown) => select({ desktopSidebarOpen: true, showRightPanel: false, rightPanelContent: null }) }))
+vi.mock("@/stores/ui-store", () => ({ useUIStore: (select: (state: object) => unknown) => select({ desktopSidebarOpen: true }) }))
 vi.mock("../Sidebar", () => ({ Sidebar: () => null }))
 vi.mock("../MobileNav", () => ({ MobileNav: () => null }))
-vi.mock("../RightPanel", () => ({ RightPanel: () => null }))
 vi.mock("../ThemeApplier", () => ({ default: () => null }))
 vi.mock("../NavHistoryTracker", () => ({ default: () => null }))
 vi.mock("../UserIdentityHydrator", () => ({ UserIdentityHydrator: () => null }))
+vi.mock("../ProfileGate", () => ({ ProfileGate: ({ children }: { children: ReactNode }) => children }))
 vi.mock("@/components/notes/SelectionToNoteBubble", () => ({ SelectionToNoteBubble: () => null }))
 vi.mock("@/components/companion/CompanionMascot", () => ({ CompanionMascot: () => null }))
 vi.mock("@/components/settings/SettingsModal", () => ({ default: () => null }))
-vi.mock("@/components/projects/LegacyPrototypeWarning", () => ({ LegacyPrototypeWarning: () => null }))
 
 import { AppShell } from "../AppShell"
 

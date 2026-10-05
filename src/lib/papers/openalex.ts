@@ -1,12 +1,9 @@
-import { fetchWithTimeout } from "./fetch-timeout"
+import { clampLimit, SOURCE_FETCH_TIMEOUT_MS } from "./types"
 import { openAlexSubfield } from "../trending/openalex-subfields"
 import { openAlexField } from "../trending/openalex-fields"
 import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
 
 const OPENALEX_WORKS_URL = "https://api.openalex.org/works"
-const MIN_LIMIT = 1
-const MAX_LIMIT = 50
-const DEFAULT_LIMIT = 20
 const MAX_FIELDS = 5
 // Max group_by page size per OpenAlex's docs — one grouped request covers up
 // to 200 daily buckets, comfortably spanning trending's 8-week (56-day) window.
@@ -223,11 +220,6 @@ function mapWork(work: OpenAlexWork): PaperRecord {
   }
 }
 
-function clampLimit(limit: number | undefined): number {
-  if (limit == null || Number.isNaN(limit)) return DEFAULT_LIMIT
-  return Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, Math.floor(limit)))
-}
-
 interface BuildUrlOpts {
   /** Sets group_by=<value> and forces per_page to GROUP_BY_PER_PAGE (a group_by response has no per-work rows, so the normal limit clamp doesn't apply). */
   groupBy?: string
@@ -325,7 +317,7 @@ async function fetchOpenAlexJson(url: string, deps: OpenAlexDeps): Promise<unkno
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let response: Response
     try {
-      response = await fetchWithTimeout(fetchFn, url)
+      response = await fetchFn(url, { signal: AbortSignal.timeout(SOURCE_FETCH_TIMEOUT_MS) })
     } catch (err) {
       // Network error — transient, retry with backoff.
       lastError = new PaperSourceError(err instanceof Error ? err.message : "OpenAlex request failed")

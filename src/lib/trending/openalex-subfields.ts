@@ -4,7 +4,7 @@ import { openAlexField } from "./openalex-fields"
  * Source: https://api.openalex.org/subfields?per_page=200&page=1 (and page=2).
  * Bundled so opening Settings makes no network requests.
  */
-export const OPENALEX_SUBFIELD_CATALOG_DATE = "2026-09-06"
+// Catalog captured from OpenAlex on 2026-09-06.
 
 const SUBFIELDS: readonly (readonly [string, string, string])[] = [
   ["1402","Accounting","14"],

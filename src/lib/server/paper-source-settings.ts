@@ -41,8 +41,8 @@ async function credentials(storage: VaultStorage): Promise<{ apiKey?: string; st
 }
 
 /** Resolve on each call so save/replace/remove takes effect without a restart. */
-export async function getServerS2Key(): Promise<string | undefined> {
-  return (await credentials(await getServerVault())).apiKey
+export async function getServerS2Key(storage?: VaultStorage): Promise<string | undefined> {
+  return (await credentials(storage ?? await getServerVault())).apiKey
 }
 
 export async function getPaperSourceStatus(): Promise<PaperSourceStatus> {

@@ -1,3 +1,4 @@
+import { slugOf } from "./href"
 import type { Bundle } from "../vault/bundle"
 import type { WikiPage } from "../vault/types"
 
@@ -66,11 +67,6 @@ const SECTION_ORDER: Array<{ type: string; label: string }> = [
   { type: "query", label: "Saved answers" },
   { type: "author", label: "Authors" },
 ]
-
-function slugOf(id: string): string {
-  const segments = id.split("/")
-  return segments[segments.length - 1]
-}
 
 function paperStatusOf(page: WikiPage): PaperShelfStatus {
   const status = page.frontmatter.status

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
-import { loadPatternCards, patternIndex, cardsByIds } from "../pattern-cards"
+import { loadPatternCards, patternIndex } from "../pattern-cards"
 import { GENERATED_CARDS } from "../pattern-cards/generated-cards"
 
 describe("loadPatternCards", () => {
@@ -64,19 +64,6 @@ describe("patternIndex", () => {
     for (const card of cards) {
       expect(index).toContain(`- ${card.id} (${card.alias}): ${card.signature}`)
     }
-  })
-})
-
-describe("cardsByIds", () => {
-  it("filters to the requested ids, preserving requested order and dropping unknown ids", () => {
-    const cards = loadPatternCards()
-    const filtered = cardsByIds(cards, ["C00", "unknown_id", "adapt_via_conditioning"])
-    expect(filtered.map((c) => c.id)).toEqual(["C00", "adapt_via_conditioning"])
-  })
-
-  it("returns [] for an empty id list", () => {
-    const cards = loadPatternCards()
-    expect(cardsByIds(cards, [])).toEqual([])
   })
 })
 

@@ -137,11 +137,15 @@ export default function HomePage() {
             <div className="text-[13px] text-muted-text tracking-body">
               {state.feed ? `Updated ${formatUpdatedAt(state.feed.generatedAt)}` : "No feed generated yet."}
             </div>
-            <FeedRefreshBar storage={storage} onUpdated={handleFeedUpdated} />
+            <FeedRefreshBar storage={storage} onUpdated={handleFeedUpdated} feedGeneratedAt={state.feed?.generatedAt} />
           </div>
 
           {feedbackWarning && <p role="status" className="mt-4 text-[13px] text-muted-text">{feedbackWarning}</p>}
           {state.feed?.recommendation && <FeedRunSummary run={state.feed.recommendation} generatedAt={state.feed.generatedAt} />}
+          {state.feed?.recommendation && <p className="mt-2 text-[13px] text-muted-text">
+            {state.feed.items.length} papers shown · {state.feed.items.filter(item => item.ranking?.dateStatus === "recent").length} recent · {state.feed.items.filter(item => item.ranking?.dateStatus === "older").length} older
+            {state.feed.items.some(item => item.ranking?.dateStatus === "unknown") && ` · ${state.feed.items.filter(item => item.ranking?.dateStatus === "unknown").length} with unknown dates`}
+          </p>}
 
           {!state.feed || state.feed.items.length === 0 ? (
             <div className="mt-8 border border-border-warm rounded-card px-5 py-6 bg-light-surface max-w-lg">

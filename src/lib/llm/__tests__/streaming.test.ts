@@ -59,7 +59,7 @@ describe("live provider streaming", () => {
     expect(result.usage).toEqual({ inputTokens: 9, outputTokens: 10 })
   })
 
-  it("streams Anthropic text through the SDK with final usage", async () => {
+  it("streams Anthropic Messages API text with final usage", async () => {
     const fetchFn: typeof fetch = async () => sse([
       { type: "message_start", message: { id: "msg_test", type: "message", role: "assistant", content: [], model: "m", stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } },
       { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },

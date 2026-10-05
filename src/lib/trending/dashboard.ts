@@ -190,7 +190,7 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
   const totalRecent = sumRecentWorks(perDiscipline, recentTotals)
 
   // --- Per-topic enrichment (representative papers) ---------------------------
-  // Sequential on purpose: at most MAX_LEADERBOARD_TOPICS topics, and OpenAlex
+  // Sequential on purpose: at most MAX_LEADERBOARD_TOPICS per field, and OpenAlex
   // is credit-priced and rate-limited — bounded, predictable load beats speed.
   const enriched: Array<{ topic: RankedTopic; papers: PaperRecord[] }> = []
   for (const topic of ranked) {
@@ -286,6 +286,7 @@ async function runTrendingBoardUncached(storage: VaultStorage, opts: RunTrending
 
   const board: TrendingBoard = {
     version: TRENDING_BOARD_VERSION,
+    topicCoverage: "per-field",
     anchors,
     overview: {
       totalRecent,
@@ -372,7 +373,7 @@ function fieldScope(scopes: Map<string, AnchorDiscipline>, discipline: string) {
  * call its recent count came from — the count is field-scoped too, and an
  * unscoped lookup would return the corpus-wide figure and invent a decline.
  *
- * Sequential and pool-bounded (CANDIDATE_POOL requests per refresh, not one
+ * Sequential and pool-bounded (CANDIDATE_POOL requests per field, not one
  * per bucket): OpenAlex is credit-priced and rate-limited. A failed lookup
  * simply omits its key, and `rankHeatingTopics` drops that topic rather than
  * reading the gap as a zero.

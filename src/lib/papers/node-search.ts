@@ -14,6 +14,7 @@ import {
 import type { PaperRecord } from "./types"
 import type { SearchFn } from "../skills/feed"
 import type { CountFn } from "../trending/counts"
+import type { VaultStorage } from "../vault/storage"
 
 /**
  * Node relay-free SearchFn: calls the M3 search-core adapters (searchArxiv,
@@ -53,7 +54,7 @@ export function nodeSearchFn(): SearchFn {
 
 /** Feed v2: actual source routing, native date bounds, and errors propagated to
  * the pipeline's per-query diagnostics. Legacy Spark routing above is unchanged. */
-export function nodeFeedSearchFn(): SearchFn {
+export function nodeFeedSearchFn(storage?: VaultStorage): SearchFn {
   return async (source, query, limit, opts) => {
     switch (source) {
       case "arxiv": return searchArxiv({ query, limit, fromDate: opts?.fromDate, sort: opts?.sort })
@@ -61,7 +62,7 @@ export function nodeFeedSearchFn(): SearchFn {
         { query, limit, fromDate: opts?.fromDate, sort: opts?.sort },
         { mailto: process.env.OPENALEX_MAILTO, apiKey: process.env.OPENALEX_API_KEY },
       )
-      case "s2": return searchS2({ query, limit, fromDate: opts?.fromDate }, { apiKey: await getServerS2Key(), signal: opts?.signal })
+      case "s2": return searchS2({ query, limit, fromDate: opts?.fromDate }, { apiKey: await getServerS2Key(storage), signal: opts?.signal })
       case "pubmed": return searchPubmed({ query, limit, fromDate: opts?.fromDate }, { apiKey: process.env.NCBI_API_KEY, signal: opts?.signal })
       default: throw new Error("Unsupported paper source")
     }
@@ -73,7 +74,7 @@ export function nodeFeedSearchFn(): SearchFn {
  * of remapping Semantic Scholar and PubMed through OpenAlex. Individual source
  * failures contribute no papers so one rate-limited index cannot erase results
  * returned by the others. */
-export function nodeResearchSearchFn(options: { reportErrors?: boolean } = {}): SearchFn {
+export function nodeResearchSearchFn(options: { reportErrors?: boolean; storage?: VaultStorage } = {}): SearchFn {
   const openAlexMailto = process.env.OPENALEX_MAILTO
   const openAlexApiKey = process.env.OPENALEX_API_KEY
   const ncbiApiKey = process.env.NCBI_API_KEY
@@ -89,7 +90,7 @@ export function nodeResearchSearchFn(options: { reportErrors?: boolean } = {}): 
             { mailto: openAlexMailto, apiKey: openAlexApiKey },
           )
         case "s2":
-          return await searchS2({ query, limit }, { apiKey: await getServerS2Key(), signal: opts?.signal })
+          return await searchS2({ query, limit }, { apiKey: await getServerS2Key(options.storage), signal: opts?.signal })
         case "pubmed":
           return await searchPubmed({ query, limit }, { apiKey: ncbiApiKey })
       }

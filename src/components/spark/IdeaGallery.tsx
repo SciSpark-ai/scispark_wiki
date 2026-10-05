@@ -39,12 +39,12 @@ export function IdeaGallery({ bundle }: IdeaGalleryProps) {
             </div>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {status && (
-                <span className="text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-pill bg-card-surface text-espresso">
+                <span className="text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-badge bg-card-surface text-espresso">
                   {status}
                 </span>
               )}
               {depth && (
-                <span className="text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-pill bg-light-surface border border-border-warm text-muted-text">
+                <span className="text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-badge bg-light-surface border border-border-warm text-muted-text">
                   {depth}
                 </span>
               )}

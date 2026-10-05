@@ -322,6 +322,27 @@ The default vault is `~/SciSpark/vault`. See the
 
 </details>
 
+### Local profiles and separate vaults
+
+Choose a profile when opening SciSpark. Your existing vault is registered in
+place; creating a profile creates a separate empty vault. Papers, notes, chats,
+research preferences, AI connections, and usage history belong to that vault.
+Open the profile menu at the bottom of the sidebar and choose **Log out** to
+return to the chooser. On mobile, open the menu first. Logging out clears
+unsaved browser drafts; saved work remains in the vault. Other tabs follow the
+profile change, and old requests cannot write into the newly selected vault.
+
+These are local profiles without passwords, not accounts with access control
+against other people using the same computer. Logout does not encrypt files.
+Already accepted background work stays bound to its original vault. The opt-in
+scheduler continues to target the vault configured by `SCISPARK_VAULT`.
+
+The profile registry and new vaults live in `.scispark-profiles` beside the
+configured vault; `SCISPARK_PROFILES_DIR` can select a different registry folder
+outside any research vault. Back up that registry along with each vault.
+Local API clients must open `/api/local-profiles/session` with a profile ID,
+retain the session cookie, and send `x-scispark-profile` on vault API requests.
+
 ## Configure your workspace
 
 | Setting | What you control |

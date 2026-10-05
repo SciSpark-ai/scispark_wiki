@@ -63,3 +63,6 @@ next-env.d.ts
 /scripts/stack-original-wordmark.mjs
 /public/brand/README.md
 /public/brand/scispark-editorial-source.png
+
+# understand-anything code map (generated, 2 MB; keep local)
+.understand-anything/

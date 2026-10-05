@@ -1,23 +1,13 @@
 import { create } from "zustand";
-import type { ReactNode } from "react";
 
 interface UIState {
+  /** Mobile slide-over sidebar (MobileNav). */
   sidebarOpen: boolean;
-  desktopSidebarOpen: boolean;
-  sourcesPanelOpen: boolean;
-  activeNav: string;
-  rightPanelContent: ReactNode | null;
-  showRightPanel: boolean;
   setSidebarOpen: (open: boolean) => void;
-  toggleSidebar: () => void;
-  setDesktopSidebarOpen: (open: boolean) => void;
+  /** Desktop sidebar expanded (240px) vs collapsed (60px) — AppShell/Sidebar. */
+  desktopSidebarOpen: boolean;
   toggleDesktopSidebar: () => void;
-  setSourcesPanelOpen: (open: boolean) => void;
-  toggleSourcesPanel: () => void;
-  setActiveNav: (nav: string) => void;
-  setRightPanel: (content: ReactNode | null) => void;
-  setShowRightPanel: (show: boolean) => void;
-  toggleRightPanel: () => void;
+  /** Which settings-modal section is open, or null when closed. */
   settingsModalSection: string | null;
   openSettingsModal: (section?: string) => void;
   closeSettingsModal: () => void;
@@ -25,24 +15,9 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set) => ({
   sidebarOpen: false,
-  desktopSidebarOpen: true,
-  sourcesPanelOpen: false,
-  activeNav: "home",
-  rightPanelContent: null,
-  showRightPanel: false,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
-  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-  setDesktopSidebarOpen: (open) => set({ desktopSidebarOpen: open }),
-  toggleDesktopSidebar: () =>
-    set((s) => ({ desktopSidebarOpen: !s.desktopSidebarOpen })),
-  setSourcesPanelOpen: (open) => set({ sourcesPanelOpen: open }),
-  toggleSourcesPanel: () =>
-    set((s) => ({ sourcesPanelOpen: !s.sourcesPanelOpen })),
-  setActiveNav: (nav) => set({ activeNav: nav }),
-  setRightPanel: (content) => set({ rightPanelContent: content }),
-  setShowRightPanel: (show) => set({ showRightPanel: show }),
-  toggleRightPanel: () =>
-    set((s) => ({ showRightPanel: !s.showRightPanel })),
+  desktopSidebarOpen: true,
+  toggleDesktopSidebar: () => set((s) => ({ desktopSidebarOpen: !s.desktopSidebarOpen })),
   settingsModalSection: null,
   openSettingsModal: (section = "ai") => set({ settingsModalSection: section }),
   closeSettingsModal: () => set({ settingsModalSection: null }),

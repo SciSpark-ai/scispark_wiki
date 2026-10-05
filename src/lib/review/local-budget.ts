@@ -35,13 +35,15 @@ export async function localReviewComplete<T>(storage: VaultStorage, id: string, 
     await guard()
     const rows = await read(storage, id)
     const persist = () => storage.write(path(id), JSON.stringify(rows))
-    const wrapped: LLMProvider = { id: provider.id, billingMode: "subscription", complete: async (model, request) => {
+    const wrapped: LLMProvider = { id: provider.id, billingMode: "subscription", jsonSchemaTarget: provider.jsonSchemaTarget, complete: async (model, request) => {
       await guard()
       const signature = hashReviewData({ model: brief.model, messages: request.messages, schema: request.jsonSchema })
       const prior = rows.find((r) => r.signature === signature && r.step === step && r.state === "settled")
       if (prior?.result) return prior.result as LLMResult
       if (rows.some((r) => r.state === "uncertain" || r.state === "reserved")) throw new Error("A previous engine request may have consumed plan usage. Acknowledge it before retrying.")
       if (rows.length >= 120) throw new Error("This review reached its 120 engine-call limit. Partial work is saved.")
+      await provider.preflight?.(model)
+      await guard()
       const row: z.infer<typeof Attempt> = { id: randomUUID(), signature, step, state: "reserved" }
       rows.push(row); await persist()
       const abort = new AbortController()

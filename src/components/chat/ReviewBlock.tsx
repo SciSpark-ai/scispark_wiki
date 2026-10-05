@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { readReview, changeReview } from "@/lib/review/client"
 import type { ReviewAction, ReviewRun } from "@/lib/review/contracts"
 import { Button } from "@/components/ui/Button"
+import { useUIStore } from "@/stores/ui-store"
 
 export function useReview(id: string) {
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof readReview>> | null>(null)
@@ -33,6 +34,7 @@ export function useReview(id: string) {
 const inputClass = "mt-1 w-full rounded-xl border border-border-warm bg-page-bg px-3 py-2 text-sm text-espresso focus:outline-orange"
 export function ReviewBlock({ id }: { id: string }) {
   const { snapshot, error, busy, act } = useReview(id)
+  const openSettings = useUIStore((state) => state.openSettingsModal)
   const run = snapshot?.run
   const [editing, setEditing] = useState(false)
   if (!run) return <p className="mt-3 text-sm text-muted-text" role="status">{error ?? "Loading review…"}</p>
@@ -42,7 +44,7 @@ export function ReviewBlock({ id }: { id: string }) {
   const open = () => window.dispatchEvent(new CustomEvent("open-review-report", { detail: id }))
   return <section className="mt-4 border-t border-border-warm pt-4" aria-label="Literature review">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h3 className="font-heading text-xl text-espresso">{run.status === "awaiting-approval" ? "Your review brief" : run.stage}</h3>
+      <h3 className="font-heading text-xl text-espresso">{run.status === "awaiting-approval" ? "Your review brief" : run.status === "paused" && run.error ? "Review needs attention" : run.stage}</h3>
       <span className="text-xs text-muted-text">{run.brief.model.engine ? `${snapshot.spending.engineCalls ?? 0} engine calls · plan limits` : `$${snapshot.spending.spentUsd.toFixed(3)} of $${run.brief.allowanceUsd.toFixed(2)}`}</span>
     </div>
     {editing ? <BriefEditor key={run.revision} run={run} busy={busy} onCancel={() => setEditing(false)} onSave={async (action) => { if (await act(action)) setEditing(false) }} /> : <>
@@ -58,17 +60,19 @@ export function ReviewBlock({ id }: { id: string }) {
         {!run.brief.model.engine && !run.brief.model.rates && <p role="status" className="mt-3 text-sm text-espresso">Add this model&apos;s token prices in Edit brief to enforce your allowance.</p>}
         {run.approvedRevision === null && <PdfAttachment run={run} />}
       </>}
-      {active && <p role="status" className="mt-3 text-sm text-muted-text">{run.evidence.length} papers available so far. You can leave this page while the local server continues.</p>}
+      {active && <p role="status" className="mt-3 text-sm text-muted-text">{run.evidence.length} papers available so far. You can leave this page; the review continues while SciSpark&apos;s local server is running.</p>}
       {run.status === "partial" && <p className="mt-3 text-sm text-muted-text">{coverageLimited && sourceChecksPassed ? "Source checks passed, but this reading set cannot fully answer your question. Start a new review with additional sources or a revised scope. Rechecking the same claims will not fill these evidence gaps." : "Some claims still need review. Retry source checks using the saved research and remaining allowance. The current report stays in History; another attempt may still need review."}</p>}
-      {run.error && <p role="alert" className="mt-3 text-sm text-espresso">{run.error}</p>}
+      {snapshot.modelError && <p role="alert" className="mt-3 text-sm text-espresso">{snapshot.modelError} After saving an available model, choose Edit brief and Update brief before continuing.</p>}
+      {run.error && (snapshot.modelError ? <details className="mt-3 text-sm text-muted-text"><summary>Previous attempt</summary><p className="mt-2">{run.error}</p></details> : <p role="alert" className="mt-3 text-sm text-espresso">{run.error}</p>)}
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        {run.status === "awaiting-approval" && <Button disabled={busy || (!run.brief.model.engine && !run.brief.model.rates)} onClick={() => void act({ action: "approve", revision: run.revision })}>Start review</Button>}
+        {snapshot.modelError && <Button disabled={busy} onClick={() => openSettings("ai")}>Choose model</Button>}
+        {run.status === "awaiting-approval" && !snapshot.spending.uncertain && <Button disabled={busy || !!snapshot.modelError || (!run.brief.model.engine && !run.brief.model.rates)} onClick={() => void act({ action: "approve", revision: run.revision })}>Start review</Button>}
         {["awaiting-approval", "paused", "interrupted", "failed"].includes(run.status) && <Button variant="secondary" disabled={busy} onClick={() => setEditing(true)}>Edit brief</Button>}
-        {["paused", "interrupted", "failed", "partial"].includes(run.status) && !(run.status === "partial" && coverageLimited && sourceChecksPassed) && <Button disabled={busy || snapshot.spending.uncertain} onClick={() => void act({ action: "resume", revision: run.revision, acknowledgeUncertainCharge: false })}>{run.status === "partial" ? "Retry source checks" : "Resume review"}</Button>}
+        {["paused", "interrupted", "failed", "partial"].includes(run.status) && !snapshot.spending.uncertain && !(run.status === "partial" && coverageLimited && sourceChecksPassed) && <Button disabled={busy || !!snapshot.modelError} onClick={() => void act({ action: "resume", revision: run.revision, acknowledgeUncertainCharge: false })}>{run.status === "partial" ? "Retry source checks" : "Resume review"}</Button>}
         {(active || run.status === "paused") && <Button variant="quiet" disabled={busy} onClick={() => void act({ action: "cancel" })}>Cancel review</Button>}
         {(run.evidence.length > 0 || run.versions.length > 0) && <Button variant="secondary" onClick={open}>{run.versions.length ? "Open report" : "Inspect sources"}</Button>}
       </div>
-      {snapshot.spending.uncertain && !active && <details className="mt-3 text-sm text-espresso"><summary>Resolve uncertain usage</summary><p className="my-2">{run.brief.model.engine ? "A prior engine call may have consumed plan usage without returning a result. Retrying uses additional plan capacity." : `A prior call may have cost up to $${snapshot.spending.heldUsd.toFixed(3)} without returning a usable result. Retrying can incur another charge.`}</p><Button disabled={busy} onClick={() => void act({ action: "resume", revision: run.revision, acknowledgeUncertainCharge: true })}>Acknowledge and resume</Button></details>}
+      {snapshot.spending.uncertain && !active && <details open className="mt-3 text-sm text-espresso"><summary>Resolve uncertain usage</summary><p className="my-2">{run.brief.model.engine ? "A prior engine call may have consumed plan usage without returning a result. Retrying uses additional plan capacity." : `A prior call may have cost up to $${snapshot.spending.heldUsd.toFixed(3)} without returning a usable result. Retrying can incur another charge.`}</p><Button disabled={busy || !!snapshot.modelError} onClick={() => void act({ action: run.status === "awaiting-approval" ? "approve" : "resume", revision: run.revision, acknowledgeUncertainCharge: true })}>{run.status === "awaiting-approval" ? "Acknowledge and start review" : "Acknowledge and resume"}</Button></details>}
     </>}
     {error && <p role="alert" className="mt-3 text-sm text-espresso">{error}</p>}
   </section>

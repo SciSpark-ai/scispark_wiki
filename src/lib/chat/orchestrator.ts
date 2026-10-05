@@ -26,13 +26,17 @@ import {
   ProjectValidationError,
 } from "../projects/repository"
 import type { ProjectDetail } from "../projects/types"
-import type { SourceId } from "../papers/types"
+import { paperKey, type SourceId } from "../papers/types"
+import { logEvent } from "../events/log"
 import { runResearchSearch } from "../skills/research-search"
 import type { SearchFn } from "../skills/feed"
 import type { ResearchSearchStage } from "../skills/research-search-contract"
 import { loadSettings } from "../llm/settings"
 import { neutralizeFenceMarkers } from "../skills/ingest-analysis"
-import { SearchResultSchema } from "./blocks"
+import { ChatPaperSlugSchema, ChatSelectionSchema, type ChatSelection, SearchResultSchema } from "./blocks"
+import { capturePaperContext, renderPaperContext } from "./paper-context"
+import { loadPaperText, type PaperTextDeps } from "../papers/full-text"
+import type { PaperTextInfo } from "../papers/text-contract"
 import { buildUserContext } from "../usermodel/context"
 import { withVaultExclusive } from "../vault/exclusive"
 import { loadReview } from "../review/store"
@@ -53,15 +57,19 @@ export interface AskChatInput {
   readSourcesOnly: boolean
   /** Stable project slug for a new scoped session. Existing sessions own their scope. */
   projectId?: string
+  /** Current paper page. The server resolves and retains its evidence. */
+  paperSlug?: string
   mode?: "chat" | "search"
   sources?: SourceId[]
   operationId?: string
+  selection?: ChatSelection
 }
 
 export interface AskChatResult {
   sessionId: string
   /** The assistant turn, exactly as persisted. */
   message: ChatMessage
+  paperSource?: PaperTextInfo
 }
 
 export interface AskChatOpts {
@@ -69,10 +77,11 @@ export interface AskChatOpts {
   settings?: LLMSettings
   providerOverride?: Partial<Record<Tier, LLMProvider>>
   now?: () => Date
-  onProgress?: (stage: "selecting" | "answering" | ResearchSearchStage) => void
+  onProgress?: (stage: "reading" | "selecting" | "answering" | ResearchSearchStage) => void
   onText?: (text: string) => void
   onSession?: (sessionId: string) => void
   searchFn?: SearchFn
+  paperTextDeps?: PaperTextDeps
 }
 
 /** Strict runtime parser for the public chat request. The API route receives
@@ -83,7 +92,7 @@ export function parseAskChatInput(value: unknown): AskChatInput {
     throw new Error("chat input must be an object")
   }
   const record = value as Record<string, unknown>
-  const allowed = new Set(["sessionId", "question", "readSourcesOnly", "projectId", "mode", "sources", "operationId"])
+  const allowed = new Set(["sessionId", "question", "readSourcesOnly", "projectId", "paperSlug", "mode", "sources", "operationId", "selection"])
   if (Object.keys(record).some((key) => !allowed.has(key))) {
     throw new Error("chat input contains unsupported fields")
   }
@@ -105,17 +114,23 @@ export function parseAskChatInput(value: unknown): AskChatInput {
   if (typeof record.readSourcesOnly !== "boolean") {
     throw new Error("readSourcesOnly must be a boolean")
   }
+  if (record.paperSlug !== undefined && !ChatPaperSlugSchema.safeParse(record.paperSlug).success) throw new Error("Invalid paper slug")
+  if (record.paperSlug !== undefined && record.projectId !== undefined) throw new Error("Choose a paper or project scope, not both")
   if (
     record.projectId !== undefined &&
     (typeof record.projectId !== "string" || record.projectId.length === 0)
   ) {
     throw new Error("projectId must be a non-empty string")
   }
+  const selection = record.selection === undefined ? undefined : ChatSelectionSchema.parse(record.selection)
+  if (selection && record.mode === "search") throw new Error("Selected passages require paper chat")
   return {
+    ...(selection ? { selection } : {}),
     sessionId: record.sessionId,
     question: record.question,
     readSourcesOnly: record.readSourcesOnly,
     ...(typeof record.projectId === "string" ? { projectId: record.projectId } : {}),
+    ...(typeof record.paperSlug === "string" ? { paperSlug: record.paperSlug } : {}),
     ...(record.mode ? { mode: record.mode } : {}),
     ...(record.sources ? { sources: record.sources as SourceId[] } : {}),
     ...(record.operationId ? { operationId: record.operationId as string } : {}),
@@ -202,14 +217,15 @@ async function askChatTurn(storage: VaultStorage, opts: AskChatOpts): Promise<As
   const now = opts.now ?? (() => new Date())
   const { input } = opts
   const { session, project } = await loadOrCreateSession(storage, input, now)
-  const requestSignature = JSON.stringify({ mode: input.mode ?? "chat", readSourcesOnly: input.readSourcesOnly, sources: input.sources ? [...new Set(input.sources)].sort() : null })
+  if (input.selection && !session.paperContext) throw new ChatScopeError("Select a passage from a paper to ask about it")
+  const requestSignature = JSON.stringify({ ...(input.selection ? { selection: input.selection } : {}), mode: input.mode ?? "chat", readSourcesOnly: input.readSourcesOnly, sources: input.sources ? [...new Set(input.sources)].sort() : null })
   if (input.operationId && session.messages.some((m) => m.operationId === input.operationId)) {
     const question = session.messages.find((m) => m.operationId === input.operationId && m.role === "user")
     if (question?.content !== input.question) throw new Error("This operation already belongs to a different question")
     if (question.requestSignature && question.requestSignature !== requestSignature) throw new Error("This operation already belongs to different search options")
     const previous = session.messages.find((m) => m.operationId === input.operationId && m.role === "assistant")
     if (!previous) throw new Error("This turn was interrupted. Your question is in History; send a new message to retry.")
-    return { sessionId: session.id, message: previous }
+    return { sessionId: session.id, message: previous, paperSource: sourceInfo(session) }
   }
 
   // The history the skills see: prior turns only (the current question travels
@@ -225,9 +241,9 @@ async function askChatTurn(storage: VaultStorage, opts: AskChatOpts): Promise<As
   const history = session.messages
     .filter((m) => m.error === undefined)
     .slice(-MAX_HISTORY_TURNS)
-    .map((m) => ({ role: m.role, content: m.content }))
+    .map((m) => ({ role: m.role, content: m.selection ? `Selected passage: ${m.selection.text}\n${m.content}` : m.content }))
 
-  session.messages.push({ role: "user", content: input.question, ...(input.operationId ? { operationId: input.operationId, requestSignature } : {}) })
+  session.messages.push({ role: "user", content: input.question, ...(input.selection ? { selection: input.selection } : {}), ...(input.operationId ? { operationId: input.operationId, requestSignature } : {}) })
   session.updatedAt = now().toISOString()
   // Persisted BEFORE any LLM call: everything below can fail, and when it does
   // the user must still find their question in the transcript.
@@ -243,7 +259,14 @@ async function askChatTurn(storage: VaultStorage, opts: AskChatOpts): Promise<As
   session.updatedAt = now().toISOString()
   await saveSession(storage, session)
 
-  return { sessionId: session.id, message }
+  if (input.selection && session.paperContext) await logEvent(storage, { type: "reading_ask", paperKey: paperKey(session.paperContext.paper) })
+  return { sessionId: session.id, message, paperSource: sourceInfo(session) }
+}
+
+function sourceInfo(session: ChatSession): PaperTextInfo | undefined {
+  const source = session.paperContext?.source
+  if (!source) return undefined
+  return { access: source.access, locator: source.locator, checkedAt: source.checkedAt, truncated: source.truncated, notes: source.notes }
 }
 
 async function searchQuestion(storage: VaultStorage, opts: AskChatOpts, session: ChatSession, project?: ProjectDetail): Promise<ChatMessage> {
@@ -251,7 +274,9 @@ async function searchQuestion(storage: VaultStorage, opts: AskChatOpts, session:
     if (!opts.searchFn) throw new Error("Paper search is not configured")
     const prior = session.messages.filter((m) => !m.error).slice(-6).map((m) => `${m.role}: ${m.content.slice(0, 2000)}\n${m.blocks?.flatMap((b) => b.type === "paper-results" ? b.result.items.map((i) => i.paper.title) : []).join("\n") ?? ""}`).join("\n").slice(0, 16_000)
     // Scope-specific context contains no unrelated private library material.
-    const personalContext = project
+    const personalContext = session.paperContext
+      ? `<<<CURRENT-PAPER>>>\n${neutralizeFenceMarkers(renderPaperContext(session.paperContext, true))}\n<<<END-CURRENT-PAPER>>>`
+      : project
       ? `<<<PROJECT>>>\n${neutralizeFenceMarkers(`${project.title}\n${project.instructions}`)}\n<<<END-PROJECT>>>`
       : (await buildUserContext(storage, { eventLimit: 40 })).compactText
     const contextText = `${personalContext}\n<<<CONVERSATION>>>\n${neutralizeFenceMarkers(prior)}\n<<<END-CONVERSATION>>>`
@@ -341,6 +366,9 @@ async function loadOrCreateSession(
     // than failing the turn we start a session AT THAT id — the caller is
     // holding a link to it, and the alternative is losing the question.
     if (existing != null) {
+      if (input.paperSlug !== undefined && input.paperSlug !== existing.paperContext?.slug) {
+        throw new ChatScopeError("this conversation's paper scope cannot be changed")
+      }
       if (input.projectId !== undefined && input.projectId !== existing.projectId) {
         throw new ChatScopeError("this conversation's project scope cannot be changed")
       }
@@ -351,15 +379,17 @@ async function loadOrCreateSession(
     const project = input.projectId === undefined
       ? undefined
       : await requireProject(storage, input.projectId)
+    const paperContext = input.paperSlug ? await capturePaperContext(storage, input.paperSlug, now()) : undefined
     const timestamp = now().toISOString()
     return {
       session: {
         id: input.sessionId,
-        title: deriveTitle(input.question),
+        title: deriveTitle(input.selection ? `Explain: ${input.selection.text}` : input.question),
         createdAt: timestamp,
         updatedAt: timestamp,
         messages: [],
         ...(project ? { projectId: project.id, projectTitle: project.title } : {}),
+        ...(paperContext ? { paperContext } : {}),
       },
       project,
     }
@@ -368,15 +398,17 @@ async function loadOrCreateSession(
   const project = input.projectId === undefined
     ? undefined
     : await requireProject(storage, input.projectId)
+  const paperContext = input.paperSlug ? await capturePaperContext(storage, input.paperSlug, now()) : undefined
   const timestamp = now().toISOString()
   return {
     session: {
       id: await mintSessionId(storage, now),
-      title: deriveTitle(input.question),
+      title: deriveTitle(input.selection ? `Explain: ${input.selection.text}` : input.question),
       createdAt: timestamp,
       updatedAt: timestamp,
       messages: [],
       ...(project ? { projectId: project.id, projectTitle: project.title } : {}),
+      ...(paperContext ? { paperContext } : {}),
     },
     project,
   }
@@ -427,6 +459,27 @@ async function answerQuestion(
     const cited = new Set(run.output.citedPageIds)
     const papers = selected.filter((_, i) => cited.has(`search-paper-${i + 1}`)).map((item) => item.paper)
     return { role: "assistant", content: run.output.answer, blocks: [{ type: "paper-citations", papers }] }
+  }
+
+  // The page itself is the default evidence, including papers not saved to the
+  // wiki. Explicit search/review modes above can introduce different material.
+  if (session?.paperContext) {
+    // Persist the user's turn first, then upgrade legacy/abstract-only context.
+    // Full-text snapshots remain stable for subsequent History follow-ups.
+    if (session.paperContext.source?.access !== "full-text") {
+      opts.onProgress?.("reading")
+      session.paperContext.source = await loadPaperText(storage, session.paperContext.paper, opts.paperTextDeps)
+    }
+    opts.onProgress?.("answering")
+    const run = await runSkill({
+      skill: chatAnswerSkill, storage, settings: opts.settings,
+      providerOverride: opts.providerOverride, now: opts.now, onText: opts.onText,
+      input: { question: input.question, context: renderPaperContext(session.paperContext, input.readSourcesOnly), history,
+        readSourcesOnly: input.readSourcesOnly, selection: input.selection, currentPaper: true, companionName: await resolveCompanionName(storage) },
+    })
+    if (run.status !== "ok" || !run.output) return { role: "assistant", content: "I couldn't answer from this paper just now. Your question is saved; try again.", error: run.error ?? "Paper answer unavailable" }
+    return { role: "assistant", content: run.output.answer, readSourcesOnly: input.readSourcesOnly,
+      blocks: [{ type: "paper-citations", papers: run.output.citedPageIds.includes("current-paper") ? [session.paperContext.paper] : [] }] }
   }
 
   // A vault-wide read failure is degraded like any other layer rather than

@@ -92,14 +92,14 @@ export default function SelectionBubble({ selection, onAsk, onHighlight, onCaptu
       aria-label="Selection actions"
       data-selection-bubble
       style={style}
-      className="flex max-w-[calc(100vw-16px)] flex-wrap items-center gap-1 rounded-pill border border-border-warm bg-light-surface px-1.5 py-1 shadow-lg [&>button]:whitespace-nowrap"
+      className="flex max-w-[calc(100vw-16px)] flex-wrap items-center gap-1 rounded-faq border border-border-warm bg-light-surface px-1.5 py-1 shadow-lg [&>button]:whitespace-nowrap"
     >
       <button
         type="button"
         onClick={onAsk}
         className="text-[12px] font-medium tracking-body text-espresso px-2.5 py-1 rounded-pill hover:bg-card-surface transition-colors"
       >
-        Ask
+        Ask Sparky
       </button>
       {onHighlight && (
         <button

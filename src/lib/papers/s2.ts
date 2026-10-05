@@ -1,3 +1,4 @@
+import { clampLimit } from "./types"
 import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
 import { sourceFetch, withSourceDeadline } from "./source-requests"
 
@@ -13,9 +14,6 @@ import { sourceFetch, withSourceDeadline } from "./source-requests"
 // envelope (total/offset/next/data), and field names/casing below were all
 // confirmed directly from the spec, not from memory.
 const S2_SEARCH_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
-const MIN_LIMIT = 1
-const MAX_LIMIT = 50
-const DEFAULT_LIMIT = 20
 const SEARCH_FIELDS = [
   "title",
   "abstract",
@@ -111,11 +109,6 @@ function mapPaper(paper: S2Paper): PaperRecord {
     source: "s2",
     publicationTypes: paper.publicationTypes ?? undefined,
   }
-}
-
-function clampLimit(limit: number | undefined): number {
-  if (limit == null || Number.isNaN(limit)) return DEFAULT_LIMIT
-  return Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, Math.floor(limit)))
 }
 
 function buildUrl(q: S2Query): string {

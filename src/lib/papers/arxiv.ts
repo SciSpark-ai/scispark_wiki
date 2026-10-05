@@ -1,14 +1,11 @@
+import { clampLimit, SOURCE_FETCH_TIMEOUT_MS } from "./types"
 import { XMLParser } from "fast-xml-parser"
-import { fetchWithTimeout } from "./fetch-timeout"
 import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
 
 // Drift-verified 2026-07-12 against info.arxiv.org/help/api/user-manual.html and a
 // live call to export.arxiv.org: https works (200, correct Atom body), even though
 // the manual's examples show http. Using https here since it was live-confirmed.
 const ARXIV_QUERY_URL = "https://export.arxiv.org/api/query"
-const MIN_LIMIT = 1
-const MAX_LIMIT = 50
-const DEFAULT_LIMIT = 20
 const ARRAY_TAGS = new Set(["entry", "author", "link", "category"])
 
 const xmlParser = new XMLParser({
@@ -191,11 +188,6 @@ function mapEntry(entry: ArxivEntry): PaperRecord {
   }
 }
 
-function clampLimit(limit: number | undefined): number {
-  if (limit == null || Number.isNaN(limit)) return DEFAULT_LIMIT
-  return Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, Math.floor(limit)))
-}
-
 // arXiv's native query syntax: field prefixes (the default `all:` plus
 // `ti:`/`au:`/`abs:`/`cat:`/…) and UPPERCASE boolean operators (AND/OR/ANDNOT).
 // The Feed strategy prompt explicitly instructs the LLM to emit these ("supports
@@ -281,7 +273,7 @@ export async function searchArxiv(q: ArxivQuery, deps: ArxivDeps = {}): Promise<
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let response: Response
     try {
-      response = await fetchWithTimeout(fetchFn, url)
+      response = await fetchFn(url, { signal: AbortSignal.timeout(SOURCE_FETCH_TIMEOUT_MS) })
     } catch (err) {
       // Network error — transient, retry with backoff.
       lastError = new PaperSourceError(err instanceof Error ? err.message : "arXiv request failed")

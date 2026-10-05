@@ -13,6 +13,7 @@ import {
   MessageSquarePlus,
   Clock,
   PanelLeftClose,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useUserStore } from "@/stores/user-store";
@@ -24,6 +25,7 @@ import type { ChatSession } from "@/lib/chat/session";
 import { Chip } from "@/components/ui/Chip";
 import { ThemeToggle } from "./ThemeToggle";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { logoutLocalProfile } from "@/lib/local-profile-client";
 
 /** A nav aid, not a second inbox — just enough recent conversations to jump
  * back into one, no badges/counts. */
@@ -84,6 +86,8 @@ const HISTORY_ITEM: NavItem = { key: "history", label: "History", href: "/histor
 
 interface SidebarProps {
   collapsed?: boolean;
+  /** Present only in the mobile drawer. */
+  onNavigate?: () => void;
 }
 
 function isItemActive(pathname: string, href: string): boolean {
@@ -91,7 +95,7 @@ function isItemActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-export function Sidebar({ collapsed = false }: SidebarProps) {
+export function Sidebar({ collapsed = false, onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const user = useUserStore((s) => s.user);
   const onboardingComplete = useUserStore((s) => s.onboardingComplete);
@@ -101,6 +105,8 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
   const disabled = isFirstRun && !onboardingComplete;
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -134,7 +140,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
     };
   }, [pathname]);
 
-  // Recent chat sessions for the quiet nav-aid list under Tools. Reloaded on
+  // Recent chat sessions for the quiet nav-aid list under History. Reloaded on
   // pathname change so starting/continuing a conversation is reflected on
   // return, same rationale as the inbox count above. Failures resolve to an
   // empty list silently — the nav must never break on a vault hiccup.
@@ -174,6 +180,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
       <Link
         key={item.key}
         href={item.href}
+        onClick={onNavigate}
         className={`flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[15px] tracking-body transition-colors ${
           isActive
             ? "bg-card-surface text-espresso font-medium"
@@ -195,15 +202,16 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
     <aside className="w-[240px] bg-page-warm flex flex-col h-full p-3 flex-shrink-0">
       {/* Toggle + logo — toggle at x=24 in both states, label fades */}
       <div className="mb-3 flex items-center gap-3 flex-shrink-0">
-        <button
+        {!onNavigate && <button
           onClick={toggleDesktopSidebar}
           className="px-3 py-2.5 text-muted-text hover:text-espresso transition-colors rounded-[10px] hover:bg-card-surface/50 flex items-center flex-shrink-0"
           aria-label={collapsed ? "Open sidebar" : "Close sidebar"}
         >
           <PanelLeftClose size={18} strokeWidth={1.8} />
-        </button>
+        </button>}
         <BrandLogo className={fadeLabel} />
-        <ThemeToggle className={collapsed ? "invisible" : "ml-auto"} />
+        {onNavigate ? <button type="button" onClick={onNavigate} aria-label="Close menu" className="ml-auto flex h-11 w-11 items-center justify-center rounded-btn text-muted-text hover:bg-card-surface hover:text-espresso"><X size={20} /></button>
+          : <ThemeToggle className={collapsed ? "invisible" : "ml-auto"} />}
       </div>
 
       {/* Grouped nav — icons always at same position */}
@@ -216,23 +224,27 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
               {group.heading}
             </div>
             {group.items.map(renderItem)}
-            {group.heading === "Tools" && !collapsed && recentSessions.length > 0 && (
-              <div>
-                {recentSessions.map((session) => (
-                  <Link
-                    key={session.id}
-                    href={`/chat/${session.id}`}
-                    className="block truncate rounded-[10px] py-1.5 pl-[42px] pr-3 text-[13px] text-muted-text tracking-body transition-colors hover:bg-card-surface/50 hover:text-espresso"
-                  >
-                    {session.title}
-                  </Link>
-                ))}
-              </div>
-            )}
           </div>
         ))}
         <hr className="border-border-warm mx-[10px] my-[14px]" />
         {renderItem(HISTORY_ITEM)}
+        {!collapsed && recentSessions.length > 0 && (
+          <ul aria-label="Recent chats">
+            {recentSessions.map((session) => (
+              <li key={session.id}>
+                <Link
+                  href={`/chat/${session.id}`}
+                  onClick={onNavigate}
+                  title={session.messages?.find((message) => message.role === "user")?.content ?? session.title}
+                  className="block rounded-[10px] py-1.5 pl-[42px] pr-3 text-[13px] text-muted-text tracking-body transition-colors hover:bg-card-surface/50 hover:text-espresso"
+                >
+                  <span className="block truncate">{session.title}</span>
+                  {session.createdAt && <time dateTime={session.createdAt} className="block text-[11px]">{new Date(session.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" })}</time>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </nav>
 
       {/* Account menu — hidden when collapsed */}
@@ -244,7 +256,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
               <Link
                 href="/profile"
                 className="block px-4 py-2 text-[13px] text-espresso hover:bg-card-surface focus-visible:bg-card-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent-ink"
-                onClick={() => setMenuOpen(false)}
+                onClick={() => { setMenuOpen(false); onNavigate?.(); }}
               >
                 Profile
               </Link>
@@ -253,16 +265,35 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
                 className="block w-full px-4 py-2 text-left text-[13px] text-espresso hover:bg-card-surface focus-visible:bg-card-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent-ink"
                 onClick={() => {
                   setMenuOpen(false);
+                  onNavigate?.();
                   openSettingsModal("ai");
                 }}
               >
                 Settings
               </button>
+              <button
+                type="button"
+                disabled={loggingOut}
+                className="block w-full border-t border-border-warm px-4 py-2 text-left text-[13px] text-espresso hover:bg-card-surface disabled:opacity-50 focus-visible:outline-accent-ink"
+                onClick={() => {
+                  setLoggingOut(true);
+                  setLogoutError(null);
+                  void logoutLocalProfile().catch((error) => {
+                    setLogoutError(error instanceof Error ? error.message : "Could not log out.");
+                    setLoggingOut(false);
+                  });
+                }}
+              >
+                {loggingOut ? "Logging out…" : "Log out"}
+              </button>
+              {logoutError && <p role="alert" className="px-4 py-2 text-xs text-accent-ink">{logoutError}</p>}
             </div>
           )}
           <button
             type="button"
             onClick={() => setMenuOpen(true)}
+            aria-label="Profile menu"
+            aria-expanded={menuOpen}
             className="flex items-center gap-3 px-3 py-2.5 rounded-[10px] transition-colors hover:bg-card-surface/50 w-full text-left"
           >
             <UserAvatar />

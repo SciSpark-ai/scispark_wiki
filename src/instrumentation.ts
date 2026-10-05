@@ -4,9 +4,9 @@ export async function register() {
   // compiler can discard them before resolving native engine process modules.
   if (process.env.NEXT_RUNTIME === "nodejs") {
     if (process.env.NEXT_PHASE === "phase-production-build") return
-    const { getServerVault } = await import("./lib/server/vault")
+    const { getDefaultServerVault } = await import("./lib/server/vault")
     const { recoverReviewJobs } = await import("./lib/review/coordinator")
-    await recoverReviewJobs(await getServerVault())
+    await recoverReviewJobs(await getDefaultServerVault())
     const { startHeartbeat } = await import("./lib/scheduler/heartbeat")
     startHeartbeat()
   }

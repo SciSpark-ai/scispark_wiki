@@ -1,3 +1,4 @@
+import { clampLimit } from "./types"
 import { XMLParser } from "fast-xml-parser"
 import { PaperSourceError, nonEmpty, normalizeDoi, type PaperAuthor, type PaperRecord } from "./types"
 import { sourceFetch, withSourceDeadline } from "./source-requests"
@@ -9,9 +10,6 @@ import { pubmedOrderedText } from "./pubmed-text"
 // .superpowers/sdd/m3-task-6-report.md for the full drift-guard writeup.
 const ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 const EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-const MIN_LIMIT = 1
-const MAX_LIMIT = 50
-const DEFAULT_LIMIT = 20
 const MAX_FIELDS = 5
 // Repeated metadata stays uniform even when only one element is present.
 // Abstract/title mixed content is handled separately in reading order.
@@ -239,11 +237,6 @@ function mapArticle(entry: PubmedArticleEntry, readable: { title: string; abstra
     source: "pubmed",
     publicationTypes: article?.PublicationTypeList?.PublicationType?.map(textOf).filter((type): type is string => Boolean(type)),
   }
-}
-
-function clampLimit(limit: number | undefined): number {
-  if (limit == null || Number.isNaN(limit)) return DEFAULT_LIMIT
-  return Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, Math.floor(limit)))
 }
 
 function buildEsearchUrl(q: PubmedQuery, apiKey: string | undefined): string {

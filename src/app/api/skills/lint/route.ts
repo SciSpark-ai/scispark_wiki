@@ -3,6 +3,7 @@ import { loadSettings } from "@/lib/llm/settings"
 import { runLintDeterministic, runLintLlm } from "@/lib/lint/run"
 import type { LintFinding } from "@/lib/lint/types"
 import { withLedger } from "@/lib/runs/ledger"
+import { runSkillJob } from "@/lib/server/skill-jobs"
 
 interface LintRouteInput {
   mode: "deterministic" | "llm"
@@ -37,7 +38,7 @@ const deterministicHandler = jsonSkillRoute<LintRouteInput, LintDeterministicRou
  * over the existing vault bundle (lintScreenSkill/lintJudgeSkill), never
  * fetching fresh papers.
  */
-const llmHandler = ndjsonSkillRoute<LintRouteInput>(async (_input, vault, emit) => {
+const llmHandler = ndjsonSkillRoute<LintRouteInput>(async (_input, vault, emit) => runSkillJob(vault, "lint", async progress => {
   const settings = await loadSettings(vault)
   const overrides = getSkillTestOverrides()
 
@@ -45,11 +46,11 @@ const llmHandler = ndjsonSkillRoute<LintRouteInput>(async (_input, vault, emit) 
     const result = await runLintLlm(vault, {
       settings,
       providerOverride: overrides.providerOverride,
-      onProgress: (info) => emit({ type: "progress", index: info.index, total: info.total, pair: info.pair }),
+      onProgress: (info) => progress({ type: "progress", index: info.index, total: info.total, pair: info.pair }),
     })
     return { result, status: "ok", costUsd: result.costUsd, meta: { findingCount: result.findings.length } }
   })
-})
+}, emit))
 
 /**
  * POST /api/skills/lint — body `{mode: "deterministic" | "llm"}`.

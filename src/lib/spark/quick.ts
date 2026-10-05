@@ -1,3 +1,5 @@
+import { tokenize } from "../text"
+import { asStringArray } from "../vault/frontmatter"
 import { z } from "zod"
 import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
@@ -106,25 +108,10 @@ export const quickSparkSkill: SkillDefinition<QuickSparkInput, z.infer<typeof Se
 // unit-testable without a provider.
 // ---------------------------------------------------------------------------
 
-/** Minimum token length counted toward "salient terms" (mirrors ask-context.ts). */
-const MIN_TOKEN_LENGTH = 4
 const MAX_SNIPPET_PAGES = 6
 const SNIPPET_CHARS = 300
 const TITLE_MATCH_WEIGHT = 2
 const TAG_MATCH_WEIGHT = 1
-
-function tokenize(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter((t) => t.length >= MIN_TOKEN_LENGTH),
-  )
-}
-
-function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []
-}
 
 interface SnippetPage {
   id: string

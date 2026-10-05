@@ -41,12 +41,12 @@ export function TypeSections({ sections }: TypeSectionsProps) {
                 {section.type === "idea" && (entry.status || entry.depth) && (
                   <div className="mt-1 flex flex-wrap gap-1.5">
                     {entry.status && (
-                      <span className="rounded-pill bg-card-surface px-2 py-0.5 text-[11px] uppercase tracking-wide text-espresso">
+                      <span className="rounded-badge bg-card-surface px-2 py-0.5 text-[11px] uppercase tracking-wide text-espresso">
                         {entry.status}
                       </span>
                     )}
                     {entry.depth && (
-                      <span className="rounded-pill border border-border-warm bg-light-surface px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-text">
+                      <span className="rounded-badge border border-border-warm bg-light-surface px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-text">
                         {entry.depth}
                       </span>
                     )}

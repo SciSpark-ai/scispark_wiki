@@ -8,7 +8,8 @@ const SETTINGS_PATH = ".scispark/settings.json"
 // lost-update each other's top-level key. Keyed by storage identity.
 const settingsWriteQueue = new WeakMap<VaultStorage, Promise<void>>()
 
-async function readFile(storage: VaultStorage): Promise<Record<string, unknown>> {
+/** Parsed .scispark/settings.json, or {} when missing/unparseable. */
+export async function readSettingsFile(storage: VaultStorage): Promise<Record<string, unknown>> {
   const raw = await storage.read(SETTINGS_PATH)
   if (raw == null) return {}
   try {
@@ -27,7 +28,7 @@ export async function withSettingsWrite(
 ): Promise<void> {
   const previous = settingsWriteQueue.get(storage) ?? Promise.resolve()
   const work = async (): Promise<void> => {
-    const file = await readFile(storage)
+    const file = await readSettingsFile(storage)
     const next = mutate(file)
     await storage.write(SETTINGS_PATH, JSON.stringify(next, null, 2))
   }

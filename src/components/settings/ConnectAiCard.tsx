@@ -265,7 +265,7 @@ export function ConnectAiCard({
       <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
         <h2 className="whitespace-nowrap font-heading text-[18px] text-espresso">Connect your AI</h2>
         <span
-          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-pill text-[12px] font-medium ${
+          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-badge text-[12px] font-medium ${
             connected
               ? "bg-green-50 text-green-700 border border-green-200"
               : "bg-card-surface text-muted-text border border-border-warm/30"

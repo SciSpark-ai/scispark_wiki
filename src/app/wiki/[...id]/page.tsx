@@ -15,10 +15,6 @@ import { PageEditor } from "@/components/wiki/PageEditor"
 import { Backlinks } from "@/components/wiki/Backlinks"
 import DeleteConfirmCard from "@/components/wiki/DeleteConfirmCard"
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
 export default function WikiPageDetail() {
   const params = useParams()
   const router = useRouter()
@@ -75,7 +71,7 @@ export default function WikiPageDetail() {
   const handleSave = async () => {
     if (!storage || !page) return
     try {
-      const updatedFrontmatter = { ...page.frontmatter, updated: today() }
+      const updatedFrontmatter = { ...page.frontmatter, updated: new Date().toISOString().slice(0, 10) }
       const content = serializeDocument(updatedFrontmatter, body)
       await storage.write(page.path, content)
       setStatus("Saved")
@@ -174,21 +170,21 @@ export default function WikiPageDetail() {
         <h1 className="font-heading text-[24px] text-espresso tracking-heading">{displayTitle(String(fm.title ?? ""))}</h1>
 
         <div className="flex flex-wrap items-center gap-2 mt-3 mb-5">
-          <span className="text-[12px] uppercase tracking-wide px-2 py-0.5 rounded-pill bg-card-surface text-espresso">
+          <span className="text-[12px] uppercase tracking-wide px-2 py-0.5 rounded-badge bg-card-surface text-espresso">
             {fm.type}
           </span>
           {fm.type === "idea" && typeof fm.status === "string" && (
-            <span className="text-[12px] uppercase tracking-wide px-2 py-0.5 rounded-pill bg-card-surface text-espresso">
+            <span className="text-[12px] uppercase tracking-wide px-2 py-0.5 rounded-badge bg-card-surface text-espresso">
               {fm.status}
             </span>
           )}
           {fm.type === "idea" && typeof fm.depth === "string" && (
-            <span className="text-[12px] uppercase tracking-wide px-2 py-0.5 rounded-pill bg-light-surface border border-border-warm text-muted-text">
+            <span className="text-[12px] uppercase tracking-wide px-2 py-0.5 rounded-badge bg-light-surface border border-border-warm text-muted-text">
               {fm.depth}
             </span>
           )}
           {fm.tags.map((tag) => (
-            <span key={tag} className="text-[12px] px-2 py-0.5 rounded-pill bg-light-surface border border-border-warm text-muted-text">
+            <span key={tag} className="text-[12px] px-2 py-0.5 rounded-badge bg-light-surface border border-border-warm text-muted-text">
               #{tag}
             </span>
           ))}

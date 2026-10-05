@@ -1,3 +1,4 @@
+import { slugOf } from "../wiki/href"
 import type { Bundle } from "../vault/bundle"
 import { resolveLink } from "../vault/bundle"
 import { parseDocument, serializeDocument } from "../vault/frontmatter"
@@ -315,12 +316,6 @@ export function findIndexDrift(bundle: Bundle, storedIndex: string | null | unde
 }
 
 const ID_KEYED_AUTHOR_SLUG = /^a\d+$/
-
-/** Final path segment of a bundle page id — its wikilink slug (bundle ids
- * never carry the ".md" extension, unlike `WikiPage.path`). */
-function slugOf(id: string): string {
-  return id.split("/").pop() ?? id
-}
 
 /** Normalizes an author's display title for duplicate grouping, per the C6
  * spec: case-fold and collapse periods/whitespace so "Edmund C. Lalor" and

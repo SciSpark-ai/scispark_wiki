@@ -45,7 +45,7 @@ export function preprocessWikilinks(body: string, bundle: Bundle): string {
 
 const INLINE_RE = /`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|\*([^*]+)\*/g
 
-function renderInline(text: string, keyPrefix: string): ReactNode[] {
+function renderInline(text: string, keyPrefix: string, links: boolean): ReactNode[] {
   const nodes: ReactNode[] = []
   let lastIndex = 0
   let i = 0
@@ -60,7 +60,7 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
       )
     } else if (m[2] !== undefined) {
       const href = m[3]
-      if (!/^(?:https?:\/\/|\/(?!\/)|#)/i.test(href)) {
+      if (!links || !/^(?:https?:\/\/|\/(?!\/)|#)/i.test(href)) {
         nodes.push(m[2]); lastIndex = m.index + m[0].length; continue
       }
       nodes.push(
@@ -103,7 +103,8 @@ const HEADING_LINE_RE = /^(#{1,6})\s+(.+)$/
 const LIST_LINE_RE = /^([-*]|\d+\.)\s+(.+)$/
 
 /** Renders `markdown` as React nodes. See module doc comment for scope. */
-export function renderMarkdown(markdown: string): ReactNode {
+export function renderMarkdown(markdown: string, { links = true, preserveLineBreaks = false }: { links?: boolean; preserveLineBreaks?: boolean } = {}): ReactNode {
+  const inline = (text: string, key: string) => renderInline(text, key, links)
   const lines = markdown.split("\n")
   const blocks: ReactNode[] = []
   let i = 0
@@ -124,7 +125,7 @@ export function renderMarkdown(markdown: string): ReactNode {
       const rows: string[][] = []
       while (i < lines.length && lines[i].startsWith("|")) rows.push(cells(lines[i++]))
       const k = key++
-      blocks.push(<div key={`b-${k}`} className="my-4 overflow-x-auto"><table className="min-w-[640px] border-collapse text-left text-xs leading-relaxed text-espresso"><thead><tr>{headings.map((h, j) => <th key={j} className="border-b border-border-warm px-3 py-2 font-medium">{renderInline(h, `th-${k}-${j}`)}</th>)}</tr></thead><tbody>{rows.map((row, j) => <tr key={j}>{row.map((c, n) => <td key={n} className="min-w-[110px] max-w-[280px] border-b border-border-warm px-3 py-3 align-top">{renderInline(c, `td-${k}-${j}-${n}`)}</td>)}</tr>)}</tbody></table></div>)
+      blocks.push(<div key={`b-${k}`} className="my-4 overflow-x-auto"><table className="min-w-[640px] border-collapse text-left text-xs leading-relaxed text-espresso"><thead><tr>{headings.map((h, j) => <th key={j} className="border-b border-border-warm px-3 py-2 font-medium">{inline(h, `th-${k}-${j}`)}</th>)}</tr></thead><tbody>{rows.map((row, j) => <tr key={j}>{row.map((c, n) => <td key={n} className="min-w-[110px] max-w-[280px] border-b border-border-warm px-3 py-3 align-top">{inline(c, `td-${k}-${j}-${n}`)}</td>)}</tr>)}</tbody></table></div>)
       continue
     }
 
@@ -157,7 +158,7 @@ export function renderMarkdown(markdown: string): ReactNode {
       const k = key++
       blocks.push(
         <Heading key={`b-${k}`} level={level}>
-          {renderInline(heading[2], `h-${k}`)}
+          {inline(heading[2], `h-${k}`)}
         </Heading>,
       )
       i++
@@ -170,7 +171,7 @@ export function renderMarkdown(markdown: string): ReactNode {
       const items: string[] = []
       while (i < lines.length) {
         const m2 = LIST_LINE_RE.exec(lines[i])
-        if (!m2) break
+        if (!m2 || /^\d+\./.test(m2[1]) !== ordered) break
         items.push(m2[2])
         i++
       }
@@ -178,12 +179,12 @@ export function renderMarkdown(markdown: string): ReactNode {
       const k = key++
       blocks.push(
         ordered ? (
-          <ol key={`b-${k}`} className={listClass}>
-            {items.map((it, idx) => <li key={idx}>{renderInline(it, `li-${k}-${idx}`)}</li>)}
+          <ol key={`b-${k}`} start={parseInt(firstList[1], 10)} className={listClass}>
+            {items.map((it, idx) => <li key={idx}>{inline(it, `li-${k}-${idx}`)}</li>)}
           </ol>
         ) : (
           <ul key={`b-${k}`} className={listClass}>
-            {items.map((it, idx) => <li key={idx}>{renderInline(it, `li-${k}-${idx}`)}</li>)}
+            {items.map((it, idx) => <li key={idx}>{inline(it, `li-${k}-${idx}`)}</li>)}
           </ul>
         ),
       )
@@ -204,7 +205,7 @@ export function renderMarkdown(markdown: string): ReactNode {
     const k = key++
     blocks.push(
       <p key={`b-${k}`} className="text-[14px] text-espresso tracking-body leading-[1.6] my-2">
-        {renderInline(paraLines.join(" "), `p-${k}`)}
+        {inline(paraLines.join(preserveLineBreaks ? "\n" : " "), `p-${k}`)}
       </p>,
     )
   }

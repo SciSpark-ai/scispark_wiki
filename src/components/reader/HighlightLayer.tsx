@@ -262,7 +262,7 @@ export default function HighlightLayer({ surfaceRoot, surfaceText, highlights, o
         />
       ))}
       {paint.orphanedCount > 0 && (
-        <div className="pointer-events-auto absolute top-2 right-2 rounded-pill border border-border-warm bg-light-surface px-2.5 py-1 text-[11px] text-muted-text shadow-sm">
+        <div className="pointer-events-auto absolute top-2 right-2 rounded-btn border border-border-warm bg-light-surface px-2.5 py-1 text-[11px] text-muted-text shadow-sm">
           {paint.orphanedCount} highlight{paint.orphanedCount === 1 ? "" : "s"} no longer match the text
         </div>
       )}

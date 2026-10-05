@@ -1,3 +1,4 @@
+import { runSkillJob } from "@/lib/server/skill-jobs"
 import { withLedger } from "@/lib/runs/ledger"
 import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
@@ -24,7 +25,7 @@ interface RefreshInput {
  * tracked fields. `setSkillTestOverrides` lets tests inject a MockProvider/fake
  * topWorksFn/countFn/groupers instead of the real network calls.
  */
-export const POST = ndjsonSkillRoute<RefreshInput>(async (input, vault, emit) => {
+export const POST = ndjsonSkillRoute<RefreshInput>(async (input, vault, emit) => runSkillJob(vault, "trending", async (progress) => {
   const settings = await loadSettings(vault)
   const overrides = getSkillTestOverrides()
   return withLedger(vault, { orchestrator: "trending-refresh", trigger: "user" }, async () => {
@@ -36,8 +37,8 @@ export const POST = ndjsonSkillRoute<RefreshInput>(async (input, vault, emit) =>
       fieldGroupFn: overrides.fieldGroupFn ?? nodeTopicFieldGroupFn(),
       settings,
       providerOverride: overrides.providerOverride,
-      onProgress: (field) => emit({ type: "progress", field }),
+      onProgress: (field) => progress({ type: "progress", field }),
     })
     return { result, status: result.surveyError ? "degraded" : "ok", reason: result.surveyError }
   })
-})
+}, emit))

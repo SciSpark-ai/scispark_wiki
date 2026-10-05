@@ -75,7 +75,7 @@ export interface IngestInput {
   storage: VaultStorage
   paper: PaperRecord
   digest?: DigestLike
-  fullText?: { kind: "html" | "abstract"; text: string; snapshotPath?: string }
+  fullText?: { kind: "html" | "full-text" | "abstract"; text: string; snapshotPath?: string }
   projects?: string[]
   highlights?: string[]
   /** YYYY-MM-DD stamped into created/updated/log dates. Defaults to the current date. */
@@ -484,7 +484,7 @@ export const ingestSkill = defineSkill<IngestInput, IngestOutput>({
     const bundle = await loadBundle(storage)
     const paperDraft = buildPaperPage(paper, {
       digest: input.digest,
-      fullText: input.fullText?.kind === "html",
+      fullText: input.fullText?.kind === "html" || input.fullText?.kind === "full-text",
       projects: input.projects,
       today,
       sources,

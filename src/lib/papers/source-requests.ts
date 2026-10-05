@@ -80,16 +80,7 @@ export function sourceFetch(source: PacedSource): typeof fetch {
 export async function withSourceDeadline<T>(
   parent: AbortSignal | undefined, task: (signal: AbortSignal) => Promise<T>, timeoutMs = 20_000,
 ): Promise<T> {
-  const controller = new AbortController()
-  const cancel = () => controller.abort(parent?.reason)
-  if (parent?.aborted) cancel()
-  else parent?.addEventListener("abort", cancel, { once: true })
-  const timer = setTimeout(() => controller.abort(new DOMException("Source timed out", "TimeoutError")), timeoutMs)
-  try {
-    controller.signal.throwIfAborted()
-    return await abortable(task(controller.signal), controller.signal)
-  } finally {
-    clearTimeout(timer)
-    parent?.removeEventListener("abort", cancel)
-  }
+  const signal = AbortSignal.any([...(parent ? [parent] : []), AbortSignal.timeout(timeoutMs)])
+  signal.throwIfAborted()
+  return abortable(task(signal), signal)
 }

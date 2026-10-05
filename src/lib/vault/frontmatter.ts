@@ -60,3 +60,8 @@ export function serializeDocument(frontmatter: Frontmatter, body: string): strin
   const yamlSrc = stringifyYaml(frontmatter, { lineWidth: 0 }).trimEnd()
   return `---\n${yamlSrc}\n---\n\n${body.trimEnd()}\n`
 }
+
+/** The string members of a frontmatter list value; anything else reads as empty. */
+export function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []
+}

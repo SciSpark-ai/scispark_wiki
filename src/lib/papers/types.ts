@@ -137,3 +137,16 @@ export function mergeRecords(a: PaperRecord, b: PaperRecord): PaperRecord {
     isRetracted: a.isRetracted || b.isRetracted || undefined,
   }
 }
+
+export const MIN_LIMIT = 1
+export const MAX_LIMIT = 50
+export const DEFAULT_LIMIT = 20
+
+/** Result-count bound every source adapter applies before building its request URL. */
+export function clampLimit(limit: number | undefined): number {
+  if (limit == null || Number.isNaN(limit)) return DEFAULT_LIMIT
+  return Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, Math.floor(limit)))
+}
+
+/** Per-request ceiling for source adapters (connection + headers + body). */
+export const SOURCE_FETCH_TIMEOUT_MS = 15_000

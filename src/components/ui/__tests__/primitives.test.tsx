@@ -16,7 +16,7 @@ describe("ui primitives", () => {
   })
   it("Card, Chip, PageHeader, EmptyState, LoadingState render", () => {
     expect(renderToStaticMarkup(<Card>x</Card>)).toContain("rounded-card")
-    expect(renderToStaticMarkup(<Chip>tag</Chip>)).toContain("rounded-pill")
+    expect(renderToStaticMarkup(<Chip>tag</Chip>)).toContain("rounded-badge")
     const header = renderToStaticMarkup(<PageHeader title="Papers" description="d" actions={<span>a</span>} />)
     expect(header).toContain("Papers")
     expect(header).toContain("font-heading")

@@ -66,12 +66,18 @@ test("Trending has readable scoped navigation, comparisons and papers on desktop
       await expect(page.getByText("43,172", { exact: true })).toBeVisible()
       await expect(page.getByText(/Compared with/)).toBeVisible()
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      const methodology = page.getByText("How to read these trends", { exact: true })
+      await expect(page.getByText("Growth tracks publication share.", { exact: true })).not.toBeVisible()
+      await methodology.click()
       for (const sentence of ["Growth tracks publication share.", "It does not measure paper-count growth."]) {
+        await expect(page.getByText(sentence, { exact: true })).toBeVisible()
         expect(await page.getByText(sentence, { exact: true }).evaluate((element) => {
           const range = document.createRange(); range.selectNodeContents(element)
           return new Set(Array.from(range.getClientRects()).map((rect) => Math.round(rect.top))).size
         })).toBe(1)
       }
+      await methodology.click()
+      await filters.scrollIntoViewIfNeeded()
       await page.screenshot({ path: testInfo.outputPath(`trending-${viewport.name}.png`) })
       if (viewport.width < 768) {
         await topics.getByRole("button", { name: /Metaheuristic/ }).scrollIntoViewIfNeeded()
@@ -96,7 +102,7 @@ test("Trending has readable scoped navigation, comparisons and papers on desktop
       await page.screenshot({ path: testInfo.outputPath(`trending-detail-${viewport.name}.png`) })
 
       await filters.getByRole("button", { name: "Medicine", exact: true }).click()
-      await expect(topics.getByRole("status")).toContainText("It does not mean this field has no activity.")
+      await expect(topics.getByRole("status")).toContainText("Refresh to load Medicine topics")
       // Sidebar retains its all-fields scope even when the topic list is filtered.
       await expect(page.getByRole("complementary", { name: "Highly cited papers across all fields" })).toContainText(papers[0].title)
       await topics.getByRole("button", { name: "Show all topics", exact: true }).click()

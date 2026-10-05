@@ -6,10 +6,6 @@ import {
   ProjectValidationError,
 } from "./repository"
 
-export function jsonResponse(status: number, body: unknown): Response {
-  return Response.json(body, { status })
-}
-
 export async function parseJsonBody<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
   let body: unknown
   try {
@@ -24,15 +20,15 @@ export async function parseJsonBody<T>(request: Request, schema: z.ZodType<T>): 
 
 export function projectErrorResponse(error: unknown): Response {
   if (error instanceof ProjectValidationError || error instanceof ChangesetInvalidError) {
-    return jsonResponse(400, { error: error.message })
+    return Response.json({ error: error.message }, { status: 400 })
   }
   if (error instanceof ProjectNotFoundError) {
-    return jsonResponse(404, { error: error.message })
+    return Response.json({ error: error.message }, { status: 404 })
   }
   if (error instanceof ProjectConflictError || error instanceof ChangesetConflictError) {
-    return jsonResponse(409, { error: error.message })
+    return Response.json({ error: error.message }, { status: 409 })
   }
-  return jsonResponse(500, { error: error instanceof Error ? error.message : String(error) })
+  return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
 }
 
 export const createProjectSchema = z

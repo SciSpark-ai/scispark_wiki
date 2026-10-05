@@ -16,12 +16,15 @@ import type { AskChatInput, AskChatResult } from "./orchestrator"
  * pulled in: the types are erased at compile time.
  */
 
-export type ChatStage = "selecting" | "answering" | "planning" | "searching" | "ranking"
+export type ChatStage = "reading" | "selecting" | "answering" | "planning" | "searching" | "ranking"
 
-const CHAT_STAGES: readonly string[] = ["selecting", "answering", "planning", "searching", "ranking"]
+export const CHAT_STAGE_LABELS: Record<ChatStage, string> = {
+  reading: "Reading this paper…", selecting: "Reading your knowledge base…", answering: "Thinking…",
+  planning: "Thinking…", searching: "Searching papers…", ranking: "Reading the results…",
+}
 
 function isChatStage(value: unknown): value is ChatStage {
-  return typeof value === "string" && CHAT_STAGES.includes(value)
+  return typeof value === "string" && Object.hasOwn(CHAT_STAGE_LABELS, value)
 }
 
 /**

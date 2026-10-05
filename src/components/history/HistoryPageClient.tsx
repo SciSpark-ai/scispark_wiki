@@ -208,14 +208,14 @@ export function HistoryPageClient() {
                         </span>
                       </button>
                       <div className="flex items-center gap-2">
-                        <span className="rounded-pill bg-card-surface px-2 py-1 text-[11px] uppercase tracking-wide text-muted-text">{change.status}</span>
+                        <span className="rounded-badge bg-card-surface px-2 py-1 text-[11px] uppercase tracking-wide text-muted-text">{change.status}</span>
                         <button type="button" disabled={change.status !== "applied" || undoingId !== null} onClick={() => void undo(change)} className="flex items-center gap-1.5 rounded-pill border border-border-warm px-3 py-1.5 text-[12px] text-espresso disabled:cursor-not-allowed disabled:opacity-40">
                           <RotateCcw size={13} />{undoingId === change.changesetId ? "Undoing…" : "Undo"}
                         </button>
                       </div>
                     </div>
                     <ul className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-muted-text">
-                      {change.files.map((file) => <li key={file.path} className="rounded-pill bg-card-surface px-2 py-1">{file.operation} · {file.path}</li>)}
+                      {change.files.map((file) => <li key={file.path} className="rounded-badge bg-card-surface px-2 py-1">{file.operation} · {file.path}</li>)}
                     </ul>
                     {explanation && <p className="mt-2 text-[12px] text-muted-text">{explanation}</p>}
                     {isOpen && (

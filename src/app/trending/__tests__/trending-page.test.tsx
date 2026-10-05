@@ -8,6 +8,7 @@ import type { PaperRecord } from "@/lib/papers/types"
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
+const observeSkillJobMock = vi.fn()
 const getOpenVaultMock = vi.fn()
 const readUserModelMock = vi.fn()
 const loadTrendingSettingsRemoteMock = vi.fn()
@@ -17,6 +18,9 @@ const anchorsMatchBoardMock = vi.fn()
 const refreshTrendingDashboardMock = vi.fn()
 const openSettingsModalMock = vi.fn()
 
+vi.mock("@/lib/skills/job-client", () => ({
+  observeSkillJob: (...args: unknown[]) => observeSkillJobMock(...args),
+}))
 vi.mock("@/lib/vault/get-vault", () => ({
   getOpenVault: (...args: unknown[]) => getOpenVaultMock(...args),
 }))
@@ -148,6 +152,7 @@ function clickTopicRow(container: HTMLElement, label: string) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  observeSkillJobMock.mockReset().mockResolvedValue(undefined)
   getOpenVaultMock.mockResolvedValue({})
   readUserModelMock.mockResolvedValue({ profile: null, interests: null, feedback: null })
   loadTrendingSettingsRemoteMock.mockResolvedValue(trendingSettings())
@@ -217,15 +222,33 @@ describe("TrendingPage — ready board (SP4 Task 9)", () => {
     cleanup()
   })
 
-  it("filters the cached selection without changing global totals or treating an absent field as inactive", async () => {
+  it("shows a smaller field's own top ten even when All fields contains only the larger field", async () => {
+    const current = board({ topicCoverage: "per-field" })
+    current.anchors.push({ id: "neuroscience", label: "Neuroscience" })
+    current.topics = ["Machine Learning", "Neuroscience"].flatMap(discipline => Array.from({ length: 10 }, (_, i) => ({
+      ...current.topics[0], key: `${discipline}-${i}`, label: `${discipline} topic ${i}`, discipline,
+    })))
+    loadBoardMock.mockResolvedValue(current)
+    const { container, cleanup } = await renderPage()
+    expect(container.textContent).toContain("10 topics in this selection")
+    expect(container.textContent).not.toContain("Neuroscience topic 0")
+    clickByText(container, "Neuroscience")
+    expect(container.textContent).toContain("10 topics in this selection")
+    expect(container.textContent).toContain("Neuroscience topic 0")
+    expect(container.textContent).toContain("Neuroscience topic 9")
+    expect(container.textContent).not.toContain("Machine Learning topic 0")
+    expect(refreshTrendingDashboardMock).not.toHaveBeenCalled()
+    cleanup()
+  })
+
+  it("explains that an older combined-only cache needs refreshing without spending on navigation", async () => {
     const current = board()
     current.anchors.push({ id: "neuroscience", label: "Neuroscience" })
     loadBoardMock.mockResolvedValue(current)
     const { container, cleanup } = await renderPage()
     clickByText(container, "Neuroscience")
     expect(container.textContent).not.toContain("Sparse Attention")
-    expect(container.textContent).toContain("No Neuroscience topics in this ranked selection")
-    expect(container.textContent).toContain("It does not mean this field has no activity.")
+    expect(container.textContent).toContain("Refresh to load Neuroscience topics")
     expect(container.textContent).toContain("128 papers across all selected fields")
     clickByText(container, "Show all topics")
     expect(container.textContent).toContain("Sparse Attention")
@@ -345,6 +368,47 @@ describe("TrendingPage — dataError", () => {
 
     expect(container.textContent).not.toMatch(/couldn’t be measured/i)
 
+    cleanup()
+  })
+})
+
+describe("TrendingPage — reconnecting to background work", () => {
+  it("keeps the cached board while restoring a running refresh and its completion without another POST", async () => {
+    loadBoardMock.mockResolvedValue(board())
+    let finish!: () => void
+    observeSkillJobMock.mockImplementation(async (_key, update) => {
+      update({ status: "running", progress: { field: "Neuroscience" } })
+      await new Promise<void>(resolve => { finish = resolve })
+      update({ status: "completed", result: board({ overview: { ...board().overview, totalRecent: 999 } }) })
+    })
+    const { container, cleanup } = await renderPage()
+    expect(container.textContent).toContain("Sparse Attention")
+    expect(container.textContent).toContain("Gathering trends… (Neuroscience)")
+    expect(container.querySelector("button:disabled")?.textContent).toBe("Refreshing…")
+    await act(async () => { finish() })
+    expect(container.textContent).toContain("999")
+    expect(container.textContent).not.toContain("Refreshing…")
+    expect(refreshTrendingDashboardMock).not.toHaveBeenCalled()
+    cleanup()
+  })
+
+  it("shows a saved failure without automatically spending on another refresh", async () => {
+    observeSkillJobMock.mockImplementation(async (_key, update) => {
+      update({ status: "interrupted", error: "Server restarted", updatedAt: "2026-10-04" })
+    })
+    const { container, cleanup } = await renderPage()
+    expect(container.textContent).toContain("Server restarted")
+    expect(refreshTrendingDashboardMock).not.toHaveBeenCalled()
+    cleanup()
+  })
+
+  it("preserves cached topics if reconnecting fails", async () => {
+    loadBoardMock.mockResolvedValue(board())
+    observeSkillJobMock.mockRejectedValue(new Error("Could not reconnect"))
+    const { container, cleanup } = await renderPage()
+    expect(container.textContent).toContain("Sparse Attention")
+    expect(container.textContent).toContain("Could not reconnect")
+    expect(refreshTrendingDashboardMock).not.toHaveBeenCalled()
     cleanup()
   })
 })

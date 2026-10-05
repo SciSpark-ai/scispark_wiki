@@ -2,6 +2,8 @@ import { NodeFsVaultStorage } from "../src/lib/vault/node-fs-storage"
 import { openVault } from "../src/lib/vault/scaffold"
 import { buildPaperPage, composePage } from "../src/lib/wiki/authoring"
 import { saveSettings } from "../src/lib/llm/settings"
+import { request } from "@playwright/test"
+import { join } from "node:path"
 
 export default async function globalSetup(): Promise<void> {
   const vaultPath = process.env.SCISPARK_E2E_VAULT_PATH
@@ -38,4 +40,13 @@ export default async function globalSetup(): Promise<void> {
     dailyBudgetUsd: 100,
     baseUrls: { openai: `http://127.0.0.1:${llmPort}/v1` },
   })
+
+  // Exercise the same local login as a user; no authentication bypass for E2E.
+  const client = await request.newContext({ baseURL: `http://127.0.0.1:${process.env.SCISPARK_E2E_APP_PORT}` })
+  try {
+    const { profiles } = await (await client.get("/api/local-profiles")).json()
+    const session = await client.post("/api/local-profiles/session", { data: { profileId: profiles[0].id } })
+    if (!session.ok()) throw new Error("Could not open disposable E2E profile")
+    await client.storageState({ path: join(process.env.SCISPARK_E2E_RUN_DIR!, "browser-session.json") })
+  } finally { await client.dispose() }
 }

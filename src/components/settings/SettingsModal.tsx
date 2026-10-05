@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef } from "react"
+import { useMemo, useRef } from "react"
 import { useUIStore } from "@/stores/ui-store"
 import { ConnectAiCard } from "./ConnectAiCard"
 import { CompanionCard } from "./CompanionCard"
@@ -10,6 +10,12 @@ import { TrendingFieldsCard } from "./TrendingFieldsCard"
 import { RecommendationCard } from "./RecommendationCard"
 import { PaperSourcesCard } from "./PaperSourcesCard"
 import { cn } from "@/components/ui/cn"
+import { useModalFocus } from "@/components/ui/useModalFocus"
+
+function settingsReturnFocus() {
+  return [...document.querySelectorAll<HTMLElement>('[aria-label="Profile menu"],[aria-label="Open menu"]')]
+    .find((element) => element.getClientRects().length > 0) ?? null
+}
 
 const SECTIONS = [
   { id: "ai", label: "Connect your AI", body: <ConnectAiCard /> },
@@ -30,19 +36,7 @@ export default function SettingsModal() {
   const dialogRef = useRef<HTMLDivElement>(null)
   const isOpen = section !== null
 
-  useEffect(() => {
-    if (!isOpen) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close()
-    }
-    document.addEventListener("keydown", onKeyDown)
-    return () => document.removeEventListener("keydown", onKeyDown)
-  }, [isOpen, close])
-
-  useEffect(() => {
-    if (!isOpen) return
-    dialogRef.current?.focus()
-  }, [isOpen])
+  useModalFocus(dialogRef, isOpen, close, settingsReturnFocus)
 
   if (section === null) return null
 
@@ -56,6 +50,7 @@ export default function SettingsModal() {
       <div
         ref={dialogRef}
         role="dialog"
+        aria-modal="true"
         aria-label="Settings"
         tabIndex={-1}
         className="flex h-[min(640px,90vh)] w-[min(880px,95vw)] flex-col overflow-hidden rounded-card border border-border-warm bg-page-bg shadow-xl sm:flex-row"

@@ -9,6 +9,9 @@ import { MessageBubble } from "../MessageBubble"
 import { MessageList } from "../MessageList"
 import { Composer } from "../Composer"
 import { SourcesToggle } from "../SourcesToggle"
+import { LEGACY_REVIEW_INTRO, REVIEW_INTRO } from "@/lib/chat/blocks"
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }))
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -77,6 +80,18 @@ describe("CitationChips", () => {
 })
 
 describe("MessageBubble", () => {
+  it("keeps Save available for a paper answer with citation blocks", () => {
+    const message = assistantMessage({ blocks: [{ type: "paper-citations", papers: [] }] })
+    const html = renderToStaticMarkup(<MessageBubble message={message} pageTitleById={{}} onSave={() => {}} saving={false} />)
+    expect(html).toContain("Save to knowledge base")
+  })
+  it("renders old review introductions neutrally without changing saved content", () => {
+    const message = assistantMessage({ content: LEGACY_REVIEW_INTRO, blocks: [{ type: "review", runId: "review_legacy" }] })
+    const html = renderToStaticMarkup(<MessageBubble message={message} pageTitleById={{}} onSave={() => {}} saving={false} />)
+    expect(html).toContain(REVIEW_INTRO)
+    expect(html).not.toContain("No research calls have started")
+    expect(message.content).toBe(LEGACY_REVIEW_INTRO)
+  })
   it("renders CitationChips for an assistant message with non-empty citedPageIds", () => {
     const message = assistantMessage({ citedPageIds: ["wiki/papers/diffusion-model"] })
     const html = renderToStaticMarkup(

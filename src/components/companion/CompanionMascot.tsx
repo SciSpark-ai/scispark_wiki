@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { SPARKY_SELECTION_REQUEST, type SparkySelectionRequest } from "./selection-request";
 import { QuickChat } from "./QuickChat";
 import { SparkyBadge } from "@/components/brand/SparkyBadge";
 import { useCompanionStore } from "@/stores/companion-store";
+import { resolvePaperByKey } from "@/lib/papers/resolve";
+import { paperSlug as slugOfPaper } from "@/lib/wiki/authoring";
 import { getOpenVault } from "@/lib/vault/get-vault";
 import { logEvent } from "@/lib/events/log";
 import { CompanionBubble } from "./CompanionBubble";
@@ -19,6 +23,26 @@ function logCompanionEvent(type: "companion_dismiss" | "companion_action", trigg
 
 /** Persistent companion control; the approved spark stays still when idle. */
 export function CompanionMascot() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const pageScope = `${pathname}?${searchParams.toString()}`;
+  const [selectionRequest, setSelectionRequest] = useState<(SparkySelectionRequest & { pageScope: string; handled?: boolean }) | null>(null);
+  const activeSelection = selectionRequest?.pageScope === pageScope ? selectionRequest : undefined;
+  const readerKey = pathname === "/reader" ? searchParams.get("paperKey") : null;
+  const [readerPaper, setReaderPaper] = useState<{ key: string; slug: string } | null>(null);
+  useEffect(() => {
+    if (!readerKey) return;
+    let alive = true;
+    void getOpenVault().then(vault => resolvePaperByKey(vault, readerKey)).then(paper => {
+      if (alive && paper) setReaderPaper({ key: readerKey, slug: slugOfPaper(paper) });
+    }).catch(() => {});
+    return () => { alive = false };
+  }, [readerKey]);
+  const handleSelection = useCallback((id: string) => {
+    setSelectionRequest(current => current?.id === id ? { ...current, handled: true } : current);
+  }, []);
+  const paperPath = pathname.match(/^\/paper\/([^/]+)\/?$/)?.[1];
+  const paperSlug = paperPath ? decodeURIComponent(paperPath) : activeSelection?.paperSlug ?? (readerPaper?.key === readerKey ? readerPaper?.slug : undefined);
   const current = useCompanionStore((s) => s.current);
   const question = useCompanionStore((s) => s.feedbackQuestions[0]);
   const dismiss = useCompanionStore((s) => s.dismiss);
@@ -27,6 +51,16 @@ export function CompanionMascot() {
   const [chatOpen, setChatOpen] = useState(false);
   const launcher = useRef<HTMLButtonElement>(null);
   const hasCurrent = current !== null;
+
+  useEffect(() => {
+    function receive(event: Event) {
+      const request = (event as CustomEvent<SparkySelectionRequest>).detail;
+      setSelectionRequest({ ...request, pageScope });
+      setChatOpen(true); setBubbleOpen(false);
+    }
+    document.addEventListener(SPARKY_SELECTION_REQUEST, receive);
+    return () => document.removeEventListener(SPARKY_SELECTION_REQUEST, receive);
+  }, [pageScope]);
 
   // A fresh utterance always opens the bubble; dismissing/clearing closes it.
   useEffect(() => {
@@ -68,7 +102,7 @@ export function CompanionMascot() {
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="relative">
-        <QuickChat open={chatOpen} onClose={() => { setChatOpen(false); launcher.current?.focus(); }} />
+        <QuickChat key={paperSlug ?? "global"} paperSlug={paperSlug} selectionRequest={activeSelection?.handled ? undefined : activeSelection} onSelectionHandled={handleSelection} open={chatOpen} onClose={() => { setChatOpen(false); launcher.current?.focus(); }} />
         {!chatOpen && (question ? <FeedbackQuestion key={question.paperKey} question={question} /> : bubbleOpen && current ? (
           <CompanionBubble utterance={current} streaming={streaming} onDismiss={handleDismiss} onAction={handleAction} />
         ) : null)}

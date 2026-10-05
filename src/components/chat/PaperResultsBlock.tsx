@@ -20,8 +20,8 @@ export function PaperResultsBlock({ result, citationsOnly = false }: { result: R
       router.push(`/paper/${encodeURIComponent(paperSlug(paper))}`)
     } catch { setError("Could not open this paper. Please try again.") }
   }
-  if (citationsOnly) return <div aria-label="Cited papers" className="mt-3 flex flex-wrap gap-2">
-    {result.items.map(({ paper }) => <button key={paperKey(paper)} type="button" onClick={() => void open(paper)} className="rounded-pill border border-border-warm px-3 py-1 text-left text-xs text-accent-ink hover:bg-card-surface">{paper.title}</button>)}
+  if (citationsOnly) return <div aria-label="Cited papers" className="mt-3 grid min-w-0 gap-2">
+    {result.items.map(({ paper }) => <button key={paperKey(paper)} type="button" onClick={() => void open(paper)} className="w-full min-w-0 rounded-btn border border-border-warm px-3 py-2 text-left text-xs leading-relaxed break-words text-accent-ink hover:bg-card-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink">{paper.title}</button>)}
     {error && <p role="alert">{error}</p>}
   </div>
   return <section aria-label="Saved paper results" className="mt-4 min-w-0">

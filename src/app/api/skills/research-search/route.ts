@@ -12,7 +12,7 @@ export const POST = ndjsonSkillRoute<ResearchSearchInput>(async (input, vault, e
     input: { sessionId: input.sessionId ?? null, question: input.query, readSourcesOnly: false, mode: "search", sources: input.sources, operationId: input.operationId },
     settings,
     providerOverride: overrides.providerOverride,
-    searchFn: overrides.searchFn ?? nodeResearchSearchFn({ reportErrors: true }),
+    searchFn: overrides.searchFn ?? nodeResearchSearchFn({ reportErrors: true, storage: vault }),
     onProgress: (stage) => emit({ type: "progress", stage }),
   })
   if (turn.message.error) throw new Error(turn.message.error)

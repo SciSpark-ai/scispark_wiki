@@ -325,7 +325,7 @@ export default function ProjectDetailPage() {
           const Icon = tab.icon
           return (
             <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`relative flex items-center gap-2 px-4 py-2.5 text-[14px] ${activeTab === tab.id ? "font-medium text-espresso" : "text-muted-text hover:text-espresso"}`}>
-              <Icon size={15} />{tab.label}<span className="rounded-full bg-card-surface px-1.5 py-0.5 text-[12px]">{tab.count}</span>
+              <Icon size={15} />{tab.label}<span className="rounded-badge bg-card-surface px-1.5 py-0.5 text-[12px]">{tab.count}</span>
               {activeTab === tab.id && <span className="absolute inset-x-0 bottom-0 h-[2px] rounded-full bg-orange" />}
             </button>
           )

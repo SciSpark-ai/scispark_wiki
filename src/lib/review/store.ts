@@ -8,6 +8,7 @@ import { loadSettings, isAiReady } from "../llm/settings"
 import { PRICES } from "../llm/pricing"
 import { readEnabledPaperSources } from "../papers/source-preferences"
 import { deriveTitle, loadSession, saveSession, type ChatMessage } from "../chat/session"
+import { REVIEW_INTRO } from "../chat/blocks"
 
 export const REVIEW_DIR = ".scispark/reviews"
 export const reviewPath = (id: string) => `${REVIEW_DIR}/${ReviewId.parse(id)}/run.json`
@@ -42,7 +43,7 @@ export async function createReview(storage: VaultStorage, raw: unknown) {
     const current = await loadSession(storage, input.sessionId) ?? { id: input.sessionId, title: deriveTitle(input.question), createdAt: run.createdAt, updatedAt: run.createdAt, messages: [] }
     if (!current.messages.some((m) => m.operationId === input.operationId)) current.messages.push({ role: "user", content: input.question, operationId: input.operationId })
     if (!current.messages.some((m) => m.operationId === `${run.id}-brief`)) current.messages.push({ role: "assistant", operationId: `${run.id}-brief`,
-      content: "Here is the review brief. Adjust the scope or context, then start when you're ready. No research calls have started.", blocks: [{ type: "review", runId: run.id }] })
+      content: REVIEW_INTRO, blocks: [{ type: "review", runId: run.id }] })
     current.updatedAt = new Date().toISOString()
     await saveSession(storage, current)
   })
