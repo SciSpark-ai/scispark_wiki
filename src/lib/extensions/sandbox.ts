@@ -15,6 +15,9 @@ import { DigestSchema, ProfileIdSchema, UuidSchema } from "./contracts"
 import { CommandInvocationSchema, CommandResultSchema, type CommandInvocation, type CommandResult, type SandboxReadiness } from "./import-contract"
 import { buildSandboxPolicy, commandEnvironment, quoteCommand, validateCommandScope, type CommandScope } from "./sandbox-policy"
 
+import { connectionBrokerCapability, type ConnectionBroker } from "./network-broker"
+
+const brokers = new WeakMap<CommandContext, ConnectionBroker>()
 const workerPath = join(process.cwd(), "scripts/tool-command-worker.mjs")
 const contexts = new WeakMap<CommandContext, CommandScope>()
 export interface CommandContext extends WorkflowContext { readonly commandScope: CommandScope }
@@ -32,7 +35,7 @@ const inside = (root: string, path: string) => path === root || path.startsWith(
 const canonical = (path: string) => realpath(/* turbopackIgnore: true */ path)
 /** Host-only factory: Task9 supplies exact runtime roots; Task10 prepares the
  * research projection at the returned profile-owned projections/<run-id> path. */
-export async function createCommandContext(ctx: WorkflowContext, input: CommandScopeInput): Promise<CommandContext> {
+export async function createCommandContext(ctx: WorkflowContext, input: CommandScopeInput, broker?: ConnectionBroker): Promise<CommandContext> {
   input = CommandScopeInputSchema.parse(input)
   ProfileIdSchema.parse(ctx.profileId); DigestSchema.parse(ctx.vaultId)
   const id = UuidSchema.parse(input.id), digest = DigestSchema.parse(input.packageDigest)
@@ -78,7 +81,12 @@ export async function createCommandContext(ctx: WorkflowContext, input: CommandS
   Object.freeze(commandScope.runtimeReadRoots); Object.freeze(commandScope.executablePaths)
   if (commandScope.kind === "run") { Object.freeze(commandScope.resourceIds); Object.freeze(commandScope.connectionIds) } else Object.freeze(commandScope.registryDomains)
   Object.freeze(commandScope)
+  if (broker) {
+    if (input.kind !== "run") throw new Error("Setup cannot attach service connections")
+    connectionBrokerCapability(ctx, id, input.connectionIds ?? [], broker)
+  }
   const result = { ...ctx, commandScope }
+  if (broker) brokers.set(result, broker)
   contexts.set(result, commandScope)
   return Object.freeze(result)
 }
@@ -88,7 +96,7 @@ type WorkerResult = Pick<CommandResult, "exitCode" | "stdout" | "stderr" | "term
 /** IPC does not reach the command: its descriptors are only stdin/out/err. */
 function launch(request: WorkerRequest, signal?: AbortSignal, control?: { armedPath: string; action: "cancel" | "disconnect" | "kill-worker" }): Promise<WorkerResult> {
   return new Promise(resolve => {
-    const worker = fork(workerPath, [], { env: request.env, execArgv: [], stdio: ["ignore", "ignore", "ignore", "ipc"] })
+    const worker = fork(/* turbopackIgnore: true */ workerPath, [], { env: request.env, execArgv: [], stdio: ["ignore", "ignore", "ignore", "ipc"] })
     let finished = false, disconnected = false
     let armPoll: ReturnType<typeof setInterval> | undefined
     const complete = (result: WorkerResult) => { if (finished) return; finished = true; clearTimeout(watchdog); clearInterval(armPoll); signal?.removeEventListener("abort", cancel); resolve(result) }
@@ -114,25 +122,25 @@ function launch(request: WorkerRequest, signal?: AbortSignal, control?: { armedP
     if (signal?.aborted) cancel()
   })
 }
-async function requestFor(scope: CommandScope, invocation: ReturnType<typeof CommandInvocationSchema.parse>): Promise<WorkerRequest> {
+async function requestFor(scope: CommandScope, invocation: ReturnType<typeof CommandInvocationSchema.parse>, connection?: ReturnType<typeof connectionBrokerCapability>): Promise<WorkerRequest> {
   const executable = Object.hasOwn(scope.executablePaths, invocation.executableId) ? scope.executablePaths[invocation.executableId] : undefined
   if (!executable) throw new Error("Unapproved executable")
-  if (invocation.connectionIds.length) throw new Error("Authenticated connection broker is not prepared")
+  if (invocation.connectionIds.length && !connection) throw new Error("Authenticated connection broker is not prepared")
   if (invocation.resourceIds.some(id => scope.kind !== "run" || !scope.resourceIds.includes(id))) throw new Error("Unapproved research resource")
   const cwd = await canonical(join(scope.outputRoot, invocation.cwd))
   if (!inside(scope.outputRoot, cwd)) throw new Error("Command cwd escapes output")
-  const env = commandEnvironment(scope)
+  const env = commandEnvironment(scope, connection)
   for (const path of [env.HOME!, env.XDG_CACHE_HOME!, env.XDG_CONFIG_HOME!]) await mkdir(path, { recursive: true, mode: 0o700 })
   // Runtime installs its own proxy env. Override only its shared TMPDIR choice.
   const command = quoteCommand("/usr/bin/env", [`TMPDIR=${scope.tempRoot}`, executable, ...invocation.argv])
-  return { mode: "command", id: invocation.id, command, cwd, env, policy: buildSandboxPolicy(scope), timeoutMs: invocation.timeoutMs, outputBytes: invocation.outputBytes }
+  return { mode: "command", id: invocation.id, command, cwd, env, policy: buildSandboxPolicy(scope, connection), timeoutMs: invocation.timeoutMs, outputBytes: invocation.outputBytes }
 }
 function redact(value: string, scope: CommandScope): string {
   let text = value.replace(/\/(?:Users|home|private|tmp|opt)\/[^\s'"<>]+/g, "[host path]").replace(/(?:Bearer\s+)[A-Za-z0-9._~+\/-]+/gi, "Bearer [redacted]").replace(/\b(sk-[A-Za-z0-9_-]{8,}|(?:api[_-]?key|token|password)\s*[:=]\s*[^\s]+)/gi, "[redacted]")
   for (const root of [scope.packageRoot, scope.outputRoot, scope.tempRoot, ...(scope.kind === "run" && scope.researchRoot ? [scope.researchRoot] : [])].sort((a,b) => b.length-a.length)) text = text.replaceAll(root, "[sandbox]")
   return text
 }
-const SetupJournal = z.object({ id: UuidSchema, profileId: ProfileIdSchema, vaultId: DigestSchema, attempts: z.array(z.object({ id: UuidSchema, hash: DigestSchema, seconds: z.number().positive().max(300), activeSeconds: z.number().nonnegative().max(300).optional(), state: z.enum(["dispatched", "known", "unknown"]) }).strict().refine(row => row.state !== "known" || row.activeSeconds !== undefined, "Known setup attempts require elapsed usage")).max(60) }).strict()
+const SetupJournal = z.object({ id: UuidSchema, profileId: ProfileIdSchema, vaultId: DigestSchema, attempts: z.array(z.object({ id: UuidSchema, hash: DigestSchema, seconds: z.number().positive().max(300), activeSeconds: z.number().nonnegative().max(300).optional(), state: z.enum(["dispatched", "known", "unknown"]), discardedBy: UuidSchema.optional() }).strict().refine(row => row.state !== "known" || row.activeSeconds !== undefined, "Known setup attempts require elapsed usage")).max(60) }).strict()
 /** Accounting only, NOT execution authorization. Exported for focused journal tests.
  * Task9 owns setup lifecycle/ready markers and must not reserve commands twice. */
 export async function withSetupCommandAccounting(ctx: CommandContext, invocation: ReturnType<typeof CommandInvocationSchema.parse>, hash: string, work: () => Promise<CommandResult>) {
@@ -159,6 +167,24 @@ export async function withSetupCommandAccounting(ctx: CommandContext, invocation
     } catch (error) { row.state = "unknown"; row.activeSeconds = elapsed(); await storage.write(path, JSON.stringify(journal)); throw error }
   })
 }
+/** Host-only explicit reconciliation. The lifecycle owner discards its staging;
+ * accounting retains every invocation and pessimistically charges unknown holds.
+ * Repeated operation IDs do not discard a subsequently retried environment. */
+export async function reconcileSetupAfterDiscard(ctx: WorkflowContext, setupId: string, operationId: string, discard: () => Promise<void>): Promise<void> {
+  UuidSchema.parse(setupId); UuidSchema.parse(operationId)
+  const storage = new NodeFsVaultStorage(join(ctx.runtimeRoot, "profiles", ProfileIdSchema.parse(ctx.profileId)))
+  await withVaultExclusive(storage, "command-dispatch", () => withVaultExclusive(storage, "setup-command-" + setupId, async () => {
+    const path = `setup-attempts/${setupId}.json`, receipt = `setup-discards/${setupId}/${operationId}.json`
+    const raw = await storage.read(path)
+    const journal = raw ? SetupJournal.parse(JSON.parse(raw)) : { id: setupId, profileId: ctx.profileId, vaultId: ctx.vaultId, attempts: [] }
+    if (journal.id !== setupId || journal.profileId !== ctx.profileId || journal.vaultId !== ctx.vaultId) throw new Error("Setup journal owner mismatch")
+    if (await storage.read(receipt)) return
+    await discard()
+    for (const row of journal.attempts) if (row.state !== "known") { row.state = "known"; row.activeSeconds = row.seconds; row.discardedBy = operationId }
+    await storage.write(path, JSON.stringify(journal))
+    await storage.write(receipt, JSON.stringify({ setupId, operationId, profileId: ctx.profileId, vaultId: ctx.vaultId }))
+  }))
+}
 /** Task8 is the single reservation owner. Task10 must NOT wrap this in another
  * withWorkflowAttempt. Scope id is the run id, or a separately durable setup id. */
 export async function runIsolatedCommand(ctx: CommandContext, runId: string, input: CommandInvocation, signal: AbortSignal): Promise<CommandResult> {
@@ -181,7 +207,10 @@ async function dispatchCommand(ctx: CommandContext, runId: string, input: Comman
   const childScope = { ...scope, outputRoot: scope.kind === "run" ? join(scope.outputRoot, invocation.id) : scope.outputRoot, tempRoot: join(scope.tempRoot, invocation.id) }
   if (scope.kind === "run") await mkdir(childScope.outputRoot, { recursive: false, mode: 0o700 })
   await mkdir(childScope.tempRoot, { recursive: false, mode: 0o700 })
-  const request = await requestFor(childScope, invocation)
+  if (invocation.connectionIds.some(id => scope.kind !== "run" || !scope.connectionIds.includes(id))) throw new Error("Unapproved connection")
+  const broker = brokers.get(ctx)
+  const connection = invocation.connectionIds.length && broker ? connectionBrokerCapability(ctx, scope.id, invocation.connectionIds, broker) : undefined
+  const request = await requestFor(childScope, invocation, connection)
   const hash = createHash("sha256").update(JSON.stringify(invocation)).digest("hex")
   const execute = async (reconciliationRef: string) => {
     const raw = await launch(request, signal)
@@ -220,9 +249,9 @@ export async function probeSandbox(): Promise<SandboxReadiness> {
   const server = createServer(socket => { targetConnections++; socket.end("sentinel") })
   const unix = createServer(socket => socket.end("sentinel"))
   try {
-    for (const p of ["package", "output", "temp", "research", "other-profile", "host-config", "sibling-run", "sibling-invocation"]) await mkdir(join(base,p))
+    for (const p of ["package", "output", "temp", "research", "other-profile", "host-config", "sibling-run", "sibling-invocation"]) await mkdir(join(/* turbopackIgnore: true */ base,p))
     for (const p of ["research", "other-profile", "host-config", "sibling-run", "sibling-invocation"]) await writeFile(join(base,p,"sentinel"), "fixture-only")
-    for (const p of ["host-config/.npm/_logs", "host-config/.claude/debug"]) await mkdir(join(base,p), { recursive: true })
+    for (const p of ["host-config/.npm/_logs", "host-config/.claude/debug"]) await mkdir(join(/* turbopackIgnore: true */ base,p), { recursive: true })
     const runtimeReadRoots = ["/usr/bin", "/bin", "/usr/lib", "/lib", "/lib64", "/System/Library", "/dev/null", "/dev/urandom", "/etc/ld.so.cache", "/private/var/select", "/usr/share/perl", "/usr/share/perl5"]
     const resolved: string[] = []
     for (const root of runtimeReadRoots) { try { resolved.push(await canonical(root)) } catch { /* OS-specific system root absent */ } }

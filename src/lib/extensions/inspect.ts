@@ -152,6 +152,10 @@ async function closure(ctx: WorkflowContext, stage: StagedPackage, proposal: Ada
     needed.add(path); pending.push(path)
   }
   add(proposal.entrypoint); proposal.resources.forEach(add)
+  if (proposal.setup.environment) {
+    add(proposal.setup.environment.lockFile)
+    if (proposal.setup.environment.runtime === "node22") add("package.json")
+  }
   const entryDirectory = posix.dirname(proposal.entrypoint)
   for (const file of stage.files) {
     // Notices travel with every selected closure, including ancestor licenses.

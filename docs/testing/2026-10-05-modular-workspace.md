@@ -716,3 +716,60 @@ All7 tool-route traces include the worker, runtime/vendor assets and dependencie
 Verified and restored only generated tsconfig/next-env edits. These fix1 gates
 supersede the pre-fix gate totals above. Evidence: local SDD
 `verification/task-8-fix-1/`; full rationale/limits in `task-8-report.md`.
+
+## Task 9 — managed environments and scoped connections (2026-10-05)
+
+Implemented profile-owned durable setup IDs, reviewed immutable dependency locks,
+exact official Node22.22.0 / CPython3.12.12 artifact pins, Task8-isolated extraction,
+Python source build/venv and npm ci --ignore-scripts, content-verified atomic ready
+records, and explicit idempotent staging discard. Discard preserves every command
+attempt and charges an uncertain attempt at its held bound; no usage reset.
+Missing host build prerequisites are actionable needs-setup. Existing user/global
+environments are never adopted or modified.
+
+Run creation now captures the fixed dependency plus declared helper-candidate
+closure, all applicable prepared environment refs, and non-secret connection
+revisions before persistence. Every candidate must be prepared before research
+starts (R23). Recovery validates those exact captured records; current selection
+cannot retarget a run. Task10 supplies instruction/command execution; Task13
+retains the ready records and their stable staging roots.
+
+The Semantic Scholar broker uses the pinned runtime's external HTTP proxy port,
+registered as a live profile/run capability. It validates the complete virtual
+GET request, rejects CONNECT/other destinations/redirects, pins public IPv4 DNS,
+and inserts the owning storage's current source key host-side. Commands receive
+only opaque handles. General localhost/Unix socket access stays disabled and the
+runtime's SOCKS path remains deny-all. Other services, unadapted CLIs and internal
+model calls remain unsupported; model traffic belongs to Task3.
+
+Verification: setup RED reported the absent setup module; focused GREEN covers
+10 setup and8 connection tests, including real disposable HTTP listeners with
+mocked DNS/upstream, plus existing command/recovery regressions. Required full
+gate:2966 passed/20 gated skips; TypeScript and ESLint passed (the existing
+ConnectAiCard warning only). Isolated Next16.3.2 build passed,66 pages; all7 tool
+route traces retain worker/runtime dependencies. The initial build exposed a
+newly reachable worker-path bundling issue; narrow Turbopack runtime-path ignore
+annotations fixed it without changing command behavior. Pre-build config bytes
+were verified/restored. Exact evidence: local SDD task-9 report and verification/
+task-9{,-final} directories.
+
+These are deterministic lifecycle and broker fixtures, not actual managed runtime
+installation or authenticated-service acceptance. macOS remains unsupported under
+Task8's descendant-lifetime gate; Linux actual execution, CPython compilation,
+real npm/pip setup and sandbox-to-broker transport acceptance are UNRUN. Official
+metadata/checksums were read; no runtime archive was installed in a human profile,
+no live source/model request was sent, and no user skills/vault/credentials were
+accessed. No push or merge.
+
+Task9 independent-review fix1: reviewed Python/python3.12/pip setup steps now use
+the populated venv interpreter and PATH while retaining the same setupId and
+Task8 accounting. Captured runs restore the retained toolchain pin, validating
+its digest and host platform/architecture without consulting the current release
+pin. Behavioral RED reproduced both failures; focused GREEN12/12 models venv
+helper resolution and a changed current release with an intact captured version.
+These remain deterministic execution fixtures, not real Python installation.
+Final task-9-fix-1 gate: TypeScript/lint exit0 (same baseline warning),2968 tests
+passed/20 gated skips. Isolated Next build exit0,66 pages, all7 tool traces retain
+worker/runtime assets; generated config bytes checked/restored before the gate.
+Exact report and RED/GREEN/full/build evidence remain in the local SDD directory.
+Mac unsupported/Linux unrun and authenticated-service acceptance limits remain.

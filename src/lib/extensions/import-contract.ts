@@ -18,6 +18,10 @@ export type ImportSource = z.infer<typeof ImportSourceSchema>
 export const SetupRecipeSchema = z.object({
   commands: z.array(z.object({ executable: z.string().min(1).max(200).regex(/^[A-Za-z0-9_./+-]+$/), argv: z.array(z.string().max(4000).refine((s) => !s.includes("\0"))).max(100), network: z.array(z.string().max(253).regex(/^[a-z0-9][a-z0-9.-]*$/)).max(50) }).strict()).max(30),
   runtimes: z.array(Text).max(30), unsupported: z.array(Text).max(100),
+  environment: z.object({ runtime: z.enum(["node22", "python3.12"]), lockFile: PackagePathSchema, lockDigest: DigestSchema }).strict().optional(),
+  connectionAdapter: z.literal("scispark-http-v1").optional(),
+  internalModelCalls: z.boolean().optional(),
+  requiredModels: z.array(z.string().min(1).max(150)).max(20).optional(),
 }).strict()
 export type SetupRecipe = z.infer<typeof SetupRecipeSchema>
 export const DependencySlotSchema = z.object({ id: Text, capability: Text, eligible: z.array(ToolRefSchema).min(1).max(50) }).strict()
@@ -66,3 +70,22 @@ export const CommandResultSchema = z.object({
   reconciliationRef: z.string(), uncertain: z.boolean(),
 }).strict()
 export type CommandResult = z.infer<typeof CommandResultSchema>
+
+export type CompatibilityReport = z.infer<typeof CompatibilitySchema>
+export const EnvironmentRecordSchema = z.object({
+  schemaVersion: z.literal(1), id: UuidSchema, setupId: UuidSchema, profileId: ProfileIdSchema, vaultId: DigestSchema,
+  tool: ToolRefSchema, recipeDigest: DigestSchema, toolchainDigest: DigestSchema, lockDigest: DigestSchema, digest: DigestSchema,
+  state: z.enum(["needs-setup", "installing", "interrupted", "needs-reconciliation", "unsupported", "ready"]),
+  contentDigest: DigestSchema.optional(), pendingDiscard: UuidSchema.optional(),
+  executed: z.boolean(), completedSteps: z.number().int().nonnegative(), reason: z.string().max(1000),
+}).strict()
+export type EnvironmentRecord = z.infer<typeof EnvironmentRecordSchema>
+export const ConnectionBindingSchema = z.object({
+  id: UuidSchema, service: z.literal("semantic-scholar"), adapter: z.literal("scispark-http-v1"),
+  credentialHandle: z.literal("settings:paperSources.s2"),
+}).strict()
+export type ConnectionBinding = z.infer<typeof ConnectionBindingSchema>
+export const ConnectionRecordSchema = ConnectionBindingSchema.extend({
+  profileId: ProfileIdSchema, vaultId: DigestSchema, revision: DigestSchema,
+}).strict()
+export type ConnectionRecord = z.infer<typeof ConnectionRecordSchema>

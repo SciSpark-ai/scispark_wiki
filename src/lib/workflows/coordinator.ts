@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto"
 import { z } from "zod"
-import { UuidSchema, toolKey, type ToolManifest, type ToolRef } from "../extensions/contracts"
-import { getToolManifest } from "../extensions/registry"
+import { UuidSchema, toolKey } from "../extensions/contracts"
 import { readProfileTools } from "../extensions/store"
+import { resolvePreparedEnvironmentRefs, resolveToolPreparationClosure, validateCapturedPreparation, resolveToolConnectionRefs } from "../extensions/setup"
 import { buildProvider } from "../llm/settings"
 import { initializeLocalProfiles } from "../server/local-profiles"
 import { ChangesetRecoveryConflictError } from "../vault/changesets"
@@ -29,28 +29,9 @@ const StartRecordSchema = z.object({ schemaVersion: z.literal(1), request: Start
 const operationPath = (id: string) => `.scispark/tool-runs/start-operations/${UuidSchema.parse(id)}.json`
 const reportBackgroundError = () => { console.error("Workflow coordination failed; durable state was preserved for recovery.") }
 
-function resolveTools(ref: ToolRef): { manifest: ToolManifest; dependencies: ToolRef[] } {
-  const root = getToolManifest(ref)
-  if (!root) throw new Error("Pinned tool version is unavailable")
-  const visited = new Set<string>(), visiting = new Set<string>(), dependencies: ToolRef[] = []
-  const visit = (manifest: ToolManifest) => {
-    const identity = canonicalJson(manifest.ref)
-    if (visiting.has(identity)) throw new Error("Tool dependency cycle")
-    if (visited.has(identity)) return
-    visiting.add(identity)
-    for (const ref of manifest.dependencies) {
-      const dependency = getToolManifest(ref)
-      if (!dependency) throw new Error("Pinned dependency version is unavailable")
-      visit(dependency)
-    }
-    visiting.delete(identity); visited.add(identity)
-    if (identity !== canonicalJson(root.ref)) dependencies.push(manifest.ref)
-  }
-  visit(root)
-  return { manifest: root, dependencies }
-}
-function adapterFor(run: ToolRun) {
-  const resolved = resolveTools(run.tool)
+async function adapterFor(ctx: WorkflowContext, run: ToolRun) {
+  const resolved = await resolveToolPreparationClosure(ctx, run.tool)
+  await validateCapturedPreparation(ctx, run)
   if (canonicalJson(resolved.dependencies) !== canonicalJson(run.dependencies)) throw new Error("Pinned dependency snapshot is unavailable")
   if (!resolved.manifest.engines.includes(run.model.engine)) throw new Error("Captured engine is unavailable for this tool")
   const adapter = getWorkflowAdapter(resolved.manifest.entrypoint) ?? getWorkflowAdapter(resolved.manifest.kind)
@@ -99,12 +80,14 @@ export async function startRun(ctx: WorkflowContext, input: StartRunInput): Prom
     const binding = state?.enabled.find(b => b.enabled && toolKey(b.tool) === toolKey(request.tool))
     const pinned = state?.pins.find(ref => toolKey(ref) === toolKey(request.tool))
     if (!binding || canonicalJson(binding.tool) !== canonicalJson(request.tool) || (pinned && canonicalJson(pinned) !== canonicalJson(request.tool))) throw new Error("Tool is not enabled at the requested version")
-    const { dependencies } = resolveTools(request.tool)
+    const { dependencies } = await resolveToolPreparationClosure(ctx, request.tool)
     const model = await resolveRunModel(ctx, request.tool)
+    const preparedEnvironmentRefs = await resolvePreparedEnvironmentRefs(ctx, [request.tool, ...dependencies], model)
+    const connectionConfigurationRefs = await resolveToolConnectionRefs(ctx, [request.tool, ...dependencies])
     const previousRun = (await listRuns(ctx)).at(-1)
     const now = new Date(Math.max(Date.now(), previousRun ? Date.parse(previousRun.createdAt) + 1 : 0)).toISOString()
     const run = ToolRunSchema.parse({ schemaVersion: 1, id: randomUUID(), profileId: ctx.profileId, vaultId: ctx.vaultId,
-      ...request, dependencies, model, preparedEnvironmentRefs: [], connectionConfigurationRefs: [],
+      ...request, dependencies, model, preparedEnvironmentRefs, connectionConfigurationRefs,
       allowance: { ...DEFAULT_RUN_ALLOWANCE, ...request.allowance, ...(model.engine !== "api" ? { costUsd: null } : {}) },
       usage: { modelCalls: 0, commandCalls: 0, activeSeconds: 0, costUsd: model.engine === "api" ? 0 : null },
       status: "queued", createdAt: now, updatedAt: now, eventCursor: 0, artifacts: [] })
@@ -195,10 +178,10 @@ async function executeOwned(ctx: WorkflowContext, id: string, lease: WorkflowLea
   try {
     const run = (await readRun(ctx, id))!
     const outputsCompleted = await workflowOutputsCompleted(ctx, id)
-    let adapter: ReturnType<typeof adapterFor> | undefined
+    let adapter: Awaited<ReturnType<typeof adapterFor>> | undefined
     try {
       if (!outputsCompleted) {
-        adapter = adapterFor(run)
+        adapter = await adapterFor(ctx, run)
         // Preflight the captured choices only, outside all state/profile locks.
         // API model access remains provider-enforced; no probe spends a model call.
         for (const tier of ["fast", "strong"] as const) {
@@ -300,7 +283,7 @@ export async function recoverWorkflowRuns(contexts: WorkflowContext[]): Promise<
         const journal = await readWorkflowJournal(ctx, run.id)
         if (!["queued", "running", "interrupted"].includes(journal.status)) continue
         if (await hasUncertainWork(ctx, run.id)) { await transitionRun(ctx, run.id, "needs_attention"); continue }
-        try { if (!await workflowOutputsCompleted(ctx, run.id)) adapterFor(run) } catch { await transitionRun(ctx, run.id, "waiting_for_setup"); continue }
+        try { if (!await workflowOutputsCompleted(ctx, run.id)) await adapterFor(ctx, run) } catch { await transitionRun(ctx, run.id, "waiting_for_setup"); continue }
         const lease = await claimRunLease(ctx, run.id)
         if (lease) return { id: run.id, lease }
       }

@@ -1,5 +1,7 @@
 import { z } from "zod"
+import { dirname } from "node:path"
 import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime"
+import type { connectionBrokerCapability } from "./network-broker"
 import { ProfileIdSchema, DigestSchema, UuidSchema } from "./contracts"
 
 // This is a server-only capability. Never parse it from an HTTP/model payload.
@@ -16,7 +18,8 @@ export const CommandScopeSchema = z.discriminatedUnion("kind", [
 ])
 export type CommandScope = z.infer<typeof CommandScopeSchema>
 export function validateCommandScope(value: unknown): CommandScope { return CommandScopeSchema.parse(value) }
-export function buildSandboxPolicy(scope: CommandScope): SandboxRuntimeConfig {
+export function buildSandboxPolicy(scope: CommandScope, connection?: ReturnType<typeof connectionBrokerCapability>): SandboxRuntimeConfig {
+  if (connection && scope.kind !== "run") throw new Error("Setup cannot attach a service broker")
   return {
     filesystem: {
       denyRead: ["/"],
@@ -26,6 +29,7 @@ export function buildSandboxPolicy(scope: CommandScope): SandboxRuntimeConfig {
       denyWrite: ["/tmp/claude", "/private/tmp/claude", scope.packageRoot, ...(scope.kind === "run" && scope.researchRoot ? [scope.researchRoot] : [])],
     },
     network: {
+      ...(connection ? { httpProxyPort: connection.port } : {}),
       allowedDomains: scope.kind === "setup" ? scope.registryDomains : [], deniedDomains: [],
       // Extend the runtime's mandatory loopback/link-local/metadata denials.
       // An allowed registry name must not become a route into private networks.
@@ -35,9 +39,9 @@ export function buildSandboxPolicy(scope: CommandScope): SandboxRuntimeConfig {
     enableWeakerNestedSandbox: false, enableWeakerNetworkIsolation: false,
   }
 }
-export function commandEnvironment(scope: Pick<CommandScope, "tempRoot" | "executablePaths">): NodeJS.ProcessEnv {
-  return { NODE_ENV: "production", HOME: scope.tempRoot + "/home", XDG_CACHE_HOME: scope.tempRoot + "/cache", XDG_CONFIG_HOME: scope.tempRoot + "/config", TMPDIR: scope.tempRoot,
-    PATH: "/usr/bin:/bin", LANG: "C" }
+export function commandEnvironment(scope: Pick<CommandScope, "tempRoot" | "executablePaths">, connection?: ReturnType<typeof connectionBrokerCapability>): NodeJS.ProcessEnv {
+  return { ...(connection ? { SCISPARK_CONNECTION_HANDLES: JSON.stringify(connection.handles) } : {}), NODE_ENV: "production", HOME: scope.tempRoot + "/home", XDG_CACHE_HOME: scope.tempRoot + "/cache", XDG_CONFIG_HOME: scope.tempRoot + "/config", TMPDIR: scope.tempRoot,
+    PATH: [...new Set([...Object.values(scope.executablePaths).map(dirname), "/usr/bin", "/bin"])].join(":"), LANG: "C" }
 }
 /** The runtime's POSIX API requires shell text. This is the ONLY conversion;
  * executable IDs are resolved host-side, and every argv byte remains literal. */
