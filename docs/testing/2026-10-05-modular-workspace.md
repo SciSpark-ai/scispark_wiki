@@ -631,3 +631,88 @@ local SDD `verification/task-7-fix-2/` and `task-7-report.md`.
 tests only. No build, live call, private repository, installed-skill scan, human
 vault, subagent, push or merge was used. The task commit is amended while
 preserving its original parent, subject and Codex attribution.
+
+
+### Task 8 — enforced command isolation and process ownership
+
+Pinned `@anthropic-ai/sandbox-runtime@0.0.78` after verifying the exact published
+archive SHA-512; installed with scripts disabled. A secret-free trusted worker
+owns each invocation, with deny-all host reads, explicit immutable package and
+research projections, invocation output/temp write grants, and explicit denial
+of the runtime's shared `/tmp/claude` exception. Setup scopes have no research
+grant and separate registry-domain rules. Run/setup contexts and invocations are
+strictly validated; package bytes and owning profile/run references are checked.
+Nonempty connection IDs remain unavailable until Task9 supplies its authenticated
+broker. No unrestricted execution fallback exists.
+
+Task8 owns run command reservation/claim/settlement; Task10 must not reserve it
+again. Setup journals retain call counts and cumulative active time across a
+stable setup ID: pending/unknown work holds its requested deadline, while known
+outcomes settle actual elapsed time and release unused time. Limits remain
+60 commands/1800 active-or-held seconds per setup,300 seconds/2 MiB per command.
+Task9 owns environment lifecycle and ready publication. Profile commands serialize;
+setup stages may persist across its invocations, while research-run output/temp
+roots remain invocation-specific.
+
+Actual disposable macOS probes passed filesystem/read-write boundaries, synthetic
+host-home log and sibling-invocation write denials, the shared-temp denial,
+literal argv, setup research exclusion, network denial, output cap and timeout.
+The Unix sentinel listens inside the permitted output root, independently testing
+socket blocking. Descendants are armed before termination checks. Final owned-handle
+probes found surviving children after cancellation, parent IPC loss, detached
+execution and normal parent exit. Therefore macOS readiness is **unsupported**,
+and imported command dispatch is blocked. Early process-group experiments are
+superseded; final code never signals remembered PIDs/groups. Linux uses the pinned
+runtime's PID namespace/direct bwrap parent-death boundary and has a separate CI
+probe job, but **Linux execution/CI is unrun locally**. Windows is unsupported.
+No human vault/config content, real installed skills, provider calls, push or merge
+were used. Platform-harness success is not platform readiness acceptance.
+
+TDD RED: missing isolation module; focused GREEN:13 passed. Additional behavioral
+RED:2 failed/10 passed for retained setup timeouts and absent observed elapsed
+usage. Final regressions cover60 quick300-second-bounded steps, the command cap,
+consumed active-time cap, and an uncertain300-second hold blocking retry.
+Final `verify-task.py task-8`: TypeScript passed3.64s; lint passed16.09s with only
+the baseline ConnectAiCard warning/Babel note; Vitest **2940 passed/20 gated skips**,
+286 passed/8 skipped files,32.14s. The new platform test is gated in this full suite
+and was separately executed against the real worker; it was not counted as an
+isolation pass. Final isolated production build passed (Turbopack6.0s, TypeScript3.0s,
+66 static pages). All7 tool-route traces include worker, runtime/vendor assets and
+runtime dependencies. Build-only tsconfig/next-env changes were compared and restored;
+normal `.next` and running servers were preserved. `git diff --check` passed.
+Full platform evidence, RED/GREEN logs, gate outputs, build/tracing evidence and
+precise downstream paths/interfaces are in local SDD `task-8-report.md` and
+`verification/task-8/`.
+
+### Task8 review fix1 — private registry resolutions (2026-10-05)
+
+Added explicit RFC1918, CGNAT and IPv6 ULA `deniedResolvedAddresses` to both
+run/setup policies, retaining the pinned runtime's mandatory loopback,
+link-local and metadata denials. Exact installed-runtime guard regressions
+failed before the fix (3 failures/14 passes), then passed for private ranges,
+embedded IPv4 forms, mandatory denials and checked public DNS answers.
+Final focused checks:21 passed/1 gated platform skip.
+
+The actual worker's setup proxy returned guard-specific HTTP403 for GET and
+CONNECT to fixed RFC1918/ULA/CGNAT/loopback destinations, with zero sentinel
+target connections. This uses deterministic DNS fixtures for fixed
+`*.scispark.invalid` names inside the trusted probe worker, while preserving
+the real pinned sandbox/proxy/address guard; it does not test external DNS.
+No hosts edits or broad loopback grants were added. Strict invocation/recipe
+schemas and normal dispatch reject probe controls;3 actual worker tests reject
+normal-mode probe controls before runtime initialization. No caller-supplied
+DNS mappings or inherited environment switch exists.
+
+Final actual platform harness:4 passed in14.60s, including the enforced proxy
+regression. macOS readiness remains **unsupported**: descendants survived
+cancellation, IPC loss, detached execution and normal exit; kernel ownership
+is unavailable. Linux execution/CI remains **unrun**, not passed.
+
+After self-review, final `verify-task.py task-8-fix-1`: TypeScript exit0(4.19s),
+lint exit0(18.70s; existing warning/Babel note), Vitest exit0(36.89s wrapper;
+35.52s Vitest), **2948 passed/20 gated skips**,287 passed/7 skipped files.
+Final isolated production build exit0: Turbopack11.2s, TypeScript9.8s,66 pages.
+All7 tool-route traces include the worker, runtime/vendor assets and dependencies.
+Verified and restored only generated tsconfig/next-env edits. These fix1 gates
+supersede the pre-fix gate totals above. Evidence: local SDD
+`verification/task-8-fix-1/`; full rationale/limits in `task-8-report.md`.

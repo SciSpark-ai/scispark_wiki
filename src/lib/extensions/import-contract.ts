@@ -42,3 +42,27 @@ export const ImportPreviewSchema = z.object({ schemaVersion: z.literal(1), id: U
 export type ImportPreview = z.infer<typeof ImportPreviewSchema>
 export const ResolvedPackageGraphSchema = z.object({ status: z.enum(["resolved", "blocked"]), reason: z.enum(["dependency-cycle", "missing-dependency", "version-conflict", "ambiguous-manifest"]).optional(), nodes: z.array(ToolRefSchema).max(10000), edges: z.array(z.object({ parent: ToolRefSchema, dependency: ToolRefSchema }).strict()).max(10000) }).strict()
 export type ResolvedPackageGraph = z.infer<typeof ResolvedPackageGraphSchema>
+
+// Model-facing command requests contain identities, never host filesystem roots.
+const CommandId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,119}$/)
+export const CommandInvocationSchema = z.object({
+  id: UuidSchema, executableId: CommandId,
+  argv: z.array(z.string().max(16000).refine(s => !s.includes("\0"))).max(200),
+  cwd: z.union([z.literal("."), PackagePathSchema]),
+  resourceIds: z.array(CommandId).max(1000), connectionIds: z.array(CommandId).max(100),
+  timeoutMs: z.number().int().min(100).max(300_000).default(300_000),
+  outputBytes: z.number().int().min(1).max(2 * 1024 * 1024).default(2 * 1024 * 1024),
+}).strict()
+export type CommandInvocation = z.input<typeof CommandInvocationSchema>
+export const SandboxReadinessSchema = z.object({
+  status: z.enum(["ready", "needs-setup", "unsupported"]),
+  platform: z.string(), runtimeVersion: z.literal("0.0.78"),
+  evidence: z.array(z.object({ check: z.string(), status: z.enum(["passed", "failed", "unavailable"]), detail: z.string() }).strict()),
+}).strict()
+export type SandboxReadiness = z.infer<typeof SandboxReadinessSchema>
+export const CommandResultSchema = z.object({
+  invocationId: UuidSchema, exitCode: z.number().int().nullable(), stdout: z.string(), stderr: z.string(),
+  termination: z.enum(["exited", "cancelled", "timeout", "output-limit", "parent-disconnect", "unavailable", "worker-lost"]),
+  reconciliationRef: z.string(), uncertain: z.boolean(),
+}).strict()
+export type CommandResult = z.infer<typeof CommandResultSchema>

@@ -70,3 +70,35 @@ jobs:
             test-results/
           retention-days: 7
           if-no-files-found: ignore
+
+  command-isolation:
+    name: Real command isolation (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.3.0'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap socat ripgrep perl
+      - name: Probe real worker and retain unavailable evidence
+        run: npx vitest run src/lib/extensions/__tests__/sandbox-platform.test.ts --reporter=verbose --silent=false
+        env:
+          SCISPARK_SANDBOX_PLATFORM: '1'
+          SCISPARK_SANDBOX_REQUIRE_READY: ${{ runner.os == 'Linux' && '1' || '0' }}
+          SCISPARK_SANDBOX_EVIDENCE: ${{ runner.temp }}/sandbox-evidence.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: sandbox-evidence-${{ matrix.os }}
+          path: ${{ runner.temp }}/sandbox-evidence.json
+          retention-days: 7
