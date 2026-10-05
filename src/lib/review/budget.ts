@@ -80,7 +80,7 @@ export async function reviewComplete<T>(storage: VaultStorage, runId: string, br
       // UTF-8 bytes + overhead is a conservative input ceiling, not chars/4.
       const reserve = reserveTokenCost(Buffer.byteLength(JSON.stringify(request), "utf8") + 4096, request.maxTokens ?? tokens, brief.model.rates!)
       const daily = await meter.spendingToday()
-      const held = await meter.reviewReservationsToday()
+      const held = await meter.reviewReservationsToday() + await meter.workflowReservationsToday()
       if (daily.unpricedCount) throw new Error("Daily spending includes unknown prices. Check billing before starting more paid review work.")
       if (spent + reserve > brief.allowanceUsd || daily.knownUsd + held + reserve >= settings.dailyBudgetUsd) throw new Error("Budget limit reached. Your partial work is saved; approve a larger allowance to continue.")
       const row: Attempt = { id: randomUUID(), runId, step, signature, day: new Date().toISOString().slice(0, 10),

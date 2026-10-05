@@ -73,3 +73,31 @@ export const RunEventSchema = z.discriminatedUnion("type", [
   EventPayloads[2].extend(eventIdentity), EventPayloads[3].extend(eventIdentity), EventPayloads[4].extend(eventIdentity),
 ])
 export type RunEvent = z.infer<typeof RunEventSchema>
+
+/** Counts are consumed before dispatch; only settled active time/cost replace holds. */
+export const AttemptEstimateSchema = RunAllowanceSchema.extend({ accountingOwner: z.enum(["workflow", "native"]) }).strict()
+export type AttemptEstimate = z.infer<typeof AttemptEstimateSchema>
+export const FinancialLedgerRefSchema = z.object({ ledger: z.enum(["review", "local-review", "meter"]), attemptId: UuidSchema }).strict()
+export const AttemptTicketSchema = z.object({
+  id: UuidSchema, runId: UuidSchema, step: StepIntentSchema, estimate: AttemptEstimateSchema, reservedAt: z.iso.datetime(),
+}).strict()
+export type AttemptTicket = z.infer<typeof AttemptTicketSchema>
+export const AttemptResultSchema = RunAllowanceSchema.extend({
+  outcome: z.enum(["known", "unknown"]), financialLedgerRef: FinancialLedgerRefSchema.optional(),
+  usage: z.object({ inputTokens: CountSchema, outputTokens: CountSchema, cachedInputTokens: CountSchema.optional(),
+    reasoningTokens: CountSchema.optional(), reported: z.boolean().optional(),
+    engine: z.enum(["codex", "claude-code"]).optional(), billingMode: z.literal("subscription").optional() }).strict().optional(),
+}).strict()
+export type AttemptResult = z.infer<typeof AttemptResultSchema>
+export const RunUsageSchema = RunAllowanceSchema.extend({
+  heldCostUsd: SecondsSchema, heldActiveSeconds: SecondsSchema, heldAttempts: CountSchema, uncertain: z.boolean(),
+}).strict()
+export type RunUsage = z.infer<typeof RunUsageSchema>
+
+export const UsageJournalSchema = z.object({
+  schemaVersion: z.literal(1), runId: UuidSchema, profileId: ProfileIdSchema, vaultId: DigestSchema,
+  baseUsage: RunAllowanceSchema, allowance: RunAllowanceSchema,
+  extensions: z.array(z.object({ operationId: UuidSchema, delta: RunAllowanceSchema.partial() }).strict()),
+  attempts: z.array(z.object({ ticket: AttemptTicketSchema, state: z.enum(["reserved", "known", "unknown"]), dispatchedAt: z.iso.datetime().optional(), result: AttemptResultSchema.optional() }).strict()),
+}).strict()
+export type UsageJournal = z.infer<typeof UsageJournalSchema>

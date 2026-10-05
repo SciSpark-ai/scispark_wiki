@@ -132,3 +132,67 @@ No build was required by this task. No human vault/profile reads or migrations,
 installed-skill scans, live provider calls, installs, push or merge were performed.
 Registry installation, adapter implementation and user-facing routing retain
 later-task ownership; this is an implementation candidate, not a release claim.
+
+### Task 3 implementation candidate — independent review pending
+
+Added immutable effective fast/strong model snapshots and role mapping, including
+explicit per-tool overrides and captured endpoint/engine choices. Credentials
+remain server-only. Durable attempt journals reserve model/command calls,
+active-time ceilings and known API cost before dispatch; unknown outcomes keep
+holds across resume. Native attempts retain their financial-ledger ownership.
+Daily API and review controls now include workflow-owned holds. Dispatch claims
+prevent replay of the same ticket; active-time limits abort in-flight work.
+Allowance extensions are positive, idempotent operations with journal-first crash
+recovery. Ordinary run writes cannot bypass journal-owned allowances or usage.
+
+| Check | Result |
+| --- | --- |
+| Initial focused RED | Missing model module; 1 failed suite |
+| Journal ownership RED | 1 failed/11 passed; direct allowance edits bypassed the journal |
+| Endpoint RED | 1 failed/12 passed; unsupported provider endpoint was accepted |
+| Repeated uncertainty RED | 1 failed/12 passed; later unknown observation reduced a reported overrun hold |
+| Final focused GREEN | 13 passed; no warnings |
+| Final `npx tsc --noEmit` | Exit 0; 2.87 seconds |
+| Final `npm run lint` | Exit 0; existing ConnectAiCard warning only; 15.99 seconds |
+| Final `npx vitest run` | 2763 passed/19 gated skips; 279 passed/7 skipped files; command 30.59 seconds |
+| `git diff --check` | Exit 0 |
+
+Final full gate: `python3 .superpowers/sdd/2026-10-05-modular-workspace/verify-task.py task-3`.
+Logs/results: `.superpowers/sdd/2026-10-05-modular-workspace/verification/task-3/`.
+Focused logs: `/tmp/task3-{red,regression-red,endpoint-red,uncertain-red,green}.log`.
+Full gates were repeated only for concrete self-review source fixes. New tests
+use memory fixtures and disposable directories, including independent filesystem
+handles, crash-after-journal recovery, root/helper sharing, scoped-price mismatch,
+unknown pricing, CLI null cost, foreign tickets, native billing and abort handling.
+
+Task 4 owns coordinator recovery/status decisions over held dispatched attempts;
+Task 14 owns production native bridge integration. R5 pre-root classification
+persistence belongs to Task 16 and is not charged to root counters by this task.
+The implementer report records concrete hook signatures and their billing/signal
+contracts. No personal vault, installed-skill scan, live LLM call, install, push,
+or merge was performed. This is an implementation candidate, not a release claim.
+
+#### Task 3 independent-review fix 1 — reject terminal dispatch claims
+
+The review found that a saved unclaimed reservation could dispatch after its root
+became completed, failed or cancelled, including a terminal transition between
+reserve and claim. `claimAttemptDispatch` now checks the current run status inside
+the workflow lock before consuming dispatch permission. Existing-ticket readback
+and cumulative usage remain unchanged.
+
+| Check | Result |
+| --- | --- |
+| RED: `npx vitest run src/lib/workflows/__tests__/usage.test.ts` | 4 failed/13 passed: terminal direct claims resolved; reserve-to-claim race executed callback |
+| GREEN: same focused command | 17 passed; no warnings |
+| `npx tsc --noEmit` | Exit 0; 3.57 seconds |
+| `npm run lint` | Exit 0; existing ConnectAiCard warning and generated-cards Babel note only; 16.17 seconds |
+| `npx vitest run` | 2767 passed/19 gated skips; 279 passed/7 skipped files; command 30.40 seconds |
+| `git diff --check` | Exit 0 |
+
+Full command: `python3 .superpowers/sdd/2026-10-05-modular-workspace/verify-task.py task-3-fix-1`.
+Exact full logs/results are in `verification/task-3-fix-1/` under the local SDD
+folder; focused logs are `/tmp/task3-fix1-{red,green}.log`. Reopened filesystem
+fixtures cover all three terminal states, direct claims, wrapper rejection,
+no external callback, no dispatchedAt write, and retained usage. A deterministic
+queued cancellation covers the reservation-to-claim boundary. No changes beyond
+the reported finding. The original Task 3 commit is amended for scoped re-review.

@@ -28,6 +28,10 @@ export async function writeRun(ctx: WorkflowContext, input: ToolRun): Promise<vo
   await withVaultExclusive(ctx.storage, `workflow-${run.id}`, async () => {
     const previous = await readRun(ctx, run.id)
     if (previous) {
+      if (await ctx.storage.read(`${root}/usage.json`) !== null
+        && (JSON.stringify(previous.usage) !== JSON.stringify(run.usage) || JSON.stringify(previous.allowance) !== JSON.stringify(run.allowance))) {
+        throw new Error("Workflow usage and allowance are owned by the attempt journal")
+      }
       if (IMMUTABLE_FIELDS.some((field) => JSON.stringify(previous[field]) !== JSON.stringify(run[field]))) throw new Error("Workflow snapshot is immutable")
       if (run.eventCursor < previous.eventCursor || Object.keys(previous.usage).some((key) => {
         const field = key as keyof ToolRun["usage"]

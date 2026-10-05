@@ -1,3 +1,4 @@
+import { UsageJournalSchema } from "../workflows/contracts"
 import type { VaultStorage } from "../vault/storage"
 import type { LLMSettings } from "./settings"
 import type { LLMUsage, ProviderId } from "./types"
@@ -102,6 +103,32 @@ export class Meter {
     return (await this.spendingToday()).totalUsd
   }
 
+  /** Workflow holds share the daily cap with existing API and review work.
+   * Native attempts are charged by their own ledger, never by this journal. */
+  async workflowReservationsToday(): Promise<number> {
+    const today = this.now().toISOString().slice(0, 10)
+    let held = 0
+    for (const path of await this.storage.list(".scispark/tool-runs/")) {
+      if (!/^\.scispark\/tool-runs\/[a-f0-9-]+\/usage\.json$/.test(path)) continue
+      const raw = await this.storage.read(path)
+      if (raw === null) throw new Error("Workflow usage journal disappeared")
+      const journal = UsageJournalSchema.parse(JSON.parse(raw))
+      if (path !== `.scispark/tool-runs/${journal.runId}/usage.json`) throw new Error("Workflow usage identity mismatch")
+      for (const row of journal.attempts) {
+        if (row.ticket.estimate.accountingOwner !== "workflow" || row.ticket.estimate.costUsd === null) continue
+        const day = row.ticket.reservedAt.slice(0, 10)
+        if (row.state === "known" && day !== today) continue
+        const billed = (await this.recordsForDay(day)).find((record) => record.runId === row.ticket.id)
+        const charge = row.state === "known" ? row.result!.costUsd ?? row.ticket.estimate.costUsd
+          : Math.max(row.ticket.estimate.costUsd, row.result?.costUsd ?? 0)
+        // When settlement follows a successful Meter write, retain only any
+        // still-uncertain remainder rather than double charging the same call.
+        held += Math.max(0, charge - (typeof billed?.costUsd === "number" ? billed.costUsd : 0))
+      }
+    }
+    return held
+  }
+
   async reviewReservationsToday(): Promise<number> {
     const raw = await this.storage.read(".scispark/usage/review-attempts.json")
     if (raw === null) return 0
@@ -136,7 +163,7 @@ export async function checkBudget(
   const spending = await meter.spendingToday()
   const spentUsd = spending.knownUsd
   if (spending.unpricedCount) onWarning?.("Budget coverage is incomplete: unpriced calls are recorded, but only known costs count toward the local limit. Check your provider’s spending limit.")
-  const projected = spentUsd + await meter.reviewReservationsToday() + (estimatedNextCallUsd ?? 0)
+  const projected = spentUsd + await meter.reviewReservationsToday() + await meter.workflowReservationsToday() + (estimatedNextCallUsd ?? 0)
   if (projected >= settings.dailyBudgetUsd) {
     throw new BudgetExceededError(spentUsd, settings.dailyBudgetUsd)
   }
