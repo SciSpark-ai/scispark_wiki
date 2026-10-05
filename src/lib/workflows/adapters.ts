@@ -37,11 +37,16 @@ const instructionAdapter: WorkflowAdapter = {
   },
 }
 export function getWorkflowAdapter(kind: string): WorkflowAdapter | undefined {
-  return adapters.get(kind) ?? (kind === "instructions" ? instructionAdapter : kind === "scispark-opencite-v1.py" ? openCiteAdapter : undefined)
+  return adapters.get(kind) ?? (["trending", "find-papers", "deep-review", "idea-spark"].includes(kind) ? nativeAdapter : kind === "instructions" ? instructionAdapter : kind === "scispark-opencite-v1.py" ? openCiteAdapter : undefined)
 }
 
 // Production lazy registration also works before asynchronous recovery begins.
 const openCiteAdapter: WorkflowAdapter = {
   execute: async (ctx, run, io) => (await import("../extensions/catalog/opencite-adapter")).openCiteWorkflowAdapter.execute(ctx, run, io),
   executeHelper: async (ctx, root, invocation, io) => (await import("../extensions/catalog/opencite-adapter")).openCiteWorkflowAdapter.executeHelper!(ctx, root, invocation, io),
+}
+
+const nativeAdapter: WorkflowAdapter = {
+  execute: async (ctx, run, io) => (await import("../extensions/native-adapters")).nativeWorkflowAdapter.execute(ctx, run, io),
+  executeHelper: async (ctx, root, invocation, io) => (await import("../extensions/native-adapters")).nativeWorkflowAdapter.executeHelper(ctx, root, invocation, io),
 }

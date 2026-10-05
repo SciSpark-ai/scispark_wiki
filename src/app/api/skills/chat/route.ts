@@ -1,3 +1,4 @@
+import { nativeSkillRoute } from "@/lib/server/native-workflow"
 import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { runSkillJob } from "@/lib/server/skill-jobs"
 import { loadSettings } from "@/lib/llm/settings"
@@ -28,7 +29,7 @@ import {
  * it. Only a failure that prevents producing a message at all (malformed body,
  * vault failure) becomes the terminal error line.
  */
-export const POST = ndjsonSkillRoute<unknown>(async (rawInput, vault, emit) => {
+const coreChat = ndjsonSkillRoute<unknown>(async (rawInput, vault, emit) => {
   const input = parseAskChatInput(rawInput)
   return runSkillJob(vault, `chat:${input.sessionId}`, async progress => {
     const settings = await loadSettings(vault)
@@ -46,3 +47,9 @@ export const POST = ndjsonSkillRoute<unknown>(async (rawInput, vault, emit) => {
     return result
   }, emit, { signature: JSON.stringify(input) })
 })
+
+export async function POST(request: Request) {
+  const raw = await request.clone().json().catch(() => null)
+  if (raw?.mode === "search") return nativeSkillRoute("find-papers", "ndjson", value => ({ ...parseAskChatInput(value), transport: "chat" }))(request)
+  return coreChat(request)
+}

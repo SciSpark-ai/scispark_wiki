@@ -1,3 +1,5 @@
+import { currentRunAttemptScope } from "../workflows/attempt-scope"
+import { nativeSettings } from "../workflows/native-attempt"
 import { randomUUID } from "node:crypto"
 import type { VaultStorage } from "../vault/storage"
 import { withVaultExclusive } from "../vault/exclusive"
@@ -52,7 +54,7 @@ async function checkAuthorization(storage: VaultStorage, run: ReviewRun) {
   const enabled = await readEnabledPaperSources(storage)
   if (run.brief.sources.some((s) => !enabled.includes(s))) throw new Error("A selected paper source was disabled. Update the brief before continuing.")
   if (run.brief.projectId) await getProject(storage, run.brief.projectId)
-  const target = reviewModel(await loadSettings(storage))
+  const target = reviewModel(await nativeSettings(storage))
   const approved = run.brief.model
   if (target.provider !== approved.provider || target.model !== approved.model || target.endpoint !== approved.endpoint) throw new Error("Your configured model changed. Approve an updated brief to continue.")
   if (run.brief.usePersonalContext) {
@@ -64,6 +66,7 @@ async function checkAuthorization(storage: VaultStorage, run: ReviewRun) {
 }
 
 async function guardReview(storage: VaultStorage, id: string) {
+  currentRunAttemptScope()?.signal?.throwIfAborted()
   const run = await loadReview(storage, id)
   if (!activeStatuses.has(run.status) || run.ownerPid !== process.pid) throw new Error("Review stopped; completed work is preserved")
   await checkAuthorization(storage, run)

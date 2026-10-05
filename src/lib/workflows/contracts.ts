@@ -82,7 +82,7 @@ export const ToolRunSchema = z.object({
   writeIntent: WriteIntentSchema, allowance: RunAllowanceSchema, usage: RunAllowanceSchema,
   status: RunStatusSchema, createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
   eventCursor: CountSchema, artifacts: z.array(ArtifactSchema),
-  nativeRunRef: z.object({ kind: z.string().min(1), id: UuidSchema }).strict().optional(),
+  nativeRunRef: z.object({ kind: z.string().min(1), id: z.union([UuidSchema, z.string().regex(/^review_[a-f0-9]{32}$/)]) }).strict().optional(),
 }).strict()
 export type ToolRun = z.infer<typeof ToolRunSchema>
 
@@ -128,7 +128,7 @@ export const UsageJournalSchema = z.object({
   schemaVersion: z.literal(1), runId: UuidSchema, profileId: ProfileIdSchema, vaultId: DigestSchema,
   baseUsage: RunAllowanceSchema, allowance: RunAllowanceSchema,
   extensions: z.array(z.object({ operationId: UuidSchema, delta: RunAllowanceSchema.partial() }).strict()),
-  attempts: z.array(z.object({ ticket: AttemptTicketSchema, state: z.enum(["reserved", "known", "unknown"]), dispatchedAt: z.iso.datetime().optional(), result: AttemptResultSchema.optional() }).strict()),
+  attempts: z.array(z.object({ ticket: AttemptTicketSchema, state: z.enum(["reserved", "known", "unknown", "not_dispatched"]), dispatchedAt: z.iso.datetime().optional(), result: AttemptResultSchema.optional() }).strict().refine(row => row.state !== "not_dispatched" || row.ticket.estimate.accountingOwner === "native", "Only proven native preparation can be released")),
 }).strict()
 export type UsageJournal = z.infer<typeof UsageJournalSchema>
 

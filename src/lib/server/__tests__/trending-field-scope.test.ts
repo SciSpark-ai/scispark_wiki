@@ -1,3 +1,5 @@
+import { enableNativeFixture } from "./native-fixture"
+import { setNativeWorkflowContextForTests } from "../native-workflow"
 import { it, expect, afterEach } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { setServerVaultForTests } from "../vault"
@@ -9,11 +11,12 @@ import { readNdjson } from "../ndjson"
 import type { TrendingBoard } from "../../trending/types"
 import { POST } from "../../../app/api/skills/trending/refresh/route"
 
-afterEach(() => { setServerVaultForTests(null); setSkillTestOverrides() })
+afterEach(() => { setServerVaultForTests(null); setNativeWorkflowContextForTests(); setSkillTestOverrides() })
 
 it.each([undefined, ["2805", "2809"]])("threads field and optional subfields %j through every metric and paper query", async (subfieldIds) => {
   const storage = new MemoryVaultStorage()
   setServerVaultForTests(storage)
+  await enableNativeFixture(storage)
   await saveTrendingSettings(storage, {
     fields: [], cadence: "weekly", anchors: [{ id: "28", label: "untrusted label", subfieldIds }], anchorsOverridden: true,
   })

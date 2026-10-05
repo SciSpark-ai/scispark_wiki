@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto"
+import { getToolManifest } from "../extensions/registry"
+import { createHash, randomUUID } from "node:crypto"
 import { z } from "zod"
 import { UuidSchema, toolKey } from "../extensions/contracts"
 import { readProfileTools } from "../extensions/store"
@@ -33,7 +34,7 @@ async function adapterFor(ctx: WorkflowContext, run: ToolRun) {
   const resolved = await resolveToolPreparationClosure(ctx, run.tool)
   await validateCapturedPreparation(ctx, run)
   if (canonicalJson(resolved.dependencies) !== canonicalJson(run.dependencies)) throw new Error("Pinned dependency snapshot is unavailable")
-  if (!resolved.manifest.engines.includes(run.model.engine)) throw new Error("Captured engine is unavailable for this tool")
+  if (!(resolved.manifest.kind === "native" && !resolved.manifest.engines.length) && !resolved.manifest.engines.includes(run.model.engine)) throw new Error("Captured engine is unavailable for this tool")
   const adapter = getWorkflowAdapter(resolved.manifest.entrypoint) ?? getWorkflowAdapter(resolved.manifest.kind)
   if (!adapter) throw new Error("Workflow adapter is not available")
   return adapter
@@ -92,10 +93,12 @@ export async function startRun(ctx: WorkflowContext, input: StartRunInput): Prom
     const connectionConfigurationRefs = await resolveToolConnectionRefs(ctx, [request.tool, ...dependencies])
     const previousRun = (await listRuns(ctx)).at(-1)
     const now = new Date(Math.max(Date.now(), previousRun ? Date.parse(previousRun.createdAt) + 1 : 0)).toISOString()
-    const run = ToolRunSchema.parse({ schemaVersion: 1, id: randomUUID(), profileId: ctx.profileId, vaultId: ctx.vaultId,
+    const id = randomUUID()
+    const run = ToolRunSchema.parse({ schemaVersion: 1, id, profileId: ctx.profileId, vaultId: ctx.vaultId,
       ...request, dependencies, model, preparedEnvironmentRefs, connectionConfigurationRefs,
       allowance: { ...DEFAULT_RUN_ALLOWANCE, ...request.allowance, ...(model.engine !== "api" ? { costUsd: null } : {}) },
       usage: { modelCalls: 0, commandCalls: 0, activeSeconds: 0, costUsd: model.engine === "api" ? 0 : null },
+      ...(getToolManifest(request.tool)?.kind === "native" && request.tool.packageId === "scispark.builtin" ? { nativeRunRef: { kind: request.tool.skillId, id: request.tool.skillId === "deep-review" ? request.input.reviewId ?? `review_${createHash("sha256").update(JSON.stringify({ session: request.input.sessionId ?? request.sessionId ?? request.operationId, operation: request.operationId })).digest("hex").slice(0, 32)}` : id } } : {}),
       status: "queued", createdAt: now, updatedAt: now, eventCursor: 0, artifacts: [] })
     await ctx.storage.write(operationPath(request.operationId), JSON.stringify(StartRecordSchema.parse({ schemaVersion: 1, request, run })))
     await writeRun(ctx, run)
@@ -190,7 +193,7 @@ async function executeOwned(ctx: WorkflowContext, id: string, lease: WorkflowLea
         adapter = await adapterFor(ctx, run)
         // Preflight the captured choices only, outside all state/profile locks.
         // API model access remains provider-enforced; no probe spends a model call.
-        for (const tier of ["fast", "strong"] as const) {
+        for (const tier of (getToolManifest(run.tool)?.kind === "native" && run.tool.packageId === "scispark.builtin" ? [] : ["fast", "strong"]) as ("fast" | "strong")[]) {
           const provider = buildProvider(await settingsForRunModel(ctx, run.model, tier), tier)
           await provider.preflight?.(run.model.tierModels[tier].model)
         }

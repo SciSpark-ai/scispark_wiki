@@ -1,3 +1,4 @@
+import { NATIVE_TOOL_MANIFESTS } from "../../extensions/native-catalog"
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import type { TopWorksFn } from "../../papers/node-search"
@@ -40,6 +41,7 @@ describe("runHeartbeatTick", () => {
 
   it("retries failed lint on the next tick, then gates subsequent ticks after success", async () => {
     const storage = new MemoryVaultStorage()
+    await storage.write(".scispark/tools/state.json", JSON.stringify({ schemaVersion: 1, enabled: NATIVE_TOOL_MANIFESTS.map(tool => ({ tool: tool.ref, enabled: true })), pins: [], overrides: [], migrated: true }))
     const lint = vi.fn().mockRejectedValueOnce(new Error("Temporary read failure"))
       .mockResolvedValue({ findings: [], reviewIds: [] })
     const jobs = { maybeAutoRefreshTrending: makeFakeTrending("fresh"), runConsolidation: makeFakeConsolidation({ status: "skipped" }), runLintDeterministic: lint }
@@ -54,6 +56,7 @@ describe("runHeartbeatTick", () => {
 
   it("runs all three jobs and leaves a trigger:\"schedule\" ledger record for each", async () => {
     const storage = new MemoryVaultStorage()
+    await storage.write(".scispark/tools/state.json", JSON.stringify({ schemaVersion: 1, enabled: NATIVE_TOOL_MANIFESTS.map(tool => ({ tool: tool.ref, enabled: true })), pins: [], overrides: [], migrated: true }))
     await runHeartbeatTick({
       storage,
       topWorksFn: fakeTopWorksFn,
@@ -79,6 +82,7 @@ describe("runHeartbeatTick", () => {
 
   it("a job-2 (consolidation) throw does not prevent job 3 (lint) from running", async () => {
     const storage = new MemoryVaultStorage()
+    await storage.write(".scispark/tools/state.json", JSON.stringify({ schemaVersion: 1, enabled: NATIVE_TOOL_MANIFESTS.map(tool => ({ tool: tool.ref, enabled: true })), pins: [], overrides: [], migrated: true }))
     await runHeartbeatTick({
       storage,
       topWorksFn: fakeTopWorksFn,
@@ -101,6 +105,7 @@ describe("runHeartbeatTick", () => {
 
   it("never throws to the caller even when every job fails", async () => {
     const storage = new MemoryVaultStorage()
+    await storage.write(".scispark/tools/state.json", JSON.stringify({ schemaVersion: 1, enabled: NATIVE_TOOL_MANIFESTS.map(tool => ({ tool: tool.ref, enabled: true })), pins: [], overrides: [], migrated: true }))
     await expect(
       runHeartbeatTick({
         storage,
@@ -121,6 +126,7 @@ describe("runHeartbeatTick", () => {
 
   it("skips the lint job silently (no new ledger record) when the last lint-deterministic record is fresh", async () => {
     const storage = new MemoryVaultStorage()
+    await storage.write(".scispark/tools/state.json", JSON.stringify({ schemaVersion: 1, enabled: NATIVE_TOOL_MANIFESTS.map(tool => ({ tool: tool.ref, enabled: true })), pins: [], overrides: [], migrated: true }))
     const seededAt = new Date("2026-07-19T00:00:00.000Z")
     await recordOrchestratorRun(
       storage,
@@ -149,6 +155,7 @@ describe("runHeartbeatTick", () => {
 
   it("runs the lint job when the last lint-deterministic record is 25h old", async () => {
     const storage = new MemoryVaultStorage()
+    await storage.write(".scispark/tools/state.json", JSON.stringify({ schemaVersion: 1, enabled: NATIVE_TOOL_MANIFESTS.map(tool => ({ tool: tool.ref, enabled: true })), pins: [], overrides: [], migrated: true }))
     const seededAt = new Date("2026-07-19T00:00:00.000Z")
     await recordOrchestratorRun(
       storage,
@@ -177,6 +184,7 @@ describe("runHeartbeatTick", () => {
 
   it("maps a trending \"failed\" status using the failure marker's lastError as reason", async () => {
     const storage = new MemoryVaultStorage()
+    await storage.write(".scispark/tools/state.json", JSON.stringify({ schemaVersion: 1, enabled: NATIVE_TOOL_MANIFESTS.map(tool => ({ tool: tool.ref, enabled: true })), pins: [], overrides: [], migrated: true }))
     await storage.write(
       REFRESH_FAILURE_PATH,
       JSON.stringify({ lastFailureAt: FIXED_NOW.toISOString(), consecutiveFailures: 1, lastError: "arxiv 503" }),
@@ -209,6 +217,7 @@ describe("runHeartbeatTick", () => {
   // not just "not invoke trending again", but a full no-op tick.
   it("in-flight guard: an overlapping call is skipped entirely (no job invoked), not queued, while one tick is already running", async () => {
     const storage = new MemoryVaultStorage()
+    await storage.write(".scispark/tools/state.json", JSON.stringify({ schemaVersion: 1, enabled: NATIVE_TOOL_MANIFESTS.map(tool => ({ tool: tool.ref, enabled: true })), pins: [], overrides: [], migrated: true }))
     let releaseTrending: (() => void) | undefined
     const blocking = new Promise<void>((resolve) => {
       releaseTrending = resolve

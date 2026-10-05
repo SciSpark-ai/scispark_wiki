@@ -3,7 +3,7 @@ import { NodeFsVaultStorage } from "../vault/node-fs-storage"
 import type { VaultStorage } from "../vault/storage"
 
 const SENTINEL_ROOT = resolve("/__vault_root__")
-const PRIVATE_ROOTS = [".scispark/tools", ".scispark/tool-runs", ".scispark/changeset-transactions"].map((path) => resolve(SENTINEL_ROOT, path).toLowerCase())
+const PRIVATE_ROOTS = [".scispark/tools", ".scispark/tool-runs", ".scispark/changeset-transactions", ".scispark/usage/native-attempts.json"].map((path) => resolve(SENTINEL_ROOT, path).toLowerCase())
 /** Match NodeFsVaultStorage resolution, including normalized spellings on case-insensitive hosts. */
 export function isPrivateWorkflowPath(path: string): boolean {
   const absolute = resolve(SENTINEL_ROOT, path).toLowerCase()

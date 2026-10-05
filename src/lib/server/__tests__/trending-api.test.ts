@@ -1,3 +1,5 @@
+import { enableNativeFixture } from "./native-fixture"
+import { setNativeWorkflowContextForTests } from "../native-workflow"
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { setServerVaultForTests } from "../vault"
@@ -62,12 +64,14 @@ function isPriorLookup(q: { fromDate: string; toDate: string; topicId?: string }
 
 describe("trending skill routes", () => {
   let storage: MemoryVaultStorage
-  beforeEach(() => {
+  beforeEach(async () => {
     storage = new MemoryVaultStorage()
     setServerVaultForTests(storage)
+    await enableNativeFixture(storage)
   })
   afterEach(() => {
     setServerVaultForTests(null)
+    setNativeWorkflowContextForTests()
     setSkillTestOverrides()
   })
 

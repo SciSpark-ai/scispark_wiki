@@ -37,6 +37,7 @@ function totals(journal: UsageJournal, subscription: boolean): RunUsage {
   const usage: RunUsage = { ...journal.baseUsage, costUsd: subscription ? null : journal.baseUsage.costUsd,
     heldCostUsd: 0, heldActiveSeconds: 0, heldAttempts: 0, uncertain: false }
   for (const { ticket, state, result } of journal.attempts) {
+    if (state === "not_dispatched") continue
     usage.modelCalls += Math.max(ticket.estimate.modelCalls, result?.modelCalls ?? 0)
     usage.commandCalls += Math.max(ticket.estimate.commandCalls, result?.commandCalls ?? 0)
     if (state === "known") {
@@ -96,7 +97,7 @@ export async function reserveAttempt(ctx: WorkflowContext, runId: string, stepIn
       const meter = new Meter(ctx.storage), settings = await loadSettings(ctx.storage)
       const daily = await meter.spendingToday()
       if (daily.unpricedCount) throw new Error("Daily spending includes unknown pricing")
-      if (daily.knownUsd + await meter.reviewReservationsToday() + await meter.workflowReservationsToday() + (estimate.costUsd ?? 0) >= settings.dailyBudgetUsd) throw new WorkflowLimitError("Daily budget limit reached", runId, step.id)
+      if (daily.knownUsd + await meter.reviewReservationsToday() + await meter.workflowReservationsToday() + await meter.nativeReservationsToday() + (estimate.costUsd ?? 0) >= settings.dailyBudgetUsd) throw new WorkflowLimitError("Daily budget limit reached", runId, step.id)
     }
     const ticket = AttemptTicketSchema.parse({ id: randomUUID(), runId, step, estimate, reservedAt: new Date().toISOString() })
     journal.attempts.push({ ticket, state: "reserved" })
@@ -113,6 +114,7 @@ export async function settleAttempt(ctx: WorkflowContext, input: AttemptTicket, 
     const { run, journal } = await state(ctx, ticket.runId)
     const row = journal.attempts.find((entry) => entry.ticket.id === ticket.id)
     if (!row || JSON.stringify(row.ticket) !== JSON.stringify(ticket)) throw new Error("Unknown or altered attempt ticket")
+    if (row.state === "not_dispatched") throw new Error("A released native preparation cannot be settled as dispatched")
     if (result.outcome === "known" && ticket.estimate.accountingOwner === "native" && !result.financialLedgerRef) throw new Error("Native settlement requires its financial ledger reference")
     if (run.model.engine !== "api" && result.costUsd !== null) throw new Error("Subscription cost must remain null")
     if (row.state === "known") {
@@ -135,6 +137,28 @@ export async function settleAttempt(ctx: WorkflowContext, input: AttemptTicket, 
     row.state = result.outcome === "unknown" || (run.model.engine === "api" && ticket.estimate.modelCalls > 0 && result.costUsd === null)
       || result.modelCalls > ticket.estimate.modelCalls || result.commandCalls > ticket.estimate.commandCalls
       || result.activeSeconds > ticket.estimate.activeSeconds || (result.costUsd ?? 0) > (ticket.estimate.costUsd ?? 0) ? "unknown" : "known"
+    await persist(ctx, run, journal)
+  })
+}
+
+/** R35: retain the immutable ticket, but release units only with durable host
+ * proof that native dispatch never became possible. No caller-supplied refund. */
+export async function releaseUndispatchedNativeAttempt(ctx: WorkflowContext, input: AttemptTicket): Promise<void> {
+  const ticket = AttemptTicketSchema.parse(input)
+  const { NativeFinancialLinkSchema } = await import("./native-attempt")
+  const { leaseOwnerAlive } = await import("./journal")
+  await withVaultExclusive(ctx.storage, `workflow-${ticket.runId}`, async () => {
+    const { run, journal } = await state(ctx, ticket.runId)
+    const lifecycleRaw = await ctx.storage.read(`.scispark/tool-runs/${ticket.runId}/journal.json`)
+    const lifecycle = lifecycleRaw ? WorkflowJournalSchema.parse(JSON.parse(lifecycleRaw)) : null
+    if (lifecycle && (leaseOwnerAlive(lifecycle.lease) || lifecycle.cancelRequested)) throw new Error("Wait for the owning workflow to stop")
+    const row = journal.attempts.find(entry => entry.ticket.id === ticket.id)
+    if (!row || JSON.stringify(row.ticket) !== JSON.stringify(ticket) || ticket.estimate.accountingOwner !== "native") throw new Error("Native preparation ticket mismatch")
+    const raw = await ctx.storage.read(`.scispark/tool-runs/${ticket.runId}/native-financial-links/${ticket.step.id}.json`)
+    const link = raw ? NativeFinancialLinkSchema.parse(JSON.parse(raw)) : null
+    if (!link || link.id !== ticket.step.id || link.dispatchState !== "prepared") throw new Error("Native dispatch is not proven absent")
+    if (row.state === "known") throw new Error("A charged native attempt cannot be released")
+    row.state = "not_dispatched"
     await persist(ctx, run, journal)
   })
 }

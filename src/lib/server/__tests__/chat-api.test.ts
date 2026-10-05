@@ -1,3 +1,5 @@
+import { enableNativeFixture } from "./native-fixture"
+import { setNativeWorkflowContextForTests } from "../native-workflow"
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { setServerVaultForTests } from "../vault"
@@ -41,9 +43,11 @@ describe("POST /api/skills/chat", () => {
       "---\ntype: concept\ntitle: Attention\ncreated: '2026-07-17'\nupdated: '2026-07-17'\ntags: []\nrelated: []\nsources: []\n---\n\n# Attention\n\nAttention weights every token pair.\n",
     )
     setServerVaultForTests(storage)
+    await enableNativeFixture(storage)
   })
   afterEach(() => {
     setServerVaultForTests(null)
+    setNativeWorkflowContextForTests()
     setSkillTestOverrides()
   })
 

@@ -75,6 +75,8 @@ export interface DeepOutcomeDisplay {
  * idea — per the task-8 brief's behavior contract. */
 export function describeDeepOutcome(outcome: DeepSparkOutcome): DeepOutcomeDisplay {
   switch (outcome.kind) {
+    case "proposal":
+      return { kind: "proposal", heading: "Idea proposal ready", message: "Review the proposal, then save it to your wiki." }
     case "idea":
       return { kind: "idea", heading: "Idea generated", message: `Status: ${outcome.status}` }
     case "do_not_generate":

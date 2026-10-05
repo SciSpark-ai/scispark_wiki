@@ -1,4 +1,5 @@
-import { localReviewComplete, localReviewSpend, acknowledgeLocalReview } from "./local-budget"
+import { nativeAttempt, nativeSettings } from "../workflows/native-attempt"
+import { localReviewComplete, localReviewSpend, acknowledgeLocalReview, releaseLocalReviewPreparation } from "./local-budget"
 import { randomUUID, createHash } from "node:crypto"
 import { z } from "zod"
 import type { VaultStorage } from "../vault/storage"
@@ -12,7 +13,7 @@ import type { ReviewBrief } from "./contracts"
 
 const PATH = ".scispark/usage/review-attempts.json"
 const AttemptSchema = z.object({ id: z.string(), runId: z.string(), step: z.string(), signature: z.string(),
-  day: z.string(), state: z.enum(["reserved", "settled", "uncertain", "acknowledged", "overrun"]),
+  day: z.string(), state: z.enum(["reserved", "settled", "uncertain", "acknowledged", "overrun", "released"]),
   reservedUsd: z.number().nonnegative(), costUsd: z.number().nonnegative().nullable(), metered: z.boolean(),
   result: z.unknown().optional(), usage: z.object({ inputTokens: z.number(), outputTokens: z.number(),
     cachedInputTokens: z.number().optional(), reasoningTokens: z.number().optional(), reported: z.boolean().optional() }).optional(),
@@ -45,7 +46,7 @@ export function reviewModel(settings: Awaited<ReturnType<typeof loadSettings>>) 
 export async function reviewComplete<T>(storage: VaultStorage, runId: string, brief: ReviewBrief,
   step: string, prompt: string, schema: z.ZodType<T>, tokens: number,
   guard: () => Promise<void>, providerOverride?: LLMProvider): Promise<T> {
-  const selected = await loadSettings(storage)
+  const selected = await nativeSettings(storage)
   if (usesLocalEngine(selected)) {
     const target = reviewModel(selected)
     if (target.endpoint !== brief.model.endpoint || target.model !== brief.model.model) throw new Error("Your AI engine changed. Update the brief before continuing.")
@@ -53,7 +54,7 @@ export async function reviewComplete<T>(storage: VaultStorage, runId: string, br
   }
   return withVaultExclusive(storage, "ai-spend", async () => {
     await guard()
-    const settings = await loadSettings(storage)
+    const settings = await nativeSettings(storage)
     if (JSON.stringify(reviewModel(settings)) !== JSON.stringify({ provider: brief.model.provider, model: brief.model.model, endpoint: brief.model.endpoint })) throw new Error("Your AI model changed. Approve an updated brief before continuing.")
     if (!brief.model.rates) throw new Error("Enter the selected model's token prices before starting a budgeted review.")
     const rows = await attempts(storage)
@@ -80,20 +81,23 @@ export async function reviewComplete<T>(storage: VaultStorage, runId: string, br
       // UTF-8 bytes + overhead is a conservative input ceiling, not chars/4.
       const reserve = reserveTokenCost(Buffer.byteLength(JSON.stringify(request), "utf8") + 4096, request.maxTokens ?? tokens, brief.model.rates!)
       const daily = await meter.spendingToday()
-      const held = await meter.reviewReservationsToday() + await meter.workflowReservationsToday()
+      const held = await meter.reviewReservationsToday() + await meter.workflowReservationsToday() + await meter.nativeReservationsToday()
       if (daily.unpricedCount) throw new Error("Daily spending includes unknown prices. Check billing before starting more paid review work.")
       if (spent + reserve > brief.allowanceUsd || daily.knownUsd + held + reserve >= settings.dailyBudgetUsd) throw new Error("Budget limit reached. Your partial work is saved; approve a larger allowance to continue.")
       const row: Attempt = { id: randomUUID(), runId, step, signature, day: new Date().toISOString().slice(0, 10),
         state: "reserved", reservedUsd: reserve, costUsd: null, metered: false }
-      rows.push(row); await persist()
       let result: Awaited<ReturnType<LLMProvider["complete"]>>
-      try { result = await provider.complete(model, request) }
-      catch (e) { row.state = "uncertain"; await persist(); throw e }
-      row.costUsd = priceTokenUsage(result.usage, brief.model.rates!)
-      row.state = row.costUsd === null ? "uncertain" : row.costUsd > reserve ? "overrun" : "settled"
-      row.usage = result.usage; row.result = result
-      await persist()
-      await settleMeter(row)
+      try { result = await nativeAttempt(provider, model, request, "review", row.id, async (bounded, _cost, _day, enterDispatch) => {
+        rows.push(row); await persist()
+        await enterDispatch()
+        const value = await provider.complete(model, bounded)
+        row.costUsd = priceTokenUsage(value.usage, brief.model.rates!)
+        row.state = row.costUsd === null ? "uncertain" : row.costUsd > reserve ? "overrun" : "settled"
+        row.usage = value.usage; row.result = value
+        await persist(); await settleMeter(row)
+        return value
+      }, "strong", brief.model.rates!, runId) }
+      catch (e) { if (rows.includes(row) && row.result === undefined) { row.state = "uncertain"; await persist() }; throw e }
       if (row.costUsd === null || row.costUsd > reserve) throw new Error("Provider billing could not be bounded as expected. Review spending before continuing.")
       await guard()
       return result
@@ -112,6 +116,23 @@ export async function acknowledgeReviewCharge(storage: VaultStorage, runId: stri
       row.state = row.result !== undefined && row.costUsd !== null ? "settled" : "acknowledged"; row.costUsd ??= row.reservedUsd
       // Held in the shared daily allowance; not misrepresented as measured provider usage.
     }
+    await storage.write(PATH, JSON.stringify(rows))
+  })
+}
+
+
+/** Host reconciliation only: the caller has verified a durable prepared link
+ * and stopped coordinator ownership before invoking this native ledger writer. */
+export async function releaseReviewPreparation(storage: VaultStorage, runId: string, attemptId: string, ledger: "review" | "local-review") {
+  if (ledger === "local-review") return releaseLocalReviewPreparation(storage, runId, attemptId)
+  await withVaultExclusive(storage, "ai-spend", async () => {
+    const rows = await attempts(storage)
+    const row = rows.find(item => item.id === attemptId && item.runId === runId)
+    if (!row || row.state === "released") return
+    if (!["reserved", "uncertain"].includes(row.state) || row.result !== undefined || row.costUsd !== null) throw new Error("Review preparation conflicts with a charged attempt")
+    row.state = "released"
+    row.costUsd = 0
+    // No Meter row is invented: the retained released row carries zero cost.
     await storage.write(PATH, JSON.stringify(rows))
   })
 }

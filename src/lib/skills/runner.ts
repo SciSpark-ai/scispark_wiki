@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto"
+import { currentRunAttemptScope } from "../workflows/attempt-scope"
+import { nativeAttempt, nativeSettings } from "../workflows/native-attempt"
 import { LLMLocalEngineError } from "../llm/types"
 import type { z } from "zod"
 import type { VaultStorage } from "../vault/storage"
@@ -36,7 +39,7 @@ export async function runSkill<I, O>(opts: {
 }): Promise<SkillRunResult<O>> {
   // The review coordinator uses this same cross-process spending lock. Existing
   // skills cannot race a deep-review reservation against the daily allowance.
-  const settings = opts.settings ?? await loadSettings(opts.storage)
+  const settings = await nativeSettings(opts.storage, opts.settings)
   return withVaultExclusive(opts.storage, usesLocalEngine(settings) ? "local-engine" : "ai-spend", () => runSkillLocked({ ...opts, settings }))
 }
 
@@ -58,8 +61,8 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
     costUsd = addCosts(costUsd, estimateCostUsd(model, usage))
   }
 
-  function resolveProvider(tier: Tier): LLMProvider {
-    return opts.providerOverride?.[tier] ?? buildProvider(settings, tier)
+  async function resolveProvider(tier: Tier): Promise<LLMProvider> {
+    return opts.providerOverride?.[tier] ?? buildProvider(await nativeSettings(opts.storage, settings, tier), tier)
   }
 
   async function meterAndContinue(entry: {
@@ -86,7 +89,19 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
     }
   }
 
-  async function callProvider(provider: LLMProvider, model: string, request: Parameters<LLMProvider["complete"]>[1]) {
+  async function callProvider(provider: LLMProvider, model: string, request: Parameters<LLMProvider["complete"]>[1], tier: Tier) {
+    if (currentRunAttemptScope()) {
+      const attemptId = randomUUID()
+      return nativeAttempt(provider, model, request, "meter", attemptId, async (bounded, price, day, enterDispatch) => {
+        await enterDispatch()
+        const result = await provider.complete(model, bounded)
+        accumulate(model, result.usage)
+        const record = () => new Meter(opts.storage, () => new Date(`${day}T12:00:00.000Z`)).record({ skill: opts.skill.name, runId: attemptId, provider: provider.id, model, usage: result.usage }, price(result))
+        if (provider.billingMode === "subscription") await withVaultExclusive(opts.storage, "ai-spend", record)
+        else await record()
+        return result
+      }, tier)
+    }
     try { return await withRetry(() => provider.complete(model, request), opts.retryOpts) }
     catch (error) {
       if (error instanceof LLMLocalEngineError) {
@@ -105,8 +120,8 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
       // an over-budget run still fails with BudgetExceededError first.
       const model = resolveTier(settings, tier).model
       if (!usesLocalEngine(settings)) await checkBudget(meter, settings, estimateNextCallUsd(model, req) ?? 0, (message) => { if (!logs.includes(message)) logs.push(message) })
-      const provider = resolveProvider(tier)
-      const result = await callProvider(provider, model, req)
+      const provider = await resolveProvider(tier)
+      const result = await callProvider(provider, model, req, tier)
       // Meter/price on the REQUESTED model (`model`), not the provider-echoed
       // `result.model`: pricing.ts's PRICES table is keyed by requested ids, but
       // providers commonly echo back dated/versioned snapshot ids (e.g. OpenAI's
@@ -114,7 +129,7 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
       // any PRICES key — an unmatched model silently prices as null/$0 and defeats
       // the daily budget check. Matches ctx.llmStructured below. `result.model` is
       // left untouched in the returned LLMResult for display purposes.
-      await meterAndContinue({ provider: provider.id, model, usage: result.usage })
+      if (!currentRunAttemptScope()) await meterAndContinue({ provider: provider.id, model, usage: result.usage })
       return result
     },
     async llmStructured<T>(
@@ -128,7 +143,7 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
       // a MissingKeyError from provider construction.
       const model = resolveTier(settings, tier).model
       if (!usesLocalEngine(settings)) await checkBudget(meter, settings, estimateNextCallUsd(model, req) ?? 0, (message) => { if (!logs.includes(message)) logs.push(message) })
-      const provider = resolveProvider(tier)
+      const provider = await resolveProvider(tier)
       // NOTE: the projection above covers the FIRST attempt only — it is checked
       // once here, not inside completeStructured's internal validation-retry loop.
       // If that first attempt returns schema-invalid JSON, completeStructured makes
@@ -146,13 +161,13 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
         id: provider.id,
         billingMode: provider.billingMode,
         jsonSchemaTarget: provider.jsonSchemaTarget,
-        complete: (m, r) => callProvider(provider, m, r),
+        complete: (m, r) => callProvider(provider, m, r, tier),
       }
       try {
         const { value, usage } = await completeStructured(retryingProvider, model, req, schema, {
           ...structuredOpts, onText: opts.onText,
         })
-        await meterAndContinue({ provider: provider.id, model, usage })
+        if (!currentRunAttemptScope()) await meterAndContinue({ provider: provider.id, model, usage })
         return value
       } catch (e) {
         // A structured-output call that FAILS validation still called the model
@@ -160,7 +175,7 @@ async function runSkillLocked<I, O>(opts: Parameters<typeof runSkill<I, O>>[0]):
         // the error propagates so failures are never silently billed — the run
         // still rejects (the skill sees the error), but the cost lands in the
         // usage log / budget just like a successful call's would.
-        if (e instanceof StructuredOutputError && (e.usage.inputTokens > 0 || e.usage.outputTokens > 0)) {
+        if (!currentRunAttemptScope() && e instanceof StructuredOutputError && (e.usage.inputTokens > 0 || e.usage.outputTokens > 0)) {
           await meterAndContinue({ provider: provider.id, model, usage: e.usage })
         }
         throw e

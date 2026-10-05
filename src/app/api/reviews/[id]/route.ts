@@ -1,3 +1,4 @@
+import { legacyReviewAction, nativeContext } from "@/lib/server/native-workflow"
 import { getServerVault } from "@/lib/server/vault"
 import { actOnReview, reviewSnapshot } from "@/lib/review/coordinator"
 import { getSkillTestOverrides } from "@/lib/server/skill-route"
@@ -12,8 +13,13 @@ export async function GET(_request: Request, context: Context) {
 export async function POST(request: Request, context: Context) {
   try {
     if (Number(request.headers.get("content-length")) > 500_000) return Response.json({ error: "Review edit is too large" }, { status: 413 })
+    const raw = await request.json()
+    if (["approve", "resume", "revise", "cancel"].includes(raw?.action)) {
+      const result = await legacyReviewAction(await nativeContext(), ReviewId.parse((await context.params).id), raw)
+      return Response.json({ result }, { headers: { "cache-control": "no-store" } })
+    }
     const overrides = getSkillTestOverrides()
-    const result = await actOnReview(await getServerVault(), ReviewId.parse((await context.params).id), await request.json(),
+    const result = await actOnReview(await getServerVault(), ReviewId.parse((await context.params).id), raw,
       { provider: overrides.providerOverride?.strong, search: overrides.searchFn, fetch: overrides.fetchFn })
     return Response.json({ result }, { headers: { "cache-control": "no-store" } })
   } catch (e) { return Response.json({ error: e instanceof Error ? e.message : "Could not update review" }, { status: 409 }) }

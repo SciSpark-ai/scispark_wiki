@@ -236,18 +236,33 @@ export function SparkPanel({ clusterPageIds, onIdeaSaved }: SparkPanelProps) {
 
       {deepState.status === "error" && <LlmErrorMessage message={deepState.message} />}
 
-      {deepState.status === "done" && <DeepOutcomeCard outcome={deepState.outcome} costUsd={deepState.costUsd} />}
+      {deepState.status === "done" && <DeepOutcomeCard outcome={deepState.outcome} costUsd={deepState.costUsd} onSaved={onIdeaSaved} />}
     </div>
   )
 }
 
-function DeepOutcomeCard({ outcome, costUsd }: { outcome: DeepSparkOutcome; costUsd: number | null }) {
+export function DeepOutcomeCard({ outcome, costUsd, onSaved }: { outcome: DeepSparkOutcome; costUsd: number | null; onSaved?: () => void }) {
   const display = describeDeepOutcome(outcome)
+  const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const saveOperation = useRef<string | null>(null)
+  async function saveProposal() {
+    if (outcome.kind !== "proposal") return
+    setSaving(true); setError(null)
+    saveOperation.current ??= crypto.randomUUID()
+    try {
+      const response = await fetch(`/api/tools/runs/${outcome.workflowId}/save`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ artifactIds: [outcome.artifactId], operationId: saveOperation.current }) })
+      if (!response.ok) throw new Error("Could not save this proposal. Your saved output is still available.")
+      setSaved(true); onSaved?.()
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not save proposal") }
+    finally { setSaving(false) }
+  }
   return (
     <div className="mt-4 border border-border-warm rounded-card px-4 py-3 bg-light-surface">
       <div className="text-[13px] text-espresso font-medium">{display.heading}</div>
       <div className="mt-1 text-[13px]/[18px] text-espresso">{display.message}</div>
-      {outcome.kind === "idea" && (
+      {(outcome.kind === "idea" || (outcome.kind === "proposal" && saved)) && (
         <Link
           href={wikiHref(outcome.ideaPageId)}
           className="mt-2 inline-block text-[13px] text-accent-ink hover:text-accent-ink-hover font-medium"
@@ -255,6 +270,13 @@ function DeepOutcomeCard({ outcome, costUsd }: { outcome: DeepSparkOutcome; cost
           View idea page →
         </Link>
       )}
+      {outcome.kind === "proposal" && !saved && (
+        <div className="mt-2 flex gap-3 text-[13px] text-accent-ink">
+          <a href={`/api/tools/runs/${outcome.workflowId}/artifacts/${outcome.artifactId}`}>View proposal</a>
+          <button disabled={saving} onClick={saveProposal}>{saving ? "Saving…" : "Save to wiki"}</button>
+        </div>
+      )}
+      {error && <p role="alert" className="mt-2 text-[13px] text-espresso">{error}</p>}
       <div className="mt-2 text-[12px] text-muted-text tracking-body">{formatCost(costUsd)}</div>
     </div>
   )

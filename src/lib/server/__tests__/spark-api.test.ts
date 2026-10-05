@@ -1,3 +1,9 @@
+import { nativeContext } from "../native-workflow"
+import { saveRunToWiki } from "../../workflows/wiki-save"
+import { readArtifact } from "../../workflows/artifacts"
+import { randomUUID } from "node:crypto"
+import { enableNativeFixture } from "./native-fixture"
+import { setNativeWorkflowContextForTests } from "../native-workflow"
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { createVault } from "../../vault/scaffold"
@@ -105,9 +111,11 @@ describe("spark quick/seed/deep/estimate skill routes", () => {
     storage = new MemoryVaultStorage()
     await createVault(storage, { purpose: "Track my ML research reading.", today: "2026-07-14" })
     setServerVaultForTests(storage)
+    await enableNativeFixture(storage)
   })
   afterEach(() => {
     setServerVaultForTests(null)
+    setNativeWorkflowContextForTests()
     setSkillTestOverrides()
   })
 
@@ -129,7 +137,7 @@ describe("spark quick/seed/deep/estimate skill routes", () => {
       expect(provider.calls).toHaveLength(1)
     })
 
-    it("a skill run failure (no key, no override) returns a 500 error", async () => {
+    it("a skill run failure (no key, no override) returns actionable setup status", async () => {
       setSkillTestOverrides({})
 
       const res = await quickRoute.POST(
@@ -138,9 +146,9 @@ describe("spark quick/seed/deep/estimate skill routes", () => {
           body: JSON.stringify({ direction: "efficient long-context attention" }),
         }),
       )
-      expect(res.status).toBe(500)
+      expect(res.status).toBe(409)
       const body = (await res.json()) as { error: string }
-      expect(body.error).toMatch(/missing api key/i)
+      expect(body.error).toMatch(/Connect the captured AI model in Settings/i)
     })
   })
 
@@ -167,7 +175,7 @@ describe("spark quick/seed/deep/estimate skill routes", () => {
   })
 
   describe("POST /api/skills/spark/deep", () => {
-    it("streams grounding->bottleneck->ideation->scoop-check->audit and the result parses as DeepSparkResult with an idea page written", async () => {
+    it("streams grounding->bottleneck->ideation->scoop-check->audit and the result parses as DeepSparkResult with a saved proposal and explicit undoable wiki save", async () => {
       const provider = new MockProvider(deepLegResponses().map((o) => structured(o)))
       setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: NO_SEARCH })
 
@@ -191,10 +199,16 @@ describe("spark quick/seed/deep/estimate skill routes", () => {
         { type: "progress", phase: "audit" },
       ])
 
-      expect(result.outcome.kind).toBe("idea")
-      if (result.outcome.kind !== "idea") throw new Error("expected idea outcome")
+      expect(result.outcome.kind).toBe("proposal")
+      if (result.outcome.kind !== "proposal") throw new Error("expected proposal outcome")
       expect(result.costUsd).toBeGreaterThan(0)
 
+      expect((await loadBundle(storage)).pages.get(result.outcome.ideaPageId)).toBeUndefined()
+      const ctx = await nativeContext()
+      expect(result.outcome.workflowId).toBe(res.headers.get("x-scispark-workflow-id"))
+      const artifact = await readArtifact(ctx, result.outcome.workflowId, result.outcome.artifactId)
+      expect(new TextDecoder().decode(artifact.bytes)).toContain(CANDIDATE.falsification.killCriterion)
+      await saveRunToWiki(ctx, result.outcome.workflowId, [result.outcome.artifactId], randomUUID())
       const bundle = await loadBundle(storage)
       const page = bundle.pages.get(result.outcome.ideaPageId)
       expect(page).toBeDefined()
@@ -212,7 +226,7 @@ describe("spark quick/seed/deep/estimate skill routes", () => {
           body: JSON.stringify({ direction: "efficient cross-document coreference" }),
         }),
       )
-      await expect(readNdjson(res, () => undefined)).rejects.toThrow(/missing api key/i)
+      await expect(readNdjson(res, () => undefined)).rejects.toThrow(/Connect the captured AI model in Settings/i)
     })
   })
 

@@ -1,3 +1,5 @@
+import { enableNativeFixture } from "./native-fixture"
+import { setNativeWorkflowContextForTests } from "../native-workflow"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { DEFAULT_SETTINGS } from "../../llm/settings"
 import { MockProvider } from "../../llm/mock-provider"
@@ -43,10 +45,12 @@ describe("POST /api/skills/research-search", () => {
     await storage.write("interests.md", "# Interests\n\n- attention decoding\n")
     await storage.write(".scispark/settings.json", JSON.stringify({ ...DEFAULT_SETTINGS, keys: { anthropic: "sk-test" } }))
     setServerVaultForTests(storage)
+    await enableNativeFixture(storage)
   })
 
   afterEach(() => {
     setServerVaultForTests(null)
+    setNativeWorkflowContextForTests()
     setSkillTestOverrides()
   })
 

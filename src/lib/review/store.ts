@@ -1,10 +1,13 @@
+import { currentRunAttemptScope } from "../workflows/attempt-scope"
+import { readRun } from "../workflows/store"
+import { nativeSettings } from "../workflows/native-attempt"
 import { z } from "zod"
 import type { VaultStorage } from "../vault/storage"
 import { withVaultExclusive } from "../vault/exclusive"
 import { BriefInputSchema, ReviewId, ReviewRunSchema, type ReviewRun } from "./contracts"
 import { hashReviewData, reviewModel } from "./budget"
 import { reviewContext, reviewConversationContext } from "./context"
-import { loadSettings, isAiReady } from "../llm/settings"
+import { isAiReady } from "../llm/settings"
 import { PRICES } from "../llm/pricing"
 import { readEnabledPaperSources } from "../papers/source-preferences"
 import { deriveTitle, loadSession, saveSession, type ChatMessage } from "../chat/session"
@@ -58,18 +61,21 @@ export async function createReview(storage: VaultStorage, raw: unknown) {
     const enabled = await readEnabledPaperSources(storage)
     if (input.sources.some((s) => !enabled.includes(s))) throw new Error("One of the requested paper sources is disabled")
     const session = await loadSession(storage, input.sessionId)
-    const settings = await loadSettings(storage)
+    const settings = await nativeSettings(storage)
     const target = reviewModel(settings)
     if (!await isAiReady(settings)) throw new Error("Connect your AI in Settings before preparing a review")
     // Do not apply direct-provider tariffs to a third-party endpoint.
     const direct = !settings.baseUrls?.[target.provider as "openai" | "openrouter"] && target.provider !== "openrouter"
     const price = direct && !("engine" in target) ? PRICES[target.model] : null
+    const attemptScope = currentRunAttemptScope()
+    const captured = attemptScope ? await readRun(attemptScope.ctx, attemptScope.runId) : null
+    const rates = captured?.model.scopedPrices?.strong?.rates ?? (price ? { inputPerMillion: price.inPerM, outputPerMillion: price.outPerM } : null)
     const context = [...await reviewContext(storage, input.question, session?.projectId), ...await reviewConversationContext(storage, input.sessionId, input.question)]
     const now = new Date().toISOString()
     const run: ReviewRun = { version: 1, id, sessionId: input.sessionId, revision: 0, createdAt: now, updatedAt: now,
       brief: { question: input.question, scope: "Compare findings and methods, include disagreements, limitations and unanswered questions. Do not assume a date or population restriction.",
         sources: [...new Set(input.sources)], allowanceUsd: 2, usePersonalContext: true, context,
-        model: { ...target, rates: price ? { inputPerMillion: price.inPerM, outputPerMillion: price.outPerM } : null },
+        model: { ...target, rates },
         ...(session?.projectId ? { projectId: session.projectId } : {}), limits: { searchRounds: 2, papers: 16 } },
       status: "awaiting-approval", stage: "Review brief", approvedRevision: null, ownerPid: null,
       groundingAttempt: 0, checkpoints: {}, evidence: [], versions: [], warnings: [], error: null, completionEvent: false, draft: null, uploads: [], approvals: [] }

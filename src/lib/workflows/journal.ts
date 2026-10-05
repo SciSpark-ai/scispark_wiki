@@ -217,7 +217,7 @@ export async function hasUncertainWork(ctx: WorkflowContext, id: string): Promis
   if (rawUsage !== null) {
     const usage = UsageJournalSchema.parse(JSON.parse(rawUsage))
     if (usage.runId !== id || usage.profileId !== ctx.profileId || usage.vaultId !== ctx.vaultId) throw new Error("Workflow usage owner mismatch")
-    if (usage.attempts.some(a => a.state === "unknown" || (a.dispatchedAt && a.state !== "known"))) return true
+    if (usage.attempts.some(a => a.state === "unknown" || (a.dispatchedAt && !["known", "not_dispatched"].includes(a.state)))) return true
   }
   for (const path of await ctx.storage.list(`${root(id)}/steps/`)) {
     if (!/\/[0-9a-f-]{36}\.json$/.test(path)) continue

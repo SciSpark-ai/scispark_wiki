@@ -1,9 +1,10 @@
+import { WikiProposalInputSchema } from "../workflows/contracts"
 import { addCosts, estimateCostUsd } from "../llm/pricing"
 import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
 import type { Changeset, FileChange } from "../vault/types"
-import { makeChangesetId } from "../vault/changesets"
+import { parseChangeset, makeChangesetId } from "../vault/changesets"
 import { commitChangeset, type MutationWarning } from "../vault/mutations"
 import { runSkill } from "../skills/runner"
 import { logEvent } from "../events/log"
@@ -25,6 +26,7 @@ import { loadPatternCards, patternIndex } from "./pattern-cards"
 // ---------------------------------------------------------------------------
 
 export type DeepSparkOutcome =
+  | { kind: "proposal"; ideaPageId: string; status: IdeaStatus; workflowId: string; artifactId: string }
   | { kind: "idea"; ideaPageId: string; changesetId: string; status: IdeaStatus }
   | { kind: "do_not_generate"; reason: string }
   | { kind: "abandoned"; reason: string } // audit abandoned after the single internal retry
@@ -34,10 +36,13 @@ export interface DeepSparkResult {
   costUsd: number | null
   phaseCosts: Record<string, number | null>
   warnings?: MutationWarning[]
+  proposedChangeset?: Changeset
+  sourceRefs?: string[]
 }
 
 export interface DeepSparkArgs {
   storage: VaultStorage
+  persistence?: "apply" | "propose"
   direction: string
   clusterPageIds?: string[]
   /** When "developing fully" an existing Quick Spark seed -> upgrade that page in place
@@ -353,6 +358,12 @@ async function runDeepSparkUncached(args: DeepSparkArgs): Promise<DeepSparkResul
     model: "tier:strong",
     timestamp: now().toISOString(),
     changes: [change],
+  }
+
+  if (args.persistence === "propose") {
+    parseChangeset(changeset)
+    WikiProposalInputSchema.shape.changes.parse(changeset.changes)
+    return { outcome: { kind: "idea", ideaPageId: path.slice(0, -3), changesetId: changeset.id, status: assembled.status }, costUsd, phaseCosts, proposedChangeset: changeset, sourceRefs: [...grounding.vaultPageIds, ...grounding.freshPapers.flatMap(p => Object.entries(p.ids).map(([source, id]) => `${source}:${id}`))] }
   }
 
   const mutation = await commitChangeset(args.storage, changeset, {

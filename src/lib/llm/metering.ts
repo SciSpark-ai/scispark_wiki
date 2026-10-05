@@ -1,3 +1,4 @@
+import { readNativeReservations } from "./native-reservations"
 import { UsageJournalSchema } from "../workflows/contracts"
 import type { VaultStorage } from "../vault/storage"
 import type { LLMSettings } from "./settings"
@@ -129,6 +130,18 @@ export class Meter {
     return held
   }
 
+  async nativeReservationsToday(): Promise<number> {
+    let held = 0
+    for (const row of await readNativeReservations(this.storage)) {
+      if (row.billingMode === "subscription" || row.reservedUsd === null) continue
+      if (row.state !== "reserved" && row.day !== this.now().toISOString().slice(0, 10)) continue
+      const billed = (await this.recordsForDay(row.day)).find(record => record.runId === row.id)
+      const amount = row.state !== "reserved" ? row.costUsd ?? row.reservedUsd : Math.max(row.reservedUsd, row.costUsd ?? 0)
+      held += Math.max(0, amount - (typeof billed?.costUsd === "number" ? billed.costUsd : 0))
+    }
+    return held
+  }
+
   async reviewReservationsToday(): Promise<number> {
     const raw = await this.storage.read(".scispark/usage/review-attempts.json")
     if (raw === null) return 0
@@ -163,7 +176,7 @@ export async function checkBudget(
   const spending = await meter.spendingToday()
   const spentUsd = spending.knownUsd
   if (spending.unpricedCount) onWarning?.("Budget coverage is incomplete: unpriced calls are recorded, but only known costs count toward the local limit. Check your provider’s spending limit.")
-  const projected = spentUsd + await meter.reviewReservationsToday() + await meter.workflowReservationsToday() + (estimatedNextCallUsd ?? 0)
+  const projected = spentUsd + await meter.reviewReservationsToday() + await meter.workflowReservationsToday() + await meter.nativeReservationsToday() + (estimatedNextCallUsd ?? 0)
   if (projected >= settings.dailyBudgetUsd) {
     throw new BudgetExceededError(spentUsd, settings.dailyBudgetUsd)
   }

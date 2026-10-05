@@ -1,3 +1,13 @@
+import { randomUUID } from "node:crypto"
+import { z } from "zod"
+import { withVaultExclusive } from "../vault/exclusive"
+import { observeRun } from "../workflows/coordinator"
+import type { WorkflowContext } from "../workflows/context"
+import { resolveWorkflowContext } from "../workflows/context"
+import { initializeLocalProfiles } from "../server/local-profiles"
+import { ProfileToolsSchema } from "../extensions/contracts"
+import { startNativeWorkflow, observeNativeResult, nativeKey } from "../server/native-workflow"
+import { toolKey } from "../extensions/contracts"
 import type { VaultStorage } from "../vault/storage"
 import type { TopWorksFn, TopicGroupFn } from "../papers/node-search"
 import type { CountFn } from "../trending/counts"
@@ -36,6 +46,7 @@ export interface HeartbeatJobOverrides {
 
 export interface HeartbeatDeps {
   storage: VaultStorage
+  workflowContext?: WorkflowContext
   topWorksFn: TopWorksFn
   countFn?: CountFn
   topicGroupFn?: TopicGroupFn
@@ -84,8 +95,8 @@ const LINT_LEDGER_SCAN_LIMIT = 200
 let tickInFlight: Promise<void> | null = null
 
 /**
- * One heartbeat tick: runs the trending auto-refresh, memory-consolidation,
- * and deterministic-lint jobs in sequence, each wrapped in `withLedger` with
+ * One heartbeat tick: observes optional Trending independently, then completes
+ * core consolidation/lint without waiting for its workflow queue. Each uses `withLedger` with
  * `trigger: "schedule"` so a scheduled run leaves the same kind of audit trail
  * a user-triggered run does (status mapping copied from the corresponding
  * `/api/skills/*` route). Never throws: each job lives in its own try/catch.
@@ -108,6 +119,45 @@ export async function runHeartbeatTick(deps: HeartbeatDeps): Promise<void> {
   }
 }
 
+const ScheduledTrendingSchema = z.object({ operationId: z.string().uuid(), runId: z.string().uuid().optional() }).strict()
+const SCHEDULED_TRENDING_PATH = ".scispark/tools/scheduled-trending.json"
+const optionalRuntime = globalThis as typeof globalThis & { __scisparkOptionalHeartbeat?: Map<string | VaultStorage, Promise<void>> }
+const optionalWork = optionalRuntime.__scisparkOptionalHeartbeat ??= new Map()
+
+async function scheduledTrendingRun(ctx: WorkflowContext) {
+  return withVaultExclusive(ctx.storage, "scheduled-native-trending", async () => {
+    const raw = await ctx.storage.read(SCHEDULED_TRENDING_PATH)
+    let intent = raw ? ScheduledTrendingSchema.parse(JSON.parse(raw)) : null
+    if (intent?.runId) {
+      const previous = await observeRun(ctx, intent.runId)
+      if (!["completed", "failed", "cancelled"].includes(previous.status)) return previous
+      intent = null
+    }
+    if (!intent) {
+      intent = { operationId: randomUUID() }
+      await ctx.storage.write(SCHEDULED_TRENDING_PATH, JSON.stringify(intent))
+    }
+    const run = await startNativeWorkflow(ctx, "trending", { mode: "auto", operationId: intent.operationId })
+    await ctx.storage.write(SCHEDULED_TRENDING_PATH, JSON.stringify({ ...intent, runId: run.id }))
+    return run
+  })
+}
+
+/** Observation is detached from core ticks, not from the durable workflow owner.
+ * One observer per runtime/vault; the saved start intent deduplicates restarts. */
+function launchOptionalTrending(storage: VaultStorage, work: () => Promise<void>) {
+  const key = storage.coordinationKey ?? storage
+  if (optionalWork.has(key)) return
+  const promise = Promise.resolve().then(work).finally(() => { optionalWork.delete(key) })
+  optionalWork.set(key, promise)
+  void promise.catch(() => {}) // work's ledger records failures before propagation
+}
+
+/** Join observation only, for deterministic tests and graceful runtime shutdown. */
+export async function waitForHeartbeatOptionalWork(storage: VaultStorage) {
+  await optionalWork.get(storage.coordinationKey ?? storage)
+}
+
 async function runHeartbeatTickInner(deps: HeartbeatDeps): Promise<void> {
   const now = deps.now ?? (() => new Date())
   const jobs: Required<HeartbeatJobOverrides> = {
@@ -118,27 +168,35 @@ async function runHeartbeatTickInner(deps: HeartbeatDeps): Promise<void> {
 
   // Job 1: trending auto-refresh. Status mapping mirrors
   // src/app/api/skills/trending/auto-refresh/route.ts exactly, trigger "schedule".
-  try {
-    await withLedger(deps.storage, { orchestrator: "trending-refresh", trigger: "schedule", now }, async () => {
-      const settings = await loadSettings(deps.storage)
-      const result = await jobs.maybeAutoRefreshTrending(deps.storage, {
-        topWorksFn: deps.topWorksFn,
-        countFn: deps.countFn ?? nodeCountFn(),
-        topicGroupFn: deps.topicGroupFn ?? nodeTopicGroupFn(),
-        fieldGroupFn: deps.fieldGroupFn ?? nodeTopicFieldGroupFn(),
-        settings,
-        now,
+  const observeTrending = async () => {
+    try {
+      await withLedger(deps.storage, { orchestrator: "trending-refresh", trigger: "schedule", now }, async () => {
+        const raw = await deps.storage.read(".scispark/tools/state.json")
+        const tools = raw ? ProfileToolsSchema.parse(JSON.parse(raw)) : null
+        if (!tools?.enabled.some(binding => binding.enabled && toolKey(binding.tool) === nativeKey("trending"))) return { result: "disabled", status: "skipped" as const, reason: "disabled" }
+        if (!deps.jobs?.maybeAutoRefreshTrending && !deps.workflowContext) return { result: "unavailable", status: "skipped" as const, reason: "owning-profile-unavailable" }
+        const settings = await loadSettings(deps.storage)
+        const result = deps.jobs?.maybeAutoRefreshTrending ? await jobs.maybeAutoRefreshTrending(deps.storage, {
+          topWorksFn: deps.topWorksFn,
+          countFn: deps.countFn ?? nodeCountFn(),
+          topicGroupFn: deps.topicGroupFn ?? nodeTopicGroupFn(),
+          fieldGroupFn: deps.fieldGroupFn ?? nodeTopicFieldGroupFn(),
+          settings,
+          now,
+        }) : await observeNativeResult(deps.workflowContext!, (await scheduledTrendingRun(deps.workflowContext!)).id)
+        if (result === "refreshed") return { result, status: "ok" as const }
+        if (result === "failed") {
+          return { result, status: "failed" as const, reason: await readRefreshFailureReason(deps.storage) }
+        }
+        // "fresh" | "no-fields" | "backoff"
+        return { result, status: "skipped" as const, reason: result }
       })
-      if (result === "refreshed") return { result, status: "ok" as const }
-      if (result === "failed") {
-        return { result, status: "failed" as const, reason: await readRefreshFailureReason(deps.storage) }
-      }
-      // "fresh" | "no-fields" | "backoff"
-      return { result, status: "skipped" as const, reason: result }
-    })
-  } catch {
-    // Already recorded as "failed" by withLedger above — swallow so job 2 still runs.
+    } catch {
+      // withLedger retains the optional failure; core jobs remain independent.
+    }
   }
+  if (deps.workflowContext && !deps.jobs?.maybeAutoRefreshTrending) launchOptionalTrending(deps.storage, observeTrending)
+  else await observeTrending()
 
   // Job 2: memory consolidation. Self-gated on >=25 new events since the last
   // run; status mapping mirrors src/app/api/skills/consolidate/route.ts.
@@ -192,8 +250,10 @@ const INITIAL_DELAY_MS = 60 * 1000
 async function tick(): Promise<void> {
   try {
     const storage = await getDefaultServerVault()
+    const profile = (await initializeLocalProfiles()).find(profile => `node-fs:${profile.vaultPath}` === storage.coordinationKey)
+    const workflowContext = profile ? await resolveWorkflowContext(profile) : undefined
     await runHeartbeatTick({
-      storage,
+      storage, workflowContext,
       topWorksFn: nodeTopWorksFn(),
       countFn: nodeCountFn(),
       topicGroupFn: nodeTopicGroupFn(),

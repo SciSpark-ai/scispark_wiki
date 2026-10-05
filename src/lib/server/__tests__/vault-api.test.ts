@@ -98,6 +98,9 @@ describe("vault API", () => {
   })
 
   it.each([
+    ".scispark/usage/native-attempts.json", ".SCISPARK/usage/NATIVE-attempts.json/",
+    "x/../.scispark/usage/native-attempts.json",
+    ".scispark/tool-runs/44444444-4444-4444-8444-444444444444/native-reconciliations/receipt.json",
     ".scispark/tools/state.json", ".scispark/tool-runs/44444444-4444-4444-8444-444444444444/run.json",
     ".scispark/tools", ".scispark/tool-runs", "./.scispark/tools/state.json/",
     ".SciSpark/TOOLS/state.json", "x/../.scispark/tool-runs/run/events/1.json",
@@ -115,7 +118,7 @@ describe("vault API", () => {
   })
 
   it("omits new workflow paths from lists while preserving unrelated existing records", async () => {
-    for (const path of [".scispark/changeset-transactions/pending.json", ".scispark/tool-runs/run/outputs.json", ".scispark/tool-runs/run/artifacts/private.bin", ".scispark/tools/state.json", ".SciSpark/TOOL-RUNS/run/run.json", ".scispark/usage/x.jsonl", "wiki/a.md", ".scispark/tools-other/file.json"]) {
+    for (const path of [".scispark/usage/native-attempts.json", ".scispark/changeset-transactions/pending.json", ".scispark/tool-runs/run/outputs.json", ".scispark/tool-runs/run/artifacts/private.bin", ".scispark/tools/state.json", ".SciSpark/TOOL-RUNS/run/run.json", ".scispark/usage/x.jsonl", "wiki/a.md", ".scispark/tools-other/file.json"]) {
       await storage.write(path, "fixture")
     }
     expect(await (await listRoute.GET(new Request("http://x/api/vault/list"))).json()).toEqual({

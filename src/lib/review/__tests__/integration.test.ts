@@ -1,3 +1,11 @@
+import { enableNativeFixture } from "../../server/__tests__/native-fixture"
+import { legacyReviewAction, startNativeWorkflow, continueNativeReview, setNativeWorkflowContextForTests } from "../../server/native-workflow"
+import { setSkillTestOverrides } from "../../server/skill-route"
+import { waitForWorkflowIdle, observeRun, startRun, recoverWorkflowRuns } from "../../workflows/coordinator"
+import { getRunUsage } from "../../workflows/usage"
+import { randomUUID } from "node:crypto"
+import { afterEach } from "vitest"
+
 import { describe, it, expect, vi } from "vitest"
 import { z } from "zod"
 import { MemoryVaultStorage } from "@/lib/vault/memory-storage"
@@ -311,4 +319,249 @@ describe("durable literature-review integration", () => {
     await storage.write(reviewPath(run.id), "corrupt")
     await expect(loadReview(storage, run.id)).rejects.toThrow()
   })
+})
+
+
+describe("native review workflow bridge", () => {
+  afterEach(async () => { await waitForWorkflowIdle(); setNativeWorkflowContextForTests(); setSkillTestOverrides() })
+  it("keeps the native ID/checkpoints/report and bills every grounding call once through a legacy approval", async () => {
+    const { storage, run, provider, search, fetch } = await setup()
+    const ctx = await enableNativeFixture(storage)
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    await legacyReviewAction(ctx, run.id, { action: "approve", revision: run.revision })
+    await waitForWorkflowIdle()
+    const native = await loadReview(storage, run.id)
+    expect(native.status).toBe("completed")
+    const { id } = JSON.parse((await storage.read(`.scispark/reviews/${run.id}/workflow.json`))!)
+    const workflow = await observeRun(ctx, id)
+    expect(workflow.nativeRunRef).toEqual({ kind: "deep-review", id: run.id })
+    expect(workflow.status).toBe("completed")
+    expect(Object.keys(native.checkpoints).length).toBeGreaterThan(5)
+    const usage = await getRunUsage(ctx, id)
+    expect(usage.modelCalls).toBe(provider.complete.mock.calls.length)
+    expect(usage.costUsd).toBeCloseTo((await reviewSpend(storage, run.id)).spentUsd)
+    expect(usage.costUsd).toBeCloseTo((await new Meter(storage).spendingToday()).knownUsd)
+    const saved = structuredClone(native.versions[0])
+    await legacyReviewAction(ctx, run.id, { action: "revise", parent: saved.id, instruction: "Tighten the wording" })
+    await waitForWorkflowIdle()
+    expect((await loadReview(storage, run.id)).versions[0]).toEqual(saved)
+    expect((await loadReview(storage, run.id)).versions.at(-1)?.author).toBe("revision")
+    const next = JSON.parse((await storage.read(`.scispark/reviews/${run.id}/workflow.json`))!).id
+    expect(next).not.toBe(id)
+    expect((await observeRun(ctx, next)).nativeRunRef?.id).toBe(run.id)
+    expect((await getRunUsage(ctx, next)).modelCalls).toBe(1)
+  })
+  it("leaves an interrupted opaque wording revision uncertain instead of completing with the old report", async () => {
+    const { storage, run, provider, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    await legacyReviewAction(ctx, run.id, { action: "approve", revision: 0 }); await waitForWorkflowIdle()
+    const native = await loadReview(storage, run.id), calls = provider.complete.mock.calls.length
+    const write = storage.write.bind(storage)
+    let fault = true
+    storage.write = async (path, content) => {
+      await write(path, content)
+      if (fault && path.includes("native-review-dispatched-")) { fault = false; throw new Error("Revision dispatch receipt response lost") }
+    }
+    await expect(legacyReviewAction(ctx, run.id, { action: "revise", parent: native.versions[0].id, instruction: "Tighten the wording" })).rejects.toThrow()
+    storage.write = write; await waitForWorkflowIdle()
+    const { id } = JSON.parse((await storage.read(`.scispark/reviews/${run.id}/workflow.json`))!)
+    expect((await observeRun(ctx, id)).status).toBe("needs_attention")
+    await recoverWorkflowRuns([ctx]); await waitForWorkflowIdle()
+    expect((await observeRun(ctx, id)).status).toBe("needs_attention")
+    expect((await loadReview(storage, run.id)).versions).toEqual(native.versions)
+    expect(provider.complete).toHaveBeenCalledTimes(calls)
+  })
+  it.each([false, true])("releases a failed native review ledger publication (committed=%s) before dispatch", async committed => {
+    const { storage, run, provider, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    const write = storage.write.bind(storage)
+    let failed = false
+    storage.write = async (path, content) => {
+      if (!failed && path === ".scispark/usage/review-attempts.json") {
+        failed = true
+        if (committed) await write(path, content)
+        throw new Error("Review ledger publication failure")
+      }
+      return write(path, content)
+    }
+    await legacyReviewAction(ctx, run.id, { action: "approve", revision: 0 }); await waitForWorkflowIdle()
+    storage.write = write
+    const { id } = JSON.parse((await storage.read(`.scispark/reviews/${run.id}/workflow.json`))!)
+    const { reconcileNativeAccounting } = await import("../../workflows/native-recovery")
+    const usage = await reconcileNativeAccounting(ctx, id, randomUUID(), "reconcile")
+    expect(provider.complete).not.toHaveBeenCalled()
+    expect(usage).toMatchObject({ modelCalls: 0, heldAttempts: 0, uncertain: false, costUsd: 0 })
+    expect(await reviewSpend(storage, run.id)).toMatchObject({ spentUsd: 0, heldUsd: 0, uncertain: false })
+  })
+  it("resumes repeated disconnected legacy approvals on the same captured root after setup is restored", async () => {
+    const { storage, run, provider, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+    const disconnected = vi.fn(async () => { throw new Error("Disconnected fixture") })
+    Object.assign(provider, { preflight: disconnected })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    await legacyReviewAction(ctx, run.id, { action: "approve", revision: 0 }); await waitForWorkflowIdle()
+    const { id } = JSON.parse((await storage.read(`.scispark/reviews/${run.id}/workflow.json`))!)
+    const before = await observeRun(ctx, id)
+    expect(before.status).toBe("waiting_for_setup"); expect(provider.complete).not.toHaveBeenCalled()
+    for (let retry = 0; retry < 2; retry++) {
+      await legacyReviewAction(ctx, run.id, { action: "approve", revision: 0 }); await waitForWorkflowIdle()
+      expect((await observeRun(ctx, id)).status).toBe("waiting_for_setup")
+      expect((await loadReview(storage, run.id)).revision).toBe(0)
+      expect(provider.complete).not.toHaveBeenCalled()
+    }
+    expect(disconnected).toHaveBeenCalledTimes(3)
+    let releasePreflight!: () => void, enteredPreflight!: () => void
+    const preflightHeld = new Promise<void>(resolve => { releasePreflight = resolve })
+    const preflightEntered = new Promise<void>(resolve => { enteredPreflight = resolve })
+    Object.assign(provider, { preflight: async () => { enteredPreflight(); await preflightHeld } })
+    const admission = legacyReviewAction(ctx, run.id, { action: "approve", revision: 0 })
+    await preflightEntered
+    const receiptPath = (await storage.list(`.scispark/tool-runs/${id}/`)).find(path => path.includes("native-continuation-"))!
+    const receipt = JSON.parse((await storage.read(receiptPath))!)
+    expect(receipt.complete).toBe(true)
+    const accepted = await storage.read(receiptPath)
+    try {
+      await continueNativeReview(ctx, id, receipt.operationId, "retry", { action: "approve", revision: 0 })
+      expect(await storage.read(receiptPath)).toBe(accepted)
+      expect(provider.complete).not.toHaveBeenCalled()
+    } finally { releasePreflight() }
+    await admission; await waitForWorkflowIdle()
+    expect((await observeRun(ctx, id)).status).toBe("completed")
+    expect((await observeRun(ctx, id)).model).toEqual(before.model)
+    expect(JSON.parse((await storage.read(`.scispark/reviews/${run.id}/workflow.json`))!).id).toBe(id)
+    expect((await loadReview(storage, run.id)).status).toBe("completed")
+    const calls = provider.complete.mock.calls.length, usage = await getRunUsage(ctx, id)
+    expect(calls).toBeGreaterThan(0)
+    await continueNativeReview(ctx, id, receipt.operationId, "retry", { action: "approve", revision: 0 })
+    await waitForWorkflowIdle()
+    expect(await storage.read(receiptPath)).toBe(accepted)
+    expect(provider.complete).toHaveBeenCalledTimes(calls)
+    expect(await getRunUsage(ctx, id)).toEqual(usage)
+  })
+  it("rejects stale or ineligible native acknowledgement before mutating financial or continuation state", async () => {
+    const { storage, run, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+    const provider = mockProvider(() => { throw new Error("Lost fixture response") })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    await legacyReviewAction(ctx, run.id, { action: "approve", revision: 0 }); await waitForWorkflowIdle()
+    const { id } = JSON.parse((await storage.read(`.scispark/reviews/${run.id}/workflow.json`))!)
+    const native = await loadReview(storage, run.id)
+    const snapshot = async () => Object.fromEntries(await Promise.all((await storage.list(".scispark/")).map(async path => [path, await storage.read(path)])))
+    const before = await snapshot()
+    for (const action of [{ action: "resume", revision: native.revision - 1, acknowledgeUncertainCharge: true }, { action: "approve", revision: native.revision, acknowledgeUncertainCharge: true }]) {
+      await expect(continueNativeReview(ctx, id, randomUUID(), "retry", action)).rejects.toThrow()
+      expect(await snapshot()).toEqual(before)
+    }
+    expect(provider.complete).toHaveBeenCalledTimes(1)
+  })
+  it("refuses a changed profile/tool model before dispatch or wrapping an approved legacy brief", async () => {
+    const { storage, run, provider } = await setup(), ctx = await enableNativeFixture(storage)
+    await saveSettings(storage, { ...DEFAULT_SETTINGS, keys: { anthropic: "unused-fixture" } })
+    setSkillTestOverrides({ providerOverride: { strong: provider } })
+    await expect(legacyReviewAction(ctx, run.id, { action: "approve", revision: run.revision })).rejects.toThrow(/approved review model/)
+    expect(provider.complete).not.toHaveBeenCalled()
+    expect(await storage.read(`.scispark/reviews/${run.id}/workflow.json`)).toBeNull()
+    expect((await loadReview(storage, run.id)).brief).toEqual(run.brief)
+  })
+  it.each(["outputs_only", "update_wiki"] as const)("keeps a partial %s review through coordinator output completion without another native call", async writeIntent => {
+    const { storage, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+    const provider = mockProvider(req => req.messages[0].content.startsWith("Independently check")
+      ? { checks: [{ claim: 0, supported: false, explanation: "Fixture needs correction" }], missingSupportedFindings: [] } : output(req))
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    const { NATIVE_TOOL_MANIFESTS } = await import("../../extensions/native-catalog")
+    const run = await startRun(ctx, { tool: NATIVE_TOOL_MANIFESTS.find(m => m.ref.skillId === "deep-review")!.ref,
+      operationId: randomUUID(), input: { question: "Compare adult decoding methods", sources: ["openalex"] }, contextRefs: [], writeIntent })
+    await waitForWorkflowIdle()
+    expect((await observeRun(ctx, run.id)).status).toBe("waiting_for_choice")
+    const before = await getRunUsage(ctx, run.id), calls = provider.complete.mock.calls.length
+    const native = structuredClone(await loadReview(storage, (await observeRun(ctx, run.id)).nativeRunRef!.id))
+    const write = storage.write.bind(storage), op = randomUUID()
+    let failOnce = true
+    storage.write = async (path, content) => {
+      if (failOnce && path.endsWith(`native-review-${run.id}.json`)) { failOnce = false; throw new Error("Injected keep publication failure") }
+      return write(path, content)
+    }
+    await expect(continueNativeReview(ctx, run.id, op, "keep")).rejects.toThrow("keep publication failure")
+    storage.write = write
+    Object.assign(provider, { preflight: async () => { throw new Error("Disconnected captured provider") } })
+    await continueNativeReview(ctx, run.id, op, "keep")
+    await waitForWorkflowIdle()
+    expect((await observeRun(ctx, run.id)).status).toBe("completed")
+    const outputs = JSON.parse((await storage.read(`.scispark/tool-runs/${run.id}/outputs.json`))!)
+    expect(outputs.completed).toBe(true)
+    expect(outputs.saves).toHaveLength(writeIntent === "update_wiki" ? 1 : 0)
+    if (writeIntent === "update_wiki") {
+      expect(outputs.saves[0].state).toBe("saved")
+      const saved = await storage.read(outputs.saves[0].changeset.changes[0].path)
+      expect(saved).toContain("Needs review: some claims could not be supported")
+      expect(saved).toContain("Limited answer:")
+      expect(saved).toContain(`review:${native.id}/`)
+    }
+    // Crash snapshot: saved outputs survived, but terminal lifecycle publication did not.
+    const journalPath = `.scispark/tool-runs/${run.id}/journal.json`
+    const journal = JSON.parse((await storage.read(journalPath))!)
+    await storage.write(journalPath, JSON.stringify({ ...journal, status: "interrupted" }))
+    await recoverWorkflowRuns([ctx]); await waitForWorkflowIdle()
+    expect((await observeRun(ctx, run.id)).status).toBe("completed")
+    await continueNativeReview(ctx, run.id, op, "keep"); await waitForWorkflowIdle()
+    expect(JSON.parse((await storage.read(`.scispark/tool-runs/${run.id}/outputs.json`))!)).toEqual(outputs)
+    expect(await getRunUsage(ctx, run.id)).toEqual(before)
+    expect(await loadReview(storage, native.id)).toEqual(native)
+    expect(provider.complete).toHaveBeenCalledTimes(calls)
+  })
+  it("starts an explicit review once with captured defaults and keeps partial retries on the same counters", async () => {
+    const { storage, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+    let reject = true
+    const provider = mockProvider(req => reject && req.messages[0].content.startsWith("Independently check")
+      ? { checks: [{ claim: 0, supported: false, explanation: "Fixture needs correction" }], missingSupportedFindings: [] } : output(req))
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    const run = await startNativeWorkflow(ctx, "deep-review", { question: "Compare adult decoding methods", sources: ["openalex"] })
+    await waitForWorkflowIdle()
+    const partial = await observeRun(ctx, run.id)
+    expect(partial.status).toBe("waiting_for_choice")
+    const native = await loadReview(storage, partial.nativeRunRef!.id)
+    expect(native.status).toBe("partial")
+    const prior = await getRunUsage(ctx, run.id), original = structuredClone(native.versions[0])
+    reject = false
+    const op = randomUUID()
+    const write = storage.write.bind(storage)
+    let failOnce = true
+    storage.write = async (path, content) => {
+      if (failOnce && path.endsWith(`native-review-${run.id}.json`)) { failOnce = false; throw new Error("Injected continuation publication failure") }
+      return write(path, content)
+    }
+    await expect(continueNativeReview(ctx, run.id, op, "retry")).rejects.toThrow("publication failure")
+    storage.write = write
+    await continueNativeReview(ctx, run.id, op, "retry")
+    await waitForWorkflowIdle()
+    expect((await observeRun(ctx, run.id)).status).toBe("completed")
+    expect((await getRunUsage(ctx, run.id)).modelCalls).toBeGreaterThan(prior.modelCalls)
+    expect((await loadReview(storage, native.id)).versions[0]).toEqual(original)
+    const calls = provider.complete.mock.calls.length
+    await continueNativeReview(ctx, run.id, op, "retry")
+    await waitForWorkflowIdle()
+    expect(provider.complete).toHaveBeenCalledTimes(calls)
+  })
+})
+
+
+it("reconciles an explicitly acknowledged lost native review response without double daily holds", async () => {
+  const { storage, run, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+  const lost = mockProvider(() => { throw new Error("Lost fixture response") })
+  setSkillTestOverrides({ providerOverride: { strong: lost }, searchFn: search, fetchFn: fetch })
+  try {
+    await legacyReviewAction(ctx, run.id, { action: "approve", revision: 0 }); await waitForWorkflowIdle()
+    const id = JSON.parse((await storage.read(`.scispark/reviews/${run.id}/workflow.json`))!).id
+    expect((await observeRun(ctx, id)).status).toBe("needs_attention")
+    const usage = await getRunUsage(ctx, id), meter = new Meter(storage)
+    expect(await meter.reviewReservationsToday()).toBeCloseTo(usage.heldCostUsd)
+    expect(await meter.workflowReservationsToday()).toBe(0)
+    expect(await meter.nativeReservationsToday()).toBe(0)
+    const provider = mockProvider()
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    const paused = await loadReview(storage, run.id)
+    await legacyReviewAction(ctx, run.id, { action: "resume", revision: paused.revision, acknowledgeUncertainCharge: true })
+    await waitForWorkflowIdle()
+    expect((await observeRun(ctx, id)).status).toBe("completed")
+    expect((await getRunUsage(ctx, id)).modelCalls).toBe(provider.complete.mock.calls.length + 1)
+    expect((await getRunUsage(ctx, id)).costUsd).toBeCloseTo((await reviewSpend(storage, run.id)).spentUsd)
+  } finally { await waitForWorkflowIdle(); setNativeWorkflowContextForTests(); setSkillTestOverrides() }
 })

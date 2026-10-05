@@ -1001,3 +1001,190 @@ and git diff --check passed. Deferred M1 remains untouched. Actual imported
 command/OpenCite supervised execution stays OPEN/UNRUN and Task19-owned; these
 inert cancellation fixtures are not external runtime phase acceptance. No live
 calls, personal state, unsupported package execution, push, merge or PR.
+
+## Task14 native workflow integration
+
+Four optional native adapters now use the same durable coordinator as Tools runs;
+all legacy search/chat-search, Trending, Spark and paid review start/resume/revise
+execution routes are guarded. Disabled endpoints return409 before calls. Core
+feed/digest/retrieval and saved readers stay independent; heartbeat gates only
+optional Trending. Native helper execution keeps the original root and stable
+frame checkpoints. R26 empty native engines=[] permits captured engine selection.
+
+Native ledgers remain the sole billing owners. Task3 counts every raw dispatch,
+including repair/grounding, without a second Meter charge. R34 adds strict native
+Meter reservations with API vs subscription billing semantics; subscription dollars
+stay null while calls/time count. Reopen/lost response retains native holds and
+explicit idempotent reconciliation accepts known native charges or conservative
+acknowledgement. Original reservation-day billing is preserved. Native review and
+local-review keep their existing ledgers. Generic vault GET/PUT/DELETE/list cannot
+expose or alter the new native hold journal; tool-run continuation/link/receipt
+paths inherit existing private namespace protection.
+
+R32 preserves exact review_ IDs. R33 partial review choices reuse the same root,
+checkpoints and cumulative usage. Keep queues saved output completion; coordinator
+Task6 performs an already authorized update_wiki save, even without an observer.
+outputs_only stays inert. Revisions preserve the native review/ledger and parent
+version in a new envelope. Opaque interrupted revision dispatch remains uncertain.
+First wrapping an approved brief rejects changed captured model/provider/endpoint;
+its approved native rates remain authoritative. Cancellation fences later dispatch.
+
+DeepSpark always publishes a validated proposal in workflow mode; Task6 owns apply.
+The existing Spark card now links the real proposal artifact and offers explicit
+Save to wiki with exact selection. No nonexistent wiki-page success is returned.
+The narrow visual change preserves layout/tokens and has focused DOM/save tests.
+Legacy progress/job observations retain coordinator ownership; reconnect does not
+restart work and disconnect does not cancel it.
+
+Initial caller audit and RED collection failure retained in verification/task-14/.
+Initial combined GREEN141tests/12files. Initial build passed29.37s with exact
+config-byte restore; first master tsc/lint passed, Vitest3068passed/21skipped/2failed.
+Both failed Trending field-scope fixtures lacked explicit enabled-tool context;
+their full field/subfield/source assertions were preserved. Keep-partial correction
+RED2fail/20pass, GREEN83/4files. Corrected build31.38s, full gate3072pass/21skip,
+295pass/8skip files,50.97s suite, tsc/lint0 (verification/task-14-final/).
+
+Final self-review closed subscription response-loss recovery, actual persisted
+Meter write-response loss, opaque revision receipt loss, and private new journal
+paths. Accounting RED3fail/13pass; private/revision RED5fail/106pass. Final focused
+GREEN222tests/10files,10.69s, includes native/review durability/ledger/usage/recovery,
+vault routes, heartbeat and Spark. Authoritative final build/master follows under
+verification/task-14-accounting-final/. All fixtures disposable and deterministic;
+no human vault/profile/key/agent scan or live provider/source calls. Production
+browser/live and actual imported-command supervision acceptance remain UNRUN,
+Task19-owned. No unsupported command bypass, push, merge or PR.
+
+Authoritative Task14 final snapshot: isolated build exit0/28.54s, compile13.7s,
+build TypeScript10.4s,67pages. Fresh tsconfig.json and next-env.d.ts backups were
+compared to generated-dist changes and restored byte-for-byte. One final
+verify-task.py task-14-accounting-final invocation: TypeScript exit0/3.25s;
+ESLint exit0/18.92s (existing ConnectAiCard applyPreset warning/generated-card
+Babel note only); Vitest exit0/47.01s wrapper,45.81s suite,3080passed/21gated skips
+across295passed/8skipped files. Logs/results/config evidence remain in local
+verification/task-14-accounting-final/. Final caller audit and diff-check passed.
+No broad checks were repeated after this successful final gate. Scope/phase
+limitations above remain: deterministic local acceptance only, no live calls or
+production-browser acceptance, no push/merge/PR.
+
+
+## Task14 review fix round 1 — I1–I4 (R35)
+
+I1 now publishes a strict prepared native link before reserving root usage. Each
+actual provider boundary follows: prepared link → root reserve/claim → native
+owner reservation → durable dispatching marker → provider call → native settlement
+→ root settlement. The three callers (Meter skill runner, API review, local review)
+all enter dispatch after their native reservation is durable. Unscoped callers
+receive a no-op callback, retaining native-only compatibility. Legacy links without
+a marker default to dispatching and cannot authorize a refund.
+
+Stopped-owner reconciliation releases only proven prepared attempts. Immutable
+root tickets remain as not_dispatched; native rows remain as released. API cost is
+zero, subscription cost remains null, and released local-review rows do not consume
+the call ceiling. No Meter row is invented for review owners. A committed dispatch
+marker with lost write response stays conservative even when the test provider saw
+zero calls. Missing proof never authorizes release. Task17 uses the existing
+reconcileNativeAccounting hook: financial uncertainty may clear while a pending
+opaque checkpoint still requires an explicit decision; inspect hasUncertainWork
+and lifecycle state separately. Reconciliation never retries a model.
+
+I2 restores approval of waiting_for_setup on the same captured root and native
+review after connection recovery. I3 validates exact action, native identity,
+revision and eligible state under native-review-control then review-control before
+publishing the accepted receipt or changing finances. Named prepare/reconcile/
+publish phases preserve incomplete accepted-receipt repair. Stale or competing
+actions leave native accounting, root usage and continuation bytes unchanged.
+Reconciliation lock order is native-reconcile → workflow-coordinator → native
+ledger locks → workflow journal; local-engine precedes ai-spend where both are
+needed. The coordinator exclusion prevents a stopped root being claimed during
+proof inspection; journal validation uses a raw read within its existing lock.
+
+I4 starts optional Trending observation independently of core heartbeat work.
+A durable scheduled-Trending intent/root pointer under the protected tools
+namespace repairs admission response loss and reuses queued/active work. Runtime
+observers are deduplicated; their success/failure is recorded by the existing
+schedule ledger. waitForHeartbeatOptionalWork is a read-only test/shutdown join.
+Enabled Trending queued behind a held lease cannot block consolidation or lint,
+and observer reconnect cannot become another execution owner.
+
+Focused RED:7 failed/39 passed (red.log). API-review publication extension RED:
+2 failed/25 passed (review-publication-red.log). A development recursive journal
+lock failure was corrected without weakening tests. Final focused GREEN:
+146 passed/7 files,11.46s (focused-green.log), covering Meter/API-review/local-review
+before-write and committed-then-threw faults, reopen/idempotent reconciliation,
+API/CLI units, retained rows, opaque uncertainty, stale-action immutability,
+same-root setup recovery, and enabled/held-lease core heartbeat success/failure.
+Command: npx vitest run src/lib/extensions/__tests__/native-adapters.test.ts
+src/lib/review/__tests__/integration.test.ts src/lib/review/__tests__/durability.test.ts
+src/lib/review/__tests__/evaluation-ledger.test.ts src/lib/scheduler/__tests__/heartbeat.test.ts
+src/lib/workflows/__tests__/usage.test.ts src/lib/workflows/__tests__/recovery.test.ts.
+
+Self-review stayed within I1–I4 and the affected three native dispatch callers.
+Required isolated build passed30.24s (compile13.1s, TypeScript12.1s,67pages), using
+.next-modular-task-14-fix-1 and disposable vault/profile roots. Fresh exact config
+backups were restored byte-for-byte. Source and focused evidence are retained in
+verification/task-14-fix-1/. Full gate results follow. Baseline M1 remains unchanged;
+M2 ordering was clarified in the touched validation/publication phases. Task19
+production/browser/live/actual imported-command gates remain open. No human state,
+live calls, unsupported command bypass, push, merge or PR.
+
+
+Fix-round authoritative gate: verify-task.py task-14-fix-1 ran once after all
+source corrections. TypeScript exit0/3.63s; lint exit0/19.76s (only existing
+ConnectAiCard applyPreset warning and generated-card Babel note); Vitest exit0/
+43.36s wrapper,42.04s suite:3101 passed/21 gated skips across295 passed/8 skipped
+files. Exact commands, logs, results and build config-byte evidence remain in
+verification/task-14-fix-1/. Final git diff --check passed. No additional broad
+check followed success. Scoped build/loopback allowance was used with no approval
+rejection. The14 intended fix/evidence files amend the original Task14 commit;
+its exact subject, Codex trailer and parent cffa77d are preserved.
+
+
+## Task14 review fix round 2 — repeated setup admission (I2 only)
+
+A completed continuation receipt represents queue publication. It now permits
+readmission only when the root is stopped in waiting_for_setup, cancellation is
+absent, the exact receipt still matches the persisted native continuation, and
+the native revision has not advanced. Existing native-review-control/review-control
+locks protect validation and reacceptance. Native action/state eligibility is
+revalidated before publishing the incomplete accepted receipt. Captured root/model
+and native review identity are retained. Replaced, active, progressed and terminal
+actions retain receipt idempotency; incomplete accepted receipts retain repair.
+No other I1/I3/I4 behavior or execution boundary changed.
+
+Actual repeated-disconnect regression RED:1 failed/26 filtered skips,1.54s
+(red.log). Final focused GREEN:82 passed/3 files,8.54s (focused-green.log), using
+npx vitest run src/lib/review/__tests__/integration.test.ts
+src/lib/review/__tests__/durability.test.ts src/lib/workflows/__tests__/recovery.test.ts.
+The regression performs initial failed preflight, two failed Approve retries,
+restores the same provider, and completes the same root. It replays the completed
+receipt during held active preflight and after terminal completion, asserting no
+receipt rewrite, extra model calls or changed usage. Existing incomplete-receipt
+repair and stale-action cases also passed. Narrow self-review and diff-check passed;
+no broad audit or unrelated source edits. Build/master evidence follows under
+verification/task-14-fix-2/. Task19 actual/browser/live gates remain open; no human
+state, live calls, unsupported command, push, merge or PR.
+
+
+Initial round2 build compiled but failed TypeScript because the persisted action
+union includes cancel without revision (build-initial/,exit1/29.60s). Added the
+explicit approve/resume predicate before inspecting revision. Exact configuration
+bytes were restored even on failure. Corrected source: standalone TypeScript and
+diff-check passed; focused-final.log repeats82 passed/3 files,9.27s. This concrete
+type error justified the corrected build; the final master gate has not been
+repeated. No source change beyond the narrow action guard.
+
+
+Corrected isolated build exit0/15.33s: compile5.8s, TypeScript4.6s,67pages, with
+fresh exact-byte tsconfig.json/next-env.d.ts restoration. The unchanged isolated
+dist cache was reused after the type correction; vault/profile roots remain
+disposable and scheduler disabled. Build logs/backups/diffs remain in
+verification/task-14-fix-2/build/, with initial failure preserved separately.
+
+
+Authoritative round2 final gate ran once: verify-task.py task-14-fix-2.
+TypeScript exit0/3.46s; lint exit0/21.72s (existing applyPreset warning/generated
+Babel note only); Vitest exit0/53.88s wrapper,52.54s suite:3101 passed/21 gated skips,
+295 passed/8 skipped files. Final diff-check passed. Three intended files amend
+Task14 with the original subject, Codex trailer and cffa77d parent preserved.
+No additional broad verification followed success. No approval rejection occurred;
+Task19 boundaries and no-push/no-merge scope remain unchanged.
