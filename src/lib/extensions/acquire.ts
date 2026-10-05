@@ -255,7 +255,7 @@ async function responseBytes(response: Response, limit: number) {
 /** Acquisition only copies bytes from an explicit source. It cannot execute hooks,
  * submodules, validators, skill instructions or installation commands. */
 export async function acquirePackage(ctx: WorkflowContext, input: ImportSource, options: AcquisitionOptions = {}): Promise<StagedPackage> {
-  const source = ImportSourceSchema.parse(input), limits = limitsFor(options), storage = await importStorage(ctx)
+  const source = ImportSourceSchema.parse(input), limits = limitsFor(options)
   let files: Map<string, Buffer>, locator: string, revision: string
   if (source.kind === "github") {
     const repo = new URL(source.url).pathname.replace(/^\//, "").replace(/\/$/, "").replace(/\.git$/, "").toLowerCase()
@@ -277,10 +277,23 @@ export async function acquirePackage(ctx: WorkflowContext, input: ImportSource, 
     files = source.kind === "zip" ? await readZip(await readRegular(locator, limits.compressedBytes), limits) : await readFolder(locator, limits)
     revision = sha256(JSON.stringify([...files].sort(([a], [b]) => a.localeCompare(b)).map(([path, bytes]) => [path, sha256(bytes)])))
   }
+  return persistAcquiredFiles(ctx, files, locator, revision, source.kind === "github" ? "github" : source.kind === "agent" ? "agent" : "local", source.packageId)
+}
+
+/** Discovery supplies an already bounded, consent-filtered inert snapshot.
+ * Reuse normal import path/size/archive validation and persistence. */
+export async function acquireAgentSnapshot(ctx: WorkflowContext, input: Map<string, Buffer>, locator: string, discoveryGrantId: string): Promise<StagedPackage> {
+  const collector = makeCollector(limitsFor({}))
+  for (const [path, bytes] of input) { collector.reserve(path); collector.add(path, bytes) }
+  const revision = sha256(JSON.stringify([...collector.files].sort(([a], [b]) => a.localeCompare(b)).map(([path, bytes]) => [path, sha256(bytes)])))
+  return persistAcquiredFiles(ctx, collector.files, locator, revision, "agent", undefined, discoveryGrantId)
+}
+async function persistAcquiredFiles(ctx: WorkflowContext, files: Map<string, Buffer>, locator: string, revision: string, source: "github" | "agent" | "local", packageId?: string, discoveryGrantId?: string): Promise<StagedPackage> {
+  const storage = await importStorage(ctx)
   if (!files.size) throw new Error("Package contains no files")
   const id = randomUUID(), origin = sha256(locator).slice(0, 32)
-  const stage = StagedPackageSchema.parse({ schemaVersion: 1, id, profileId: ctx.profileId, vaultId: ctx.vaultId, packageId: `import.${origin}${source.packageId ? "." + source.packageId : ""}`, version: revision,
-    provenance: { source: source.kind === "github" ? "github" : source.kind === "agent" ? "agent" : "local", locator, revision },
+  const stage = StagedPackageSchema.parse({ schemaVersion: 1, id, profileId: ctx.profileId, vaultId: ctx.vaultId, packageId: `import.${origin}${packageId ? "." + packageId : ""}`, version: revision, ...(discoveryGrantId ? { discoveryGrantId } : {}),
+    provenance: { source, locator, revision },
     files: [...files].sort(([a], [b]) => a.localeCompare(b)).map(([path, bytes]) => ({ path, sha256: sha256(bytes), bytes: bytes.length })) })
   try {
     for (const [path, bytes] of files) await storage.writeBinary(`imports/${id}/files/${path}`, bytes)

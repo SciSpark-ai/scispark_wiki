@@ -1,0 +1,11 @@
+
+> scispark-app-frontend@0.1.0 lint
+> eslint
+
+[BABEL] Note: The code generator has deoptimised the styling of /Users/tongshan/Documents/SciSpark_paper_manager/src/lib/spark/pattern-cards/generated-cards.ts as it exceeds the max of 500KB.
+
+/Users/tongshan/Documents/SciSpark_paper_manager/src/components/settings/ConnectAiCard.tsx
+  178:6  warning  React Hook useEffect has a missing dependency: 'applyPreset'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+✖ 1 problem (0 errors, 1 warning)
+

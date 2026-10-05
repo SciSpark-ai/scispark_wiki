@@ -1,0 +1,24 @@
+{
+  "exitCode": 0,
+  "distDir": ".next-modular-task-12-fix-1",
+  "vault": "/tmp/scispark-modular-task-12-fix-1/vault",
+  "profiles": "/tmp/scispark-modular-task-12-fix-1/profiles",
+  "scheduler": "off",
+  "command": [
+    "npm",
+    "run",
+    "build"
+  ],
+  "generatedConfiguration": {
+    "tsconfig.json": {
+      "beforeSHA256": "3696b0511f5b817eefd35d07dffc3c659b14d17e1207a66e96bc89c9f76484c0",
+      "afterSHA256": "3696b0511f5b817eefd35d07dffc3c659b14d17e1207a66e96bc89c9f76484c0",
+      "exactBytesRestored": true
+    },
+    "next-env.d.ts": {
+      "beforeSHA256": "8cbc590bb64cc54d760ec9f67367fa949aca86a4798214bd34353f4102f70a34",
+      "afterSHA256": "8cbc590bb64cc54d760ec9f67367fa949aca86a4798214bd34353f4102f70a34",
+      "exactBytesRestored": true
+    }
+  }
+}

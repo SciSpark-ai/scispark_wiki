@@ -10,7 +10,7 @@ import { AdapterProposalSchema, ImportPreviewSchema, PackagePathSchema, StagedPa
 import { NATIVE_TOOL_MANIFESTS } from "./native-catalog"
 import { exactRef, resolveDependencies } from "./dependencies"
 import { sha256 } from "./acquire"
-import { canonicalJSON, extensionObjectPath, importStorage, ImportedSnapshotSchema, readImportedManifests, recordImportedRefs, snapshotDigest, updateProfileTools } from "./store"
+import { canonicalJSON, extensionObjectPath, importStorage, ImportedSnapshotSchema, readImportedManifests, recordImportedRefs, requireDiscoveryGrant, snapshotDigest, updateProfileTools, withDiscoveryGrant } from "./store"
 
 const METADATA = /(?:^|\/)(?:\.agents\/plugins\/marketplace\.json|\.claude-plugin\/marketplace\.json|\.codex-plugin\/plugin\.json|\.claude-plugin\/plugin\.json)$/
 const EMPTY_SETUP = { commands: [], runtimes: [], unsupported: [] }
@@ -58,6 +58,7 @@ async function readStage(ctx: WorkflowContext, id: string): Promise<StagedPackag
   if (!raw) throw new Error("Import stage not found for this profile")
   const stage = StagedPackageSchema.parse(JSON.parse(raw))
   if (stage.id !== id || stage.profileId !== ctx.profileId || stage.vaultId !== ctx.vaultId) throw new Error("Import stage ownership mismatch")
+  if (stage.discoveryGrantId) await requireDiscoveryGrant(ctx, stage.discoveryGrantId)
   return stage
 }
 async function stageBytes(ctx: WorkflowContext, stage: StagedPackage, path: string): Promise<Uint8Array> {
@@ -204,9 +205,10 @@ async function buildTool(ctx: WorkflowContext, stage: StagedPackage, input: Adap
   manifest.ref.digest = snapshotDigest(tool)
   return tool
 }
-async function savePreview(ctx: WorkflowContext, preview: ImportPreview) {
+async function savePreview(ctx: WorkflowContext, preview: ImportPreview, grantId?: string) {
   const parsed = ImportPreviewSchema.parse(preview), storage = await importStorage(ctx)
   if (JSON.stringify(parsed).length > 16 * 1024 * 1024) throw new Error("Import preview size limit exceeded")
+  if (grantId) await requireDiscoveryGrant(ctx, grantId)
   await storage.write(`imports/previews/${parsed.id}.json`, JSON.stringify(parsed)); return parsed
 }
 async function readPreview(ctx: WorkflowContext, id: string) {
@@ -219,97 +221,124 @@ async function readPreview(ctx: WorkflowContext, id: string) {
   if (preview.id !== id || preview.profileId !== ctx.profileId || preview.vaultId !== ctx.vaultId) throw new Error("Import preview ownership mismatch")
   return preview
 }
-export async function inspectPackage(ctx: WorkflowContext, candidate: StagedPackage): Promise<ImportPreview> {
+export async function inspectPackage(ctx: WorkflowContext, candidate: StagedPackage, selectedEntries?: string[]): Promise<ImportPreview> {
   const stage = await readStage(ctx, StagedPackageSchema.parse(candidate).id)
-  const metadata = stage.files.filter((f) => METADATA.test(f.path)), unsupported: string[] = []
-  for (const file of metadata) {
-    const meta = parseMetadata(new TextDecoder().decode(await stageBytes(ctx, stage, file.path)))
-    // Recognize metadata without executing hooks or acquiring nested sources.
-    for (const key of ["hooks", "mcpServers", "lspServers", "commands", "dependencies"]) if (meta[key]) unsupported.push(`Plugin ${key} require a reviewed adapter`)
-    if (Array.isArray(meta.plugins)) for (const plugin of meta.plugins) {
-      if (plugin && typeof plugin === "object" && "source" in plugin) {
-        if (typeof plugin.source !== "string" || !plugin.source.startsWith("./")) unsupported.push("External marketplace source requires a separate explicit import")
-        else PackagePathSchema.parse(plugin.source.slice(2))
+  return withDiscoveryGrant(ctx, stage.discoveryGrantId, async () => {
+    const metadata = stage.files.filter((f) => METADATA.test(f.path)), unsupported: string[] = []
+    for (const file of metadata) {
+      const meta = parseMetadata(new TextDecoder().decode(await stageBytes(ctx, stage, file.path)))
+      // Recognize metadata without executing hooks or acquiring nested sources.
+      for (const key of ["hooks", "mcpServers", "lspServers", "commands", "dependencies"]) if (meta[key]) unsupported.push(`Plugin ${key} require a reviewed adapter`)
+      if (Array.isArray(meta.plugins)) for (const plugin of meta.plugins) {
+        if (plugin && typeof plugin === "object" && "source" in plugin) {
+          if (typeof plugin.source !== "string" || !plugin.source.startsWith("./")) unsupported.push("External marketplace source requires a separate explicit import")
+          else PackagePathSchema.parse(plugin.source.slice(2))
+        }
       }
     }
-  }
-  const entries = stage.files.filter((f) => posix.basename(f.path) === "SKILL.md")
-  const inferred = !entries.length
-  if (inferred) entries.push(stage.files.find((f) => /(?:^|\/)README\.md$/i.test(f.path)) ?? stage.files[0])
-  if (entries.length > 1000) throw new Error("Tool count limit exceeded")
-  const tools: ImportPreview["tools"] = []
-  for (const entry of entries) {
-    const text = new TextDecoder().decode(await stageBytes(ctx, stage, entry.path))
-    let front: Record<string, unknown> = {}
-    if (text.startsWith("---\n")) {
-      const end = text.indexOf("\n---", 4)
-      if (end < 0 || end > 64000) throw new Error("Invalid bounded skill frontmatter")
-      const parsed: unknown = parseYaml(text.slice(4, end), { maxAliasCount: 0, schema: "core" }); boundedValue(parsed)
-      front = z.record(z.string(), z.unknown()).parse(parsed)
+    if (selectedEntries && (!selectedEntries.length || selectedEntries.some(path => !stage.files.some(file => file.path === PackagePathSchema.parse(path) && posix.basename(path) === "SKILL.md")))) throw new Error("Invalid discovered skill entries")
+    const entries = stage.files.filter((f) => posix.basename(f.path) === "SKILL.md" && (!selectedEntries || selectedEntries.includes(f.path)))
+    const inferred = !entries.length
+    if (inferred) entries.push(stage.files.find((f) => /(?:^|\/)README\.md$/i.test(f.path)) ?? stage.files[0])
+    if (entries.length > 1000) throw new Error("Tool count limit exceeded")
+    const tools: ImportPreview["tools"] = []
+    for (const entry of entries) {
+      const text = new TextDecoder().decode(await stageBytes(ctx, stage, entry.path))
+      let front: Record<string, unknown> = {}
+      if (text.startsWith("---\n")) {
+        const end = text.indexOf("\n---", 4)
+        if (end < 0 || end > 64000) throw new Error("Invalid bounded skill frontmatter")
+        const parsed: unknown = parseYaml(text.slice(4, end), { maxAliasCount: 0, schema: "core" }); boundedValue(parsed)
+        front = z.record(z.string(), z.unknown()).parse(parsed)
+      }
+      const proposed = { skillId: entry.path, name: typeof front.name === "string" ? front.name : inferred ? "Inferred adapter" : posix.basename(posix.dirname(entry.path)), description: typeof front.description === "string" ? front.description : "Review this imported package before use", kind: "instructions", entrypoint: entry.path, capabilities: [], resources: [], dependencies: [], dependencySlots: [], connections: [], engines: [], inputSchema: { type: "object", additionalProperties: false }, outputKinds: ["markdown"], setup: EMPTY_SETUP }
+      // An explicit bounded adapter extension is data, and always starts unreviewed.
+      const extension = front.scispark
+      const proposal = AdapterProposalSchema.parse(extension ? { ...proposed, ...z.record(z.string(), z.unknown()).parse(extension), skillId: entry.path } : proposed)
+      tools.push(await buildTool(ctx, stage, proposal, inferred, false, unsupported))
+      if (JSON.stringify(tools).length > 16 * 1024 * 1024) throw new Error("Import preview size limit exceeded")
     }
-    const proposed = { skillId: entry.path, name: typeof front.name === "string" ? front.name : inferred ? "Inferred adapter" : posix.basename(posix.dirname(entry.path)), description: typeof front.description === "string" ? front.description : "Review this imported package before use", kind: "instructions", entrypoint: entry.path, capabilities: [], resources: [], dependencies: [], dependencySlots: [], connections: [], engines: [], inputSchema: { type: "object", additionalProperties: false }, outputKinds: ["markdown"], setup: EMPTY_SETUP }
-    // An explicit bounded adapter extension is data, and always starts unreviewed.
-    const extension = front.scispark
-    const proposal = AdapterProposalSchema.parse(extension ? { ...proposed, ...z.record(z.string(), z.unknown()).parse(extension), skillId: entry.path } : proposed)
-    tools.push(await buildTool(ctx, stage, proposal, inferred, false, unsupported))
-    if (JSON.stringify(tools).length > 16 * 1024 * 1024) throw new Error("Import preview size limit exceeded")
-  }
-  return savePreview(ctx, { schemaVersion: 1, id: randomUUID(), stageId: stage.id, profileId: ctx.profileId, vaultId: ctx.vaultId, tools, recognizedMetadata: [...metadata.map((m) => m.path), ...(!inferred ? entries.map((e) => e.path) : [])], warnings: inferred ? ["No recognized executable skill entry; adapter proposal requires editing and review"] : [] })
+    return savePreview(ctx, { schemaVersion: 1, id: randomUUID(), stageId: stage.id, profileId: ctx.profileId, vaultId: ctx.vaultId, tools, recognizedMetadata: [...metadata.map((m) => m.path), ...(!inferred ? entries.map((e) => e.path) : [])], warnings: inferred ? ["No recognized executable skill entry; adapter proposal requires editing and review"] : [] }, stage.discoveryGrantId)
+  })
 }
+
 /** The user reviews the complete proposal. Return a new immutable preview ID;
  * stale refs cannot authorize modified capabilities or installation commands. */
 export async function reviewImport(ctx: WorkflowContext, previewId: string, proposals: AdapterProposal[]): Promise<ImportPreview> {
   const preview = await readPreview(ctx, previewId), stage = await readStage(ctx, preview.stageId)
-  if (!proposals.length || proposals.length > preview.tools.length || new Set(proposals.map((p) => p.skillId)).size !== proposals.length) throw new Error("Invalid reviewed tool selection")
-  const tools: ImportPreview["tools"] = []
-  for (const proposal of proposals) {
-    const previous = preview.tools.find((tool) => tool.proposal.skillId === proposal.skillId)
-    if (!previous) throw new Error("Unknown adapter proposal")
-    tools.push(await buildTool(ctx, stage, proposal, previous.inferred, true, previous.hostUnsupported))
-  }
-  return savePreview(ctx, { ...preview, id: randomUUID(), tools })
+  return withDiscoveryGrant(ctx, stage.discoveryGrantId, async () => {
+    if (!proposals.length || proposals.length > preview.tools.length || new Set(proposals.map((p) => p.skillId)).size !== proposals.length) throw new Error("Invalid reviewed tool selection")
+    const tools: ImportPreview["tools"] = []
+    for (const proposal of proposals) {
+      const previous = preview.tools.find((tool) => tool.proposal.skillId === proposal.skillId)
+      if (!previous) throw new Error("Unknown adapter proposal")
+      tools.push(await buildTool(ctx, stage, proposal, previous.inferred, true, previous.hostUnsupported))
+    }
+    return savePreview(ctx, { ...preview, id: randomUUID(), tools }, stage.discoveryGrantId)
+  })
 }
+
 export async function commitImport(ctx: WorkflowContext, previewId: string, selected: ToolRef[]): Promise<ToolRef[]> {
   const refs = z.array(ToolRefSchema).min(1).max(1000).parse(selected)
   const preview = await readPreview(ctx, previewId), stage = await readStage(ctx, preview.stageId)
-  const imports = await readImportedManifests(ctx)
-  const byRef = new Map(preview.tools.map((tool) => [exactRef(tool.manifest.ref), tool]))
-  if (refs.some((ref) => !byRef.has(exactRef(ref)))) throw new Error("Selection is not part of this import preview")
-  const graph = resolveDependencies([...NATIVE_TOOL_MANIFESTS, ...imports, ...preview.tools.map((tool) => tool.manifest)], refs)
-  if (graph.status !== "resolved") throw new Error(`Import blocked: ${graph.reason}`)
-  const selectedTools = graph.nodes.map((ref) => byRef.get(exactRef(ref))).filter((tool) => tool !== undefined)
-  if (selectedTools.some((tool) => !tool.reviewed)) throw new Error("Import requires capability and setup review")
-  // Validate every selected closure before publishing any snapshot or binding.
-  for (const tool of selectedTools) {
-    if (snapshotDigest(tool) !== tool.manifest.ref.digest) throw new Error("Import preview integrity mismatch")
-    for (const file of tool.files) await stageBytes(ctx, stage, file.path)
-  }
-  const runtime = new NodeFsVaultStorage(ctx.runtimeRoot)
-  for (const tool of selectedTools) {
-    const digest = tool.manifest.ref.digest
-    await runtime.exclusive(`import-${digest}`, async () => {
-      if (await runtime.hasSymlinkTraversal(`objects/${digest}`)) throw new Error("Import object symlink traversal")
-      await mkdir(extensionObjectPath(ctx, digest), { recursive: true, mode: 0o700 })
-      const object = new NodeFsVaultStorage(extensionObjectPath(ctx, digest))
-      const existing = await object.read("snapshot.json")
-      const snapshot = ImportedSnapshotSchema.parse({ schemaVersion: 1, tool })
-      if (existing && canonicalJSON(JSON.parse(existing)) !== canonicalJSON(snapshot)) throw new Error("Immutable snapshot collision")
-      for (const file of tool.files) {
-        const path = `files/${file.path}`
-        if (await object.hasSymlinkTraversal(path)) throw new Error("Import object symlink traversal")
-        const bytes = await object.readBinary(path)
-        if (existing) { if (!bytes || sha256(bytes) !== file.sha256) throw new Error("Immutable snapshot content corruption") }
-        else await object.writeBinary(path, await stageBytes(ctx, stage, file.path))
-      }
-      if (!existing) await object.write("snapshot.json", JSON.stringify(snapshot))
+  return withDiscoveryGrant(ctx, stage.discoveryGrantId, async (check) => {
+    const imports = await readImportedManifests(ctx)
+    const byRef = new Map(preview.tools.map((tool) => [exactRef(tool.manifest.ref), tool]))
+    if (refs.some((ref) => !byRef.has(exactRef(ref)))) throw new Error("Selection is not part of this import preview")
+    const graph = resolveDependencies([...NATIVE_TOOL_MANIFESTS, ...imports, ...preview.tools.map((tool) => tool.manifest)], refs)
+    if (graph.status !== "resolved") throw new Error(`Import blocked: ${graph.reason}`)
+    const selectedTools = graph.nodes.map((ref) => byRef.get(exactRef(ref))).filter((tool) => tool !== undefined)
+    if (selectedTools.some((tool) => !tool.reviewed)) throw new Error("Import requires capability and setup review")
+    // Validate every selected closure before publishing any snapshot or binding.
+    for (const tool of selectedTools) {
+      if (snapshotDigest(tool) !== tool.manifest.ref.digest) throw new Error("Import preview integrity mismatch")
+      for (const file of tool.files) await stageBytes(ctx, stage, file.path)
+    }
+    await check()
+    const runtime = new NodeFsVaultStorage(ctx.runtimeRoot)
+    for (const tool of selectedTools) {
+      const digest = tool.manifest.ref.digest
+      await runtime.exclusive(`import-${digest}`, async () => {
+        if (await runtime.hasSymlinkTraversal(`objects/${digest}`)) throw new Error("Import object symlink traversal")
+        await mkdir(extensionObjectPath(ctx, digest), { recursive: true, mode: 0o700 })
+        const object = new NodeFsVaultStorage(extensionObjectPath(ctx, digest))
+        const existing = await object.read("snapshot.json")
+        const snapshot = ImportedSnapshotSchema.parse({ schemaVersion: 1, tool })
+        if (existing && canonicalJSON(JSON.parse(existing)) !== canonicalJSON(snapshot)) throw new Error("Immutable snapshot collision")
+        for (const file of tool.files) {
+          const path = `files/${file.path}`
+          if (await object.hasSymlinkTraversal(path)) throw new Error("Import object symlink traversal")
+          const bytes = await object.readBinary(path)
+          if (existing) { if (!bytes || sha256(bytes) !== file.sha256) throw new Error("Immutable snapshot content corruption") }
+          else await object.writeBinary(path, await stageBytes(ctx, stage, file.path))
+        }
+        if (!existing) await object.write("snapshot.json", JSON.stringify(snapshot))
+      })
+    }
+    // Snapshot files above are preparation; authorize publication again
+    // after those potentially long reads/writes, then hold the grant until both
+    // catalog and enabled-binding publication finish. Revoke cannot interleave.
+    await check()
+    await recordImportedRefs(ctx, graph.nodes.filter((ref) => ref.packageId !== "scispark.builtin"), check)
+    await updateProfileTools(ctx, async (current) => {
+      // Recheck after waiting for profile-tools and reading its saved state.
+      await check()
+      const state = current ?? { schemaVersion: 1 as const, enabled: [], pins: [], overrides: [], migrated: false }
+      const enabled = new Map(state.enabled.map((binding) => [toolKey(binding.tool), binding]))
+      for (const ref of refs) enabled.set(toolKey(ref), { tool: ref, enabled: true })
+      return { ...state, enabled: [...enabled.values()] }
     })
-  }
-  await recordImportedRefs(ctx, graph.nodes.filter((ref) => ref.packageId !== "scispark.builtin"))
-  await updateProfileTools(ctx, (current) => {
-    const state = current ?? { schemaVersion: 1 as const, enabled: [], pins: [], overrides: [], migrated: false }
-    const enabled = new Map(state.enabled.map((binding) => [toolKey(binding.tool), binding]))
-    for (const ref of refs) enabled.set(toolKey(ref), { tool: ref, enabled: true })
-    return { ...state, enabled: [...enabled.values()] }
+    return refs
   })
-  return refs
+}
+
+/** Select a discovered candidate without performing the separate human review. */
+export async function selectDiscoveredPreview(ctx: WorkflowContext, previewId: string, skillId: string): Promise<ImportPreview> {
+  const preview = await readPreview(ctx, previewId)
+  const stage = await readStage(ctx, preview.stageId)
+  return withDiscoveryGrant(ctx, stage.discoveryGrantId, async () => {
+    const tool = preview.tools.find(tool => tool.proposal.skillId === skillId)
+    if (!tool) throw new Error("Unknown discovery candidate")
+    return savePreview(ctx, { ...preview, id: randomUUID(), tools: [tool] }, stage.discoveryGrantId)
+  })
 }

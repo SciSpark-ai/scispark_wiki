@@ -42,7 +42,7 @@ export type AdapterProposal = z.infer<typeof AdapterProposalSchema>
 export const FileRecordSchema = z.object({ path: PackagePathSchema, sha256: DigestSchema, bytes: z.number().int().nonnegative().max(IMPORT_LIMITS.fileBytes) }).strict()
 export const StagedPackageSchema = z.object({
   schemaVersion: z.literal(1), id: UuidSchema, profileId: ProfileIdSchema, vaultId: DigestSchema,
-  packageId: Text, version: Text,
+  packageId: Text, version: Text, discoveryGrantId: UuidSchema.optional(),
   provenance: ToolManifestSchema.shape.provenance,
   files: z.array(FileRecordSchema).max(IMPORT_LIMITS.entries),
 }).strict()
@@ -114,3 +114,34 @@ export const OpenCiteResultSchema = z.object({
   artifacts: z.array(z.object({kind:z.enum(["papers","bibtex","file","markdown"]),title:z.string().max(500),mediaType:z.string(),sourceRefs:z.array(z.string().max(2048)).max(1000),text:z.string().max(500000).optional(),base64:z.string().max(700000).optional()}).strict()).max(8),
 }).strict()
 export type OpenCiteResult = z.infer<typeof OpenCiteResultSchema>
+
+/** Explicit selections only; no default home/config expansion. */
+export const DiscoveryRootSchema = z.object({
+  agent: z.enum(["codex", "claude", "custom"]),
+  layout: z.enum(["config", "skills", "plugin-cache", "package"]),
+  path: z.string().min(1).max(4000).refine(value => value.startsWith("/") && !/[\x00-\x1f]/.test(value), "Select an absolute folder"),
+}).strict()
+export type DiscoveryRoot = z.infer<typeof DiscoveryRootSchema>
+export const DiscoveryGrantSchema = z.object({
+  id: UuidSchema, profileId: ProfileIdSchema, vaultId: DigestSchema,
+  roots: z.array(DiscoveryRootSchema).min(1).max(16),
+  createdAt: z.number().int().nonnegative(), expiresAt: z.number().int().nonnegative(), revoked: z.boolean(),
+}).strict()
+export type DiscoveryGrant = z.infer<typeof DiscoveryGrantSchema>
+export const DiscoveredSkillSchema = z.object({
+  id: UuidSchema, name: Text, description: z.string().max(16000), identity: DigestSchema,
+  researchScore: z.number().int().min(0).max(100),
+  origins: z.array(z.object({ rootIndex: z.number().int().nonnegative().max(15), agent: DiscoveryRootSchema.shape.agent, label: Text }).strict()).min(1).max(1000),
+  compatibility: CompatibilitySchema,
+}).strict()
+export type DiscoveredSkill = z.infer<typeof DiscoveredSkillSchema>
+export const DiscoveryActionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("grant"), operationId: UuidSchema, roots: z.array(DiscoveryRootSchema).min(1).max(16) }).strict(),
+  z.object({ action: z.literal("discover"), operationId: UuidSchema, grantId: UuidSchema }).strict(),
+  z.object({ action: z.literal("stage"), operationId: UuidSchema, grantId: UuidSchema, candidateId: UuidSchema }).strict(),
+  z.object({ action: z.literal("revoke"), operationId: UuidSchema, grantId: UuidSchema }).strict(),
+])
+export type DiscoveryAction = z.infer<typeof DiscoveryActionSchema>
+export const DiscoveryQuerySchema = z.object({ grantId: UuidSchema }).strict()
+export const DiscoveryGrantDtoSchema = DiscoveryGrantSchema.omit({ profileId: true, vaultId: true })
+export const DiscoveryStageDtoSchema = ImportPreviewSchema.omit({ profileId: true, vaultId: true })

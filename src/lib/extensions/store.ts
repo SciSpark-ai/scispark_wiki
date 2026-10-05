@@ -1,12 +1,13 @@
 import { join } from "node:path"
+import { AsyncLocalStorage } from "node:async_hooks"
 import { mkdir } from "node:fs/promises"
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import { NodeFsVaultStorage } from "../vault/node-fs-storage"
-import { ImportToolSchema, type ImportPreview } from "./import-contract"
+import { DiscoveryGrantSchema, ImportToolSchema, type ImportPreview } from "./import-contract"
 import { withVaultExclusive } from "../vault/exclusive"
 import type { WorkflowContext } from "../workflows/context"
-import { DigestSchema, ProfileIdSchema, ProfileToolsSchema, ToolRefSchema, type ToolManifest, type ToolRef, type ProfileTools } from "./contracts"
+import { DigestSchema, ProfileIdSchema, ProfileToolsSchema, ToolRefSchema, UuidSchema, type ToolManifest, type ToolRef, type ProfileTools } from "./contracts"
 
 const STATE_PATH = ".scispark/tools/state.json"
 export function extensionObjectPath(ctx: WorkflowContext, digest: string): string {
@@ -82,13 +83,55 @@ export function snapshotDigest(tool: ImportPreview["tools"][number]): string {
   return createHash("sha256").update(canonicalJSON(content)).digest("hex")
 }
 
-export async function recordImportedRefs(ctx: WorkflowContext, refs: ToolRef[]): Promise<void> {
+export async function recordImportedRefs(ctx: WorkflowContext, refs: ToolRef[], beforePublish?: () => Promise<void>): Promise<void> {
   const storage = await importStorage(ctx)
   await storage.exclusive("imports-catalog", async () => {
     const raw = await storage.read("imports/catalog.json")
     const catalog = raw ? ImportCatalogSchema.parse(JSON.parse(raw)) : { schemaVersion: 1 as const, tools: [] as ToolRef[] }
     const tools = new Map(catalog.tools.map((ref) => [JSON.stringify(ref), ref]))
     for (const ref of refs) tools.set(JSON.stringify(ToolRefSchema.parse(ref)), ref)
+    // Check inside the catalog lock, after contention and persisted-state reads.
+    await beforePublish?.()
     await storage.write("imports/catalog.json", JSON.stringify(ImportCatalogSchema.parse({ schemaVersion: 1, tools: [...tools.values()] })))
+  })
+}
+
+/** Also used by Task 7: stale staged previews cannot bypass revoked consent. */
+export async function requireDiscoveryGrant(ctx: WorkflowContext, id: string) {
+  if (!UuidSchema.safeParse(id).success) throw new Error("Discovery permission required")
+  const root = profileRuntimePath(ctx), storage = new NodeFsVaultStorage(root)
+  const path = `discovery/grants/${id}.json`
+  if (await new NodeFsVaultStorage(ctx.runtimeRoot).hasSymlinkTraversal(`profiles/${ctx.profileId}/${path}`)) throw new Error("Discovery permission denied")
+  const raw = await storage.read(path)
+  if (!raw) throw new Error("Discovery permission required")
+  const grant = DiscoveryGrantSchema.parse(JSON.parse(raw).grant)
+  if (grant.id !== id || grant.profileId !== ctx.profileId || grant.vaultId !== ctx.vaultId || grant.revoked || Date.now() >= grant.expiresAt) throw new Error("Discovery permission expired or revoked")
+  return grant
+}
+
+
+type DiscoveryGuard = { key: string; active: boolean }
+const discoveryGuard = new AsyncLocalStorage<DiscoveryGuard>()
+/** Lock order: discovery-operations (if any) -> grant -> object/catalog or
+ * profile-tools. Never acquire a grant while holding a profile-tools lock.
+ * Scoped reentry lets discovery inspection/selection reuse the same grant lock;
+ * the active bit prevents detached callbacks from reusing an ended scope.
+ * Publication callers must invoke check() after validation/preparation and
+ * immediately before starting their persisted publication transaction. */
+export async function withDiscoveryGrant<T>(ctx: WorkflowContext, id: string | undefined, work: (check: () => Promise<void>) => Promise<T>): Promise<T> {
+  if (!id) return work(async () => {})
+  UuidSchema.parse(id)
+  const key = `${profileRuntimePath(ctx)}:${ctx.vaultId}:${id}`
+  const check = async () => { await requireDiscoveryGrant(ctx, id) }
+  const current = discoveryGuard.getStore()
+  if (current?.active && current.key === key) { await check(); return work(check) }
+  if (current?.active) throw new Error("Cannot nest different discovery grants")
+  const storage = await importStorage(ctx)
+  return storage.exclusive(`discovery-${id}`, async () => {
+    const scope = { key, active: true }
+    return discoveryGuard.run(scope, async () => {
+      try { await check(); return await work(check) }
+      finally { scope.active = false }
+    })
   })
 }
