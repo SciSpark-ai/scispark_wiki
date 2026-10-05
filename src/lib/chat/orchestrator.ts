@@ -26,13 +26,14 @@ import {
   ProjectValidationError,
 } from "../projects/repository"
 import type { ProjectDetail } from "../projects/types"
-import type { SourceId } from "../papers/types"
+import { paperKey, type SourceId } from "../papers/types"
+import { logEvent } from "../events/log"
 import { runResearchSearch } from "../skills/research-search"
 import type { SearchFn } from "../skills/feed"
 import type { ResearchSearchStage } from "../skills/research-search-contract"
 import { loadSettings } from "../llm/settings"
 import { neutralizeFenceMarkers } from "../skills/ingest-analysis"
-import { ChatPaperSlugSchema, SearchResultSchema } from "./blocks"
+import { ChatPaperSlugSchema, ChatSelectionSchema, type ChatSelection, SearchResultSchema } from "./blocks"
 import { capturePaperContext, renderPaperContext } from "./paper-context"
 import { loadPaperText, type PaperTextDeps } from "../papers/full-text"
 import type { PaperTextInfo } from "../papers/text-contract"
@@ -61,6 +62,7 @@ export interface AskChatInput {
   mode?: "chat" | "search"
   sources?: SourceId[]
   operationId?: string
+  selection?: ChatSelection
 }
 
 export interface AskChatResult {
@@ -75,7 +77,7 @@ export interface AskChatOpts {
   settings?: LLMSettings
   providerOverride?: Partial<Record<Tier, LLMProvider>>
   now?: () => Date
-  onProgress?: (stage: "selecting" | "answering" | ResearchSearchStage) => void
+  onProgress?: (stage: "reading" | "selecting" | "answering" | ResearchSearchStage) => void
   onText?: (text: string) => void
   onSession?: (sessionId: string) => void
   searchFn?: SearchFn
@@ -90,7 +92,7 @@ export function parseAskChatInput(value: unknown): AskChatInput {
     throw new Error("chat input must be an object")
   }
   const record = value as Record<string, unknown>
-  const allowed = new Set(["sessionId", "question", "readSourcesOnly", "projectId", "paperSlug", "mode", "sources", "operationId"])
+  const allowed = new Set(["sessionId", "question", "readSourcesOnly", "projectId", "paperSlug", "mode", "sources", "operationId", "selection"])
   if (Object.keys(record).some((key) => !allowed.has(key))) {
     throw new Error("chat input contains unsupported fields")
   }
@@ -120,7 +122,10 @@ export function parseAskChatInput(value: unknown): AskChatInput {
   ) {
     throw new Error("projectId must be a non-empty string")
   }
+  const selection = record.selection === undefined ? undefined : ChatSelectionSchema.parse(record.selection)
+  if (selection && record.mode === "search") throw new Error("Selected passages require paper chat")
   return {
+    ...(selection ? { selection } : {}),
     sessionId: record.sessionId,
     question: record.question,
     readSourcesOnly: record.readSourcesOnly,
@@ -212,7 +217,8 @@ async function askChatTurn(storage: VaultStorage, opts: AskChatOpts): Promise<As
   const now = opts.now ?? (() => new Date())
   const { input } = opts
   const { session, project } = await loadOrCreateSession(storage, input, now)
-  const requestSignature = JSON.stringify({ mode: input.mode ?? "chat", readSourcesOnly: input.readSourcesOnly, sources: input.sources ? [...new Set(input.sources)].sort() : null })
+  if (input.selection && !session.paperContext) throw new ChatScopeError("Select a passage from a paper to ask about it")
+  const requestSignature = JSON.stringify({ ...(input.selection ? { selection: input.selection } : {}), mode: input.mode ?? "chat", readSourcesOnly: input.readSourcesOnly, sources: input.sources ? [...new Set(input.sources)].sort() : null })
   if (input.operationId && session.messages.some((m) => m.operationId === input.operationId)) {
     const question = session.messages.find((m) => m.operationId === input.operationId && m.role === "user")
     if (question?.content !== input.question) throw new Error("This operation already belongs to a different question")
@@ -235,9 +241,9 @@ async function askChatTurn(storage: VaultStorage, opts: AskChatOpts): Promise<As
   const history = session.messages
     .filter((m) => m.error === undefined)
     .slice(-MAX_HISTORY_TURNS)
-    .map((m) => ({ role: m.role, content: m.content }))
+    .map((m) => ({ role: m.role, content: m.selection ? `Selected passage: ${m.selection.text}\n${m.content}` : m.content }))
 
-  session.messages.push({ role: "user", content: input.question, ...(input.operationId ? { operationId: input.operationId, requestSignature } : {}) })
+  session.messages.push({ role: "user", content: input.question, ...(input.selection ? { selection: input.selection } : {}), ...(input.operationId ? { operationId: input.operationId, requestSignature } : {}) })
   session.updatedAt = now().toISOString()
   // Persisted BEFORE any LLM call: everything below can fail, and when it does
   // the user must still find their question in the transcript.
@@ -253,6 +259,7 @@ async function askChatTurn(storage: VaultStorage, opts: AskChatOpts): Promise<As
   session.updatedAt = now().toISOString()
   await saveSession(storage, session)
 
+  if (input.selection && session.paperContext) await logEvent(storage, { type: "reading_ask", paperKey: paperKey(session.paperContext.paper) })
   return { sessionId: session.id, message, paperSource: sourceInfo(session) }
 }
 
@@ -377,7 +384,7 @@ async function loadOrCreateSession(
     return {
       session: {
         id: input.sessionId,
-        title: deriveTitle(input.question),
+        title: deriveTitle(input.selection ? `Explain: ${input.selection.text}` : input.question),
         createdAt: timestamp,
         updatedAt: timestamp,
         messages: [],
@@ -396,7 +403,7 @@ async function loadOrCreateSession(
   return {
     session: {
       id: await mintSessionId(storage, now),
-      title: deriveTitle(input.question),
+      title: deriveTitle(input.selection ? `Explain: ${input.selection.text}` : input.question),
       createdAt: timestamp,
       updatedAt: timestamp,
       messages: [],
@@ -457,17 +464,18 @@ async function answerQuestion(
   // The page itself is the default evidence, including papers not saved to the
   // wiki. Explicit search/review modes above can introduce different material.
   if (session?.paperContext) {
-    opts.onProgress?.("answering")
     // Persist the user's turn first, then upgrade legacy/abstract-only context.
     // Full-text snapshots remain stable for subsequent History follow-ups.
     if (session.paperContext.source?.access !== "full-text") {
+      opts.onProgress?.("reading")
       session.paperContext.source = await loadPaperText(storage, session.paperContext.paper, opts.paperTextDeps)
     }
+    opts.onProgress?.("answering")
     const run = await runSkill({
       skill: chatAnswerSkill, storage, settings: opts.settings,
       providerOverride: opts.providerOverride, now: opts.now, onText: opts.onText,
       input: { question: input.question, context: renderPaperContext(session.paperContext, input.readSourcesOnly), history,
-        readSourcesOnly: input.readSourcesOnly, currentPaper: true, companionName: await resolveCompanionName(storage) },
+        readSourcesOnly: input.readSourcesOnly, selection: input.selection, currentPaper: true, companionName: await resolveCompanionName(storage) },
     })
     if (run.status !== "ok" || !run.output) return { role: "assistant", content: "I couldn't answer from this paper just now. Your question is saved; try again.", error: run.error ?? "Paper answer unavailable" }
     return { role: "assistant", content: run.output.answer, readSourcesOnly: input.readSourcesOnly,

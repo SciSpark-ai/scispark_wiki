@@ -77,7 +77,7 @@ test("digest stays readable across viewport sizes, preserves source and selectio
     await expect(page.getByText("A compact view of the synthetic attention method.", { exact: true })).toBeVisible()
     await page.getByText(digest.summary, { exact: true }).click({ clickCount: 3 })
     const selection = page.getByRole("toolbar", { name: "Selection actions" })
-    await expect(selection.getByRole("button", { name: "Ask", exact: true })).toBeVisible()
+    await expect(selection.getByRole("button", { name: "Ask Sparky", exact: true })).toBeVisible()
     await page.screenshot({ path: info.outputPath("digest-saved-selection.png") })
     expect(mutations).toEqual([])
     // Without a cached digest the source opens by default.

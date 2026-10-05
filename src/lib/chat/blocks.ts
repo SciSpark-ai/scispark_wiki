@@ -2,6 +2,13 @@ import { z } from "zod"
 import { slugifyTitle } from "../wiki/authoring"
 import { PaperTextSchema } from "../papers/text-contract"
 
+/** A reader selection is user-supplied context, never a replacement for paper evidence. */
+export const ChatSelectionSchema = z.object({
+  text: z.string().trim().min(1).max(6000),
+  surrounding: z.string().max(7600).optional(),
+}).strict()
+export type ChatSelection = z.infer<typeof ChatSelectionSchema>
+
 export const REVIEW_INTRO = "Manage your review and follow its progress below."
 export const LEGACY_REVIEW_INTRO = "Here is the review brief. Adjust the scope or context, then start when you're ready. No research calls have started."
 

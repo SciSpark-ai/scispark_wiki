@@ -9,7 +9,7 @@ test("Sparky knows the open unsaved paper, retains context in History and resets
   const sourcePath = "sources/arxiv-context-e2e-paper.html"
   const paths = [FEED_CACHE_PATH, digestPath, sourcePath, ...Object.values(USER_MODEL_PATHS)]
   const originals = await Promise.all(paths.map(async path => ({ path, content: await storage.read(path) })))
-  const paper = { ids: { arxiv: "context-e2e-paper" }, title: "Context fixture: auditory attention", authors: [{ name: "A. Researcher" }], abstract: "SOURCE-FIXTURE: A causal state detector adjusts temporal smoothing.", fields: [], source: "arxiv", year: 2026, date: new Date().toISOString().slice(0, 10) }
+  const paper = { ids: { arxiv: "context-e2e-paper" }, title: "Context fixture: auditory attention — state-guided adaptive decisions for robust EEG-based attention switch decoding", authors: [{ name: "A. Researcher" }], abstract: "SOURCE-FIXTURE: A causal state detector adjusts temporal smoothing.", fields: [], source: "arxiv", year: 2026, date: new Date().toISOString().slice(0, 10) }
   const other = { ...paper, ids: { arxiv: "context-other-paper" }, title: "Context fixture: a different paper" }
   const answer = "For this attention paper, the detector uses causal attention over a historical key-value cache to adjust temporal smoothing."
   const requests: Record<string, unknown>[] = []

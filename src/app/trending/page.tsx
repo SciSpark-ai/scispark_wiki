@@ -13,6 +13,7 @@ import {
 } from "@/lib/trending/cache"
 import type { TrendingBoard } from "@/lib/trending/types"
 import { refreshTrendingDashboard } from "@/lib/trending/client"
+import { observeSkillJob } from "@/lib/skills/job-client"
 import { useUIStore } from "@/stores/ui-store"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { Button } from "@/components/ui/Button"
@@ -46,9 +47,11 @@ export default function TrendingPage() {
   // interest fields — SP4 scopes retrieval to broad anchor disciplines).
   const [refreshingDiscipline, setRefreshingDiscipline] = useState<string | null>(null)
   const started = useRef(false)
+  const startedHere = useRef(false)
   const openSettingsModal = useUIStore((s) => s.openSettingsModal)
 
   const refresh = useCallback(async () => {
+    startedHere.current = true
     setRefreshing(true)
     setRefreshError(null)
     try {
@@ -81,6 +84,7 @@ export default function TrendingPage() {
   useEffect(() => {
     if (started.current) return
     started.current = true
+    const controller = new AbortController()
     ;(async () => {
       try {
         const vault = await getOpenVault()
@@ -90,6 +94,7 @@ export default function TrendingPage() {
           loadBoard(vault),
         ])
         const fields = effectiveTrackedFields(tSettings.fields, userModel.interests)
+        if (controller.signal.aborted) return
         if (fields.length === 0 && tSettings.anchors.length === 0) {
           setState({ status: "empty" })
           return
@@ -97,6 +102,29 @@ export default function TrendingPage() {
         // An EMPTY stored anchor list means "not derived yet" — there is
         // nothing to compare against, so scope-staleness doesn't apply.
         const scopeStale = tSettings.anchors.length > 0 && !anchorsMatchBoard(cached, tSettings.anchors)
+        if (cached && !scopeStale) setState({ status: "ready", dashboard: cached })
+        let restored = false
+        await observeSkillJob("trending", job => {
+          if (controller.signal.aborted || startedHere.current) return
+          if (job.status === "running") {
+            restored = true; setRefreshing(true)
+            setRefreshingDiscipline(typeof job.progress?.field === "string" ? job.progress.field : null)
+          } else {
+            setRefreshing(false); setRefreshingDiscipline(null)
+            if (job.status === "completed") {
+              const dashboard = job.result as TrendingBoard
+              restored = !isStale(dashboard, tSettings.cadence, new Date())
+                && (!tSettings.anchors.length || anchorsMatchBoard(dashboard, tSettings.anchors))
+              if (restored) setState({ status: "ready", dashboard })
+            } else if (!cached || job.updatedAt >= cached.generatedAt) {
+              restored = true
+              const message = job.error ?? "Refresh did not complete."
+              setRefreshError(message)
+              if (!cached || scopeStale) setState({ status: "error", message })
+            }
+          }
+        }, controller.signal)
+        if (controller.signal.aborted || restored || startedHere.current) return
         if (cached && !scopeStale) {
           // Stale-while-revalidate: show the cached board immediately —
           // fresh or stale — so the leaderboard never disappears. A stale
@@ -116,9 +144,14 @@ export default function TrendingPage() {
           await refresh()
         }
       } catch (err) {
-        setState({ status: "error", message: err instanceof Error ? err.message : String(err) })
+        if (controller.signal.aborted) return
+        const message = err instanceof Error ? err.message : String(err)
+        setState(prev => prev.status === "ready" ? prev : { status: "error", message })
+        setRefreshing(false)
+        setRefreshError(message)
       }
     })()
+    return () => { controller.abort(); started.current = false }
   }, [refresh])
 
   return (

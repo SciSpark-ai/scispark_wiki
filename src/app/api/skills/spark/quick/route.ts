@@ -1,3 +1,4 @@
+import { runSkillJob } from "@/lib/server/skill-jobs"
 import { jsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
 import { runQuickSpark, type QuickSparkResult } from "@/lib/spark/quick"
@@ -17,7 +18,7 @@ export interface QuickSparkRouteInput {
  * MockProvider instead of real network calls. Mirrors
  * src/app/api/skills/digest/route.ts.
  */
-export const POST = jsonSkillRoute<QuickSparkRouteInput, QuickSparkResult>(async (input, vault) => {
+export const POST = jsonSkillRoute<QuickSparkRouteInput, QuickSparkResult>(async (input, vault) => runSkillJob(vault, "spark-quick", async () => {
   const settings = await loadSettings(vault)
   const overrides = getSkillTestOverrides()
   return runQuickSpark(vault, {
@@ -26,4 +27,4 @@ export const POST = jsonSkillRoute<QuickSparkRouteInput, QuickSparkResult>(async
     settings,
     providerOverride: overrides.providerOverride,
   })
-})
+}))

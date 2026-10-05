@@ -6,7 +6,8 @@ import { BookOpen, Search, Layers, Clock } from "lucide-react"
 import Link from "next/link"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { listSessions, loadSession, type ChatSession } from "@/lib/chat/session"
-import { askChatRemote, type ChatStage } from "@/lib/chat/client"
+import { askChatRemote, CHAT_STAGE_LABELS as STAGE_LABELS, type ChatStage } from "@/lib/chat/client"
+import { observeSkillJob } from "@/lib/skills/job-client"
 import { saveAnswerAsQueryRemote } from "@/lib/chat/save-query-client"
 import { loadBundle } from "@/lib/vault/bundle"
 import { getProjectRemote } from "@/lib/projects/client"
@@ -23,10 +24,6 @@ import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { prepareReview } from "@/lib/review/client"
 import { ReviewReport } from "./ReviewReport"
 
-const STAGE_LABELS: Record<ChatStage, string> = {
-  selecting: "Reading your knowledge base…", answering: "Answering…",
-  planning: "Understanding your question…", searching: "Searching the literature…", ranking: "Reading the strongest matches…",
-}
 const SOURCE_LABELS: Record<SourceId, string> = { arxiv: "arXiv", openalex: "OpenAlex", s2: "Semantic Scholar", pubmed: "PubMed" }
 // Per-tab navigation only; ProfileGate clears this with drafts on profile changes.
 const ACTIVE_CHAT_KEY = "scispark:active-chat"
@@ -161,6 +158,27 @@ export function ChatWorkspace({ sessionId, fresh = false, resume = false, initia
 
   // Reading a pending snapshot never repeats its model/search request.
   useEffect(() => {
+    if (!sessionId) return
+    const controller = new AbortController()
+    void observeSkillJob(`chat:${sessionId}`, async job => {
+      if (sending.current || controller.signal.aborted) return
+      if (job.status === "running") {
+        setBusy(true)
+        if (typeof job.progress?.text === "string") setDraft(job.progress.text)
+        const value = job.progress?.stage
+        setStage(typeof value === "string" && value in STAGE_LABELS ? value as ChatStage : null)
+      } else {
+        setBusy(false); setStage(null); setDraft("")
+        if (job.status === "completed") await reload()
+        else setError(job.error ?? "The response did not complete.")
+      }
+    }, controller.signal).catch(error => {
+      if (!controller.signal.aborted && !sending.current) { setBusy(false); setError(String(error)) }
+    })
+    return () => controller.abort()
+  }, [sessionId, reload])
+
+  useEffect(() => {
     if (!sessionId || busy || session?.messages.at(-1)?.role !== "user") return
     const timer = window.setInterval(() => { void reload().catch(() => undefined) }, 2000)
     return () => window.clearInterval(timer)
@@ -171,7 +189,7 @@ export function ChatWorkspace({ sessionId, fresh = false, resume = false, initia
 
   async function submit() {
     const q = question.trim()
-    if (!q || sending.current || scopeError || (mode !== "chat" && (!sources.length || sourcesError))) return
+    if (!q || busy || sending.current || scopeError || (mode !== "chat" && (!sources.length || sourcesError))) return
     sending.current = true; setBusy(true); setError(null); setStage(null); setDraft("")
     const id = sessionId ?? `chat_${crypto.randomUUID()}`
     // Remember the submitted conversation before waiting for its result, so
@@ -279,7 +297,7 @@ export function ChatWorkspace({ sessionId, fresh = false, resume = false, initia
       {error && <LlmErrorMessage message={error} />}
       {savedPage && <p className="mb-2 text-sm text-muted-text">Added to your knowledge base. <Link className="text-accent-ink" href={wikiHref(savedPage)}>View page</Link></p>}
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <label className="text-sm text-muted-text">Mode <select aria-label="Chat mode" disabled={busy} value={mode} onChange={(e) => { const next = e.target.value as "chat" | "search" | "review"; setMode(next); setReadSourcesOnly(false); saveDraftOptions({ mode: next, readSourcesOnly: false }) }} className="ml-2 rounded-pill border border-border-warm bg-light-surface px-3 py-1.5 text-espresso"><option value="chat">Discuss research</option><option value="search">Find papers</option><option value="review">Deep literature review</option></select></label>
+        <label className="text-sm text-muted-text">Mode <select aria-label="Chat mode" disabled={busy} value={mode} onChange={(e) => { const next = e.target.value as "chat" | "search" | "review"; setMode(next); setReadSourcesOnly(false); saveDraftOptions({ mode: next, readSourcesOnly: false }) }} className="ml-2 rounded-btn border border-border-warm bg-light-surface px-3 py-1.5 text-espresso"><option value="chat">Discuss research</option><option value="search">Find papers</option><option value="review">Deep literature review</option></select></label>
         {mode !== "chat" ? <><button type="button" className="text-sm text-muted-text hover:text-accent-ink" aria-expanded={showSources} onClick={() => setShowSources(!showSources)}>Search scope</button><button type="button" onClick={() => openSettings("sources")} className="text-sm text-accent-ink">Manage sources</button></> : <SourcesToggle value={readSourcesOnly} onChange={(value) => { setReadSourcesOnly(value); saveDraftOptions({ readSourcesOnly: value }) }} />}
       </div>
       {mode !== "chat" && showSources && <div className="mb-3 flex flex-wrap gap-3">{enabledSources.map((s) => <label key={s} className="flex items-center gap-1.5 text-sm text-espresso"><input type="checkbox" disabled={busy} checked={sources.includes(s)} onChange={() => { const next = sources.includes(s) ? sources.filter((p) => p !== s) : [...sources, s]; setSources(next); saveDraftOptions({ sources: next }) }} />{SOURCE_LABELS[s]}</label>)}</div>}

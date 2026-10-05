@@ -54,6 +54,8 @@ const FILE_EXTENSIONS = new Set([".ts", ".tsx"])
  * is added, add its path here.
  */
 const CLIENT_LIB_FILES = [
+  "src/lib/skills/job-contract.ts",
+  "src/lib/skills/job-client.ts",
   "src/lib/papers/text-contract.ts",
   "src/lib/recommendation/topic-labels.ts",
   join("src", "lib", "local-profile-client.ts"),

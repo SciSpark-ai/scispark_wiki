@@ -148,7 +148,7 @@ export function OnboardingFlow({ initial, onComplete }: { initial: OnboardingSta
           </div>
         )}
         {!busy && !state.pending && suggestions.length > 0 && <div className="mt-2 flex flex-wrap gap-2">
-          {suggestions.map((suggestion) => <button type="button" key={suggestion} onClick={() => send(suggestion)} className="rounded-pill border border-border-warm px-3 py-1.5 text-[12px] text-espresso hover:border-orange">{suggestion}</button>)}
+          {suggestions.map((suggestion) => <button type="button" key={suggestion} onClick={() => send(suggestion)} className="rounded-btn border border-border-warm px-3 py-2 text-left text-[12px] leading-relaxed text-espresso hover:border-orange">{suggestion}</button>)}
         </div>}
         <p className="mt-2 text-[11px] text-muted-text">Enter to send · Shift + Enter for a new line</p>
       </div>

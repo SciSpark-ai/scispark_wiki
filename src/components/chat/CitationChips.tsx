@@ -1,5 +1,4 @@
 import Link from "next/link"
-import { Chip } from "@/components/ui/Chip"
 import { displayTitle } from "@/lib/papers/title"
 import { wikiHref } from "@/lib/wiki/href"
 
@@ -43,12 +42,10 @@ export function CitationChips({ pageIds, pageTitleById }: CitationChipsProps) {
   if (pageIds.length === 0) return null
 
   return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
+    <div aria-label="Cited pages" className="mt-2 grid min-w-0 gap-2">
       {pageIds.map((id) => (
-        <Link key={id} href={hrefForCitation(id)}>
-          <Chip tone="accent" className="hover:bg-orange/20">
-            {labelFor(id, pageTitleById)}
-          </Chip>
+        <Link key={id} href={hrefForCitation(id)} className="block min-w-0 rounded-btn border border-border-warm px-3 py-2 text-xs leading-relaxed break-words text-accent-ink hover:bg-card-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink">
+          {labelFor(id, pageTitleById)}
         </Link>
       ))}
     </div>

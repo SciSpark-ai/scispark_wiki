@@ -31,14 +31,38 @@ describe("shared paper full-text context", () => {
     expect(source.locator).toBe("https://arxiv.org/html/2608.01618")
     expect(source.paperKey).toBe("doi:10.48550/arxiv.2608.01618")
     expect(fetchFn).toHaveBeenCalledTimes(1)
+    expect(await vault.read("sources/doi-10-48550-arxiv-2608-01618.html")).toContain(paper.title)
   })
   it("uses a public PDF when HTML cannot be read and reports extraction limits", async () => {
     const fetchFn = vi.fn<typeof fetch>(async url => String(url).includes(encodeURIComponent("https://arxiv.org/pdf/2608.01618"))
       ? new Response("%PDF-fixture", { headers: { "content-type": "application/pdf" } }) : new Response("", { status: 404 }))
-    const source = await loadPaperText(new MemoryVaultStorage(), paper, { fetchFn, extractPdf: async () => ({ text, pagesRead: 10, totalPages: 30, shortened: true }) })
+    const vault = new MemoryVaultStorage()
+    const source = await loadPaperText(vault, paper, { fetchFn, extractPdf: async () => ({ text, pagesRead: 10, totalPages: 30, shortened: true }) })
     expect(source.access).toBe("full-text")
     expect(source.truncated).toBe(true)
     expect(source.notes.join(" ")).toContain("10 of 30 pages")
+    expect(new TextDecoder().decode((await vault.readBinary("sources/doi-10-48550-arxiv-2608-01618.pdf"))!)).toBe("%PDF-fixture")
+  })
+  it("retains verified PDF text when the offline snapshot cannot be written", async () => {
+    const vault = new MemoryVaultStorage()
+    vi.spyOn(vault, "writeBinary").mockRejectedValue(new Error("Disk full"))
+    const source = await loadPaperText(vault, paper, {
+      fetchFn: async () => new Response("%PDF-fixture", { headers: { "content-type": "application/pdf" } }),
+      extractPdf: async () => ({ text, pagesRead: 1, totalPages: 1, shortened: false }),
+    })
+    expect(source.access).toBe("full-text")
+    expect(source.text).toBe(text)
+    expect(source.notes).toContain("Verified full text could not be saved for offline reading")
+  })
+  it("never saves an unverified remote PDF as a readable snapshot", async () => {
+    const vault = new MemoryVaultStorage()
+    const write = vi.spyOn(vault, "writeBinary")
+    const source = await loadPaperText(vault, paper, {
+      fetchFn: async () => new Response("%PDF-unrelated", { headers: { "content-type": "application/pdf" } }),
+      extractPdf: async () => ({ text: `Unrelated article Methods Results ${"other text ".repeat(100)}`, pagesRead: 1, totalPages: 1, shortened: false }),
+    })
+    expect(source.access).toBe("abstract")
+    expect(write).not.toHaveBeenCalled()
   })
   it("does not mistake an unrelated cached PDF or a landing page for full text", async () => {
     const vault = new MemoryVaultStorage()

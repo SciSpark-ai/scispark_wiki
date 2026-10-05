@@ -4,22 +4,19 @@ import Link from "next/link"
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import type { SurfaceSelection } from "./HtmlSurface"
 import SelectionBubble from "./SelectionBubble"
-import AskPanel, { type AskState, type AskPanelProps } from "./AskPanel"
 import CaptureIdeaCard from "./CaptureIdeaCard"
 import { paperKey, type PaperRecord } from "@/lib/papers/types"
 import type { VaultStorage } from "@/lib/vault/storage"
 import { captureIdeaAsNote } from "@/lib/reader/capture-idea"
-import { buildAskContext } from "@/lib/reader/ask-context"
-import { askRemote, saveReadingAnswerRemote } from "@/lib/reader/client"
+import { askSparkyAboutSelection } from "@/components/companion/selection-request"
+import { paperSlug } from "@/lib/wiki/authoring"
 import { applyChangesetRemote } from "@/lib/vault/changeset-client"
-import { loadCompanionSettingsRemote } from "@/lib/companion/settings-client"
-import { logEvent } from "@/lib/events/log"
 import { wikiHref } from "@/lib/wiki/href"
 import { openSelectionNote } from "@/components/notes/selection-note-request"
 
 /** How much plain text on each side of a selection is sent as "surrounding"
- * context to the Reading-Companion skill (already truncated here, per
- * ReadingCompanionInput's own doc comment). */
+ * context to Sparky (already truncated here, per
+ * the chat request limits). */
 const SURROUND_RADIUS = 800
 
 function computeSurroundingText(text: string, start: number, end: number): string {
@@ -36,11 +33,7 @@ export interface AskableSurfaceRenderProps {
   onHtmlSelectionChange: (selection: SurfaceSelection | null) => void
   /** Wire directly onto a `PdfSurface`'s `onSelect`. */
   onPdfSelect: (start: number, end: number, selectedText: string) => void
-  /** The Ask panel, already wired to this surface's ask state/handlers.
-   * Render it wherever the layout calls for (the reader puts it in a fixed
-   * sidebar) — it isn't rendered inline with `children` because callers may
-   * want it in a different part of the layout entirely. */
-  askPanel: ReactNode
+
 }
 
 export interface AskableSurfaceProps {
@@ -64,8 +57,6 @@ export interface AskableSurfaceProps {
    * (only reachable when `enableHighlight` is set — see above). The native
    * and internal selection are already cleared by the time this fires. */
   onHighlight?: (selection: SurfaceSelection) => void
-  /** Open a caller-owned drawer only when the user chooses Ask. */
-  onAskOpen?: () => void
   enableSaveToNote?: boolean
   /** Renders the wrapped content region. Receives this surface's selection
    * handlers back so the caller can wire them onto whichever reading
@@ -80,8 +71,8 @@ export interface AskableSurfaceProps {
  * select→ask and select→capture-idea flows shared by any surface that
  * renders paper content — the in-app reader today, the SP2 paper page next.
  * Tracks the live selection over its wrapped `children`, shows
- * `SelectionBubble` for a non-empty one, and owns the `AskPanel`
- * state/`askRemote` call plus the inline `CaptureIdeaCard` flow.
+ * `SelectionBubble` for a non-empty one, hands questions to Sparky, and owns
+ * the inline `CaptureIdeaCard` flow.
  *
  * Persistent highlights are explicitly NOT this surface's concern — it never
  * renders a `HighlightLayer` and never touches highlight storage. A caller
@@ -96,22 +87,15 @@ export default function AskableSurface({
   surfaceText,
   enableHighlight = false,
   onHighlight,
-  onAskOpen,
   enableSaveToNote = false,
   children,
 }: AskableSurfaceProps) {
   const key = paperKey(paper)
 
   const [pendingSelection, setPendingSelection] = useState<SurfaceSelection | null>(null)
-  const [askTarget, setAskTarget] = useState<SurfaceSelection | null>(null)
-  const [askState, setAskState] = useState<AskState>({ status: "idle" })
-  const askRequest = useRef(0)
-  const [integration, setIntegration] = useState<AskPanelProps["integration"]>({ status: "idle" })
-  const integrating = useRef(new Set<number>())
-  useEffect(() => () => { askRequest.current++ }, [key])
   const [captureNotice, setCaptureNotice] = useState<{ path: string } | null>(null)
   // The passage "Capture idea" was invoked on, snapshotted independently of
-  // the live selection (same pattern as askTarget): typing in the card's
+  // the live selection (independent of the live selection): typing in the card's
   // textarea collapses the native selection, which must not dismiss the card.
   const [captureState, setCaptureState] = useState<{
     target: SurfaceSelection
@@ -159,65 +143,14 @@ export default function AskableSurface({
     onHighlight?.(sel)
   }
 
-  // Snapshot the passage the user invoked "Ask" on into a target that persists
-  // independently of the live selection. Clicking into the Ask panel's question
-  // box dismisses the native selection (clearing pendingSelection), so the
-  // typed-question flow must not depend on pendingSelection still being set.
   function beginAsk() {
     if (!pendingSelection) return
     const target = pendingSelection
-    setAskTarget(target)
     clearSelection()
-    onAskOpen?.()
-    void runAsk(target, "")
-  }
-
-  function submitAskQuestion(question: string) {
-    if (!askTarget) return
-    void runAsk(askTarget, question)
-  }
-
-  async function runAsk(target: SurfaceSelection, question: string) {
-    const requestId = ++askRequest.current
-    setIntegration({ status: "idle" })
-    setAskState({ status: "loading" })
-    try {
-      const context = await buildAskContext(storage, {
-        paper,
-        selection: target.text,
-        surroundingText: computeSurroundingText(surfaceTextRef.current, target.start, target.end),
-        userQuestion: question,
-      })
-      const companionSettings = await loadCompanionSettingsRemote()
-      if (requestId !== askRequest.current) return
-      const answer = await askRemote(
-        { ...context, companionName: companionSettings.companionName }, undefined,
-        (text) => { if (requestId === askRequest.current) setAskState({ status: "loading", text }) },
-      )
-      if (requestId !== askRequest.current) return
-      setAskState({ status: "done", answer: answer.answer, citedPageIds: answer.citedPageIds, question })
-      void logEvent(storage, { type: "reading_ask", paperKey: key })
-    } catch (err) {
-      if (requestId !== askRequest.current) return
-      setAskState({ status: "error", message: err instanceof Error ? err.message : String(err) })
-    }
-  }
-
-  async function integrateAnswer() {
-    const requestId = askRequest.current
-    if (askState.status !== "done" || !askTarget || integration?.status === "saved" || integrating.current.has(requestId)) return
-    integrating.current.add(requestId)
-    setIntegration({ status: "saving" })
-    try {
-      const result = await saveReadingAnswerRemote({
-        question: askState.question?.trim() || `Explain: ${askTarget.text.trim().replace(/\s+/g, " ").slice(0, 160)}`,
-        answer: askState.answer, selection: askTarget.text, paperKey: key, paperTitle: paper.title,
-        citedPageIds: [...new Set([...(sourcePageId ? [sourcePageId] : []), ...askState.citedPageIds])],
-      })
-      if (requestId === askRequest.current) setIntegration({ status: "saved", pageId: result.pageId, message: result.warnings?.map(warning => warning.message).join(" ") || undefined })
-    } catch (error) {
-      if (requestId === askRequest.current) setIntegration({ status: "error", message: error instanceof Error ? error.message : "Could not integrate this answer." })
-    } finally { integrating.current.delete(requestId) }
+    askSparkyAboutSelection({ paperSlug: paperSlug(paper), selection: {
+      text: target.text.slice(0, 6000),
+      surrounding: computeSurroundingText(surfaceTextRef.current, target.start, target.end).slice(0, 7600),
+    } })
   }
 
   // Open the inline capture card (replaces the old blocking window.prompt,
@@ -256,11 +189,9 @@ export default function AskableSurface({
     }
   }
 
-  const askPanel = <AskPanel selectionText={askTarget?.text ?? null} state={askState} onAsk={submitAskQuestion} onIntegrate={() => void integrateAnswer()} integration={integration} />
-
   return (
     <>
-      {children({ pendingSelection, onHtmlSelectionChange, onPdfSelect, askPanel })}
+      {children({ pendingSelection, onHtmlSelectionChange, onPdfSelect })}
 
       <SelectionBubble
         selection={pendingSelection}
@@ -289,7 +220,7 @@ export default function AskableSurface({
       )}
 
       {captureNotice && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 border border-border-warm rounded-pill bg-espresso text-white px-4 py-2 text-[13px] shadow-lg flex items-center gap-2 z-50">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 border border-border-warm rounded-btn bg-espresso text-white px-4 py-2 text-[13px] shadow-lg flex items-center gap-2 z-50">
           Idea captured.
           <Link href={wikiHref(captureNotice.path)} className="text-accent-ink-hover font-medium">
             View note

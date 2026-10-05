@@ -14,7 +14,7 @@ export function IdBadges({ ids }: { ids: PaperIds }) {
       {entries.map(([kind, value]) => (
         <span
           key={kind}
-          className="text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-pill bg-card-surface text-muted-text"
+          className="text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-badge bg-card-surface text-muted-text"
         >
           {kind}:{value}
         </span>

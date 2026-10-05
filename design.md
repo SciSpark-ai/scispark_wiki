@@ -156,9 +156,16 @@ The real AppShell owns the layout: 240px expanded / 60px collapsed desktop rail,
 main workspace, existing right panel, and 50px mobile top bar below the 1024px
 breakpoint. Preserve these dimensions and navigation patterns.
 
-Keep the current shape tokens: card 28px, badge 8px, button 12px, pill 50px,
-FAQ/panel 16px. Existing cards, page spacing and content density are the baseline.
-Do not replace them with the previous preview's compact rows or 6px buttons.
+**October 4 user correction:** content boxes must look like rounded rectangles,
+not pills. Reserve the 50px pill shape for action buttons (including links styled
+as actions). Paper references, cited pages and suggested questions use 12px
+corners with left-aligned, wrapping text; clickability alone does not make a
+content option an action button. Tags and status labels use the 8px badge radius;
+inputs and compact boxes use 12px; chat replies and toolbars use 16px. Larger
+cards retain 28px corners where they still read as boxes. Circles for avatars,
+Sparky, toggle knobs and diagram/status markers retain their distinct roles.
+Preserve existing page spacing and content density. Do not replace them with
+the previous preview's compact rows or 6px buttons.
 Preserve the existing motion character, while honoring reduced motion and keeping
 focus, reading position, selection and streaming stable.
 
@@ -253,6 +260,11 @@ breathes over 2.4 seconds with a maximum 1.12 scale. While text is streaming it
 stays steady orange. Only the spark moves; the circle stays still. Reduced-motion
 preferences disable breathing. Remove idle bobbing and celebration pulses.
 State follows existing request/stream state; no research behavior is changed.
+
+October 4: show a short activity label and three staggered orange dots while a
+reply is waiting. Once answer text arrives, replace the dots with an inline
+cursor. Both effects stop with reduced motion. Render actual answer chunks as
+they arrive; never expose reasoning or delay a completed answer to simulate typing.
 
 ### Sparky start page — September 9 layout follow-up
 

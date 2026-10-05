@@ -26,7 +26,7 @@ const server = createServer((request, response) => {
     if (size > 1_000_000) request.destroy(new Error("request too large"))
     else chunks.push(chunk)
   })
-  request.on("end", () => {
+  request.on("end", async () => {
     try {
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8"))
       const prompt = Array.isArray(body.messages)
@@ -50,17 +50,24 @@ const server = createServer((request, response) => {
         ["Check the profile below and change anything I missed.", "review"],
       ]
       const reply = onboardingReplies[Math.min(Math.max(0, answers.length - 1), 4)]
-      const output = reviewResponse(body.messages) ?? (prompt.includes("Help this researcher shape a useful paper feed")
+      const background = prompt.includes("BACKGROUND-FIXTURE")
+      if (background) await new Promise(resolve => setTimeout(resolve, 5000))
+      const output = (background && prompt.includes("You are an expert research analyst.")
+        ? { entities: [], concepts: [], findings: [], connections: [], contradictions: [], recommendations: { pagesToCreate: [], pagesToUpdate: [], emphasis: [] } }
+        : background && prompt.includes("You are a wiki maintainer")
+        ? { files: [], reviews: [] } : null) ?? reviewResponse(body.messages) ?? (prompt.includes("Help this researcher shape a useful paper feed")
         ? { message: reply[0], draft: onboardingDraft, question: reply[1] }
         : prompt.includes("Connection test: reply with the word ready")
         ? { message: "ready" }
-        : prompt.includes("structured digest of an academic paper") && prompt.includes("FULLTEXT-FIXTURE")
+        : prompt.includes("structured digest of an academic paper") && (prompt.includes("FULLTEXT-FIXTURE") || background)
         ? { summary: "The detector uses causal attention.", laySummary: "It tracks attention using past signals.", keyPoints: ["Adaptive smoothing"], methods: "Causal attention over a historical key-value cache.", limitations: "A controlled experiment.", fieldContext: "EEG decoding." }
         : prompt.includes("CURRENT PAPER —")
         ? {
-            answer: prompt.includes("Context fixture: auditory attention") && prompt.includes("SOURCE-FIXTURE: A causal state detector adjusts temporal smoothing.") && prompt.includes("FULLTEXT-FIXTURE: The detector uses causal attention over a historical key-value cache.") && !prompt.includes("DIGEST-FIXTURE: The detector algorithm is not described.")
+            answer: prompt.includes("MARKDOWN-FIXTURE")
+              ? "**CNNT** uses EEG.\n\n1. **General background on CNNT's design.** This is *background*.\n\n2. **This paper's results.** Uses `EEG`.\n\n### Comparison\n\n- Stable attention\n- Fast switches\n\n| Method | Result |\n| --- | --- |\n| **CNNT** | Stable |\n\n```text\nA_long_identifier_" + "x".repeat(140) + "\n```"
+              : prompt.includes("Context fixture: auditory attention") && prompt.includes("SOURCE-FIXTURE: A causal state detector adjusts temporal smoothing.") && prompt.includes("FULLTEXT-FIXTURE: The detector uses causal attention over a historical key-value cache.") && !prompt.includes("DIGEST-FIXTURE: The detector algorithm is not described.")
               ? "For this attention paper, the detector uses causal attention over a historical key-value cache to adjust temporal smoothing."
-              : "PAPER CONTEXT FIXTURE MISSING",
+              : prompt.includes("Context fixture: auditory attention") ? "PAPER CONTEXT FIXTURE MISSING" : "The disposable paper supports this project-scoped answer.",
             citedPageIds: ["current-paper"],
           }
         : prompt.includes("You select which pages")
@@ -73,6 +80,8 @@ const server = createServer((request, response) => {
           })
 
       if (body.stream) {
+        const slowStream = prompt.includes("STREAMING-FIXTURE")
+        if (slowStream) await new Promise(resolve => setTimeout(resolve, 2500))
         response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" })
         const content = JSON.stringify(output)
         const split = Math.min(content.length, 35)
@@ -83,7 +92,7 @@ const server = createServer((request, response) => {
           response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: content.slice(split) } }] })}\n\n`)
           response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 20, completion_tokens: 10 } })}\n\n`)
           response.end("data: [DONE]\n\n")
-        }, 1500)
+        }, slowStream ? 6500 : 1500)
         response.on("close", () => clearTimeout(timer))
         return
       }

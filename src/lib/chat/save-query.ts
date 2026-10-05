@@ -9,6 +9,7 @@ import { slugifyTitle } from "../wiki/authoring"
 import { sanitizeSlugList } from "../skills/ingest"
 import { isValidSessionId, loadSession } from "./session"
 import { paperKey } from "../papers/types"
+import { findPaperPage } from "../papers/page-state"
 
 export interface SaveAnswerAsQueryOpts {
   question: string
@@ -106,7 +107,13 @@ export async function saveAnswerAsQuery(
   // A general-background answer with no citations must not acquire paper claims.
   const session = !opts.readingSource && opts.sessionId && isValidSessionId(opts.sessionId)
     ? await loadSession(storage, opts.sessionId) : null
-  const message = session?.messages.findLast(m => m.role === "assistant" && m.content.trim() === opts.answer.trim())
+  const messageIndex = session?.messages.findLastIndex((m, i) => m.role === "assistant" && m.content.trim() === opts.answer.trim() && session.messages[i - 1]?.content === opts.question) ?? -1
+  const message = session?.messages[messageIndex]
+  const selected = session?.messages[messageIndex - 1]?.selection
+  const readingSource = opts.readingSource ?? (selected && session?.paperContext ? {
+    paperKey: paperKey(session.paperContext.paper), paperTitle: session.paperContext.paper.title, selection: selected.text,
+  } : undefined)
+  const selectedPaperPage = selected && session?.paperContext ? findPaperPage(bundle, session.paperContext.slug) : null
   const citedPapers = message?.blocks?.flatMap(block => block.type === "paper-citations" ? block.papers : []) ?? []
 
   const frontmatter: Frontmatter = {
@@ -115,11 +122,11 @@ export async function saveAnswerAsQuery(
     created: today,
     updated: today,
     tags: [],
-    related: sanitizeSlugList(opts.citedPageIds),
-    sources: [opts.readingSource ? `paper:${singleLine(opts.readingSource.paperKey)}` : `chat:${singleLine(opts.sessionId!)}`, `question:${singleLine(opts.question)}`, ...citedPapers.map(paper => `paper:${singleLine(paperKey(paper))}`)],
+    related: sanitizeSlugList([...opts.citedPageIds, ...(selectedPaperPage ? [selectedPaperPage.id] : [])]),
+    sources: [...new Set([...(opts.sessionId ? [`chat:${singleLine(opts.sessionId)}`] : []), ...(readingSource ? [`paper:${singleLine(readingSource.paperKey)}`] : []), `question:${singleLine(opts.question)}`, ...citedPapers.map(paper => `paper:${singleLine(paperKey(paper))}`)])],
   }
-  const body = opts.readingSource
-    ? `## Question\n\n${opts.question}\n\n## Selected passage\n\n${opts.readingSource.selection.split("\n").map(line => `> ${line}`).join("\n")}\n\n## Explanation\n\n${opts.answer.trim()}\n\n## Provenance\n\nAI-generated reading explanation; saved by the user.\n\nPaper: ${singleLine(opts.readingSource.paperTitle)}\n\nReference: ${singleLine(opts.readingSource.paperKey)}\n`
+  const body = readingSource
+    ? `## Question\n\n${opts.question}\n\n## Selected passage\n\n${readingSource.selection.split("\n").map(line => `> ${line}`).join("\n")}\n\n## Explanation\n\n${opts.answer.trim()}\n\n## Provenance\n\nAI-generated reading explanation; saved by the user.\n\nPaper: ${singleLine(readingSource.paperTitle)}\n\nReference: ${singleLine(readingSource.paperKey)}\n`
     : `## ${opts.question}\n\n${opts.answer.trim()}\n${citedPapers.length ? `\n## Cited papers\n\n${citedPapers.map(paper => `- ${singleLine(paper.title)} (${singleLine(paperKey(paper))})`).join("\n")}\n` : ""}`
   const content = serializeDocument(frontmatter, body)
 

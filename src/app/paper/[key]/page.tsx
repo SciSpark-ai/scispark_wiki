@@ -6,10 +6,12 @@ import Link from "next/link"
 import { getOpenVault } from "@/lib/vault/get-vault"
 import { loadBundle, type Bundle } from "@/lib/vault/bundle"
 import { resolvePaperBySlug, extractAbstractFromBody } from "@/lib/papers/resolve"
-import { findPaperPage, pageStateFromPage, isFullTextKnownUnavailable, type PaperPageState } from "@/lib/papers/page-state"
+import { findPaperPage, pageStateFromPage, type PaperPageState } from "@/lib/papers/page-state"
 import { paperKey, type PaperRecord } from "@/lib/papers/types"
 import { savePaper } from "@/lib/papers/save-client"
 import { generateDigestRemote, ingestRemote, loadCachedDigestRemote, undoIngestRemote } from "@/lib/skills/ingest-client"
+import type { DigestRemoteResult, IngestRemoteResult, IngestPhase } from "@/lib/skills/ingest-client"
+import { observeSkillJob } from "@/lib/skills/job-client"
 import { enrichRemote } from "@/lib/skills/enrich-client"
 import { loadFeed, type FeedItem } from "@/lib/skills/feed-cache"
 import { logEvent } from "@/lib/events/log"
@@ -30,7 +32,6 @@ import { RelatedInWiki, resolveRelatedPages, type RelatedPageLink } from "@/comp
 import { requestCompanionCheck as reevaluateCompanion } from "@/components/companion/useCompanion"
 import { COMPANION_CLEARANCE } from "@/components/layout/companion-clearance"
 import { BackLink } from "@/components/ui/BackLink"
-import { Button } from "@/components/ui/Button"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { LoadingState } from "@/components/ui/LoadingState"
 import { ProjectMembershipControl } from "@/components/projects/ProjectMembershipControl"
@@ -47,12 +48,6 @@ type LoadState =
        * so the ingested-state synthesis/backlinks render against the exact
        * same snapshot `pageState`/`tldr`/`relatedPages` were derived from. */
       bundle: Bundle
-      /** True only when the paper page is INGESTED and its own frontmatter
-       * has confirmed no full text was acquired (C1) — a saved-but-not-yet-
-       * ingested stub never carries `full_text` at all, so its absence
-       * leaves "Read full text" enabled rather than reading as a known
-       * paywall. See `isFullTextKnownUnavailable`. */
-      fullTextKnownFalse: boolean
       /** Tier-2 Enrich Skill output off the paper page's own frontmatter
        * (`tldr`/`tags`) — absent until the paper's been enriched. */
       tldr?: string
@@ -82,7 +77,6 @@ async function loadReadyState(storage: VaultStorage, slug: string): Promise<Load
   // schema.md-routed vault's paper page still resolves past "discovery".
   const page = findPaperPage(bundle, slug)
   const pageState = pageStateFromPage(page)
-  const fullTextKnownFalse = isFullTextKnownUnavailable(page)
   // A paper resolved from a wiki page's frontmatter (rather than the feed
   // cache) never carries an abstract — paperRecordFromFrontmatter only
   // reads frontmatter, and the abstract lives in the page BODY under "##
@@ -102,7 +96,6 @@ async function loadReadyState(storage: VaultStorage, slug: string): Promise<Load
     paper: paperWithAbstract,
     pageState,
     bundle,
-    fullTextKnownFalse,
     tldr,
     tags,
     relatedPages,
@@ -121,6 +114,8 @@ function PaperPageContent() {
   const [ingestState, setIngestState] = useState<IngestState>({ phase: "idle" })
   const [saveState, setSaveState] = useState<SaveState>({ status: "idle" })
   const [enrichState, setEnrichState] = useState<EnrichState>({ status: "idle" })
+  const lifetime = useRef<AbortController | null>(null)
+  const startedHere = useRef({ digest: false, ingest: false })
 
   // Ask-anywhere (Task 11): unlike the reader, this page has no dedicated
   // HtmlSurface/PdfSurface — its content is plain rendered React, not a
@@ -133,13 +128,6 @@ function PaperPageContent() {
   // and ask "surrounding text" offsets always agree.
   const contentRef = useRef<HTMLDivElement | null>(null)
   const [surfaceText, setSurfaceText] = useState("")
-  const [askOpen, setAskOpen] = useState(false)
-  // The drawer opens from a text selection elsewhere on the page, so focus
-  // is never inside it by default — without moving focus in, a bubbled
-  // keydown Escape handler on the drawer would never fire. Focused once on
-  // open (not a loop/trap: Tab from here moves on normally), so Escape
-  // reliably closes the drawer as soon as it appears.
-  const askDrawerRef = useRef<HTMLDivElement | null>(null)
   // AskableSurface only hands back its (stable) onHtmlSelectionChange inside
   // a render-prop callback invoked during render, not as a normal prop — so
   // it's captured into a ref (assigned each render, read only from the
@@ -188,15 +176,12 @@ function PaperPageContent() {
     return () => document.removeEventListener("selectionchange", handleSelection)
   }, [handleSelection])
 
-  // See askDrawerRef's doc comment: move focus into the drawer once, right
-  // when it opens, so the wrapper's onKeyDown Escape handler below has
-  // something to bubble from.
-  useEffect(() => {
-    if (askOpen) askDrawerRef.current?.focus()
-  }, [askOpen])
 
   useEffect(() => {
     let cancelled = false
+    const controller = new AbortController()
+    lifetime.current = controller
+    startedHere.current = { digest: false, ingest: false }
     ;(async () => {
       if (!slug) {
         if (!cancelled) setLoad({ status: "not-found" })
@@ -211,7 +196,6 @@ function PaperPageContent() {
       // component instance (no remount) — without this, an open Ask drawer
       // (and the selection/answer it's showing) would keep displaying the
       // PREVIOUS paper's content after switching papers.
-      setAskOpen(false)
       setSurfaceText("")
       window.getSelection()?.removeAllRanges()
       const storage = await getOpenVault()
@@ -220,6 +204,23 @@ function PaperPageContent() {
       setLoad(next)
       if (next.status === "ready") {
         void logEvent(storage, { type: "paper_view", paperKey: paperKey(next.paper), title: next.paper.title })
+        void observeSkillJob(`ingest:${slug}`, async job => {
+          if (cancelled || startedHere.current.ingest) return
+          if (job.status === "running") {
+            setIngestState({ phase: (job.progress?.phase as IngestPhase) ?? "acquiring" })
+          } else if (job.status === "completed") {
+            const result = job.result as IngestRemoteResult
+            const ready = await loadReadyState(storage, slug)
+            if (cancelled || startedHere.current.ingest) return
+            setLoad(ready)
+            // A later Undo in History must not resurrect an obsolete success.
+            if (result.output.status === "draft" || (ready.status === "ready" && ready.pageState.state === "ingested")) {
+              setIngestState({ phase: "done", ...result })
+            }
+          } else setIngestState({ phase: "error", message: job.error ?? "Could not add this paper." })
+        }, controller.signal).catch(error => {
+          if (!cancelled && !startedHere.current.ingest) setIngestState({ phase: "error", message: error instanceof Error ? error.message : String(error) })
+        })
 
         // Restore a durable digest on every page visit. This is a GET-only
         // cache lookup; unlike the Generate action it cannot acquire full
@@ -245,25 +246,38 @@ function PaperPageContent() {
               : current,
           )
         }
+        if (!cancelled) void observeSkillJob(`digest:${slug}`, job => {
+          if (cancelled || startedHere.current.digest) return
+          if (job.status === "running") setDigestState(current => current.status === "done" ? { ...current, refreshing: true } : { status: "loading" })
+          else if (job.status === "completed") setDigestState({ status: "done", ...job.result as DigestRemoteResult })
+          else setDigestState(current => current.status === "done"
+            ? { ...current, refreshing: false, refreshError: job.error }
+            : { status: "error", message: job.error ?? "Digest generation did not complete." })
+        }, controller.signal).catch(error => {
+          if (!cancelled && !startedHere.current.digest) setDigestState(current => current.status === "done"
+            ? { ...current, refreshing: false, refreshError: String(error) }
+            : { status: "error", message: String(error) })
+        })
       }
     })()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [slug])
 
   async function handleGenerateDigest() {
     if (load.status !== "ready") return
-    const { paper, storage } = load
+    const observer = lifetime.current
+    startedHere.current.digest = true
+    const { paper } = load
     const previous = digestState
     setDigestState(previous.status === "done" ? { ...previous, refreshing: true, refreshError: undefined } : { status: "loading" })
     try {
       const { digest, fromCache, costUsd, source } = await generateDigestRemote(paper)
-      setDigestState({ status: "done", digest, fromCache, costUsd, source })
-      if (!fromCache) {
-        void logEvent(storage, { type: "digest_generated", paperKey: paperKey(paper), title: paper.title, costUsd })
-      }
+      if (!observer?.signal.aborted) setDigestState({ status: "done", digest, fromCache, costUsd, source })
     } catch (err) {
+      if (observer?.signal.aborted) return
       const message = err instanceof Error ? err.message : String(err)
       setDigestState(previous.status === "done" ? { ...previous, refreshing: false, refreshError: message } : { status: "error", message })
     }
@@ -271,35 +285,42 @@ function PaperPageContent() {
 
   async function handleIngest() {
     if (load.status !== "ready") return
+    const observer = lifetime.current
+    startedHere.current.ingest = true
     const { paper, storage } = load
     setIngestState({ phase: "acquiring" })
     try {
-      const { output, costUsd } = await ingestRemote(paper, (phase) => setIngestState({ phase }))
+      const { output, costUsd } = await ingestRemote(paper, (phase) => { if (!observer?.signal.aborted) setIngestState({ phase }) })
+      if (observer?.signal.aborted) return
       setIngestState({ phase: "done", output, costUsd })
       if (output.status === "ok") {
-        // Awaited (not fire-and-forget) so the ingest event is durably logged
-        // before the companion re-evaluates — mirrors /papers's handleIngest.
-        await logEvent(storage, {
-          type: "ingest",
-          paperKey: paperKey(paper),
-          title: paper.title,
-          changesetId: output.changesetId,
-        })
+        const ready = await loadReadyState(storage, slug)
+        if (observer?.signal.aborted) return
+        setLoad(ready)
         reevaluateCompanion()
       }
     } catch (err) {
+      if (observer?.signal.aborted) return
       setIngestState({ phase: "error", message: err instanceof Error ? err.message : String(err) })
     }
   }
 
   async function handleUndo() {
     if (ingestState.phase !== "done" || ingestState.output.status !== "ok") return
+    const observer = lifetime.current
     const changesetId = ingestState.output.changesetId
     setIngestState({ ...ingestState, undoing: true })
     try {
       await undoIngestRemote(changesetId)
+      if (observer?.signal.aborted) return
+      if (load.status === "ready") {
+        const ready = await loadReadyState(load.storage, slug)
+        if (observer?.signal.aborted) return
+        setLoad(ready)
+      }
       setIngestState((prev) => (prev.phase === "done" ? { ...prev, undoing: false, undone: true } : prev))
     } catch (err) {
+      if (observer?.signal.aborted) return
       const message = err instanceof Error ? err.message : String(err)
       setIngestState((prev) => (prev.phase === "done" ? { ...prev, undoing: false, undoError: message } : prev))
     }
@@ -307,6 +328,7 @@ function PaperPageContent() {
 
   async function handleSave() {
     if (load.status !== "ready") return
+    const observer = lifetime.current
     const { paper, storage } = load
     setSaveState({ status: "saving" })
     try {
@@ -316,16 +338,21 @@ function PaperPageContent() {
       // its injection seam, or the post-save reload would trigger the effect
       // ON TOP of that background run and double-charge the skill.
       const { saved } = await savePaper(storage, paper, { enrichFn: async () => ({ applied: false }) })
+      if (observer?.signal.aborted) return
       setSaveState({ status: "done", alreadySaved: !saved })
       // Reload so pageState flips discovery -> saved immediately; the
       // auto-enrich effect fires off this reloaded state.
-      setLoad(await loadReadyState(storage, slug))
+      const ready = await loadReadyState(storage, slug)
+      if (observer?.signal.aborted) return
+      setLoad(ready)
     } catch (err) {
+      if (observer?.signal.aborted) return
       setSaveState({ status: "error", message: err instanceof Error ? err.message : String(err) })
     }
   }
 
   async function runEnrich(storage: VaultStorage) {
+    const observer = lifetime.current
     setEnrichState({ status: "loading" })
     // enrichRemote itself never throws (see enrich-client.ts), but the reload
     // below can (RemoteVaultStorage.list()/read() throw on a transient
@@ -336,9 +363,12 @@ function PaperPageContent() {
       // Re-fetch the bundle so the freshly-merged tldr/tags/related render
       // before dropping the "Summarizing…" state, regardless of whether this
       // run applied anything.
-      setLoad(await loadReadyState(storage, slug))
+      const ready = await loadReadyState(storage, slug)
+      if (observer?.signal.aborted) return
+      setLoad(ready)
       setEnrichState({ status: "done", applied: result.applied })
     } catch (err) {
+      if (observer?.signal.aborted) return
       setEnrichState({ status: "error", message: err instanceof Error ? err.message : String(err) })
     }
   }
@@ -415,8 +445,8 @@ function PaperPageContent() {
     // (see the mount effect's manual resets above for this page's OWN
     // state), so without a key change a stale answer/capture card from the
     // previous paper could otherwise still be showing.
-    <AskableSurface key={slug} storage={load.storage} paper={load.paper} sourcePageId={sourcePageId} surfaceText={surfaceText} onAskOpen={() => setAskOpen(true)} enableSaveToNote>
-      {({ onHtmlSelectionChange, askPanel }) => {
+    <AskableSurface key={slug} storage={load.storage} paper={load.paper} sourcePageId={sourcePageId} surfaceText={surfaceText} enableSaveToNote>
+      {({ onHtmlSelectionChange }) => {
         // See the contentRef/handleSelection setup above: this render-prop
         // is the only place AskableSurface's (stable) selection callback is
         // available, so the latest reference is captured into a ref here
@@ -441,7 +471,6 @@ function PaperPageContent() {
 
                 <PaperActions
                   pageState={load.pageState}
-                  fullTextKnownFalse={load.fullTextKnownFalse}
                   saveState={saveState}
                   onSave={handleSave}
                   enrichState={enrichState}
@@ -510,40 +539,7 @@ function PaperPageContent() {
               </div>
             </div>
 
-            {askOpen && (
-              // A floating drawer rather than ReaderView's fixed sidebar —
-              // this page has no two-column layout to host one. Top/bottom
-              // (rather than a fixed height) anchor it so its bottom edge
-              // stays clear of the companion mascot + speech bubble (both
-              // fixed bottom-5 right-5, z-40) — a bubble can pop right after
-              // ingest (reevaluateCompanion() above) while this drawer is
-              // open, so the two must never be able to visually collide.
-              // Keyboard-dismissable (Escape) per the brief, but deliberately
-              // NOT a focus trap — Tab still moves focus normally.
-              <div
-                ref={askDrawerRef}
-                role="dialog"
-                aria-label="Ask panel"
-                tabIndex={-1}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setAskOpen(false)
-                }}
-                className="fixed top-24 right-3 bottom-28 z-40 w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-card border border-border-warm bg-light-surface shadow-lg outline-none sm:right-6"
-              >
-                <div className="relative h-full min-h-0">
-                  <Button
-                    variant="quiet"
-                    size="sm"
-                    onClick={() => setAskOpen(false)}
-                    aria-label="Close ask panel"
-                    className="absolute top-2 right-2 z-10"
-                  >
-                    Close
-                  </Button>
-                  {askPanel}
-                </div>
-              </div>
-            )}
+
           </>
         )
       }}

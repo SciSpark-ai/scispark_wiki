@@ -31,6 +31,8 @@ export interface ProcessRequest {
   executable: string; args: string[]; cwd: string; input?: string
   timeoutMs: number; signal?: AbortSignal
   keepStdinOpen?: boolean
+  /** Some protocols include private configuration in their handshake. */
+  collectStdout?: boolean
   onLine?: (line: string, reply: (input: string | null) => void) => void
 }
 export interface ProcessResult { code: number | null; stdout: string; stderr: string }
@@ -38,7 +40,7 @@ export function runEngineProcess(req: ProcessRequest): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
     if (req.signal?.aborted) { reject(new LLMError("AI request cancelled.")); return }
     const child = spawn(req.executable, req.args, { cwd: req.cwd, env: engineEnvironment(), stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32", shell: false })
-    let stdout = "", stderr = "", pending = "", failure: Error | undefined
+    let stdout = "", stderr = "", pending = "", outputBytes = 0, failure: Error | undefined
     let killTimer: ReturnType<typeof setTimeout> | undefined
     const kill = (signal: NodeJS.Signals) => {
       try { if (process.platform !== "win32" && child.pid) process.kill(-child.pid, signal); else child.kill(signal) } catch { /* already exited */ }
@@ -58,8 +60,9 @@ export function runEngineProcess(req: ProcessRequest): Promise<ProcessResult> {
     child.stderr.setEncoding("utf8")
     const reply = (input: string | null) => { if (input === null) child.stdin.end(); else child.stdin.write(input) }
     child.stdout.on("data", (text: string) => {
-      stdout += text; pending += text
-      if (Buffer.byteLength(stdout) > 8_000_000) { stop(new LLMError("Local AI output exceeded the response limit.")); return }
+      if (req.collectStdout !== false) stdout += text
+      pending += text; outputBytes += Buffer.byteLength(text)
+      if (outputBytes > 8_000_000) { stop(new LLMError("Local AI output exceeded the response limit.")); return }
       let end: number
       while ((end = pending.indexOf("\n")) >= 0) {
         const line = pending.slice(0, end); pending = pending.slice(end + 1)

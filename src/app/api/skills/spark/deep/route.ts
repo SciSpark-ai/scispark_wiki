@@ -1,3 +1,4 @@
+import { runSkillJob } from "@/lib/server/skill-jobs"
 import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
 import { nodeSearchFn } from "@/lib/papers/node-search"
@@ -33,10 +34,10 @@ export interface DeepSparkRouteInput {
  * via a module-level `WeakMap` (same pattern as
  * src/lib/trending/dashboard.ts's `runTrendingDashboard`). So two concurrent
  * POSTs to this route for the same vault resolve to the SAME `DeepSparkResult`
- * (only one real LLM spend), but the second request's `onPhase` progress
- * events won't fire mid-run — see runDeepSpark's JSDoc for the full nuance.
+ * (only one real LLM spend), and both requests observe progress through the shared server-owned job.
+ * GET /api/skills/jobs restores the latest phase and result after navigation.
  */
-export const POST = ndjsonSkillRoute<DeepSparkRouteInput>(async (input, vault, emit) => {
+export const POST = ndjsonSkillRoute<DeepSparkRouteInput>(async (input, vault, emit) => runSkillJob(vault, "spark-deep", async (progress) => {
   const settings = await loadSettings(vault)
   const overrides = getSkillTestOverrides()
   const today = new Date().toISOString().slice(0, 10)
@@ -51,7 +52,7 @@ export const POST = ndjsonSkillRoute<DeepSparkRouteInput>(async (input, vault, e
       settings,
       providerOverride: overrides.providerOverride,
       today,
-      onPhase: (phase) => emit({ type: "progress", phase }),
+      onPhase: (phase) => progress({ type: "progress", phase }),
     })
 
     const degraded = result.outcome.kind === "abandoned" || result.outcome.kind === "do_not_generate"
@@ -62,4 +63,4 @@ export const POST = ndjsonSkillRoute<DeepSparkRouteInput>(async (input, vault, e
       costUsd: result.costUsd,
     }
   })
-})
+}, emit))

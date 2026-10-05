@@ -6,7 +6,7 @@ import { serverRelayFetch } from "../server/relay-fetch"
 import { normalizeDoi, paperKey, type PaperRecord } from "./types"
 import { PaperTextSchema, type PaperText } from "./text-contract"
 
-export interface PaperTextDeps { fetchFn?: typeof fetch; extractPdf?: typeof extractReviewPdf; now?: () => Date }
+export interface PaperTextDeps { fetchFn?: typeof fetch; extractPdf?: typeof extractReviewPdf; now?: () => Date; onSnapshot?: () => void }
 
 /** Discovery providers often identify arXiv papers by DOI alone. Keep that
  * identity unchanged; derive acquisition candidates only. */
@@ -16,7 +16,7 @@ function acquisitionPaper(paper: PaperRecord): PaperRecord {
   return { ...paper, ids: { ...paper.ids, arxiv: id }, pdfUrl: paper.pdfUrl ?? `https://arxiv.org/pdf/${id}` }
 }
 
-/** Server-only, model-free source acquisition shared by digest and paper chat.
+/** Server-only, model-free source acquisition shared by digest, ingest and paper chat.
  * Reuses downloaded HTML/PDF and bounded extraction; all remote fetches keep the
  * existing relay, identity checks, timeouts and byte limits. */
 export async function loadPaperText(storage: VaultStorage, paper: PaperRecord, deps: PaperTextDeps = {}): Promise<PaperText> {
@@ -53,7 +53,13 @@ export async function loadPaperText(storage: VaultStorage, paper: PaperRecord, d
   } catch { notes.push("Saved full text could not be extracted; tried public sources.") }
 
   const evidence = await acquireReviewEvidence(acquisitionPaper(paper), "P1",
-    deps.fetchFn ?? serverRelayFetch("server-paper-text", { maxBytes: 5_000_000, timeoutMs: 10_000 }), deps.extractPdf ?? extractReviewPdf)
+    deps.fetchFn ?? serverRelayFetch("server-paper-text", { maxBytes: 5_000_000, timeoutMs: 10_000 }), deps.extractPdf ?? extractReviewPdf,
+    async ({ kind, bytes }) => {
+      deps.onSnapshot?.()
+      const path = `sources/${stem}.${kind}`
+      if (kind === "pdf") await storage.writeBinary(path, bytes)
+      else await storage.write(path, new TextDecoder().decode(bytes))
+    })
   const full = evidence?.access === "full-text"
   return remember({ paperKey: key, access: full ? "full-text" : "abstract", text: (full ? evidence.text : paper.abstract ?? "").slice(0, 45_000),
     locator: full ? evidence.locator : "Abstract", checkedAt,

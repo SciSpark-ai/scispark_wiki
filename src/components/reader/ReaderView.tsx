@@ -227,7 +227,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
       enableHighlight
       onHighlight={(sel) => void handleHighlight(sel)}
     >
-      {({ onHtmlSelectionChange, onPdfSelect, askPanel }) => (
+      {({ onHtmlSelectionChange, onPdfSelect }) => (
         <div className="flex h-full min-h-0">
           <div className="flex-1 min-w-0 overflow-y-auto p-7">
             <h1 className="font-heading text-[22px] text-espresso tracking-heading mb-4 max-w-[68ch]">{displayTitle(paper.title)}</h1>
@@ -263,7 +263,7 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
                 onSelect={onPdfSelect}
                 renderHighlights={() =>
                   highlights.length > 0 ? (
-                    <div className="absolute top-2 right-2 rounded-pill border border-border-warm bg-light-surface px-2.5 py-1 text-[11px] text-muted-text shadow-sm">
+                    <div className="absolute top-2 right-2 rounded-btn border border-border-warm bg-light-surface px-2.5 py-1 text-[11px] text-muted-text shadow-sm">
                       {highlights.length} highlight{highlights.length === 1 ? "" : "s"} saved (not shown on PDF yet)
                     </div>
                   ) : null
@@ -272,7 +272,6 @@ export default function ReaderView({ paper, content, storage }: ReaderViewProps)
             )}
           </div>
 
-          <div className="w-[340px] flex-shrink-0">{askPanel}</div>
         </div>
       )}
     </AskableSurface>

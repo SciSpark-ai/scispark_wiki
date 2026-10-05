@@ -129,7 +129,7 @@ export function SelectionToNoteBubble() {
     <div
       data-selection-bubble
       style={{ position: "fixed", top: Math.max(8, Math.min(state.top, window.innerHeight - 100)), left: Math.max(8, Math.min(state.left, window.innerWidth - 368)), zIndex: 70 }}
-      className="max-w-[calc(100vw-16px)] rounded-pill border border-border-warm/40 bg-light-surface shadow-md transition-opacity duration-150 ease-out starting:opacity-0"
+      className="max-w-[calc(100vw-16px)] rounded-faq border border-border-warm/40 bg-light-surface shadow-md transition-opacity duration-150 ease-out starting:opacity-0"
       onMouseDown={(event) => event.stopPropagation()}
     >
       {showConfirm ? (

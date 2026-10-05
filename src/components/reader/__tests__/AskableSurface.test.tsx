@@ -9,18 +9,15 @@ import type { AskableSurfaceRenderProps } from "../AskableSurface"
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-// This is the extracted contract's regression guard (Task 7): AskableSurface
-// owns the select→ask and select→capture-idea flows that used to live
-// directly in ReaderView. Everything that talks to the network is mocked;
-// buildAskContext/logEvent run for real against an in-memory vault (cheap,
-// deterministic, no I/O).
+// Reading surfaces hand selections to the global Sparky conversation.
+// Capture and project-note actions keep their independent storage contracts.
 vi.mock("@/lib/reader/client", () => ({ askRemote: vi.fn(), saveReadingAnswerRemote: vi.fn() }))
 vi.mock("@/lib/companion/settings-client", () => ({ loadCompanionSettingsRemote: vi.fn() }))
 vi.mock("@/lib/reader/capture-idea", () => ({ captureIdeaAsNote: vi.fn() }))
 vi.mock("@/lib/projects/client", () => ({ listProjectsRemote: vi.fn(), createProjectNoteRemote: vi.fn() }))
 
-import { askRemote, saveReadingAnswerRemote } from "@/lib/reader/client"
-import { loadCompanionSettingsRemote } from "@/lib/companion/settings-client"
+import { askRemote } from "@/lib/reader/client"
+import { SPARKY_SELECTION_REQUEST, type SparkySelectionRequest } from "@/components/companion/selection-request"
 import { captureIdeaAsNote } from "@/lib/reader/capture-idea"
 
 import AskableSurface from "../AskableSurface"
@@ -28,7 +25,6 @@ import { SelectionToNoteBubble } from "@/components/notes/SelectionToNoteBubble"
 import { listProjectsRemote, createProjectNoteRemote } from "@/lib/projects/client"
 
 const askRemoteMock = vi.mocked(askRemote)
-const loadCompanionSettingsRemoteMock = vi.mocked(loadCompanionSettingsRemote)
 const captureIdeaAsNoteMock = vi.mocked(captureIdeaAsNote)
 
 let roots: Root[] = []
@@ -90,9 +86,6 @@ async function flush() {
 function renderSurface(props: Partial<React.ComponentProps<typeof AskableSurface>> = {}) {
   const storage = new MemoryVaultStorage()
   let latest: AskableSurfaceRenderProps | null = null
-  // Mirrors real usage (ReaderView): the wrapped content and the askPanel
-  // both get mounted from the same render-prop call, same as a caller would
-  // place askPanel in a separate sidebar alongside the content region.
   const { host } = mount(
     <AskableSurface storage={storage} paper={PAPER} surfaceText="hello world, this is the surrounding text" {...props}>
       {(renderProps) => {
@@ -100,7 +93,6 @@ function renderSurface(props: Partial<React.ComponentProps<typeof AskableSurface
         return (
           <>
             <div data-testid="content" data-note-source="paper" data-selection-actions="paper">paper content</div>
-            <div data-testid="ask-panel">{renderProps.askPanel}</div>
           </>
         )
       }}
@@ -117,39 +109,24 @@ function renderSurface(props: Partial<React.ComponentProps<typeof AskableSurface
 }
 
 describe("AskableSurface", () => {
-  it("integrates a completed answer with its source once and shows the resulting wiki link", async () => {
-    loadCompanionSettingsRemoteMock.mockResolvedValue({ companionName: "Sparky", chattiness: "medium" })
-    askRemoteMock.mockResolvedValue({ answer: "A grounded explanation.", citedPageIds: ["wiki/concepts/attention"] })
-    let finish!: (result: Awaited<ReturnType<typeof saveReadingAnswerRemote>>) => void
-    vi.mocked(saveReadingAnswerRemote).mockImplementation(() => new Promise(resolve => { finish = resolve }))
-    const { host, getRenderProps } = renderSurface({ sourcePageId: "wiki/papers/source" })
-    expect(host.textContent).not.toContain("Integrate into wiki")
-    act(() => getRenderProps().onHtmlSelectionChange(SELECTION))
-    act(() => findBubbleButton(host, "Ask").click())
-    await flush()
-    const button = findButton(host, "Integrate into wiki")
-    act(() => { button.click(); button.click() })
-    expect(saveReadingAnswerRemote).toHaveBeenCalledTimes(1)
-    expect(saveReadingAnswerRemote).toHaveBeenCalledWith({ question: "Explain: hello world", answer: "A grounded explanation.", selection: "hello world", paperKey: "arxiv:2401.00001", paperTitle: PAPER.title, citedPageIds: ["wiki/papers/source", "wiki/concepts/attention"] })
-    await act(async () => finish({ pageId: "wiki/queries/explanation", changesetId: "cs-save" }))
-    expect(host.querySelector('a[href="/wiki/queries/explanation"]')?.textContent).toBe("View wiki page")
-    expect(host.textContent).not.toContain("Integrate into wiki")
-    expect(askRemoteMock).toHaveBeenCalledTimes(1)
+  it("hands the snapshot and paper to Sparky only after Ask, without a second panel or legacy request", () => {
+    const requests: SparkySelectionRequest[] = []
+    const receive = (event: Event) => requests.push((event as CustomEvent<SparkySelectionRequest>).detail)
+    document.addEventListener(SPARKY_SELECTION_REQUEST, receive)
+    try {
+      const { host, getRenderProps } = renderSurface()
+      act(() => getRenderProps().onHtmlSelectionChange(SELECTION))
+      expect(requests).toHaveLength(0)
+      act(() => findBubbleButton(host, "Ask Sparky").click())
+      act(() => getRenderProps().onHtmlSelectionChange(null))
+      expect(requests).toHaveLength(1)
+      expect(requests[0]).toEqual({ id: expect.any(String), paperSlug: "2401-00001", selection: { text: "hello world", surrounding: "hello world, this is the surrounding text" } })
+      expect(host.querySelector('[role="toolbar"]')).toBeNull()
+      expect(host.querySelector('[role="dialog"]')).toBeNull()
+      expect(askRemoteMock).not.toHaveBeenCalled()
+    } finally { document.removeEventListener(SPARKY_SELECTION_REQUEST, receive) }
   })
-  it("shows integration failures and allows an explicit retry", async () => {
-    loadCompanionSettingsRemoteMock.mockResolvedValue({ companionName: "Sparky", chattiness: "medium" })
-    askRemoteMock.mockResolvedValue({ answer: "Explanation", citedPageIds: [] })
-    vi.mocked(saveReadingAnswerRemote).mockRejectedValue(new Error("Save unavailable"))
-    const { host, getRenderProps } = renderSurface()
-    act(() => getRenderProps().onHtmlSelectionChange(SELECTION))
-    act(() => findBubbleButton(host, "Ask").click())
-    await flush()
-    act(() => findButton(host, "Integrate into wiki").click())
-    await flush()
-    expect(host.textContent).toContain("Save unavailable")
-    expect(findButton(host, "Integrate into wiki").disabled).toBe(false)
-    expect(host.querySelector('a[href^="/wiki/"]')).toBeNull()
-  })
+
   it("uses one selection menu and hands the snapshotted quote to the project-note picker", async () => {
     vi.mocked(listProjectsRemote).mockResolvedValue([{ id: "project-1", title: "Research" }] as Awaited<ReturnType<typeof listProjectsRemote>>)
     vi.mocked(createProjectNoteRemote).mockResolvedValue({} as Awaited<ReturnType<typeof createProjectNoteRemote>>)
@@ -172,40 +149,6 @@ describe("AskableSurface", () => {
     await flush()
     expect(createProjectNoteRemote).toHaveBeenCalledWith("project-1", { title: "hello world", content: "hello world", sources: ["paper:wiki/papers/source.md"] })
     expect(askRemoteMock).not.toHaveBeenCalled()
-  })
-  it("opens the caller's drawer only after Ask and retains the passage after clearing selection", async () => {
-    const onAskOpen = vi.fn()
-    loadCompanionSettingsRemoteMock.mockResolvedValue({ companionName: "Sparky", chattiness: "medium" })
-    askRemoteMock.mockResolvedValue({ answer: "Explanation", citedPageIds: [] })
-    const { host, getRenderProps } = renderSurface({ onAskOpen })
-    act(() => getRenderProps().onHtmlSelectionChange(SELECTION))
-    expect(onAskOpen).not.toHaveBeenCalled()
-    expect(askRemoteMock).not.toHaveBeenCalled()
-    act(() => findBubbleButton(host, "Ask").click())
-    expect(onAskOpen).toHaveBeenCalledTimes(1)
-    expect(host.querySelector('[role="toolbar"]')).toBeNull()
-    expect(host.textContent).toContain("hello world")
-    await flush()
-    expect(askRemoteMock).toHaveBeenCalledTimes(1)
-  })
-  it("shows partial text while asking, then replaces it with the final answer and sources", async () => {
-    loadCompanionSettingsRemoteMock.mockResolvedValue({ companionName: "Sparky", chattiness: "medium" })
-    let finish!: (answer: { answer: string; citedPageIds: string[] }) => void
-    askRemoteMock.mockImplementation((_input, _fetch, onText) => {
-      onText?.("A partial explanation")
-      return new Promise((resolve) => { finish = resolve })
-    })
-    const { host, getRenderProps } = renderSurface()
-    act(() => getRenderProps().onHtmlSelectionChange(SELECTION))
-    act(() => findBubbleButton(host, "Ask").click())
-    await flush()
-    expect(host.querySelector("[data-streaming-reply]")?.textContent).toContain("A partial explanation")
-    expect(host.textContent).not.toContain("Sources")
-    await act(async () => finish({ answer: "The validated explanation.", citedPageIds: ["wiki/concepts/attention"] }))
-    expect(host.querySelector("[data-streaming-reply]")).toBeNull()
-    expect(host.textContent).not.toContain("A partial explanation")
-    expect(host.textContent).toContain("The validated explanation.")
-    expect(host.querySelector('a[href="/wiki/concepts/attention"]')).not.toBeNull()
   })
   it("renders children and stays bubble-free with no selection", () => {
     const { host } = renderSurface()
@@ -241,42 +184,7 @@ describe("AskableSurface", () => {
     expect(host.textContent).not.toContain("Highlight")
   })
 
-  it("clicking Ask calls askRemote and renders the answer with cited pages", async () => {
-    loadCompanionSettingsRemoteMock.mockResolvedValue({ companionName: "Ember", chattiness: "medium" })
-    askRemoteMock.mockResolvedValue({ answer: "It means the model attends sparsely.", citedPageIds: ["wiki/concepts/sparse-attention"] })
 
-    const { host, getRenderProps } = renderSurface()
-    act(() => getRenderProps().onHtmlSelectionChange(SELECTION))
-    act(() => findBubbleButton(host, "Ask").dispatchEvent(new MouseEvent("click", { bubbles: true })))
-
-    await flush()
-
-    expect(askRemoteMock).toHaveBeenCalledTimes(1)
-    const call = askRemoteMock.mock.calls[0][0]
-    expect(call.selection).toBe("hello world")
-    expect(host.textContent).toContain("It means the model attends sparsely.")
-    expect(host.textContent).toContain("wiki/concepts/sparse-attention")
-  })
-
-  it("keeps showing the asked passage in the Ask panel even after the live selection collapses", async () => {
-    loadCompanionSettingsRemoteMock.mockResolvedValue({ companionName: "Ember", chattiness: "medium" })
-    askRemoteMock.mockResolvedValue({ answer: "answer text", citedPageIds: [] })
-
-    const { host, getRenderProps } = renderSurface()
-    act(() => getRenderProps().onHtmlSelectionChange(SELECTION))
-    act(() => findBubbleButton(host, "Ask").dispatchEvent(new MouseEvent("click", { bubbles: true })))
-    await flush()
-
-    expect(host.textContent).toContain("Selected passage")
-    expect(host.textContent).toContain("hello world")
-
-    // Simulate the browser collapsing the native selection (e.g. focusing
-    // another field) — the SP1-era invariant is that the Ask panel's target
-    // is snapshotted independently and must not revert to "no selection".
-    act(() => getRenderProps().onHtmlSelectionChange(null))
-    expect(host.textContent).toContain("Selected passage")
-    expect(host.textContent).toContain("hello world")
-  })
 
   it("Capture opens the inline card with the selected passage", () => {
     const { host, getRenderProps } = renderSurface()
@@ -336,15 +244,4 @@ describe("AskableSurface", () => {
     expect(host.textContent).toContain("changeset conflict: index.md changed")
   })
 
-  it("exposes an askPanel render prop that reflects idle state with no selection", () => {
-    const { getRenderProps } = renderSurface()
-    // Mount a second host to render just the panel and inspect it.
-    const panelHost = document.createElement("div")
-    document.body.appendChild(panelHost)
-    const panelRoot = createRoot(panelHost)
-    act(() => panelRoot.render(<>{getRenderProps().askPanel}</>))
-    roots.push(panelRoot)
-    expect(panelHost.textContent).toContain("Select text in the paper")
-    panelHost.remove()
-  })
 })

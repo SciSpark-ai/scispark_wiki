@@ -1,3 +1,4 @@
+import { runSkillJob } from "@/lib/server/skill-jobs"
 import { jsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { getServerVault } from "@/lib/server/vault"
 import { loadSettings } from "@/lib/llm/settings"
@@ -11,6 +12,8 @@ import {
   type DigestResult,
 } from "@/lib/skills/digest"
 import type { PaperRecord } from "@/lib/papers/types"
+import { paperKey } from "@/lib/papers/types"
+import { logEvent } from "@/lib/events/log"
 
 export interface DigestRouteResult {
   digest: DigestResult
@@ -58,7 +61,7 @@ export async function GET(request: Request): Promise<Response> {
  * lets tests inject a MockProvider and/or a fake fetch instead of real
  * network calls.
  */
-export const POST = jsonSkillRoute<{ paper: PaperRecord }, DigestRouteResult>(async ({ paper }, vault) => {
+export const POST = jsonSkillRoute<{ paper: PaperRecord }, DigestRouteResult>(async ({ paper }, vault) => runSkillJob(vault, `digest:${paperSlug(paper)}`, async () => {
   const overrides = getSkillTestOverrides()
   const cached = await loadCachedDigestEntry(vault, paperSlug(paper))
   if (cached?.source?.access === "full-text") return { ...cached, fromCache: true }
@@ -73,5 +76,6 @@ export const POST = jsonSkillRoute<{ paper: PaperRecord }, DigestRouteResult>(as
     providerOverride: overrides.providerOverride,
   })
 
+  if (!fromCache) await logEvent(vault, { type: "digest_generated", paperKey: paperKey(paper), title: paper.title, costUsd })
   return { digest, fromCache, costUsd, source }
-})
+}))

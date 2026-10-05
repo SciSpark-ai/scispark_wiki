@@ -58,10 +58,6 @@ const INGEST_PHASE_LABEL: Record<IngestPhase, string> = {
 
 export interface PaperActionsProps {
   pageState: PaperPageState
-  /** True only once a paper page's frontmatter has confirmed no full text
-   * was acquired — undefined/false (not yet known, or known available)
-   * leaves "Read full text" enabled. */
-  fullTextKnownFalse: boolean
   saveState: SaveState
   onSave: () => void
   enrichState: EnrichState
@@ -84,7 +80,6 @@ export interface PaperActionsProps {
  */
 export function PaperActions({
   pageState,
-  fullTextKnownFalse,
   saveState,
   onSave,
   enrichState,
@@ -128,16 +123,13 @@ export function PaperActions({
           </Button>
         )}
 
-        <Button variant="secondary" onClick={onReadFullText} disabled={fullTextKnownFalse}>
+        <Button variant="secondary" onClick={onReadFullText}>
           Read full text
         </Button>
         {feedback && <div className="ml-auto max-w-full">{feedback}</div>}
       </div>
 
       {saveState.status === "error" && <LlmErrorMessage message={saveState.message} />}
-      {fullTextKnownFalse && (
-        <div className="mt-3 text-[13px] text-muted-text tracking-body">No open-access full text.</div>
-      )}
       {enrichState.status === "loading" && (
         <div className="mt-3 text-[13px] text-muted-text tracking-body">Summarizing…</div>
       )}

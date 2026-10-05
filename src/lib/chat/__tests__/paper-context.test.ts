@@ -27,6 +27,36 @@ function options(provider: MockProvider) { return { settings, providerOverride: 
 function prompt(provider: MockProvider) { return provider.calls[0].req.messages.map(m => m.content).join("\n") }
 
 describe("chat from a paper page", () => {
+  it("carries a selected passage into full-text chat, History, and an undoable wiki save", async () => {
+    const storage = new MemoryVaultStorage(); await seed(storage)
+    await storage.write("sources/arxiv-context-paper.html", `<article><h1>${paper.title}</h1><h2>Methods</h2><p>CNNT encodes EEG. ${"Method details. ".repeat(80)}</p><h2>Results</h2><p>Stable decoding.</p></article>`)
+    const selection = { text: "CNNT", surrounding: "The encoders are CNNT or FCTNet." }
+    const provider = new MockProvider([result(), result()])
+    const reply = await askChat(storage, { input: { ...input, selection, operationId: "selected-turn" }, ...options(provider) })
+    expect(prompt(provider)).toContain("<<<SELECTED-PASSAGE>>>")
+    expect(prompt(provider)).toContain(selection.surrounding)
+    expect(prompt(provider)).toContain("CNNT encodes EEG")
+    expect((await loadSession(storage, input.sessionId))?.messages[0].selection).toEqual(selection)
+    await expect(askChat(storage, { input: { ...input, selection: { ...selection, text: "FCTNet" }, operationId: "selected-turn" }, ...options(provider) })).rejects.toThrow(/different/)
+    await askChat(storage, { input: { ...input, question: "How is it trained?" }, ...options(provider) })
+    expect(provider.calls[1].req.messages.at(-1)?.content).toContain("Selected passage: CNNT")
+    const saved = await saveAnswerAsQuery(storage, { question: input.question, answer: reply.message.content, sessionId: reply.sessionId, citedPageIds: [] })
+    const page = (await loadBundle(storage)).pages.get(saved.pageId)!
+    expect(page.body).toContain("> CNNT")
+    expect(page.body).toContain(paper.title)
+    expect(page.frontmatter.sources).toContain(`chat:${reply.sessionId}`)
+    expect(page.frontmatter.sources).toContain("paper:arxiv:context-paper")
+    expect(saved.changesetId).toBeTruthy()
+  })
+  it("rejects malformed, oversized, or unscoped selected passages before a model call", async () => {
+    for (const selection of [{ text: "" }, { text: "x".repeat(6001) }, { text: "CNNT", surrounding: "x".repeat(7601) }, { text: 12 }]) {
+      expect(() => parseAskChatInput({ ...input, selection })).toThrow()
+    }
+    const provider = new MockProvider([])
+    await expect(askChat(new MemoryVaultStorage(), { input: { ...input, paperSlug: undefined, selection: { text: "CNNT" } }, ...options(provider) })).rejects.toThrow(/paper/i)
+    expect(provider.calls).toHaveLength(0)
+  })
+
   it("upgrades an existing abstract-only conversation with cached full text before answering", async () => {
     const storage = new MemoryVaultStorage(); await seed(storage)
     await askChat(storage, { input, ...options(new MockProvider([result()])) })

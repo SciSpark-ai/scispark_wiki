@@ -52,16 +52,3 @@ export function pageStateFromPage(page: WikiPage | null): PaperPageState {
 export function resolvePaperPageState(bundle: Bundle, slug: string): PaperPageState {
   return pageStateFromPage(findPaperPage(bundle, slug))
 }
-
-/**
- * True only when a paper page is INGESTED and its own frontmatter confirms
- * no full text was acquired (a genuinely paywalled/unavailable source) — C1
- * (whole-branch review). A saved-but-not-yet-ingested stub never sets
- * `full_text` at all (see `buildSaveStubChangeset`), so its absence must
- * never read as "known unavailable" and disable Read: only an ingested
- * page's `full_text` is authoritative, since ingest is the step that
- * actually tried to acquire it.
- */
-export function isFullTextKnownUnavailable(page: WikiPage | null): boolean {
-  return page?.frontmatter.status === "ingested" && page?.frontmatter.full_text === false
-}

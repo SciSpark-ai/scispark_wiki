@@ -46,7 +46,7 @@ function ShelfListCard({ entry }: { entry: ShelfEntry }) {
           <p className="text-[12px] leading-[1.5] text-muted-text tracking-body line-clamp-2">{entry.tldr}</p>
         )}
         <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1">
-          <span className="rounded-pill bg-card-surface px-2 py-0.5 text-[11px] uppercase tracking-wide text-espresso">
+          <span className="rounded-badge bg-card-surface px-2 py-0.5 text-[11px] uppercase tracking-wide text-espresso">
             {entry.status}
           </span>
           {entry.tags.slice(0, 3).map((tag) => (
@@ -157,7 +157,7 @@ function WikiIndexPageContent() {
         actions={
           <>
             {!isEmpty && (
-              <div className="flex items-center gap-0.5 rounded-pill border border-border-warm p-0.5">
+              <div className="flex items-center gap-0.5 rounded-faq border border-border-warm p-0.5">
                 <Link
                   href="/wiki"
                   className={cn(
@@ -264,7 +264,7 @@ function WikiIndexPageContent() {
           <ul className="space-y-1.5">
             {bundle.errors.map((err, i) => (
               <li key={i} className="flex items-start gap-2 text-[13px]">
-                <span className="flex-shrink-0 text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-pill bg-card-surface text-muted-text">
+                <span className="flex-shrink-0 text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-badge bg-card-surface text-muted-text">
                   {err.kind}
                 </span>
                 <span className="text-espresso">

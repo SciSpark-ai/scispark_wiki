@@ -88,13 +88,13 @@ export default function Inspector({ bundle, id, neighbors, onSelect, onClose }: 
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className="rounded-pill bg-card-surface px-2 py-0.5 text-[11px] uppercase tracking-wide text-espresso">
+        <span className="rounded-badge bg-card-surface px-2 py-0.5 text-[11px] uppercase tracking-wide text-espresso">
           {fm.type}
         </span>
         {fm.tags.map((tag) => (
           <span
             key={tag}
-            className="rounded-pill border border-border-warm bg-light-surface px-2 py-0.5 text-[11px] text-muted-text"
+            className="rounded-badge border border-border-warm bg-light-surface px-2 py-0.5 text-[11px] text-muted-text"
           >
             #{tag}
           </span>

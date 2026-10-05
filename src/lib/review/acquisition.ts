@@ -54,7 +54,8 @@ async function repositoryCandidate(paper: PaperRecord, fetchFn: typeof fetch): P
 /** Every network candidate uses the existing relay. Missing/blocked/full-text
  * parse failures are distinguished; unsupported hosts are not called paywalls. */
 export async function acquireReviewEvidence(paper: PaperRecord, id: string,
-  fetchFn: typeof fetch = serverRelayFetch("server-literature-review", { maxBytes: MAX_BYTES }), extractPdf = extractReviewPdf): Promise<EvidenceRecord | null> {
+  fetchFn: typeof fetch = serverRelayFetch("server-literature-review", { maxBytes: MAX_BYTES }), extractPdf = extractReviewPdf,
+  onVerifiedSource?: (source: { kind: "html" | "pdf"; bytes: Uint8Array }) => Promise<void>): Promise<EvidenceRecord | null> {
   let text = paper.abstract?.trim() ?? ""
   let access: EvidenceRecord["access"] = "abstract"
   let locator = "Abstract"
@@ -111,6 +112,12 @@ export async function acquireReviewEvidence(paper: PaperRecord, id: string,
       if (!validIdentity || !hasBody(readable)) { notes.push("Could not verify article identity and body; abstract retained"); continue }
       text = readable.slice(0, 45_000); access = "full-text"; locator = url
       if (readable.length > text.length) notes.push("Article text shortened to the first 45,000 characters; later sections were not read")
+      // Preserve only a bounded, identity-verified article for offline reading.
+      // A cache write failure must not discard text we have already verified.
+      if (onVerifiedSource && (type.includes("pdf") || type.includes("html"))) {
+        try { await onVerifiedSource({ kind: type.includes("pdf") ? "pdf" : "html", bytes }) }
+        catch { notes.push("Verified full text could not be saved for offline reading") }
+      }
       break
     } catch { notes.push("Full-text request or bounded parsing failed; abstract retained") }
   }

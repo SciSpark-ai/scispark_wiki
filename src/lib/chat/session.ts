@@ -1,11 +1,12 @@
 import type { VaultStorage } from "../vault/storage"
-import { ChatBlockSchema, ChatPaperContextSchema, type ChatBlock, type ChatPaperContext } from "./blocks"
+import { ChatBlockSchema, ChatPaperContextSchema, ChatSelectionSchema, type ChatSelection, type ChatBlock, type ChatPaperContext } from "./blocks"
 
 export const CHATS_DIR = ".scispark/chats"
 
 export interface ChatMessage {
   role: "user" | "assistant"
   content: string
+  selection?: ChatSelection
   /** Rich server-owned results travel with the transcript, not a feed cache. */
   blocks?: ChatBlock[]
   operationId?: string
@@ -125,6 +126,7 @@ function isChatMessageShape(value: unknown): value is ChatMessage {
     (v.role === "user" || v.role === "assistant") &&
     typeof v.content === "string" &&
     (v.blocks === undefined || (Array.isArray(v.blocks) && v.blocks.every((block) => ChatBlockSchema.safeParse(block).success))) &&
+    (v.selection === undefined || (v.role === "user" && ChatSelectionSchema.safeParse(v.selection).success)) &&
     isOptionalString(v.operationId) &&
     isOptionalString(v.requestSignature) &&
     (v.citedPageIds === undefined || isStringArray(v.citedPageIds)) &&

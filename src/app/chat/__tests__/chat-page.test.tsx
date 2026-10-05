@@ -8,6 +8,7 @@ import type { Bundle } from "@/lib/vault/bundle"
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
+const observeSkillJobMock = vi.fn()
 const getOpenVaultMock = vi.fn()
 const listSessionsMock = vi.fn()
 const loadSessionMock = vi.fn()
@@ -20,6 +21,9 @@ const routerMock = { push: routerPushMock, replace: vi.fn() }
 let searchParamsValue = new URLSearchParams("new=1")
 let paramsValue: { id?: string } = {}
 
+vi.mock("@/lib/skills/job-client", () => ({
+  observeSkillJob: (...args: unknown[]) => observeSkillJobMock(...args),
+}))
 vi.mock("@/lib/vault/get-vault", () => ({
   getOpenVault: (...args: unknown[]) => getOpenVaultMock(...args),
 }))
@@ -32,7 +36,8 @@ vi.mock("@/lib/chat/session", () => ({
 vi.mock("@/lib/vault/bundle", () => ({
   loadBundle: (...args: unknown[]) => loadBundleMock(...args),
 }))
-vi.mock("@/lib/chat/client", () => ({
+vi.mock("@/lib/chat/client", async importOriginal => ({
+  ...await importOriginal<object>(),
   askChatRemote: (...args: unknown[]) => askChatRemoteMock(...args),
 }))
 vi.mock("@/lib/chat/save-query-client", () => ({
@@ -100,6 +105,7 @@ function findByText(container: HTMLElement, selector: string, text: string): HTM
 
 beforeEach(() => {
   vi.clearAllMocks()
+  observeSkillJobMock.mockReset().mockResolvedValue(undefined)
   paramsValue = {}
   searchParamsValue = new URLSearchParams("new=1")
   sessionStorage.clear()

@@ -39,7 +39,7 @@ export function Shelf({ label, entries, total, onViewAll }: ShelfProps) {
                 <p className="text-[12px] leading-[1.5] text-muted-text tracking-body line-clamp-2">{entry.tldr}</p>
               )}
               <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1">
-                <span className="rounded-pill bg-card-surface px-2 py-0.5 text-[11px] uppercase tracking-wide text-espresso">
+                <span className="rounded-badge bg-card-surface px-2 py-0.5 text-[11px] uppercase tracking-wide text-espresso">
                   {entry.status}
                 </span>
                 {entry.tags.slice(0, 3).map((tag) => (

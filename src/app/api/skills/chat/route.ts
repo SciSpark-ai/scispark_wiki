@@ -1,4 +1,5 @@
 import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
+import { runSkillJob } from "@/lib/server/skill-jobs"
 import { loadSettings } from "@/lib/llm/settings"
 import { nodeResearchSearchFn } from "@/lib/papers/node-search"
 import {
@@ -29,17 +30,19 @@ import {
  */
 export const POST = ndjsonSkillRoute<unknown>(async (rawInput, vault, emit) => {
   const input = parseAskChatInput(rawInput)
-  const settings = await loadSettings(vault)
-  const overrides = getSkillTestOverrides()
+  return runSkillJob(vault, `chat:${input.sessionId}`, async progress => {
+    const settings = await loadSettings(vault)
+    const overrides = getSkillTestOverrides()
 
-  const result: AskChatResult = await askChat(vault, {
-    input,
-    settings,
-    providerOverride: overrides.providerOverride,
-    paperTextDeps: overrides.fetchFn ? { fetchFn: overrides.fetchFn } : undefined,
-    searchFn: overrides.searchFn ?? nodeResearchSearchFn({ reportErrors: true, storage: vault }),
-    onProgress: (stage) => emit({ type: "progress", stage }),
-    onText: (text) => emit({ type: "text", text }),
-  })
-  return result
+    const result: AskChatResult = await askChat(vault, {
+      input,
+      settings,
+      providerOverride: overrides.providerOverride,
+      paperTextDeps: overrides.fetchFn ? { fetchFn: overrides.fetchFn } : undefined,
+      searchFn: overrides.searchFn ?? nodeResearchSearchFn({ reportErrors: true, storage: vault }),
+      onProgress: (stage) => progress({ type: "progress", stage }),
+      onText: (text) => progress({ type: "text", text }),
+    })
+    return result
+  }, emit, { signature: JSON.stringify(input) })
 })

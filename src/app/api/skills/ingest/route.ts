@@ -1,10 +1,12 @@
+import { paperSlug } from "@/lib/wiki/authoring"
+import { logEvent } from "@/lib/events/log"
+import { runSkillJob } from "@/lib/server/skill-jobs"
 import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { loadSettings } from "@/lib/llm/settings"
-import { acquireFullText, snapshotSource } from "@/lib/wiki/acquire"
+import { loadPaperText } from "@/lib/papers/full-text"
 import { generateDigest } from "@/lib/skills/digest"
 import { ingestSkill, type IngestOutput } from "@/lib/skills/ingest"
 import { runSkill } from "@/lib/skills/runner"
-import { serverRelayFetch } from "@/lib/server/relay-fetch"
 import { listHighlights, formatHighlightsForPrompt } from "@/lib/highlights/store"
 import { paperKey, type PaperRecord } from "@/lib/papers/types"
 import { withLedger } from "@/lib/runs/ledger"
@@ -18,7 +20,7 @@ export interface IngestRouteResult {
  * POST /api/skills/ingest — body `{paper}`, NDJSON progress
  * (`{type:"progress", phase}`) mirroring the papers page's own former
  * client-side phase transitions — "acquiring" -> "snapshotting" (only when
- * the acquired full text is HTML) -> "digesting" -> "ingesting" — terminal
+ * a verified HTML/PDF is downloaded) -> "digesting" -> "ingesting" — terminal
  * result `{output, costUsd}`.
  *
  * Runs the WHOLE former client-side orchestration server-side (M11): full-
@@ -36,28 +38,25 @@ export interface IngestRouteResult {
  * contrast, a completely normal successful skill run and IS returned as the
  * result, exactly as it was rendered client-side before this move.
  */
-export const POST = ndjsonSkillRoute<{ paper: PaperRecord }>(async ({ paper }, vault, emit) => {
+export const POST = ndjsonSkillRoute<{ paper: PaperRecord }>(async ({ paper }, vault, emit) => runSkillJob(vault, `ingest:${paperSlug(paper)}`, async (progress) => {
   const overrides = getSkillTestOverrides()
-  const fetchFn = overrides.fetchFn ?? serverRelayFetch("server-ingest")
   const settings = await loadSettings(vault)
 
-  emit({ type: "progress", phase: "acquiring" })
-  const acquired = await acquireFullText(paper, { fetchFn })
+  progress({ type: "progress", phase: "acquiring" })
+  const acquired = await loadPaperText(vault, paper, {
+    fetchFn: overrides.fetchFn,
+    onSnapshot: () => progress({ type: "progress", phase: "snapshotting" }),
+  })
 
-  let snapshotPath: string | undefined
-  if (acquired.kind === "html" && acquired.html !== undefined) {
-    emit({ type: "progress", phase: "snapshotting" })
-    snapshotPath = await snapshotSource(vault, paper, acquired.html)
-  }
-
-  emit({ type: "progress", phase: "digesting" })
+  progress({ type: "progress", phase: "digesting" })
   const { digest } = await generateDigest(vault, paper, {
-    fullText: acquired.kind === "html" ? acquired.text : undefined,
+    fullText: acquired.access === "full-text" ? acquired.text : undefined,
+    source: acquired,
     settings,
     providerOverride: overrides.providerOverride,
   })
 
-  emit({ type: "progress", phase: "ingesting" })
+  progress({ type: "progress", phase: "ingesting" })
   const highlights = formatHighlightsForPrompt(await listHighlights(vault, paperKey(paper)))
   const today = new Date().toISOString().slice(0, 10)
 
@@ -68,7 +67,7 @@ export const POST = ndjsonSkillRoute<{ paper: PaperRecord }>(async ({ paper }, v
         storage: vault,
         paper,
         digest,
-        fullText: { kind: acquired.kind, text: acquired.text, snapshotPath },
+        fullText: { kind: acquired.access, text: acquired.text, snapshotPath: acquired.access === "full-text" ? acquired.locator : undefined },
         highlights,
         today,
       },
@@ -82,6 +81,7 @@ export const POST = ndjsonSkillRoute<{ paper: PaperRecord }>(async ({ paper }, v
     }
 
     const output = run.output
+    if (output.status === "ok") await logEvent(vault, { type: "ingest", paperKey: paperKey(paper), title: paper.title, changesetId: output.changesetId })
     const result: IngestRouteResult = { output, costUsd: run.costUsd }
     if (output.status === "draft") {
       return {
@@ -93,4 +93,4 @@ export const POST = ndjsonSkillRoute<{ paper: PaperRecord }>(async ({ paper }, v
     }
     return { result, status: "ok", costUsd: run.costUsd }
   })
-})
+}, emit))

@@ -125,7 +125,7 @@ export function FilterBar({ options, filters, onChange }: FilterBarProps) {
                 value={tagQuery}
                 onChange={(e) => setTagQuery(e.target.value)}
                 placeholder="Search tags…"
-                className="mb-2 w-full rounded-pill border border-border-warm bg-card-surface px-2.5 py-1 text-[12px] text-espresso outline-none"
+                className="mb-2 w-full rounded-btn border border-border-warm bg-card-surface px-2.5 py-1 text-[12px] text-espresso outline-none"
               />
               <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">
                 {filteredTags.length === 0 ? (

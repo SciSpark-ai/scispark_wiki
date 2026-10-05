@@ -27,6 +27,30 @@ const request = { messages: [{ role: "user" as const, content: "Please return re
 const schema = z.object({ message: z.literal("ready") }).strict()
 
 describe("engine boundary", () => {
+  it("streams Claude structured output before the result, without streaming reasoning", () => {
+    const onText = vi.fn()
+    const events = new CompletionEvents("claude-code", onText)
+    const send = (event: object) => events.accept(JSON.stringify({ type: "stream_event", event }))
+    send({ type: "content_block_start", index: 0, content_block: { type: "thinking" } })
+    send({ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "private" } })
+    send({ type: "content_block_start", index: 1, content_block: { type: "tool_use", name: "StructuredOutput" } })
+    send({ type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: '{"answer":"Hello' } })
+    expect(onText).toHaveBeenLastCalledWith('{"answer":"Hello')
+    expect(events.done).toBe(false)
+    expect(onText.mock.calls.flat().join("")).not.toContain("private")
+  })
+  it("streams the Codex answer through its app-server before completion", async () => {
+    fixtures()
+    const previews: string[] = []
+    const result = await completeStructured(new LocalEngineProvider("codex", DEFAULT_ENGINES), "model", request,
+      z.object({ answer: z.string(), citedPageIds: z.array(z.string()) }), {
+        streamField: "answer", onText: text => { previews.push(text) },
+      })
+    expect(previews).toContain("Fixture research")
+    expect(previews.at(-1)).toBe(result.value.answer)
+    expect(previews.join("")).not.toContain("private")
+    expect(result.usage).toMatchObject({ reported: true, inputTokens: 100, outputTokens: 20 })
+  })
   it("preserves optional evidence contracts through prompt JSON, using native schemas only when compatible", () => {
     expect(codexNativeSchema(z.toJSONSchema(schema))).toBe(true)
     const jsonSchema = z.toJSONSchema(AssessmentsSchema)

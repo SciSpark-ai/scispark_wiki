@@ -7,10 +7,39 @@ export async function fixture(engine) {
   if (args.includes("status")) { console.log(engine === "codex" ? "Logged in using ChatGPT" : JSON.stringify({ loggedIn: true, authMethod: "claude.ai" })); return }
   if (args[0] === "app-server") {
     const ids = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "model", "fixture/custom-model"]
+    let completion = false
+    let model
+    const emit = event => console.log(JSON.stringify(event))
     for await (const line of createInterface({ input: process.stdin })) {
       const message = JSON.parse(line)
-      if (message.method === "initialize") console.log(JSON.stringify({ id: message.id, result: {} }))
+      if (message.method === "initialize") { completion = message.params.clientInfo.name === "scispark_completion"; emit({ id: message.id, result: {} }) }
       else if (message.method === "model/list") console.log(JSON.stringify({ id: message.id, result: { data: ids.map(model => ({ model, displayName: model })), nextCursor: null } }))
+      else if (completion && message.method === "config/read") emit({ id: message.id, result: { config: { mcp_servers: { "fixture.server": {} } } } })
+      else if (completion && message.method === "thread/start") {
+        const p = message.params
+        if (p.config.mcp_servers['fixture.server'].enabled !== false || p.ephemeral !== true || p.sandbox !== "read-only" || p.approvalPolicy !== "never") throw new Error("Unsafe streaming fixture configuration")
+        model = p.model
+        emit({ id: message.id, result: { thread: { id: "fixture-stream" }, model, modelProvider: "openai", approvalPolicy: "never", sandbox: { type: "readOnly" }, instructionSources: [] } })
+      } else if (completion && message.method === "turn/start") {
+        const input = message.params.input[0].text
+        if (input.includes("FIXTURE_ERROR")) { console.error("credential=DO-NOT-LEAK"); process.exitCode = 1; return }
+        const params = { threadId: "fixture-stream", turnId: "turn-1" }
+        emit({ id: message.id, result: { turn: { id: "turn-1" } } })
+        const value = message.params.outputSchema?.properties?.message ? { message: "ready" }
+          : { answer: "Fixture research answer grounded in the supplied context.", citedPageIds: [] }
+        const text = JSON.stringify(value)
+        const slowStream = input.includes("STREAMING-FIXTURE")
+        if (slowStream) await new Promise(resolve => setTimeout(resolve, 2500))
+        emit({ method: "item/reasoning/textDelta", params: { ...params, delta: "private reasoning" } })
+        emit({ method: "item/started", params: { ...params, item: { type: "agentMessage", id: "answer-1", phase: "final_answer" } } })
+        const split = text.indexOf(" research") + 9
+        emit({ method: "item/agentMessage/delta", params: { ...params, itemId: "answer-1", delta: text.slice(0, split) } })
+        await new Promise(resolve => setTimeout(resolve, slowStream ? 6500 : 80))
+        emit({ method: "item/agentMessage/delta", params: { ...params, itemId: "answer-1", delta: text.slice(split) } })
+        emit({ method: "item/completed", params: { ...params, item: { type: "agentMessage", id: "answer-1", phase: "final_answer", text } } })
+        emit({ method: "thread/tokenUsage/updated", params: { ...params, tokenUsage: { total: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 10 } } } })
+        emit({ method: "turn/completed", params: { threadId: params.threadId, turn: { id: params.turnId, status: "completed" } } })
+      }
       else if (message.method !== "initialized") throw new Error("Fixture catalog must never receive an inference request")
     }
     return

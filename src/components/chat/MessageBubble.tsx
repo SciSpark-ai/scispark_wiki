@@ -10,6 +10,7 @@ import { REVIEW_INTRO, LEGACY_REVIEW_INTRO } from "@/lib/chat/blocks"
 import { CitationChips } from "./CitationChips"
 import { PaperResultsBlock } from "./PaperResultsBlock"
 import { ReviewBlock } from "./ReviewBlock"
+import { ChatMarkdown } from "./ChatMarkdown"
 
 export interface MessageBubbleProps {
   message: ChatMessage
@@ -67,17 +68,18 @@ export function MessageBubble({ message, pageTitleById, onSave, saving }: Messag
       {isAssistant && <SparkyBadge />}
       <div
         className={cn(
-          "min-w-0 flex-1 rounded-card border border-border-warm px-4 py-3",
+          "min-w-0 flex-1 rounded-faq border border-border-warm px-4 py-3",
           isAssistant ? "bg-light-surface" : "bg-card-surface",
         )}
       >
         <div className="text-[11px] uppercase tracking-wide text-muted-text">{isAssistant ? "Sparky" : "You"}</div>
 
-        {hasContent && (
+        {!isAssistant && message.selection && <blockquote aria-label="Selected passage" className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-words border-l-2 border-border-warm pl-3 text-[13px] leading-relaxed text-muted-text">{message.selection.text}</blockquote>}
+        {hasContent && (isAssistant ? <ChatMarkdown text={content} /> : (
           <p className="mt-1 whitespace-pre-wrap text-[14px] leading-[1.5] text-espresso tracking-body">
             {content}
           </p>
-        )}
+        ))}
         {isAssistant && message.blocks?.map((block, index) => block.type === "review-citations" ? <button key={index} className="mt-3 text-sm text-accent-ink" onClick={() => window.dispatchEvent(new CustomEvent("open-review-report", { detail: { runId: block.runId, versionId: block.versionId } }))}>View saved review sources{block.sourceIds.length ? ` · ${block.sourceIds.join(", ")}` : ""}</button> : block.type === "review" ? <ReviewBlock key={index} id={block.runId} /> : block.type === "paper-results"
           ? <PaperResultsBlock key={index} result={block.result} />
           : <PaperResultsBlock key={index} result={{ query: "", plan: { interpretation: "Cited papers", sort: "relevance", fromDate: null, queries: [] }, items: block.papers.map((paper) => ({ paper, score: 0, whyMatch: "", foundBy: [] })), stats: { retrieved: 0, deduplicated: 0 }, costUsd: 0, warnings: [] }} citationsOnly />)}
