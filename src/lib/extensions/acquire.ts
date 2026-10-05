@@ -8,7 +8,7 @@ import { isIP } from "node:net"
 import { Readable } from "node:stream"
 import { createInflateRaw } from "node:zlib"
 import type { WorkflowContext } from "../workflows/context"
-import { IMPORT_LIMITS, ImportSourceSchema, PackagePathSchema, StagedPackageSchema, type ImportSource, type StagedPackage } from "./import-contract"
+import { IMPORT_LIMITS, ImportSourceSchema, PackagePathSchema, StagedPackageSchema, UpdateSourceSchema, type ImportSource, type StagedPackage } from "./import-contract"
 import { importStorage, profileRuntimePath } from "./store"
 
 export type AcquisitionOptions = {
@@ -277,7 +277,9 @@ export async function acquirePackage(ctx: WorkflowContext, input: ImportSource, 
     files = source.kind === "zip" ? await readZip(await readRegular(locator, limits.compressedBytes), limits) : await readFolder(locator, limits)
     revision = sha256(JSON.stringify([...files].sort(([a], [b]) => a.localeCompare(b)).map(([path, bytes]) => [path, sha256(bytes)])))
   }
-  return persistAcquiredFiles(ctx, files, locator, revision, source.kind === "github" ? "github" : source.kind === "agent" ? "agent" : "local", source.packageId)
+  const stage = await persistAcquiredFiles(ctx, files, locator, revision, source.kind === "github" ? "github" : source.kind === "agent" ? "agent" : "local", source.packageId)
+  await saveUpdateSource(ctx, stage.id, { source: source.kind === "github" ? { ...source, url: locator } : { ...source, path: locator }, locator })
+  return stage
 }
 
 /** Discovery supplies an already bounded, consent-filtered inert snapshot.
@@ -304,4 +306,30 @@ async function persistAcquiredFiles(ctx: WorkflowContext, files: Map<string, Buf
     await rm(join(profileRuntimePath(ctx), "imports", id), { recursive: true, force: true })
     throw error
   }
+}
+
+/** Source records are private and never authorize an automatic filesystem read. */
+export async function saveUpdateSource(ctx: WorkflowContext, stageId: string, source: unknown) {
+  const storage = await importStorage(ctx)
+  await storage.write(`imports/${StagedPackageSchema.shape.id.parse(stageId)}/update-source.json`, JSON.stringify(UpdateSourceSchema.parse(source)))
+}
+export async function acquireUpdateSnapshot(ctx: WorkflowContext, files: Map<string, Buffer>, input: unknown, grantId: string) {
+  const origin = UpdateSourceSchema.parse(input)
+  if (origin.source.kind === "github" || origin.source.kind === "zip") throw new Error("Expected a consented package folder")
+  const collector = makeCollector(limitsFor({}))
+  for (const [path, bytes] of files) { collector.reserve(path); collector.add(path, bytes) }
+  const revision = sha256(JSON.stringify([...collector.files].sort(([a], [b]) => a.localeCompare(b)).map(([path, bytes]) => [path, sha256(bytes)])))
+  const stage = await persistAcquiredFiles(ctx, collector.files, origin.locator, revision, origin.source.kind === "agent" ? "agent" : "local", origin.source.packageId, grantId)
+  await saveUpdateSource(ctx, stage.id, origin)
+  return stage
+}
+/** Reuses the bounded, pinned public HTTPS transport; never downloads an archive. */
+export async function checkGithubRevision(input: ImportSource, options: AcquisitionOptions = {}): Promise<string> {
+  const source = ImportSourceSchema.parse(input)
+  if (source.kind !== "github") throw new Error("Expected an approved GitHub origin")
+  const repo = new URL(source.url).pathname.replace(/^\//, "").replace(/\/$/, "").replace(/\.git$/, "").toLowerCase()
+  const response = await githubRequest(new URL(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(source.ref ?? "HEAD")}`), options)
+  const commit: unknown = JSON.parse((await responseBytes(response, 1024 * 1024)).toString())
+  if (!commit || typeof commit !== "object" || !("sha" in commit) || typeof commit.sha !== "string" || !/^[a-f0-9]{40}$/.test(commit.sha)) throw new Error("GitHub did not resolve an immutable commit")
+  return commit.sha
 }

@@ -7,7 +7,7 @@ import type { WorkflowContext } from "../workflows/context"
 import { UuidSchema } from "./contracts"
 import { DiscoveryActionSchema, DiscoveryGrantSchema, DiscoveredSkillSchema, ImportPreviewSchema, type DiscoveryAction, type DiscoveryGrant, type DiscoveryRoot, type DiscoveredSkill, type ImportPreview } from "./import-contract"
 import { canonicalDiscoveryRoots, collectAgentPackages } from "./agent-locations"
-import { acquireAgentSnapshot, sha256 } from "./acquire"
+import { acquireAgentSnapshot, saveUpdateSource, sha256 } from "./acquire"
 import { inspectPackage, selectDiscoveredPreview } from "./inspect"
 import { canonicalJSON, importStorage, profileRuntimePath, requireDiscoveryGrant, withDiscoveryGrant } from "./store"
 
@@ -60,6 +60,7 @@ export async function discoverAgentSkills(ctx: WorkflowContext, grantId: string)
         // Inspection snapshots are private session state; no installed binding,
         // source path, execution permission or human review is created here.
         const stage = await acquireAgentSnapshot(ctx, pkg.files, `agent-package:${pkg.sourceKey}`, grantId); stageIds.push(stage.id)
+        await saveUpdateSource(ctx, stage.id, { source: { kind: "agent", path: pkg.path }, locator: stage.provenance.locator })
         const preview = await inspectPackage(ctx, stage, pkg.entries); previews.push(preview.id)
         for (const tool of preview.tools) {
           const digest = identity(tool), origin = { rootIndex: pkg.rootIndex, agent: record.grant.roots[pkg.rootIndex].agent, label: `${pkg.label}: ${tool.proposal.skillId}` }

@@ -7,7 +7,7 @@ import { NodeFsVaultStorage } from "../vault/node-fs-storage"
 import { DiscoveryGrantSchema, ImportToolSchema, type ImportPreview } from "./import-contract"
 import { withVaultExclusive } from "../vault/exclusive"
 import type { WorkflowContext } from "../workflows/context"
-import { DigestSchema, ProfileIdSchema, ProfileToolsSchema, ToolRefSchema, UuidSchema, type ToolManifest, type ToolRef, type ProfileTools } from "./contracts"
+import { DigestSchema, ProfileIdSchema, ProfileToolsSchema, ToolRefSchema, UuidSchema, toolKey, type ToolManifest, type ToolRef, type ProfileTools } from "./contracts"
 
 const STATE_PATH = ".scispark/tools/state.json"
 export function extensionObjectPath(ctx: WorkflowContext, digest: string): string {
@@ -34,6 +34,12 @@ export async function updateProfileTools(ctx: WorkflowContext, update: (current:
   return withVaultExclusive(ctx.storage, "profile-tools", async () => {
     const current = await readProfileTools(ctx)
     const state = ProfileToolsSchema.parse(await update(current))
+    // Every binding writer shares this fence, including ordinary imports. Check
+    // under profile-tools after the callback without acquiring another lock.
+    // Completing cancellation may remove/disable the binding, but cannot reopen
+    // it in the same transaction while the prior cancellation is still pending.
+    const cancelling = new Set((current?.managementOperations ?? []).filter(operation => "status" in operation.result && operation.result.status === "cancellation-pending").map(operation => operation.toolKey))
+    if (state.enabled.some(binding => binding.enabled && cancelling.has(toolKey(binding.tool)))) throw new Error("Tool cancellation is pending; finish the original operation before enabling it")
     if (JSON.stringify(current) !== JSON.stringify(state)) await ctx.storage.write(STATE_PATH, JSON.stringify(state, null, 2))
     return state
   })
@@ -134,4 +140,27 @@ export async function withDiscoveryGrant<T>(ctx: WorkflowContext, id: string | u
       finally { scope.active = false }
     })
   })
+}
+
+/** Shared integrity-checked lookup; ownership comes from the profile catalog. */
+export async function readImportedTool(ctx: WorkflowContext, ref: ToolRef) {
+  ToolRefSchema.parse(ref)
+  if (!(await readImportedManifests(ctx)).some(m => canonicalJSON(m.ref) === canonicalJSON(ref))) throw new Error("Tool is not imported by this profile")
+  const object = new NodeFsVaultStorage(extensionObjectPath(ctx, ref.digest))
+  const raw = await object.read("snapshot.json")
+  if (!raw) throw new Error("Missing immutable import snapshot")
+  const tool = ImportedSnapshotSchema.parse(JSON.parse(raw)).tool
+  if (snapshotDigest(tool) !== ref.digest || canonicalJSON(tool.manifest.ref) !== canonicalJSON(ref)) throw new Error("Import snapshot identity mismatch")
+  for (const file of tool.files) {
+    const path = `files/${file.path}`
+    if (await object.hasSymlinkTraversal(path)) throw new Error("Import object symlink traversal")
+    const bytes = await object.readBinary(path)
+    if (!bytes || createHash("sha256").update(bytes).digest("hex") !== file.sha256) throw new Error("Immutable snapshot content corruption")
+  }
+  return tool
+}
+
+export class ManagementHistoryFullError extends Error {
+  readonly code = "management-history-full"
+  constructor() { super("Tool management history is full. Existing runs and saved versions remain available; contact support before making more tool changes.") }
 }

@@ -912,3 +912,92 @@ Final fix gate ran exactly once: TypeScript exit0/7.48s; ESLint exit0/18.49s
 11.7s, build TypeScript10.8s,66 pages. `git diff --check` passed; no additional
 broad suite followed these successful gates. Real-worker/live acceptance remains
 UNRUN with fail-closed platform readiness preserved.
+
+### Task 13 — manual updates, retained versions and rollback
+
+Implemented strict idempotent binding/update/rollback/disable/remove actions and
+native Tools routes. Opening Tools checks only approved remote commit metadata,
+at most once per origin/ref per 24h; explicit checks stage content. Local/agent
+checks require renewed exact-original-package consent and the Task12 filtered
+reader. Check never enables/installs. Update application prepares snapshots and
+the complete dependency/helper closure before switching atomically; failed setup
+preserves the old binding. Rollback restores a retained compatible version and
+saved per-tool overrides without rewinding research or any captured run state.
+
+R29 binds management receipts to the same atomic ProfileTools write as each
+binding mutation. Strict public-safe results and operation hashes prevent replay
+retargeting after response loss. The 10,000 receipt cap reports actionable
+management-history-full without eviction, run cancellation or read failure. R30
+preserves reviewed adapter field customizations only when the incoming inspected
+field equals its original inspected value; changed source fields win. Resource
+closure/digests and dynamic readiness are recomputed, with normal explicit review
+before application. Missing baseline/source authority requires explicit re-import.
+A normal explicit re-import keeps an existing pin and enabled binding consistent.
+
+Disable/remove both return decision-required for active/recoverable root/helper
+runs. Finish prevents new starts and retains accepted runs; cancel waits for actual
+acknowledgement and lease release. Interrupted accepted start intents are restored
+under coordinator exclusivity before this decision, without dispatch. All package,
+environment/configuration/run/artifact records are conservatively retained; no GC
+is implemented, so disk usage can grow. Failed-update GET state provides the
+actual prepared ref and redacted setup ID/state/reason for the explicit Task9
+acknowledge-and-discard action; no usage reset or full environment/path disclosure.
+
+Focused RED: absent module; expanded disable decision regression; separate durable
+start-intent regression (20 passed/1 failed). Final focused GREEN:114 passed across
+four files, including22 Task13 cases,3.77s. Cases cover source consent/publication
+expiry, merged proposal provenance, unchanged version text, two profiles, failed
+setup, old captured runs and saved artifacts, real coordinator ownership with an
+inert imported adapter, cancellation release, strict routes/redaction and atomic
+receipt crash replay/cap. Logs retained in verification/task-13/.
+
+Isolated production build passed in23.38s with .next-modular-task-13,
+disposable /tmp/scispark-modular-task-13/{vault,profiles}, scheduler off:
+Turbopack10.3s, TypeScript9.0s,67 static pages. Fresh task-local configuration
+backups were compared against generated dist-only changes and exact bytes restored.
+New dynamic tool/versions routes are included. Final full-gate results follow.
+
+Actual imported-command/OpenCite worker acceptance remains UNRUN/unsupported on
+this macOS host; Linux/runtime installation/installed CLI/broker/live gates are
+not established by these deterministic fixtures. No sandbox readiness bypass,
+package execution outside the supported worker, live model/source request, real
+vault/profile/auth/key/home/agent scan, push, merge or PR occurred.
+
+The first full gate caught3 native-only catalog API regressions (3045 passed,
+21 skipped): Tools GET unnecessarily opened import storage for refs already in
+the native registry. Lookup is now lazy for unresolved refs. A new test also
+proves a disabled, unpinned imported binding loads from durable storage with no
+in-memory registration. Focused affected API+version tests pass46, including23
+Task13 tests,6.45s. Original task-13 failure logs remain intact; necessary final
+build/gate retry evidence is under verification/task-13-final/.
+
+Authoritative Task13 final gate: production build exit0/22.54s, compile9.9s,
+build TypeScript8.8s,67 pages; exact generated-config restoration and all10 Tools
+runtime traces verified. `verify-task.py task-13-final` ran once after the concrete
+catalog fix: TypeScript exit0/3.96s; ESLint exit0/15.89s (existing warning only);
+Vitest exit0/33.32s wrapper,32.27s suite,3049 passed/21 gated skips across
+293 passed/8 skipped files. `git diff --check` passed. No further broad suite
+followed these successful checks. Real-worker/live phase gates remain unrun.
+
+
+## Task13 review round1 fixes (I1/I2)
+
+Rollback eligibility now requires actual profile binding or an atomic publication
+receipt. Strict optional previousTool records the departed ref in the same write;
+prepared-only history cannot authorize expired/failed candidate activation.
+The shared profile-tools write rejects enabled bindings for pending-cancellation
+keys, covering normal re-import without adding locks. Focused regressions cover
+expiry, pre-persistence failure, response-loss/revocation recovery, and a live
+leased cancellation followed by re-import with no new root admitted.
+
+Focused RED: 3 failed/22 passed; GREEN:117 passed/4 files,4.53s (25 version tests).
+Required isolated build: exit0/29.94s,14.1s compile,11.3s TypeScript,67 pages;
+fresh config backups restored exactly, all10 Tools asset traces verified.
+Final `verify-task.py task-13-fix-1` ran once: tsc exit0/12.21s, lint exit0/20.78s
+(existing applyPreset warning/Babel note), Vitest exit0/36.83s wrapper,35.47s
+suite:3051 passed/21 gated skips,293 passed/8 skipped files. Raw logs and exact
+configuration evidence remain in local verification/task-13-fix-1/; self-review
+and git diff --check passed. Deferred M1 remains untouched. Actual imported
+command/OpenCite supervised execution stays OPEN/UNRUN and Task19-owned; these
+inert cancellation fixtures are not external runtime phase acceptance. No live
+calls, personal state, unsupported package execution, push, merge or PR.

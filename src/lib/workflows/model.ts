@@ -1,7 +1,7 @@
 import { PRICES } from "../llm/pricing"
 import type { ScopedPrice } from "../llm/scoped-pricing"
 import { DEFAULT_ENGINES } from "../engines/contracts"
-import { ToolRefSchema, toolKey, type ToolRef } from "../extensions/contracts"
+import { ToolRefSchema, ToolOverrideSchema, toolKey, type ToolRef, type ToolOverride } from "../extensions/contracts"
 import { readProfileTools } from "../extensions/store"
 import { loadSettings, resolveTier, type LLMSettings } from "../llm/settings"
 import type { Tier } from "../llm/types"
@@ -33,11 +33,12 @@ export function captureCatalogPrice(selection: RunModel["tierModels"][Tier]): Sc
 }
 
 /** Capture only explicit settings, never package instructions or credentials. */
-export async function resolveRunModel(ctx: WorkflowContext, binding: ToolRef): Promise<RunModel> {
+export async function resolveRunModel(ctx: WorkflowContext, binding: ToolRef, savedOverride?: ToolOverride | null): Promise<RunModel> {
   const ref = ToolRefSchema.parse(binding)
   const settings = await loadSettings(ctx.storage)
   const engine = settings.engines ?? DEFAULT_ENGINES
-  const override = (await readProfileTools(ctx))?.overrides.find((entry) => entry.toolKey === toolKey(ref))
+  const override = savedOverride === undefined ? (await readProfileTools(ctx))?.overrides.find((entry) => entry.toolKey === toolKey(ref)) : savedOverride === null ? null : ToolOverrideSchema.parse(savedOverride)
+  if (override && override.toolKey !== toolKey(ref)) throw new Error("Tool override identity mismatch")
   const select = (tier: Tier) => {
     const selected = override?.tierModels?.[tier] ?? resolveTier(settings, tier)
     if (engine.kind !== "api") {

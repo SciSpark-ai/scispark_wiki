@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { lstat, mkdir, readdir, readFile, readlink, realpath, rm } from "node:fs/promises"
 import { join, relative } from "node:path"
 import type { WorkflowContext } from "../workflows/context"
+import { RunModelSchema } from "../workflows/contracts"
 import type { PreparedEnvironmentRef, RunModel, ToolRun, ConnectionConfigurationRef } from "../workflows/contracts"
 import { NodeFsVaultStorage } from "../vault/node-fs-storage"
 import { sha256 } from "./acquire"
@@ -197,9 +198,9 @@ export async function resolvePreparedEnvironmentRefs(ctx:WorkflowContext,tools:T
   if(refs.length && (await probeSandbox()).status!=="ready")throw new Error("Tool environment isolation needs setup")
   return refs
 }
-export async function checkToolReadiness(ctx:WorkflowContext,ref:ToolRef):Promise<CompatibilityReport>{
+export async function checkToolReadiness(ctx:WorkflowContext,ref:ToolRef,savedModel?:RunModel):Promise<CompatibilityReport>{
   const tool=await importedTool(ctx,ref)
-  const model=await resolveRunModel(ctx,ref)
+  const model=savedModel?RunModelSchema.parse(savedModel):await resolveRunModel(ctx,ref)
   if(!tool.manifest.engines.includes(model.engine) || tool.requirements.requiredModels?.some(m=>!Object.values(model.tierModels).some(t=>t.model===m)))return {status:"needs-setup",reasons:["Required provider/model change needs explicit selection"]}
   if(!tool.reviewed)return {status:"needs-review",reasons:["Review the imported tool"]}
   if(tool.hostUnsupported.length || tool.requirements.unsupported.length || tool.requirements.internalModelCalls)return {status:"unsupported",reasons:[...tool.hostUnsupported,...tool.requirements.unsupported,...(tool.requirements.internalModelCalls?["Internal model calls require a metered adapter"]:[])]}
@@ -327,4 +328,10 @@ export async function resolveToolConnectionRefs(ctx:WorkflowContext,tools:ToolRe
     for(const revision of selected)await readConnectionRevision(ctx,revision)
   }
   return refs
+}
+
+/** Read-only management view; never prepares, retries, reconciles or discards. */
+export async function readToolEnvironmentState(ctx: WorkflowContext, ref: ToolRef): Promise<EnvironmentRecord | null> {
+  await importedTool(ctx, ref)
+  return readState(ctx, ref)
 }

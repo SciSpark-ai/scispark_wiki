@@ -50,12 +50,17 @@ export type ToolOverride = z.infer<typeof ToolOverrideSchema>
 export const ProfileToolsSchema = z.object({
   schemaVersion: z.literal(1),
   enabled: z.array(z.object({ tool: ToolRefSchema, enabled: z.boolean() }).strict()),
+  managementOperations: z.array(z.object({
+    operationId: UuidSchema, toolKey: ToolKeySchema, hash: DigestSchema, previousTool: ToolRefSchema.optional(),
+    result: z.union([ToolRefSchema, z.object({ updated: z.literal(true) }).strict(), z.object({ status: z.enum(["removed", "disabled", "cancellation-pending"]), runIds: z.array(UuidSchema) }).strict()]),
+  }).strict()).max(10000).optional(),
   pins: z.array(ToolRefSchema), overrides: z.array(ToolOverrideSchema), migrated: z.boolean(),
 }).strict().superRefine((state, ctx) => {
   for (const [field, keys] of [
     ["enabled", state.enabled.map((binding) => toolKey(binding.tool))],
     ["pins", state.pins.map(toolKey)],
     ["overrides", state.overrides.map((override) => override.toolKey)],
+    ["managementOperations", (state.managementOperations ?? []).map(operation => operation.operationId)],
   ] as const) {
     if (new Set(keys).size !== keys.length) ctx.addIssue({ code: "custom", path: [field], message: "Duplicate tool identity" })
   }

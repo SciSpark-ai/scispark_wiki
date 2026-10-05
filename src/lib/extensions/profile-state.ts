@@ -4,7 +4,7 @@ import { NodeFsVaultStorage } from "../vault/node-fs-storage"
 import { DigestSchema, ProfileIdSchema, ToolKeySchema, ToolOverrideSchema, ToolRefSchema, toolKey, type ProfileTools, type ToolKey, type ToolManifest } from "./contracts"
 import { NATIVE_TOOL_MANIFESTS } from "./native-catalog"
 import { getCurrentToolManifest, getToolManifest } from "./registry"
-import { profileRuntimePath, readProfileTools, updateProfileTools } from "./store"
+import { profileRuntimePath, readProfileTools, readImportedManifests, updateProfileTools } from "./store"
 
 const OriginSchema = z.object({ schemaVersion: z.literal(1), profileId: ProfileIdSchema, vaultId: DigestSchema, origin: z.enum(["new", "legacy"]) }).strict()
 const BindingPatchSchema = ToolOverrideSchema.omit({ toolKey: true }).extend({ tool: ToolRefSchema.optional() }).strict()
@@ -36,11 +36,12 @@ export async function initializeProfileTools(ctx: WorkflowContext, origin: "new"
 export async function setToolEnabled(ctx: WorkflowContext, key: ToolKey, enabled: boolean): Promise<ProfileTools> {
   ToolKeySchema.parse(key)
   z.boolean().parse(enabled)
+  const imports = await readImportedManifests(ctx)
   return updateProfileTools(ctx, (state) => {
     if (!state?.migrated) throw new Error("Initialize profile tools before changing bindings")
-    const manifest = getCurrentToolManifest(key)
+    const manifest = getCurrentToolManifest(key) ?? imports.find(m => toolKey(m.ref) === key)
     if (!manifest) throw new Error("Unknown tool identity")
-    const ref = state.pins.find((pin) => toolKey(pin) === key) ?? manifest.ref
+    const ref = state.pins.find((pin) => toolKey(pin) === key) ?? state.enabled.find(b => toolKey(b.tool) === key)?.tool ?? manifest.ref
     const bindings = state.enabled.filter(({ tool }) => toolKey(tool) !== key)
     if (enabled) bindings.push({ tool: ref, enabled: true })
     return { ...state, enabled: bindings, pins: state.pins.some((pin) => toolKey(pin) === key) ? state.pins : [...state.pins, ref] }
@@ -50,10 +51,11 @@ export async function setToolEnabled(ctx: WorkflowContext, key: ToolKey, enabled
 export async function setToolBinding(ctx: WorkflowContext, key: ToolKey, patch: ToolBindingPatch): Promise<ProfileTools> {
   ToolKeySchema.parse(key)
   const parsed = BindingPatchSchema.parse(patch)
+  const imports = await readImportedManifests(ctx)
   return updateProfileTools(ctx, (state) => {
     if (!state?.migrated) throw new Error("Initialize profile tools before changing bindings")
-    if (!getCurrentToolManifest(key)) throw new Error("Unknown tool identity")
-    if (parsed.tool && (toolKey(parsed.tool) !== key || !getToolManifest(parsed.tool))) throw new Error("Unknown tool version or mismatched identity")
+    if (!getCurrentToolManifest(key) && !imports.some(m => toolKey(m.ref) === key)) throw new Error("Unknown tool identity")
+    if (parsed.tool && (toolKey(parsed.tool) !== key || !getToolManifest(parsed.tool) && !imports.some(m => JSON.stringify(m.ref) === JSON.stringify(parsed.tool)))) throw new Error("Unknown tool version or mismatched identity")
     const old = state.overrides.find((override) => override.toolKey === key)
     const override = ToolOverrideSchema.parse({ ...old, toolKey: key, ...(parsed.tierModels ? { tierModels: { ...old?.tierModels, ...parsed.tierModels } } : {}), ...(parsed.roleTiers ? { roleTiers: { ...old?.roleTiers, ...parsed.roleTiers } } : {}) })
     return {
@@ -67,9 +69,9 @@ export async function setToolBinding(ctx: WorkflowContext, key: ToolKey, patch: 
 
 /** Enabled catalog choices are distinct from adapter execution readiness. */
 export async function listEnabledTools(ctx: WorkflowContext): Promise<ToolManifest[]> {
-  const state = await readProfileTools(ctx)
+  const state = await readProfileTools(ctx), imports = await readImportedManifests(ctx)
   return (state?.enabled ?? []).flatMap(({ tool, enabled }) => {
-    const manifest = getToolManifest(tool)
+    const manifest = getToolManifest(tool) ?? imports.find(m => JSON.stringify(m.ref) === JSON.stringify(tool))
     return enabled && manifest ? [manifest] : []
   })
 }

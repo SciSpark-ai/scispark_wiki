@@ -19,7 +19,7 @@ export async function canonicalDiscoveryRoots(input: DiscoveryRoot[]): Promise<D
   }
   return output
 }
-export type AgentPackage = { rootIndex: number; label: string; sourceKey: string; files: Map<string, Buffer>; entries: string[] }
+export type AgentPackage = { rootIndex: number; label: string; sourceKey: string; path: string; files: Map<string, Buffer>; entries: string[] }
 /** A single bounded scan; only narrowly recognized locations below explicit
  * canonical roots are enumerated. No environment/home/config-file inference. */
 export async function collectAgentPackages(roots: DiscoveryRoot[], assertPermission: () => void): Promise<AgentPackage[]> {
@@ -84,7 +84,7 @@ export async function collectAgentPackages(roots: DiscoveryRoot[], assertPermiss
     }
     await walk(path, "", new Set())
     const entries = [...files.keys()].filter(file => basename(file) === "SKILL.md" && (!skillDirectories || skillDirectories.some(dir => dir === "." || file.startsWith(dir + "/"))))
-    if (entries.length) packages.push({ rootIndex, label, sourceKey: createHash("sha256").update(contentRoot).digest("hex"), files, entries })
+    if (entries.length) packages.push({ rootIndex, label, path: contentRoot, sourceKey: createHash("sha256").update(contentRoot).digest("hex"), files, entries })
     if (packages.length > 1000) throw new Error("Discovery package limit exceeded")
   }
   async function plugin(path: string, rootIndex: number) {

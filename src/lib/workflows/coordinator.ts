@@ -59,6 +59,12 @@ async function restoreStartRecords(ctx: WorkflowContext): Promise<void> {
     if (!await readRun(ctx, record.run.id)) await writeRun(ctx, record.run)
   }
 }
+/** Management callers already hold workflow-coordinator exclusivity. Restore
+ * accepted starts before asking for finish/cancel; never dispatch work here. */
+export async function restoreAndListWorkflowRuns(ctx: WorkflowContext): Promise<ToolRun[]> {
+  await restoreStartRecords(ctx)
+  return listRuns(ctx)
+}
 function track(work: Promise<void>): void {
   const pending = work.catch(reportBackgroundError).finally(() => { runtime.background.delete(pending) })
   runtime.background.add(pending)

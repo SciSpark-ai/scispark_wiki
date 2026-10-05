@@ -1,3 +1,4 @@
+import { ManagementHistoryFullError } from "../extensions/store"
 import { ChangesetRecoveryConflictError } from "../vault/changesets"
 import { z } from "zod"
 import type { NextRequest } from "next/server"
@@ -22,6 +23,7 @@ export async function workflowApi(request: NextRequest, work: (ctx: WorkflowCont
     })
     return await work(await resolveWorkflowContext(profile, process.env, request.method === "GET"))
   } catch (error) {
+    if (error instanceof ManagementHistoryFullError) return Response.json({ error: error.message, code: error.code }, { status: 409, headers: { "cache-control": "no-store" } })
     if (error instanceof ChangesetRecoveryConflictError) return Response.json({
       error: "A pending wiki save conflicts with edited pages. Review its preserved recovery record before retrying.",
       code: error.code, runId: error.runId, changesetId: error.changesetId, conflicts: error.conflicts,

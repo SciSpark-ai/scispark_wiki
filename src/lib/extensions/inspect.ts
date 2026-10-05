@@ -6,7 +6,7 @@ import { parse as parseYaml } from "yaml"
 import { NodeFsVaultStorage } from "../vault/node-fs-storage"
 import type { WorkflowContext } from "../workflows/context"
 import { ToolManifestSchema, ToolRefSchema, UuidSchema, toolKey, type ToolRef } from "./contracts"
-import { AdapterProposalSchema, ImportPreviewSchema, PackagePathSchema, StagedPackageSchema, type AdapterProposal, type ImportPreview, type StagedPackage } from "./import-contract"
+import { AdapterProposalSchema, ImportPreviewSchema, UpdateSourceSchema, ApprovedUpdateSourceSchema, PackagePathSchema, StagedPackageSchema, type AdapterProposal, type ImportPreview, type StagedPackage } from "./import-contract"
 import { NATIVE_TOOL_MANIFESTS } from "./native-catalog"
 import { exactRef, resolveDependencies } from "./dependencies"
 import { sha256 } from "./acquire"
@@ -205,9 +205,11 @@ async function buildTool(ctx: WorkflowContext, stage: StagedPackage, input: Adap
   manifest.ref.digest = snapshotDigest(tool)
   return tool
 }
-async function savePreview(ctx: WorkflowContext, preview: ImportPreview, grantId?: string) {
+async function savePreview(ctx: WorkflowContext, preview: ImportPreview, grantId?: string, inspectedProposals?: AdapterProposal[]) {
   const parsed = ImportPreviewSchema.parse(preview), storage = await importStorage(ctx)
   if (JSON.stringify(parsed).length > 16 * 1024 * 1024) throw new Error("Import preview size limit exceeded")
+  if (grantId) await requireDiscoveryGrant(ctx, grantId)
+  await storage.write(`imports/proposal-baselines/${parsed.id}.json`, JSON.stringify(z.array(AdapterProposalSchema).parse(inspectedProposals ?? parsed.tools.map(tool => tool.proposal))))
   if (grantId) await requireDiscoveryGrant(ctx, grantId)
   await storage.write(`imports/previews/${parsed.id}.json`, JSON.stringify(parsed)); return parsed
 }
@@ -265,6 +267,10 @@ export async function inspectPackage(ctx: WorkflowContext, candidate: StagedPack
 /** The user reviews the complete proposal. Return a new immutable preview ID;
  * stale refs cannot authorize modified capabilities or installation commands. */
 export async function reviewImport(ctx: WorkflowContext, previewId: string, proposals: AdapterProposal[]): Promise<ImportPreview> {
+  return reviseImportPreview(ctx, previewId, proposals, true)
+}
+/** Recompute a proposed adapter without claiming user review or publishing it. */
+export async function reviseImportPreview(ctx: WorkflowContext, previewId: string, proposals: AdapterProposal[], reviewed = false): Promise<ImportPreview> {
   const preview = await readPreview(ctx, previewId), stage = await readStage(ctx, preview.stageId)
   return withDiscoveryGrant(ctx, stage.discoveryGrantId, async () => {
     if (!proposals.length || proposals.length > preview.tools.length || new Set(proposals.map((p) => p.skillId)).size !== proposals.length) throw new Error("Invalid reviewed tool selection")
@@ -272,13 +278,13 @@ export async function reviewImport(ctx: WorkflowContext, previewId: string, prop
     for (const proposal of proposals) {
       const previous = preview.tools.find((tool) => tool.proposal.skillId === proposal.skillId)
       if (!previous) throw new Error("Unknown adapter proposal")
-      tools.push(await buildTool(ctx, stage, proposal, previous.inferred, true, previous.hostUnsupported))
+      tools.push(await buildTool(ctx, stage, proposal, previous.inferred, reviewed, previous.hostUnsupported))
     }
-    return savePreview(ctx, { ...preview, id: randomUUID(), tools }, stage.discoveryGrantId)
+    return savePreview(ctx, { ...preview, id: randomUUID(), tools }, stage.discoveryGrantId, (await readInspectedProposals(ctx, preview.id)) ?? [])
   })
 }
 
-export async function commitImport(ctx: WorkflowContext, previewId: string, selected: ToolRef[]): Promise<ToolRef[]> {
+export async function commitImport(ctx: WorkflowContext, previewId: string, selected: ToolRef[], options: { prepareCatalogOnly?: boolean } = {}): Promise<ToolRef[]> {
   const refs = z.array(ToolRefSchema).min(1).max(1000).parse(selected)
   const preview = await readPreview(ctx, previewId), stage = await readStage(ctx, preview.stageId)
   return withDiscoveryGrant(ctx, stage.discoveryGrantId, async (check) => {
@@ -320,13 +326,22 @@ export async function commitImport(ctx: WorkflowContext, previewId: string, sele
     // catalog and enabled-binding publication finish. Revoke cannot interleave.
     await check()
     await recordImportedRefs(ctx, graph.nodes.filter((ref) => ref.packageId !== "scispark.builtin"), check)
-    await updateProfileTools(ctx, async (current) => {
+    const storage = await importStorage(ctx)
+    const source = await storage.read(`imports/${stage.id}/update-source.json`)
+    if (source) for (const tool of selectedTools) {
+      await check()
+      const baseline = ((await readInspectedProposals(ctx, preview.id)) ?? []).find(proposal => proposal.skillId === tool.proposal.skillId)
+      // A legacy preview without an inspected baseline cannot authorize a merge.
+      await check()
+      if (baseline) await storage.write(`versions/sources/${tool.manifest.ref.digest}.json`, JSON.stringify(ApprovedUpdateSourceSchema.parse({ ...UpdateSourceSchema.parse(JSON.parse(source)), inspectedProposal: baseline, reviewedProposal: tool.proposal })))
+    }
+    if (!options.prepareCatalogOnly) await updateProfileTools(ctx, async (current) => {
       // Recheck after waiting for profile-tools and reading its saved state.
       await check()
       const state = current ?? { schemaVersion: 1 as const, enabled: [], pins: [], overrides: [], migrated: false }
       const enabled = new Map(state.enabled.map((binding) => [toolKey(binding.tool), binding]))
       for (const ref of refs) enabled.set(toolKey(ref), { tool: ref, enabled: true })
-      return { ...state, enabled: [...enabled.values()] }
+      return { ...state, enabled: [...enabled.values()], pins: state.pins.map(pin => refs.find(ref => toolKey(ref) === toolKey(pin)) ?? pin) }
     })
     return refs
   })
@@ -339,6 +354,11 @@ export async function selectDiscoveredPreview(ctx: WorkflowContext, previewId: s
   return withDiscoveryGrant(ctx, stage.discoveryGrantId, async () => {
     const tool = preview.tools.find(tool => tool.proposal.skillId === skillId)
     if (!tool) throw new Error("Unknown discovery candidate")
-    return savePreview(ctx, { ...preview, id: randomUUID(), tools: [tool] }, stage.discoveryGrantId)
+    return savePreview(ctx, { ...preview, id: randomUUID(), tools: [tool] }, stage.discoveryGrantId, (await readInspectedProposals(ctx, preview.id)) ?? [])
   })
+}
+
+async function readInspectedProposals(ctx: WorkflowContext, previewId: string): Promise<AdapterProposal[] | undefined> {
+  const raw = await (await importStorage(ctx)).read(`imports/proposal-baselines/${UuidSchema.parse(previewId)}.json`)
+  return raw ? z.array(AdapterProposalSchema).parse(JSON.parse(raw)) : undefined
 }

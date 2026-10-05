@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { DigestSchema, ProfileIdSchema, ToolManifestSchema, ToolRefSchema, UuidSchema } from "./contracts"
+import { DigestSchema, ProfileIdSchema, ToolManifestSchema, ToolRefSchema, ToolOverrideSchema, UuidSchema } from "./contracts"
 
 export const IMPORT_LIMITS = { compressedBytes: 50 * 1024 * 1024, expandedBytes: 250 * 1024 * 1024, entries: 10_000, fileBytes: 25 * 1024 * 1024 } as const
 const Text = z.string().min(1).max(1000)
@@ -145,3 +145,35 @@ export type DiscoveryAction = z.infer<typeof DiscoveryActionSchema>
 export const DiscoveryQuerySchema = z.object({ grantId: UuidSchema }).strict()
 export const DiscoveryGrantDtoSchema = DiscoveryGrantSchema.omit({ profileId: true, vaultId: true })
 export const DiscoveryStageDtoSchema = ImportPreviewSchema.omit({ profileId: true, vaultId: true })
+
+/** Private source authority, saved separately from immutable package identity. */
+export const UpdateSourceSchema = z.object({ source: ImportSourceSchema, locator: z.string().min(1).max(4000) }).strict()
+export const ApprovedUpdateSourceSchema = UpdateSourceSchema.extend({ inspectedProposal: AdapterProposalSchema, reviewedProposal: AdapterProposalSchema }).strict()
+export const UpdatePreviewSchema = z.object({
+  id: UuidSchema, current: ToolRefSchema, kind: z.enum(["metadata", "staged"]), revision: Text,
+  candidate: ToolRefSchema.optional(), changedResources: z.array(PackagePathSchema).max(IMPORT_LIMITS.entries),
+  dependencies: z.array(ToolRefSchema).max(100), addedCapabilities: z.array(Text).max(100), addedConnections: z.array(Text).max(100),
+  proposal: AdapterProposalSchema.optional(), checkedAt: z.number().int().nonnegative(),
+}).strict()
+export type UpdatePreview = z.infer<typeof UpdatePreviewSchema>
+export const ActiveRunDispositionSchema = z.enum(["finish", "cancel"])
+export const ToolMutationSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("enable"), operationId: UuidSchema, enabled: z.boolean(), activeRunDisposition: ActiveRunDispositionSchema.optional() }).strict(),
+  z.object({ action: z.literal("binding"), operationId: UuidSchema, patch: ToolOverrideSchema.omit({ toolKey: true }) }).strict(),
+  z.object({ action: z.literal("check-update"), operationId: UuidSchema, grantId: UuidSchema.optional() }).strict(),
+  z.object({ action: z.literal("apply-update"), operationId: UuidSchema, previewId: UuidSchema }).strict(),
+  z.object({ action: z.literal("rollback"), operationId: UuidSchema, digest: DigestSchema }).strict(),
+  z.object({ action: z.literal("remove"), operationId: UuidSchema, activeRunDisposition: ActiveRunDispositionSchema.optional() }).strict(),
+  z.object({ action: z.literal("acknowledge-and-discard-setup"), operationId: UuidSchema, tool: ToolRefSchema, setupId: UuidSchema }).strict(),
+])
+export type ToolMutation = z.infer<typeof ToolMutationSchema>
+export const ToolRemovalResultSchema = z.object({ status: z.enum(["removed", "disabled", "decision-required", "cancellation-pending"]), runIds: z.array(UuidSchema) }).strict()
+export type ToolRemovalResult = z.infer<typeof ToolRemovalResultSchema>
+
+export const ToolMutationResultSchema = z.union([ToolRefSchema, z.object({ updated: z.literal(true) }).strict(), ToolRemovalResultSchema, UpdatePreviewSchema.nullable(), EnvironmentRecordSchema])
+export type ToolMutationResult = z.infer<typeof ToolMutationResultSchema>
+
+/** Management recovery projection intentionally omits all runtime/recipe details. */
+export const ToolSetupStateSchema = z.object({ tool: ToolRefSchema, setupId: UuidSchema, state: EnvironmentRecordSchema.shape.state, reason: z.string().max(1000) }).strict()
+export const ToolUpdateStateSchema = z.object({ preview: UpdatePreviewSchema, consent: z.enum(["valid", "renewal-required", "not-required"]), preparedTool: ToolRefSchema.optional(), readiness: CompatibilitySchema.optional(), setup: ToolSetupStateSchema.optional() }).strict()
+export type ToolUpdateState = z.infer<typeof ToolUpdateStateSchema>
