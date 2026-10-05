@@ -502,3 +502,132 @@ The final isolated production build also passed (compile 9.8 seconds, TypeScript
 `/tmp/scispark-modular-task-6-fix-1/{vault,profiles}` and scheduler off. Exact logs,
 exit status, fresh config backups and verified generated-config cleanup are in
 `task-6-fix-1-build/`. `git diff --check` passed.
+
+### Task 7 — bounded research package acquisition and immutable imports
+
+Added strict import/staging/preview/recipe contracts and bounded local-folder,
+agent-folder, ZIP and GitHub acquisition. GitHub resolves an exact commit before
+archive download, validates each redirect and pins a public IPv4 DNS result.
+Authentication is transient and limited to the API host. Acquisition never runs
+hooks, package instructions, validators or setup commands.
+
+Archive validation checks portable paths, case-folded aliases, duplicate entries,
+local/central ZIP consistency, integrity and actual streamed byte limits. Internal
+file and directory symlinks are copied as regular content with root confinement,
+cycle detection and normal entry/expansion budgets. Traversal, outside-root links,
+nested archives and unsupported formats reject. All fixtures are disposable.
+
+Inspection recognizes SKILL.md and the four specified plugin/marketplace metadata
+paths. It exposes editable inferred proposals when skill metadata is absent,
+requires complete capability/setup review and emits new immutable refs after
+edits. Setup recipes are separate from instructions. JSON schemas are bounded and
+converted with installed Zod `fromJSONSchema`; external refs, regex validators and
+unsupported constructs reject. Commands/dependency setup remain explicit
+unsupported requirements for Tasks 8/9.
+
+Committing an import snapshots only selected entrypoints and their declared,
+conventional/transitive resource closure, plus notices. File hashes and reviewed
+metadata/dependency locks define immutable digests. Profile-local catalogs survive
+reopen, preserve earlier versions, and keep other profile bindings/settings apart.
+Dependency resolution rejects cycles, missing refs and version conflicts; builtin
+helpers retain their exact native refs and are not stored as imported objects.
+Only declared frozen helper candidate slots permit selection. Runtime parent-step
+choice persistence remains the runner's responsibility. No executable adapters are
+registered during import and no active run is upgraded.
+
+| Check | Result |
+| --- | --- |
+| Initial RED | Missing `../acquire` before implementation |
+| Directory-alias RED | 2 failed / 30 passed, proving missing safe directory-link support |
+| Final focused GREEN | 48 passed / 2 files (32 imports, 16 browser-purity checks) |
+| `npx tsc --noEmit` | Exit 0; 3.43 seconds |
+| `npm run lint` | Exit 0; 15.88 seconds; baseline warning/Babel note only |
+| `npx vitest run` | 2900 passed / 19 gated skips; 285 passed / 7 skipped files; 34.44 seconds |
+
+Final command: `python3 .superpowers/sdd/2026-10-05-modular-workspace/verify-task.py task-7`.
+Exact logs and the complete report are in the local SDD `verification/task-7/` and
+`task-7-report.md`; an earlier successful pre-directory-fix gate is retained at
+`verification/task-7-before-directory-links/`. Self-review preceded the final gate
+and fixed directory aliases, ancestor casing, JSON-only inputs, snapshot digest
+coverage and native-helper catalog ownership. `git diff --check` passed.
+
+The first scoped gate attempt was not executed because automatic approval review
+hit a model-capacity error; an identical scoped retry succeeded. The scope was the
+existing disposable loopback test harness. No real installed-skill scan, personal
+vault, live model, actual package command, push or merge was used. No production
+build was needed. ZIP64/encrypted/multidisk/nested archives and special files, plus
+IPv6-only acquisition, remain explicit unsupported states. Inspection readiness
+is not a claim that runtime isolation or dependency installation has completed.
+
+#### Task 7 independent-review fix 1 — truthful requirements, complete references and safe reads
+
+Host-detected plugin/external-source requirements now live in strict host-owned
+metadata outside editable package proposals. Initial previews and repeated review
+edits retain those detections, merge them into requirements/readiness, and include
+them in immutable snapshot identity. This inspection phase has no host-validated
+resolution API; clearing an editable setup array cannot claim support.
+
+The selected resource closure now follows full, collapsed, shortcut and image
+Markdown references, including normalized labels, space-containing destinations
+and transitive `.md`/`.markdown` references outside conventional folders. Unused
+definitions and code examples do not add resources. Unsupported reference syntax
+and oversized Markdown fail explicitly instead of producing incomplete snapshots.
+Local FIFOs, internal FIFO symlinks and direct ZIP FIFO selections reject before
+open; nonblocking/no-follow descriptor opening plus `fstat` also protects against
+replacement between path inspection and open. Test cleanup leaves no blocked I/O.
+
+R17 adds bounded transient query data only for validated codeload archive
+redirects, preserving HTTPS/DNS/private-address checks and API-only authorization.
+Source URLs remain strict. Request, body, DNS and invalid-redirect errors are
+sanitized; fixture query/API secrets never enter persisted runtime data.
+[GitHub's official ZIP API documentation](https://docs.github.com/en/rest/repos/contents#download-a-repository-archive-zip)
+confirms redirects and expiring private links. Exact live signature formatting
+and actual private-repository acquisition remain unverified; all transport tests
+use fake DNS/HTTP and fixture credentials. No private repository was accessed.
+The fixture README now consistently describes file and directory symlink copying.
+
+| Check | Result |
+| --- | --- |
+| Behavioral RED | 6 failed / 32 passed: erased requirements, omitted references, three FIFO stalls and signed-query rejection |
+| Final focused GREEN | 68 passed / 2 files (52 imports, 16 browser-purity checks) |
+| `npx tsc --noEmit` | Exit 0; 3.60 seconds |
+| `npm run lint` | Exit 0; 16.13 seconds; baseline warning/Babel note only |
+| `npx vitest run` | 2920 passed / 19 gated skips; 285 passed / 7 skipped files; 30.93 seconds |
+
+Self-review preceded the final command:
+`python3 .superpowers/sdd/2026-10-05-modular-workspace/verify-task.py task-7-fix-1`.
+Exact outputs and the appended report are in the local SDD
+`verification/task-7-fix-1/` and `task-7-report.md`. `git diff --check` passed.
+The master gate used established scoped elevation for disposable loopback tests.
+No build, live provider, actual package execution, human vault, installed-skill
+scan, push or merge was used. The original Task 7 commit is amended with its
+parent, subject and Codex attribution preserved. Runtime concerns remain in
+Tasks 8/9/10/13/14.
+
+#### Task 7 independent-review fix 2 — separate shortcut references
+
+The remaining closure defect was whitespace consumption between reference labels:
+separate shortcuts could be interpreted as one full reference, dropping the first
+resource. The second label must now be immediately adjacent. Spaces, tabs, line
+breaks and paragraph boundaries preserve independent shortcuts, consistent with
+[CommonMark's full-reference rule](https://spec.commonmark.org/0.31.2/#full-reference-link).
+
+Seven tests inspect the actual committed snapshot with resources outside
+conventional folders. They cover paragraph/same-line/CRLF boundaries and retain
+adjacent full-reference and collapsed-reference behavior. Behavioral RED was
+**5 failed / 54 passed**, with `first.txt` absent from each affected snapshot.
+Final focused GREEN was **75 passed / 2 files** (59 imports, 16 purity checks).
+Self-review confirmed only the adjacency check, its comment and these regressions
+changed; previously approved requirement, FIFO and redirect fixes were untouched.
+
+Final command:
+`python3 .superpowers/sdd/2026-10-05-modular-workspace/verify-task.py task-7-fix-2`.
+TypeScript passed (3.41 seconds), lint passed (16.17 seconds; baseline warning
+and Babel note only), and Vitest passed with **2927 passed / 19 gated skips**
+(285 passed / 7 skipped files; 31.09 seconds).
+Exact outputs and the appended report are retained in
+local SDD `verification/task-7-fix-2/` and `task-7-report.md`.
+`git diff --check` passed. Scoped execution supports existing disposable loopback
+tests only. No build, live call, private repository, installed-skill scan, human
+vault, subagent, push or merge was used. The task commit is amended while
+preserving its original parent, subject and Codex attribution.

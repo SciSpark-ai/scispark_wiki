@@ -55,6 +55,7 @@ const FILE_EXTENSIONS = new Set([".ts", ".tsx"])
  */
 const CLIENT_LIB_FILES = [
   "src/lib/extensions/contracts.ts",
+  "src/lib/extensions/import-contract.ts",
   "src/lib/workflows/contracts.ts",
   "src/lib/workflows/client.ts",
   "src/lib/skills/job-contract.ts",
@@ -110,6 +111,8 @@ const WHOLE_MODULE_BANS = new Set([
   "lib/workflows/adapters",
   "lib/server/workflow-api",
   "lib/extensions/store",
+  "lib/extensions/acquire",
+  "lib/extensions/inspect",
 ])
 const PROVIDERS_PREFIX = "lib/llm/providers"
 
@@ -371,6 +374,8 @@ describe("browser purity", () => {
     ['import { getProfileRegistryRoot } from "@/lib/server/local-profiles"', "src/app/page.tsx"],
     ['import { readRun } from "@/lib/workflows/store"', "src/lib/workflows/contracts.ts"],
     ['import { readProfileTools } from "@/lib/extensions/store"', "src/lib/extensions/contracts.ts"],
+    ['import { acquirePackage } from "@/lib/extensions/acquire"', "src/lib/extensions/import-contract.ts"],
+    ['import { inspectPackage } from "@/lib/extensions/inspect"', "src/lib/extensions/import-contract.ts"],
     ['import { getWorkflowContext } from "@/lib/workflows/context"', "src/app/page.tsx"],
     ['import { loadBoard } from "@/lib/trending/dashboard"', "src/app/trending/page.tsx"],
     ['export { isStale } from "./dashboard"', "src/lib/trending/cache.ts"],
