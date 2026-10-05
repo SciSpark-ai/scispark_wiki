@@ -1,4 +1,6 @@
 import { z } from "zod"
+import { slugifyTitle } from "../wiki/authoring"
+import { PaperTextSchema } from "../papers/text-contract"
 
 export const REVIEW_INTRO = "Manage your review and follow its progress below."
 export const LEGACY_REVIEW_INTRO = "Here is the review brief. Adjust the scope or context, then start when you're ready. No research calls have started."
@@ -14,6 +16,16 @@ export const PaperSnapshotSchema = z.object({
   publicationTypes: z.array(z.string()).optional(), isRetracted: z.boolean().optional(),
 })
 const source = z.enum(["arxiv", "openalex", "s2", "pubmed"])
+export const ChatPaperSlugSchema = z.string().min(1).max(80).refine(slug => slug === slugifyTitle(slug))
+/** Server-resolved evidence survives discovery-cache refreshes and History navigation. */
+export const ChatPaperContextSchema = z.object({
+  slug: ChatPaperSlugSchema,
+  paper: PaperSnapshotSchema.extend({ abstract: z.string().max(16_000).optional() }),
+  digestText: z.string().max(16_000).optional(),
+  capturedAt: z.string().datetime(),
+  source: PaperTextSchema.optional(),
+})
+export type ChatPaperContext = z.infer<typeof ChatPaperContextSchema>
 export const SearchResultSchema = z.object({
   query: z.string(),
   plan: z.object({

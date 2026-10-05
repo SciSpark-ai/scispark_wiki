@@ -54,6 +54,15 @@ const server = createServer((request, response) => {
         ? { message: reply[0], draft: onboardingDraft, question: reply[1] }
         : prompt.includes("Connection test: reply with the word ready")
         ? { message: "ready" }
+        : prompt.includes("structured digest of an academic paper") && prompt.includes("FULLTEXT-FIXTURE")
+        ? { summary: "The detector uses causal attention.", laySummary: "It tracks attention using past signals.", keyPoints: ["Adaptive smoothing"], methods: "Causal attention over a historical key-value cache.", limitations: "A controlled experiment.", fieldContext: "EEG decoding." }
+        : prompt.includes("CURRENT PAPER —")
+        ? {
+            answer: prompt.includes("Context fixture: auditory attention") && prompt.includes("SOURCE-FIXTURE: A causal state detector adjusts temporal smoothing.") && prompt.includes("FULLTEXT-FIXTURE: The detector uses causal attention over a historical key-value cache.") && !prompt.includes("DIGEST-FIXTURE: The detector algorithm is not described.")
+              ? "For this attention paper, the detector uses causal attention over a historical key-value cache to adjust temporal smoothing."
+              : "PAPER CONTEXT FIXTURE MISSING",
+            citedPageIds: ["current-paper"],
+          }
         : prompt.includes("You select which pages")
         ? { pageIds: ["e2e-grounding-paper"] }
         : prompt.includes("exactly ONE short")

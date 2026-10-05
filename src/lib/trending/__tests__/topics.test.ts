@@ -64,6 +64,14 @@ const corpus = (discipline: string, recent: number | null, prior: number | null)
   new Map<string, CorpusTotals>([[discipline, { recent, prior }]])
 
 describe("selectTopicCandidates", () => {
+  it("keeps a candidate pool for a smaller field even when another field has higher-volume topics", () => {
+    const cs = Array.from({ length: 30 }, (_, i) => [`cs${i}`, 500 + i] as [string, number])
+    const neuro = Array.from({ length: 25 }, (_, i) => [`neuro${i}`, 10 + i] as [string, number])
+    const candidates = selectTopicCandidates([d("CS", cs), d("Neuro", neuro)])
+    expect(candidates.filter(c => c.discipline === "CS")).toHaveLength(CANDIDATE_POOL)
+    expect(candidates.filter(c => c.discipline === "Neuro")).toHaveLength(CANDIDATE_POOL)
+    expect(candidates.some(c => c.key === "neuro24")).toBe(true)
+  })
   it("orders by recent volume and caps the pool at CANDIDATE_POOL", () => {
     const recent = Array.from({ length: CANDIDATE_POOL + 8 }, (_, i) => [`t${i}`, 10 + i] as [string, number])
     const out = selectTopicCandidates([d("Neuro", recent)])
@@ -90,6 +98,15 @@ describe("selectTopicCandidates", () => {
 })
 
 describe("rankHeatingTopics", () => {
+  it("retains each field's top topics even when none reach the combined top ten", () => {
+    const cs = Array.from({ length: 15 }, (_, i) => [`cs${i}`, 100 + i] as [string, number])
+    const neuro = Array.from({ length: 15 }, (_, i) => [`neuro${i}`, 20 + i] as [string, number])
+    const out = rankHeatingTopics([d("CS", cs), d("Neuro", neuro)], priors([...cs, ...neuro].map(([key]) => [key, 10])), totals("CS", "Neuro"))
+    expect(out.filter(t => t.discipline === "CS")).toHaveLength(MAX_LEADERBOARD_TOPICS)
+    expect(out.filter(t => t.discipline === "Neuro")).toHaveLength(MAX_LEADERBOARD_TOPICS)
+    expect(out.slice(0, MAX_LEADERBOARD_TOPICS).every(t => t.discipline === "CS")).toBe(true)
+    expect(out.filter(t => t.discipline === "Neuro")[0].key).toBe("neuro14")
+  })
   it("computes growth from the looked-up prior counts and sorts fastest first", () => {
     const out = rankHeatingTopics([d("Neuro", [["a", 20], ["b", 12]])], priors([["a", 10], ["b", 10]]), totals("Neuro"))
     expect(out.map((t) => [t.key, t.growth])).toEqual([

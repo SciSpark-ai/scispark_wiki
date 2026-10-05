@@ -58,6 +58,9 @@ export interface TrendingBoard {
   version: number
   anchors: AnchorDiscipline[]
   overview: BoardOverview
+  /** Missing on legacy caches that retained only a combined top ten. */
+  topicCoverage?: "per-field"
+  /** Top ten per field in combined growth order; the UI slices All fields. */
   topics: BoardTopic[]
   breakouts: Array<{ record: PaperRecord; citationCount: number; wikiPageId: string | null }>
   crossDisciplineNote: string | null

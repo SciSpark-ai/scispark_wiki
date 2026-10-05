@@ -1,5 +1,5 @@
 import type { VaultStorage } from "../vault/storage"
-import { ChatBlockSchema, type ChatBlock } from "./blocks"
+import { ChatBlockSchema, ChatPaperContextSchema, type ChatBlock, type ChatPaperContext } from "./blocks"
 
 export const CHATS_DIR = ".scispark/chats"
 
@@ -42,6 +42,8 @@ export interface ChatSession {
   projectId?: string
   /** Title at conversation creation time, retained if the project is renamed/deleted. */
   projectTitle?: string
+  /** Paper evidence at conversation creation; never supplied by the client. */
+  paperContext?: ChatPaperContext
 }
 
 const TITLE_MAX_LENGTH = 60
@@ -156,7 +158,8 @@ function isChatSessionShape(value: unknown, expectedId: string): value is ChatSe
     Number.isFinite(Date.parse(v.updatedAt)) &&
     Array.isArray(v.messages) &&
     v.messages.every(isChatMessageShape) &&
-    projectFieldsValid
+    projectFieldsValid &&
+    (v.paperContext === undefined || (v.projectId === undefined && ChatPaperContextSchema.safeParse(v.paperContext).success))
   )
 }
 

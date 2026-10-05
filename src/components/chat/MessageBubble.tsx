@@ -60,7 +60,7 @@ export function MessageBubble({ message, pageTitleById, onSave, saving }: Messag
   // an error-only turn (nothing was actually answered) is not saveable, so
   // writing it as a `query` page would put an empty/failed answer into the
   // knowledge base permanently.
-  const canSave = isAssistant && hasContent && !message.error && !message.blocks?.length
+  const canSave = isAssistant && hasContent && !message.error && (!message.blocks?.length || message.blocks.every(block => block.type === "paper-citations"))
 
   return (
     <div className={isAssistant ? "flex items-start gap-2.5" : undefined}>

@@ -83,7 +83,7 @@ function structured(json: unknown): LLMResult {
 const htmlFetchFn: typeof fetch = async (input) => {
   const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url
   if (raw.includes("/api/fetch")) {
-    const html = `<html><body><p>${"Full text content of the paper. ".repeat(40)}</p></body></html>`
+    const html = `<html><body><article><h1>${PAPER.title}</h1><h2>Methods</h2><p>${"Full text content of the paper. ".repeat(40)}</p><h2>Results</h2><p>Training improved.</p></article></body></html>`
     return new Response(html, { status: 200, headers: { "content-type": "text/html" } })
   }
   return new Response(JSON.stringify({ error: "not found" }), { status: 404 })
@@ -107,12 +107,25 @@ describe("digest + ingest + undo skill routes", () => {
   })
 
   describe("POST /api/skills/digest", () => {
+    it("preserves an old digest and spends nothing when full text still cannot be read", async () => {
+      const path = `.scispark/digests/${paperSlug(PAPER)}.json`
+      const saved = JSON.stringify(SAMPLE_DIGEST)
+      await storage.write(path, saved)
+      const provider = new MockProvider([])
+      setSkillTestOverrides({ providerOverride: { strong: provider }, fetchFn: htmlFetchFn })
+      const response = await digestRoute.POST(new Request("http://x/api/skills/digest", { method: "POST", body: JSON.stringify({ paper: PAPER }) }))
+      expect(response.status).toBe(500)
+      expect((await response.json()).error).toContain("Your saved digest is unchanged")
+      expect(await storage.read(path)).toBe(saved)
+      expect(provider.calls).toHaveLength(0)
+    })
+
     it("returns a digest on a miss and fromCache:true on a second call with no further LLM calls", async () => {
       const provider = new MockProvider([structured(SAMPLE_DIGEST)])
-      setSkillTestOverrides({ providerOverride: { strong: provider } })
+      setSkillTestOverrides({ providerOverride: { strong: provider }, fetchFn: htmlFetchFn })
 
       const res1 = await digestRoute.POST(
-        new Request("http://x/api/skills/digest", { method: "POST", body: JSON.stringify({ paper: PAPER }) }),
+        new Request("http://x/api/skills/digest", { method: "POST", body: JSON.stringify({ paper: PAPER_WITH_HTML }) }),
       )
       expect(res1.status).toBe(200)
       const result1 = await jsonResult<{ digest: typeof SAMPLE_DIGEST; fromCache: boolean; costUsd?: number }>(res1)
@@ -120,9 +133,10 @@ describe("digest + ingest + undo skill routes", () => {
       expect(result1.fromCache).toBe(false)
       expect(result1.costUsd).toBeGreaterThan(0)
       expect(provider.calls).toHaveLength(1)
+      expect(provider.calls[0].req.messages.map(m => m.content).join(" ")).toContain("Full text content of the paper.")
 
       const res2 = await digestRoute.POST(
-        new Request("http://x/api/skills/digest", { method: "POST", body: JSON.stringify({ paper: PAPER }) }),
+        new Request("http://x/api/skills/digest", { method: "POST", body: JSON.stringify({ paper: PAPER_WITH_HTML }) }),
       )
       const result2 = await jsonResult<{ digest: typeof SAMPLE_DIGEST; fromCache: boolean }>(res2)
       expect(result2.digest).toEqual(SAMPLE_DIGEST)

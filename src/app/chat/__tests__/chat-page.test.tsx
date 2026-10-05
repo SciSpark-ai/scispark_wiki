@@ -247,8 +247,7 @@ describe("ChatSessionPage (/chat/[id])", () => {
 
     const { container, cleanup } = await renderPage(<ChatSessionPage />)
 
-    expect(container.textContent).toContain("Project conversation · Auditory Biomarkers")
-    expect(container.textContent).toContain("Scoped to current members")
+    expect(container.textContent).toContain("Project · Auditory Biomarkers")
     expect(getProjectRemoteMock).toHaveBeenCalledWith("auditory-biomarkers")
     cleanup()
   })

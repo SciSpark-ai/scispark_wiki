@@ -7,6 +7,7 @@ import { paperSlug, slugifyTitle } from "../wiki/authoring"
 import { defineSkill } from "./types"
 import { runSkill } from "./runner"
 import { DigestSchema, type DigestResult } from "./digest-contract"
+import { PaperTextInfoSchema, type PaperTextInfo } from "../papers/text-contract"
 
 export { DigestSchema, type DigestResult } from "./digest-contract"
 
@@ -17,6 +18,7 @@ type DigestOutcome = {
   runId?: string
   costUsd?: number | null
   cacheWriteFailed?: boolean
+  source?: PaperTextInfo
 }
 
 /**
@@ -65,6 +67,7 @@ function normalizeDigestCandidate(candidate: unknown): unknown {
 export interface DigestSkillInput {
   paper: PaperRecord
   fullText?: string
+  sourceNotes?: string[]
 }
 
 /**
@@ -82,6 +85,7 @@ function buildPrompt(input: DigestSkillInput): { system: string; user: string } 
   if (paper.venue !== undefined) metaLines.push(`Venue: ${paper.venue}`)
 
   const sections: string[] = [metaLines.join("\n")]
+  if (input.sourceNotes?.length) sections.push(`Source coverage:\n${input.sourceNotes.join("\n")}`)
 
   if (paper.abstract && paper.abstract.trim() !== "") {
     sections.push(`Abstract:\n${paper.abstract.trim()}`)
@@ -104,6 +108,7 @@ function buildPrompt(input: DigestSkillInput): { system: string; user: string } 
     "keyPoints: up to 6 concrete findings or contributions of the work, not section names (never things like 'Introduction' or 'Results').",
     "methods: how the work was done, concretely.",
     "limitations: honest limitations and caveats of the work.",
+    "Use the supplied full text when present. Do not say only an abstract was available when full text is provided. Distinguish limitations of the study from limits of the supplied source material; a retrieval failure does not establish that the paper is inaccessible. Do not invent missing details.",
     "fieldContext: where this work sits within its broader field.",
     'Return exactly one JSON object at the root with the keys "summary", "laySummary", "keyPoints", "methods", "limitations", and "fieldContext". Never return a root array.',
   ].join("\n")
@@ -167,14 +172,20 @@ export function isDigestCacheSlug(slug: string): boolean {
  * damaged local record cannot crash the paper page.
  */
 export async function loadCachedDigestBySlug(storage: VaultStorage, slug: string): Promise<DigestResult | null> {
+  return (await loadCachedDigestEntry(storage, slug))?.digest ?? null
+}
+
+export async function loadCachedDigestEntry(storage: VaultStorage, slug: string): Promise<{ digest: DigestResult; source?: PaperTextInfo } | null> {
   if (!isDigestCacheSlug(slug)) return null
 
   const cachedRaw = await storage.read(digestCachePathFromSlug(slug))
   if (cachedRaw === null) return null
 
   try {
-    const parsed = DigestSchema.safeParse(JSON.parse(cachedRaw))
-    return parsed.success ? parsed.data : null
+    const raw = JSON.parse(cachedRaw)
+    const parsed = DigestSchema.safeParse(raw)
+    const source = PaperTextInfoSchema.safeParse(raw?._source)
+    return parsed.success ? { digest: parsed.data, ...(source.success ? { source: source.data } : {}) } : null
   } catch {
     return null
   }
@@ -189,8 +200,9 @@ export async function loadCachedDigest(storage: VaultStorage, paper: PaperRecord
  * Generates (or reuses a cached) digest for a paper.
  *
  * Cache path is `.scispark/digests/<paperSlug(paper)>.json`. A cache hit that parses as
- * valid JSON AND validates against DigestSchema short-circuits with `fromCache: true` and
- * makes zero LLM calls. Missing, corrupt (invalid JSON), or schema-invalid cache content is
+ * valid JSON AND validates against DigestSchema short-circuits with `fromCache: true`,
+ * unless newly supplied full text upgrades a legacy or abstract-only digest.
+ * Missing, corrupt (invalid JSON), or schema-invalid cache content is
  * treated as a miss and regenerated (overwriting the stale file on success).
  *
  * On a miss, runs `digestSkill` through the M2 harness (`runSkill`), which handles budget
@@ -216,6 +228,7 @@ export async function generateDigest(
   paper: PaperRecord,
   opts?: {
     fullText?: string
+    source?: PaperTextInfo
     settings?: LLMSettings
     providerOverride?: Partial<Record<Tier, LLMProvider>>
     now?: () => Date
@@ -246,15 +259,22 @@ export async function generateDigest(
   // Execute the actual work asynchronously, but the promise is already tracked.
   ;(async () => {
     try {
-      const cachedDigest = await loadCachedDigest(storage, paper)
-      if (cachedDigest !== null) {
-        resolvePromise!({ digest: cachedDigest, fromCache: true })
+      const cached = await loadCachedDigestEntry(storage, paperSlug(paper))
+      const hasFullText = Boolean(opts?.fullText?.trim())
+      if (cached !== null && !(hasFullText && cached.source?.access !== "full-text")) {
+        resolvePromise!({ ...cached, fromCache: true })
         return
+      }
+
+      const source: PaperTextInfo = {
+        ...(opts?.source ?? { access: hasFullText ? "full-text" : "abstract", locator: hasFullText ? "Supplied full text" : "Abstract", checkedAt: (opts?.now?.() ?? new Date()).toISOString(), truncated: false, notes: [] }),
+        access: hasFullText ? "full-text" : "abstract",
+        truncated: Boolean(opts?.source?.truncated) || (opts?.fullText?.length ?? 0) > MAX_FULL_TEXT_CHARS,
       }
 
       const run = await runSkill({
         skill: digestSkill,
-        input: { paper, fullText: opts?.fullText },
+        input: { paper, fullText: opts?.fullText, sourceNotes: source.notes },
         storage,
         settings: opts?.settings,
         providerOverride: opts?.providerOverride,
@@ -268,7 +288,7 @@ export async function generateDigest(
       // Try to write cache, but don't let write failures lose the digest.
       let cacheWriteFailed = false
       try {
-        await storage.write(path, JSON.stringify(run.output, null, 2))
+        await storage.write(path, JSON.stringify({ ...run.output, _source: source }, null, 2))
       } catch {
         cacheWriteFailed = true
       }
@@ -279,6 +299,7 @@ export async function generateDigest(
         runId: run.runId,
         costUsd: run.costUsd,
         cacheWriteFailed,
+        source,
       })
     } catch (error) {
       rejectPromise!(error)

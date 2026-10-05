@@ -58,13 +58,14 @@ describe("PaperActions — Read full text (C1)", () => {
     expect(html).toContain("No open-access full text")
   })
 
-  it("shows a non-clickable generated state when a digest is already available", () => {
+  it("shows a non-clickable generated state when a full-text digest is already available", () => {
     const html = renderToStaticMarkup(
       <PaperActions
         {...BASE_PROPS}
         digestState={{
           status: "done",
           fromCache: true,
+          source: { access: "full-text", locator: "PDF", checkedAt: "2026-10-04T00:00:00.000Z", truncated: false, notes: [] },
           digest: {
             summary: "Summary",
             laySummary: "Lay summary",
@@ -79,4 +80,11 @@ describe("PaperActions — Read full text (C1)", () => {
     const digestButton = html.match(/<button[^>]*>Digest generated<\/button>/)?.[0] ?? ""
     expect(digestButton).toContain('disabled=""')
   })
+  it("lets a legacy digest be upgraded from full text", () => {
+    const html = renderToStaticMarkup(<PaperActions {...BASE_PROPS} digestState={{ status: "done", fromCache: true, digest: { summary: "Old", laySummary: "Old", keyPoints: [], methods: "Old", limitations: "Abstract only", fieldContext: "Old" } }} />)
+    const button = html.match(/<button[^>]*>Update digest from full text<\/button>/)?.[0]
+    expect(button).toBeDefined()
+    expect(button).not.toContain("disabled=")
+  })
+
 })

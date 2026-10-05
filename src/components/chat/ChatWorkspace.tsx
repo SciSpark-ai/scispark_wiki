@@ -257,13 +257,19 @@ export function ChatWorkspace({ sessionId, fresh = false, resume = false, initia
     <div className={`${reportId ? "hidden max-w-[520px] lg:flex" : "flex max-w-[1180px]"} mx-auto h-full min-h-0 min-w-0 w-full flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6`}>
     <header className="mb-4 flex shrink-0 flex-col items-start justify-between gap-3 border-b border-border-warm pb-4 sm:flex-row sm:gap-4">
       <div className="min-w-0"><h1 className="font-heading text-[28px] leading-tight text-espresso sm:text-[34px]">{reportId ? "Review conversation" : session?.title ?? "Sparky"}</h1>
-        <p className="mt-1 text-sm text-muted-text">{reportId ? "Ask questions. Refine your draft." : session?.projectId ? `Project conversation · ${session.projectTitle}. Scoped to current members.` : "Find papers. Discuss findings. Continue anytime."}</p></div>
+        {!reportId && (session?.projectId || session?.paperContext) && (
+          <p className="mt-1 text-sm text-muted-text">
+            {session.projectId ? `Project · ${session.projectTitle}` : session.paperContext && <>
+              Paper · <Link className="text-accent-ink hover:underline" href={`/paper/${session.paperContext.slug}`}>{session.paperContext.paper.title}</Link>
+              {session.paperContext.source && <> · {session.paperContext.source.access === "full-text" ? session.paperContext.source.truncated ? "Full-text excerpt" : "Full text" : "Abstract only"}</>}
+            </>}
+          </p>
+        )}</div>
       <nav className="flex shrink-0 flex-wrap gap-3 text-sm text-accent-ink"><Link href="/history?tab=conversations" className="inline-flex items-center gap-2"><Clock size={16} aria-hidden="true" />History</Link><Link href="/chat?new=1">New chat</Link></nav>
     </header>
     <div ref={scroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1" aria-label="Conversation">
       {loading ? <LoadingState label="Loading conversation…" /> : session ? <MessageList messages={session.messages} pageTitleById={titles} onSaveMessage={save} savingIndex={savingIndex} /> : <div className="flex min-h-full flex-col justify-center py-6">
         <h2 className="font-heading text-[28px] text-espresso">What would you like to explore?</h2>
-        <p className="mt-2 text-sm leading-relaxed text-muted-text">Search scholarly sources or discuss your saved research. Every conversation stays in History.</p>
         {recent.length > 0 && <section className="mt-8"><h3 className="text-sm text-muted-text">Recent conversations</h3><ul className="mt-2 divide-y divide-border-warm">{recent.map((s) => <li key={s.id}><Link className="block py-3 text-sm text-espresso hover:text-accent-ink" href={`/chat/${s.id}`}>{s.title}</Link></li>)}</ul></section>}
       </div>}
       {busy && <div className="mt-4"><StreamingReply text={draft} label={stage ? STAGE_LABELS[stage] : "Thinking…"} /></div>}

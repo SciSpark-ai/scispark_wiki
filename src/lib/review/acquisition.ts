@@ -30,6 +30,10 @@ function hasBody(text: string) {
   return text.length >= 500 && /\b(methods|methodology|materials|experiments|analysis|framework|model)\b/i.test(text)
     && /\b(results|discussion|conclusions?)\b/i.test(text)
 }
+/** Shared identity/body check for cached sources used by paper chat and digest. */
+export function isArticleText(paper: PaperRecord, text: string): boolean {
+  return titleMatches(paper.title, text) && hasBody(text)
+}
 const parser = new XMLParser({ ignoreAttributes: false, parseTagValue: false, processEntities: false })
 const array = <T>(value: T | T[] | undefined): T[] => value === undefined ? [] : Array.isArray(value) ? value : [value]
 

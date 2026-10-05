@@ -21,9 +21,9 @@ export interface PaperSynthesisProps {
 
 /**
  * Drops the leading `# title` heading and the `## Abstract` section from an
- * ingested paper page's body. PaperHeader (rendered directly above this
- * component, in every page state) already shows the title and the
- * abstract, so re-rendering them here would duplicate them. Every other
+ * ingested paper page's body. The paper page already renders
+ * the title and original abstract separately, so including them here
+ * would duplicate them. Every other
  * section — `## Digest`, `## Links`, and anything else — is left untouched,
  * since those are the genuinely-new content this component exists to show.
  * Pure function, no rendering — kept separate from PaperSynthesis so it can

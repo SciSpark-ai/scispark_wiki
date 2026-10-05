@@ -66,6 +66,38 @@ describe("DigestSchema", () => {
 })
 
 describe("generateDigest", () => {
+  it.each([undefined, "abstract"])("upgrades a %s cache with full text and reuses the upgraded digest", async (access) => {
+    const storage = new MemoryVaultStorage()
+    const path = `.scispark/digests/${paperSlug(PAPER)}.json`
+    await storage.write(path, JSON.stringify({ ...SAMPLE_DIGEST, ...(access ? { _source: { access, locator: "Abstract", checkedAt: NOW().toISOString(), truncated: false, notes: [] } } : {}) }))
+    const provider = new MockProvider([structuredResult()])
+    const options = { fullText: "FULL-TEXT-MARKER: Methods and results.", settings: settingsWithKeys(), providerOverride: { strong: provider }, now: NOW }
+    const upgraded = await generateDigest(storage, PAPER, options)
+    expect(upgraded.fromCache).toBe(false)
+    expect(upgraded.source?.access).toBe("full-text")
+    expect(provider.calls[0].req.messages.map(m => m.content).join(" ")).toContain("FULL-TEXT-MARKER")
+    expect((await generateDigest(storage, PAPER, options)).fromCache).toBe(true)
+    expect(provider.calls).toHaveLength(1)
+    expect(JSON.parse((await storage.read(path))!)._source.access).toBe("full-text")
+  })
+
+  it("leaves the saved digest intact if a full-text upgrade fails", async () => {
+    const storage = new MemoryVaultStorage()
+    const path = `.scispark/digests/${paperSlug(PAPER)}.json`
+    const original = JSON.stringify(SAMPLE_DIGEST)
+    await storage.write(path, original)
+    const provider: LLMProvider = { id: "anthropic", async complete() { throw new Error("Upgrade failed") } }
+    await expect(generateDigest(storage, PAPER, { fullText: "Methods and results", settings: settingsWithKeys(), providerOverride: { strong: provider } })).rejects.toThrow()
+    expect(await storage.read(path)).toBe(original)
+  })
+
+  it("records excerpt coverage at the digest prompt limit", async () => {
+    const provider = new MockProvider([structuredResult()])
+    const result = await generateDigest(new MemoryVaultStorage(), PAPER, { fullText: "a ".repeat(22_000), settings: settingsWithKeys(), providerOverride: { strong: provider } })
+    expect(result.source).toMatchObject({ access: "full-text", truncated: true })
+    expect(provider.calls[0].req.messages.map(m => m.content).join(" ")).toContain("Full text (truncated")
+  })
+
   it("never shares a digest run or cache between two profile vaults", async () => {
     const ada = new MemoryVaultStorage()
     const grace = new MemoryVaultStorage()
@@ -102,7 +134,7 @@ describe("generateDigest", () => {
     const cachePath = `.scispark/digests/${paperSlug(PAPER)}.json`
     const cached = await storage.read(cachePath)
     expect(cached).not.toBeNull()
-    expect(JSON.parse(cached as string)).toEqual(SAMPLE_DIGEST)
+    expect(JSON.parse(cached as string)).toEqual({ ...SAMPLE_DIGEST, _source: { access: "abstract", locator: "Abstract", checkedAt: NOW().toISOString(), truncated: false, notes: [] } })
 
     const meter = new Meter(storage, NOW)
     const records = await meter.recordsForDay("2026-07-12")
@@ -225,7 +257,7 @@ describe("generateDigest", () => {
     expect(provider.calls).toHaveLength(1)
 
     const cached = await storage.read(cachePath)
-    expect(JSON.parse(cached as string)).toEqual(SAMPLE_DIGEST)
+    expect(JSON.parse(cached as string)).toMatchObject({ ...SAMPLE_DIGEST, _source: { access: "abstract" } })
   })
 
   it("cache file failing schema validation (invalid shape) is regenerated rather than trusted", async () => {

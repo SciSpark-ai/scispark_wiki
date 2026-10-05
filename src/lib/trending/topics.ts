@@ -31,17 +31,17 @@ export const MIN_RECENT_COUNT = 5
  */
 export const MIN_PRIOR_COUNT = MIN_RECENT_COUNT
 
-/** Upper bound on how many topics the leaderboard returns. */
+/** Upper bound per field, and for the combined All fields display. */
 export const MAX_LEADERBOARD_TOPICS = 10
 
 /**
- * How many recent-window topics get a prior-count lookup (one OpenAlex credit
+ * How many recent-window topics PER FIELD get a prior-count lookup (one OpenAlex credit
  * each — see `selectTopicCandidates`). The pool is deliberately bounded: a
  * low-volume topic that would have posted spectacular growth but sits outside
  * the top CANDIDATE_POOL by RECENT count is out of reach by design. Widening
- * the pool costs one request per extra candidate on every refresh, and the
- * board only ever shows MAX_LEADERBOARD_TOPICS rows, so 2x headroom buys most
- * of the reachable growth for a predictable, quota-safe price.
+ * the pool costs one request per extra candidate on every refresh, and
+ * each field shows at most MAX_LEADERBOARD_TOPICS rows, so 2x headroom buys most
+ * of the reachable growth for a bounded price (at most three tracked fields).
  */
 export const CANDIDATE_POOL = 20
 
@@ -200,13 +200,13 @@ function mergeRecentBuckets(perDiscipline: DisciplineBuckets[]): TopicCandidate[
  * TRADEOFF, deliberate: candidates are chosen by RECENT volume, so a
  * low-volume topic that happens to be growing explosively — say 6 papers up
  * from 1 — never gets a prior lookup if it sits outside the top
- * CANDIDATE_POOL, and therefore can never reach the board. Ranking by growth
+ * CANDIDATE_POOL within its field, and therefore can never reach the board. Ranking by growth
  * would require knowing the growth, which is exactly what the lookups buy;
  * the only alternative is a lookup for every bucket (up to 200 per anchor,
  * blowing the OpenAlex daily quota on a single refresh).
  */
 export function selectTopicCandidates(perDiscipline: DisciplineBuckets[]): TopicCandidate[] {
-  return mergeRecentBuckets(perDiscipline).slice(0, CANDIDATE_POOL)
+  return limitPerDiscipline(mergeRecentBuckets(perDiscipline), CANDIDATE_POOL)
 }
 
 /**
@@ -270,7 +270,8 @@ export function selectTopicCandidates(perDiscipline: DisciplineBuckets[]): Topic
  * can only produce such rows, so it needs no special case either.
  *
  * Sorted fastest-growing first, tie-broken by RAW recentCount desc then label
- * asc, capped at MAX_LEADERBOARD_TOPICS.
+ * asc, capped at MAX_LEADERBOARD_TOPICS per discipline. Keep the combined
+ * ordering so All fields can show its top ten without discarding other fields.
  */
 export function rankHeatingTopics(
   perDiscipline: DisciplineBuckets[],
@@ -319,7 +320,18 @@ export function rankHeatingTopics(
     return a.label.localeCompare(b.label)
   })
 
-  return ranked.slice(0, MAX_LEADERBOARD_TOPICS)
+  return limitPerDiscipline(ranked, MAX_LEADERBOARD_TOPICS)
+}
+
+/** Bound each field independently so a larger field cannot consume its slots. */
+function limitPerDiscipline<T extends { discipline: string }>(items: T[], limit: number): T[] {
+  const counts = new Map<string, number>()
+  return items.filter(item => {
+    const count = counts.get(item.discipline) ?? 0
+    if (count >= limit) return false
+    counts.set(item.discipline, count + 1)
+    return true
+  })
 }
 
 /**

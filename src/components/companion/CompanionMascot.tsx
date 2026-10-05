@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { QuickChat } from "./QuickChat";
 import { SparkyBadge } from "@/components/brand/SparkyBadge";
 import { useCompanionStore } from "@/stores/companion-store";
@@ -19,6 +20,9 @@ function logCompanionEvent(type: "companion_dismiss" | "companion_action", trigg
 
 /** Persistent companion control; the approved spark stays still when idle. */
 export function CompanionMascot() {
+  const pathname = usePathname();
+  const paperPath = pathname.match(/^\/paper\/([^/]+)\/?$/)?.[1];
+  const paperSlug = paperPath ? decodeURIComponent(paperPath) : undefined;
   const current = useCompanionStore((s) => s.current);
   const question = useCompanionStore((s) => s.feedbackQuestions[0]);
   const dismiss = useCompanionStore((s) => s.dismiss);
@@ -68,7 +72,7 @@ export function CompanionMascot() {
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="relative">
-        <QuickChat open={chatOpen} onClose={() => { setChatOpen(false); launcher.current?.focus(); }} />
+        <QuickChat key={paperSlug ?? "global"} paperSlug={paperSlug} open={chatOpen} onClose={() => { setChatOpen(false); launcher.current?.focus(); }} />
         {!chatOpen && (question ? <FeedbackQuestion key={question.paperKey} question={question} /> : bubbleOpen && current ? (
           <CompanionBubble utterance={current} streaming={streaming} onDismiss={handleDismiss} onAction={handleAction} />
         ) : null)}

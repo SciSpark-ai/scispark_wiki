@@ -12,9 +12,15 @@ import { askChatRemote } from "@/lib/chat/client"
 import { saveAnswerAsQueryRemote } from "@/lib/chat/save-query-client"
 import type { ChatMessage } from "@/lib/chat/session"
 import { wikiHref } from "@/lib/wiki/href"
+import { getOpenVault } from "@/lib/vault/get-vault"
+import { resolvePaperBySlug } from "@/lib/papers/resolve"
+import type { PaperTextInfo } from "@/lib/papers/text-contract"
 
 /** Stays mounted while closed so hiding the panel cannot cancel or replay a turn. */
-export function QuickChat({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function QuickChat({ open, onClose, paperSlug }: { open: boolean; onClose: () => void; paperSlug?: string }) {
+  const [paperTitle, setPaperTitle] = useState<string | null>(null)
+  const [paperLoadFailed, setPaperLoadFailed] = useState(false)
+  const [paperSource, setPaperSource] = useState<PaperTextInfo>()
   const [question, setQuestion] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState("")
@@ -30,6 +36,16 @@ export function QuickChat({ open, onClose }: { open: boolean; onClose: () => voi
   const follow = useRef(true)
 
   useEffect(() => {
+    if (!open || !paperSlug || paperTitle) return
+    let alive = true
+    setPaperLoadFailed(false)
+    void getOpenVault().then(vault => resolvePaperBySlug(vault, paperSlug)).then(paper => {
+      if (alive) { setPaperTitle(paper?.title ?? null); setPaperLoadFailed(!paper) }
+    }).catch(() => { if (alive) setPaperLoadFailed(true) })
+    return () => { alive = false }
+  }, [open, paperSlug, paperTitle])
+
+  useEffect(() => {
     if (open) panel.current?.querySelector<HTMLTextAreaElement>("textarea:not(:disabled)")?.focus()
   }, [open])
   useLayoutEffect(() => {
@@ -43,9 +59,10 @@ export function QuickChat({ open, onClose }: { open: boolean; onClose: () => voi
     const id = sessionId.current ?? `chat_${crypto.randomUUID()}`
     sessionId.current = id
     try {
-      const result = await askChatRemote({ sessionId: id, operationId: crypto.randomUUID(), question: text, mode: "chat", readSourcesOnly: false }, undefined, undefined, setDraft)
+      const result = await askChatRemote({ sessionId: id, operationId: crypto.randomUUID(), question: text, mode: "chat", readSourcesOnly: false, ...(paperSlug ? { paperSlug } : {}) }, undefined, undefined, setDraft)
       setMessages(previous => [...previous, { role: "user", content: text }, result.message])
       setSavedSession(result.sessionId); setQuestion("")
+      setPaperSource(result.paperSource)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally { sending.current = false; setBusy(false); setDraft("") }
@@ -65,16 +82,21 @@ export function QuickChat({ open, onClose }: { open: boolean; onClose: () => voi
     onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); onClose() } }}
     className={`${open ? "flex" : "hidden"} absolute bottom-full right-0 mb-3 h-[520px] max-h-[calc(100dvh-112px)] w-[400px] max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-[20px] border border-border-warm bg-page-bg shadow-xl`}>
     <header className="flex shrink-0 items-center gap-3 border-b border-border-warm px-4 py-3">
-      <SparkyBadge /><div className="min-w-0 flex-1"><h2 className="font-heading text-[22px] leading-tight text-espresso">Sparky</h2><p className="text-[11px] text-muted-text">Your research companion</p></div>
+      <SparkyBadge /><h2 className="min-w-0 flex-1 font-heading text-[22px] leading-tight text-espresso">Sparky</h2>
       {savedSession && <Link href={`/chat/${savedSession}`} aria-label="Open full conversation" title="Open full conversation" className="rounded-full p-2 text-muted-text hover:text-espresso"><Maximize2 size={16} aria-hidden="true" /></Link>}
       <button type="button" onClick={onClose} aria-label="Close Sparky chat" className="rounded-full p-2 text-muted-text hover:text-espresso focus-visible:outline-2 focus-visible:outline-accent-ink"><X size={18} aria-hidden="true" /></button>
     </header>
+    {paperSlug && <div aria-label="Paper context" className="shrink-0 border-b border-border-warm bg-light-surface px-4 py-3">
+      <p className="text-[11px] text-muted-text">This paper</p>
+      <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-espresso" title={paperTitle ?? undefined}>{paperTitle ?? (paperLoadFailed ? "Paper unavailable. Reopen it to retry." : "Loading paper…")}</p>
+      {paperSource && <p className="mt-1 text-[11px] text-muted-text">{paperSource.access === "full-text" ? paperSource.truncated ? "Full-text excerpt" : "Full text" : "Abstract only"}</p>}
+    </div>}
     <div ref={history} onScroll={() => { const node = history.current; if (node) follow.current = node.scrollHeight - node.scrollTop - node.clientHeight < 64 }} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
-      {messages.length ? <MessageList messages={messages} pageTitleById={{}} onSaveMessage={save} savingIndex={saving} /> : !busy && <div className="flex min-h-full flex-col justify-center px-3"><h3 className="font-heading text-[24px] text-espresso">What are you exploring?</h3><p className="mt-2 text-[13px] leading-relaxed text-muted-text">Ask about your saved research. Your conversation will be available in History.</p></div>}
+      {messages.length ? <MessageList messages={messages} pageTitleById={{}} onSaveMessage={save} savingIndex={saving} /> : !busy && <div className="flex min-h-full flex-col justify-center px-3"><h3 className="font-heading text-[24px] text-espresso">{paperSlug ? "Let's unpack this paper." : "What are you exploring?"}</h3></div>}
       {busy && <div className="space-y-3"><p className="rounded-card bg-card-surface p-3 text-[13px] text-espresso">{question}</p><StreamingReply text={draft} label={draft ? "Sparky is responding…" : "Sparky is thinking…"} /></div>}
       {error && <div className="mt-3"><LlmErrorMessage message={error} /></div>}
       {savedPage && <p className="mt-3 text-xs text-muted-text">Saved to your knowledge base. <Link className="text-accent-ink" href={wikiHref(savedPage)}>View page</Link></p>}
     </div>
-    <footer className="shrink-0 border-t border-border-warm p-3"><Composer value={question} onChange={setQuestion} onSubmit={submit} busy={busy} placeholder="Ask Sparky…" /></footer>
+    <footer className="shrink-0 border-t border-border-warm p-3"><Composer value={question} onChange={setQuestion} onSubmit={submit} busy={busy} placeholder={paperSlug ? "Ask about this paper…" : "Ask Sparky…"} /></footer>
   </div>
 }

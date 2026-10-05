@@ -217,15 +217,33 @@ describe("TrendingPage — ready board (SP4 Task 9)", () => {
     cleanup()
   })
 
-  it("filters the cached selection without changing global totals or treating an absent field as inactive", async () => {
+  it("shows a smaller field's own top ten even when All fields contains only the larger field", async () => {
+    const current = board({ topicCoverage: "per-field" })
+    current.anchors.push({ id: "neuroscience", label: "Neuroscience" })
+    current.topics = ["Machine Learning", "Neuroscience"].flatMap(discipline => Array.from({ length: 10 }, (_, i) => ({
+      ...current.topics[0], key: `${discipline}-${i}`, label: `${discipline} topic ${i}`, discipline,
+    })))
+    loadBoardMock.mockResolvedValue(current)
+    const { container, cleanup } = await renderPage()
+    expect(container.textContent).toContain("10 topics in this selection")
+    expect(container.textContent).not.toContain("Neuroscience topic 0")
+    clickByText(container, "Neuroscience")
+    expect(container.textContent).toContain("10 topics in this selection")
+    expect(container.textContent).toContain("Neuroscience topic 0")
+    expect(container.textContent).toContain("Neuroscience topic 9")
+    expect(container.textContent).not.toContain("Machine Learning topic 0")
+    expect(refreshTrendingDashboardMock).not.toHaveBeenCalled()
+    cleanup()
+  })
+
+  it("explains that an older combined-only cache needs refreshing without spending on navigation", async () => {
     const current = board()
     current.anchors.push({ id: "neuroscience", label: "Neuroscience" })
     loadBoardMock.mockResolvedValue(current)
     const { container, cleanup } = await renderPage()
     clickByText(container, "Neuroscience")
     expect(container.textContent).not.toContain("Sparse Attention")
-    expect(container.textContent).toContain("No Neuroscience topics in this ranked selection")
-    expect(container.textContent).toContain("It does not mean this field has no activity.")
+    expect(container.textContent).toContain("Refresh to load Neuroscience topics")
     expect(container.textContent).toContain("128 papers across all selected fields")
     clickByText(container, "Show all topics")
     expect(container.textContent).toContain("Sparse Attention")

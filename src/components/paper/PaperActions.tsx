@@ -9,11 +9,12 @@ import { Button } from "@/components/ui/Button"
 import { Chip } from "@/components/ui/Chip"
 import { LlmErrorMessage } from "@/components/papers/LlmErrorMessage"
 import { PaperSaveButton } from "./PaperSaveButton"
+import type { PaperTextInfo } from "@/lib/papers/text-contract"
 
 export type DigestState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "done"; digest: DigestResult; fromCache: boolean; costUsd?: number | null }
+  | { status: "done"; digest: DigestResult; fromCache: boolean; costUsd?: number | null; source?: PaperTextInfo; refreshing?: boolean; refreshError?: string }
   | { status: "error"; message: string }
 
 export type IngestState =
@@ -112,12 +113,12 @@ export function PaperActions({
 
         <Button
           onClick={onGenerateDigest}
-          disabled={digestState.status === "loading" || digestState.status === "done"}
+          disabled={digestState.status === "loading" || (digestState.status === "done" && (digestState.refreshing || digestState.source?.access === "full-text"))}
         >
-          {digestState.status === "loading"
+          {digestState.status === "loading" || (digestState.status === "done" && digestState.refreshing)
             ? "Generating…"
             : digestState.status === "done"
-              ? "Digest generated"
+              ? digestState.source?.access === "full-text" ? "Digest generated" : "Update digest from full text"
               : "Generate digest"}
         </Button>
 
@@ -142,6 +143,7 @@ export function PaperActions({
       )}
       {enrichState.status === "error" && <LlmErrorMessage message={enrichState.message} />}
       {digestState.status === "error" && <LlmErrorMessage message={digestState.message} />}
+      {digestState.status === "done" && digestState.refreshError && <LlmErrorMessage message={digestState.refreshError} />}
 
       {ingestBusy && (
         <div className="mt-3 text-[13px] text-muted-text tracking-body">{INGEST_PHASE_LABEL[ingestState.phase as IngestPhase]}</div>

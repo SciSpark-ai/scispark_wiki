@@ -23,6 +23,17 @@ creation. The local runtime owns the vault, model calls and research mutations.
 Visual changes must preserve sources, evidence limits, cost disclosures, recovery,
 version history and undo. Attractive output is not evidence of scientific validity.
 
+## Interface copy — October 4 user update
+
+Keep default screens concise. Show the current context, meaningful status and
+next action; omit repeated introductions and explanations of automatic behavior.
+Sparky can show the paper title without narrating how it uses that context.
+Prefer short source labels such as “Full text” and “Abstract only” to explanatory
+paragraphs. Put optional methodology and technical detail in disclosures.
+Keep evidence limits, actionable errors, cost decisions and recovery controls
+visible when relevant. Concise copy must not imply stronger evidence or hide a
+choice the user needs to make. Check wrapping on desktop and phone.
+
 ## Brand sources
 
 The design system is derived from five user-supplied sheets. Originals are kept
@@ -274,3 +285,16 @@ are #452918, #50301A, #442C24 and #42341A, respectively. Use dedicated
 Header labels retain theme text color and pass 4.5:1 on these surfaces. This
 supersedes the former pale green/teal feed headers; graph and other categorical
 visualizations keep their existing palette. No category inference logic changes.
+
+### Paper digest layout — October 4 user update
+
+The user explicitly requested a redesign of the paper digest page. This overrides
+the preserve-composition rule for `/paper/[key]` only. Keep the existing brand,
+shell, source content and research actions. Put the generated digest before
+supporting context, with a consistent 70ch reading column, Halant section
+headings and vertically ordered Methods and Limitations. Key points receive the
+main emphasized surface. A 224px section-navigation/context rail appears only
+when the workspace has enough room; smaller screens use a compact contents
+disclosure and put saved-paper context after the article. The original abstract
+is independently expandable, and opens by default before a digest or synthesis
+exists. See `docs/testing/2026-10-04-paper-digest-layout.md` for verification.

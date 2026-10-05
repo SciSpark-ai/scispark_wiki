@@ -1,24 +1,27 @@
 import { jsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { getServerVault } from "@/lib/server/vault"
 import { loadSettings } from "@/lib/llm/settings"
-import { acquireFullText } from "@/lib/wiki/acquire"
+import { loadPaperText } from "@/lib/papers/full-text"
+import { PaperTextInfoSchema, type PaperTextInfo } from "@/lib/papers/text-contract"
+import { paperSlug } from "@/lib/wiki/authoring"
 import {
   generateDigest,
   isDigestCacheSlug,
-  loadCachedDigestBySlug,
+  loadCachedDigestEntry,
   type DigestResult,
 } from "@/lib/skills/digest"
-import { serverRelayFetch } from "@/lib/server/relay-fetch"
 import type { PaperRecord } from "@/lib/papers/types"
 
 export interface DigestRouteResult {
   digest: DigestResult
   fromCache: boolean
   costUsd?: number | null
+  source?: PaperTextInfo
 }
 
 export interface CachedDigestRouteResult {
   digest: DigestResult | null
+  source?: PaperTextInfo
 }
 
 /**
@@ -32,8 +35,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!isDigestCacheSlug(slug)) return Response.json({ error: "slug must be a canonical paper slug" }, { status: 400 })
 
   try {
-    const digest = await loadCachedDigestBySlug(await getServerVault(), slug)
-    return Response.json({ result: { digest } satisfies CachedDigestRouteResult }, { status: 200 })
+    const cached = await loadCachedDigestEntry(await getServerVault(), slug)
+    return Response.json({ result: { digest: cached?.digest ?? null, ...(cached?.source ? { source: cached.source } : {}) } satisfies CachedDigestRouteResult }, { status: 200 })
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
   }
@@ -57,15 +60,18 @@ export async function GET(request: Request): Promise<Response> {
  */
 export const POST = jsonSkillRoute<{ paper: PaperRecord }, DigestRouteResult>(async ({ paper }, vault) => {
   const overrides = getSkillTestOverrides()
-  const fetchFn = overrides.fetchFn ?? serverRelayFetch("server-ingest")
-  const acquired = await acquireFullText(paper, { fetchFn })
+  const cached = await loadCachedDigestEntry(vault, paperSlug(paper))
+  if (cached?.source?.access === "full-text") return { ...cached, fromCache: true }
+  const acquired = await loadPaperText(vault, paper, { fetchFn: overrides.fetchFn })
+  if (cached && acquired.access !== "full-text") throw new Error("Full text could not be read or verified. Your saved digest is unchanged. Try again after opening the full paper.")
   const settings = await loadSettings(vault)
 
-  const { digest, fromCache, costUsd } = await generateDigest(vault, paper, {
-    fullText: acquired.kind === "html" ? acquired.text : undefined,
+  const { digest, fromCache, costUsd, source } = await generateDigest(vault, paper, {
+    fullText: acquired.access === "full-text" ? acquired.text : undefined,
+    source: PaperTextInfoSchema.parse(acquired),
     settings,
     providerOverride: overrides.providerOverride,
   })
 
-  return { digest, fromCache, costUsd }
+  return { digest, fromCache, costUsd, source }
 })
