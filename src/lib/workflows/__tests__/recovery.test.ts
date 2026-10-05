@@ -216,6 +216,73 @@ describe("durable workflow recovery", () => {
     expect((await observeRun(f.ctx, run.id)).allowance.modelCalls).toBe(2)
   })
 
+  it("fences pending cancellation dispatch and finalizes a dead owner without replay", async () => {
+    const f = await fixture(), proc = await child()
+    await writeRun(f.ctx, { ...f.run, status: "running" })
+    const intent = step("model"), estimate = { modelCalls: 1, commandCalls: 0, activeSeconds: 10, costUsd: 0.1, accountingOwner: "workflow" as const }
+    const ticket = await reserveAttempt(f.ctx, f.run.id, intent, estimate)
+    const lease = (await claimRunLease(f.ctx, f.run.id))!, remoteLease = { ...lease, pid: proc.pid!, processId: randomUUID() }
+    const journal = await readWorkflowJournal(f.ctx, f.run.id)
+    await f.ctx.storage.write(`.scispark/tool-runs/${f.run.id}/journal.json`, JSON.stringify({ ...journal, lease: remoteLease }))
+    const operationId = randomUUID()
+    await cancelRun(f.reopen(), f.run.id, operationId); await waitForWorkflowIdle()
+    expect((await readWorkflowJournal(f.ctx, f.run.id)).cancelRequested).toBe(operationId)
+    expect((await readRun(f.ctx, f.run.id))?.status).toBe("running")
+    await expect(claimAttemptDispatch(f.ctx, ticket)).rejects.toThrow(/cancellation/i)
+    await expect(reserveAttempt(f.ctx, f.run.id, step("model"), estimate)).rejects.toThrow(/cancellation/i)
+    const dispatch = vi.fn(async () => "forbidden")
+    await expect(journalStep(f.ctx, f.run.id, remoteLease, step(), dispatch)).rejects.toThrow(/cancellation/i)
+    expect(dispatch).not.toHaveBeenCalled(); expect(await claimRunLease(f.ctx, f.run.id)).toBeNull()
+    await expect(transitionRun(f.ctx, f.run.id, "completed", remoteLease)).rejects.toThrow(/cancellation/i)
+    const execute = vi.fn(); registerWorkflowAdapter(f.tool.entrypoint, { execute })
+    await kill(proc); await recoverWorkflowRuns([f.reopen()]); await waitForWorkflowIdle()
+    expect((await observeRun(f.ctx, f.run.id)).status).toBe("cancelled")
+    expect((await readWorkflowJournal(f.ctx, f.run.id)).cancelRequested).toBeUndefined()
+    expect((await getRunUsage(f.ctx, f.run.id)).modelCalls).toBe(1); expect(execute).not.toHaveBeenCalled()
+  })
+
+  it("flushes accepted text before cancellation initiated by another coordinator process", async () => {
+    const f = await fixture()
+    const script = `
+      import { createServer } from "vite";
+      const server = await createServer({ configFile: false, logLevel: "silent", server: { middlewareMode: true }, appType: "custom" });
+      const load = path => server.ssrLoadModule("/src/lib/" + path + ".ts");
+      const data = JSON.parse(process.argv[1]);
+      const { NodeFsVaultStorage } = await load("vault/node-fs-storage");
+      const ctx = { ...data.ctx, storage: new NodeFsVaultStorage(data.ctx.vaultPath) };
+      const { registerToolManifest } = await load("extensions/registry");
+      const { registerWorkflowAdapter } = await load("workflows/adapters");
+      const { startRun } = await load("workflows/coordinator");
+      registerToolManifest(data.tool);
+      registerWorkflowAdapter(data.tool.entrypoint, { execute: async (ctx, run, io) => {
+        await io.emit({ type: "text", text: "Accepted buffered final text" });
+        process.stdout.write(JSON.stringify({ bufferedRun: run.id }) + "\\n");
+        process.kill(process.pid, "SIGSTOP"); // Freeze before the 250ms flush, independent of parent scheduling.
+        await new Promise(resolve => io.signal.addEventListener("abort", resolve, { once: true }));
+        await ctx.storage.write(".scispark/test-owner-aborted", "yes");
+      } });
+      await startRun(ctx, data.request);
+      setInterval(() => {}, 1000);
+    `
+    const proc = spawn(process.execPath, ["--input-type=module", "-e", script, JSON.stringify({ ctx: { ...f.ctx, storage: undefined }, tool: f.tool, request: f.request })], { stdio: ["ignore", "pipe", "pipe"] })
+    cleanups.push(() => kill(proc))
+    let output = "", errors = ""
+    proc.stdout!.on("data", data => { output += data.toString() }); proc.stderr!.on("data", data => { errors += data.toString() })
+    await vi.waitFor(() => { if (proc.exitCode !== null) throw new Error(errors); expect(output).toContain("bufferedRun") }, { timeout: 8000, interval: 5 })
+    const id = JSON.parse(output.trim()).bufferedRun
+    await cancelRun(f.reopen(), id, randomUUID())
+    expect((await readWorkflowJournal(f.reopen(), id)).cancelRequested).toBeDefined()
+    expect((await readRun(f.reopen(), id))?.status).toBe("running")
+    expect((await listRunEvents(f.reopen(), id, 0)).some(e => e.type === "text")).toBe(false)
+    proc.kill("SIGCONT")
+    await until(async () => (await observeRun(f.reopen(), id)).status === "cancelled")
+    const events = await listRunEvents(f.reopen(), id, 0)
+    const text = events.findIndex(e => e.type === "text" && e.text === "Accepted buffered final text")
+    const cancelled = events.findIndex(e => e.type === "status" && e.status === "cancelled")
+    expect(text).toBeGreaterThanOrEqual(0); expect(cancelled).toBeGreaterThan(text)
+    await until(async () => await f.ctx.storage.read(".scispark/test-owner-aborted") === "yes")
+  }, 10000)
+
   it("recovers an actual killed coordinator process without replaying its dispatched model attempt", async () => {
     const f = await fixture(), intent = step("model")
     const script = `

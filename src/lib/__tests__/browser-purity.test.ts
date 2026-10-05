@@ -56,6 +56,7 @@ const FILE_EXTENSIONS = new Set([".ts", ".tsx"])
 const CLIENT_LIB_FILES = [
   "src/lib/extensions/contracts.ts",
   "src/lib/workflows/contracts.ts",
+  "src/lib/workflows/client.ts",
   "src/lib/skills/job-contract.ts",
   "src/lib/skills/job-client.ts",
   "src/lib/papers/text-contract.ts",
@@ -103,6 +104,11 @@ const WHOLE_MODULE_BANS = new Set([
   "lib/server/local-profiles",
   "lib/workflows/context",
   "lib/workflows/store",
+  "lib/workflows/coordinator",
+  "lib/workflows/journal",
+  "lib/workflows/usage",
+  "lib/workflows/adapters",
+  "lib/server/workflow-api",
   "lib/extensions/store",
 ])
 const PROVIDERS_PREFIX = "lib/llm/providers"

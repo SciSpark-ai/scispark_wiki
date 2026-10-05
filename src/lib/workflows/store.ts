@@ -55,6 +55,7 @@ export async function listRunEvents(ctx: WorkflowContext, id: string, after: num
   for (const path of paths) {
     const file = path.slice(`${root}/events/`.length)
     if (!/^[0-9]{16}\.json$/.test(file)) continue // Atomic-write temporary files are not events.
+    if (Number(file.slice(0, -5)) <= after) continue
     const raw = await ctx.storage.read(path)
     if (raw === null) throw new Error("Workflow event disappeared")
     const event = RunEventSchema.parse(JSON.parse(raw))
@@ -62,6 +63,18 @@ export async function listRunEvents(ctx: WorkflowContext, id: string, after: num
     if (event.seq > after) events.push(event)
   }
   return events.sort((a, b) => a.seq - b.seq)
+}
+/** Names locate the tail, but only its payload is read. Identity/schema validation
+ * remains fail-closed and a durable event still wins over a stale mirror cursor. */
+export async function readRunEventTail(ctx: WorkflowContext, id: string): Promise<RunEvent | null> {
+  const prefix = `${runRoot(ctx, id)}/events/`
+  const path = (await ctx.storage.list(prefix)).filter(path => /^[0-9]{16}\.json$/.test(path.slice(prefix.length))).sort().at(-1)
+  if (!path) return null
+  const raw = await ctx.storage.read(path)
+  if (raw === null) throw new Error("Workflow event disappeared")
+  const event = RunEventSchema.parse(JSON.parse(raw))
+  if (event.runId !== id || Number(path.slice(prefix.length, -5)) !== event.seq) throw new Error("Workflow event identity mismatch")
+  return event
 }
 export async function appendEvent(ctx: WorkflowContext, id: string, input: RunEventInput): Promise<RunEvent> {
   const payload = RunEventInputSchema.parse(input)
@@ -71,8 +84,8 @@ export async function appendEvent(ctx: WorkflowContext, id: string, input: RunEv
     if (run === null) throw new Error("Workflow run not found")
     // Event is committed first. After a crash, its durable sequence takes
     // precedence over a stale cursor; a retry never overwrites that event.
-    const events = await listRunEvents(ctx, id, 0)
-    const seq = Math.max(run.eventCursor, events.at(-1)?.seq ?? 0) + 1
+    const tail = await readRunEventTail(ctx, id)
+    const seq = Math.max(run.eventCursor, tail?.seq ?? 0) + 1
     const event = RunEventSchema.parse({ ...payload, runId: id, seq })
     await ctx.storage.write(`${root}/events/${String(seq).padStart(16, "0")}.json`, JSON.stringify(event))
     await ctx.storage.write(`${root}/run.json`, JSON.stringify({ ...run, eventCursor: seq }, null, 2))

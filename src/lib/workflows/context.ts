@@ -17,12 +17,14 @@ export interface WorkflowContext {
 }
 
 /** Explicit owning profile also permits recovery without the browser's selection. */
-export async function resolveWorkflowContext(profile: LocalProfile, env: NodeJS.ProcessEnv = process.env): Promise<WorkflowContext> {
+export async function resolveWorkflowContext(profile: LocalProfile, env: NodeJS.ProcessEnv = process.env, readOnly = false): Promise<WorkflowContext> {
   const profileId = ProfileIdSchema.parse(profile.id)
   const registry = await getProfileRegistryRoot(env)
   const runtime = join(registry, "extensions")
-  await mkdir(profile.vaultPath, { recursive: true })
-  await mkdir(runtime, { recursive: true, mode: 0o700 })
+  if (!readOnly) {
+    await mkdir(profile.vaultPath, { recursive: true })
+    await mkdir(runtime, { recursive: true, mode: 0o700 })
+  }
   const [vaultPath, runtimeRoot] = await Promise.all([
     realpath(/* turbopackIgnore: true */ profile.vaultPath), realpath(/* turbopackIgnore: true */ runtime),
   ])

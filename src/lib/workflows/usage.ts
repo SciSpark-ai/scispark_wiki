@@ -14,22 +14,24 @@ export class WorkflowLimitError extends Error {
 }
 
 const usagePath = (id: string) => `.scispark/tool-runs/${UuidSchema.parse(id)}/usage.json`
-async function state(ctx: WorkflowContext, id: string): Promise<{ run: ToolRun; journal: UsageJournal }> {
+async function state(ctx: WorkflowContext, id: string): Promise<{ run: ToolRun; journal: UsageJournal; cancellationPending: boolean }> {
   let run = await readRun(ctx, id)
   if (!run) throw new Error("Workflow run not found")
   // Every caller holds workflow-<id>. Lifecycle commits precede the run mirror,
   // so authorization must read its authoritative status without a nested lock.
+  let cancellationPending = false
   const lifecycleRaw = await ctx.storage.read(`.scispark/tool-runs/${UuidSchema.parse(id)}/journal.json`)
   if (lifecycleRaw !== null) {
     const lifecycle = WorkflowJournalSchema.parse(JSON.parse(lifecycleRaw))
     if (lifecycle.runId !== id || lifecycle.profileId !== ctx.profileId || lifecycle.vaultId !== ctx.vaultId) throw new Error("Workflow journal owner mismatch")
     run = { ...run, status: lifecycle.status }
+    cancellationPending = lifecycle.cancelRequested !== undefined
   }
   const raw = await ctx.storage.read(usagePath(id))
   const journal = raw === null ? UsageJournalSchema.parse({ schemaVersion: 1, runId: id, profileId: ctx.profileId, vaultId: ctx.vaultId,
     baseUsage: run.usage, allowance: run.allowance, attempts: [], extensions: [] }) : UsageJournalSchema.parse(JSON.parse(raw))
   if (journal.runId !== id || journal.profileId !== ctx.profileId || journal.vaultId !== ctx.vaultId) throw new Error("Workflow usage owner mismatch")
-  return { run, journal }
+  return { run, journal, cancellationPending }
 }
 function totals(journal: UsageJournal, subscription: boolean): RunUsage {
   const usage: RunUsage = { ...journal.baseUsage, costUsd: subscription ? null : journal.baseUsage.costUsd,
@@ -74,12 +76,13 @@ export async function reserveAttempt(ctx: WorkflowContext, runId: string, stepIn
   if ((step.kind === "model" && estimate.modelCalls < 1) || (step.kind === "command" && estimate.commandCalls < 1)) throw new Error("Attempt must reserve its dispatch count")
   if (estimate.activeSeconds <= 0) throw new Error("Attempt requires an active time limit")
   const reserve = () => withVaultExclusive(ctx.storage, `workflow-${runId}`, async () => {
-    const { run, journal } = await state(ctx, runId)
+    const { run, journal, cancellationPending } = await state(ctx, runId)
     const previous = journal.attempts.find((row) => row.ticket.step.id === step.id)
     if (previous) {
       if (JSON.stringify(previous.ticket.step) !== JSON.stringify(step) || JSON.stringify(previous.ticket.estimate) !== JSON.stringify(estimate)) throw new Error("Attempt step identity conflict")
       return previous.ticket
     }
+    if (cancellationPending) throw new Error("Workflow cancellation is pending")
     if (["completed", "failed", "cancelled"].includes(run.status)) throw new Error("Workflow run is terminal")
     if (run.model.engine === "api" && estimate.modelCalls > 0 && estimate.costUsd === null) throw new Error("Configure scoped pricing before an API attempt")
     if (run.model.engine !== "api" && estimate.costUsd !== null) throw new Error("Subscription cost must remain null")
@@ -142,6 +145,8 @@ export async function extendAllowance(ctx: WorkflowContext, runId: string, opera
   if (!Object.keys(delta).length || Object.values(delta).some((value) => value === null || value <= 0)) throw new Error("Allowance extensions require positive deltas")
   return withVaultExclusive(ctx.storage, `workflow-${runId}`, async () => {
     const { run, journal } = await state(ctx, runId)
+    const lifecycleRaw = await ctx.storage.read(`.scispark/tool-runs/${runId}/journal.json`)
+    if (lifecycleRaw !== null && WorkflowJournalSchema.parse(JSON.parse(lifecycleRaw)).actions.some(a => a.operationId === operationId)) throw new Error("Workflow action operation conflict")
     const previous = journal.extensions.find((entry) => entry.operationId === operationId)
     if (previous) {
       if (JSON.stringify(previous.delta) !== JSON.stringify(delta)) throw new Error("Allowance operation identity conflict")
@@ -161,14 +166,22 @@ export async function extendAllowance(ctx: WorkflowContext, runId: string, opera
 export async function claimAttemptDispatch(ctx: WorkflowContext, input: AttemptTicket): Promise<void> {
   const ticket = AttemptTicketSchema.parse(input)
   await withVaultExclusive(ctx.storage, `workflow-${ticket.runId}`, async () => {
-    const { run, journal } = await state(ctx, ticket.runId)
+    const { run, journal, cancellationPending } = await state(ctx, ticket.runId)
     const row = journal.attempts.find((entry) => entry.ticket.id === ticket.id)
     if (!row || JSON.stringify(row.ticket) !== JSON.stringify(ticket) || row.state !== "reserved" || row.dispatchedAt) throw new Error("Attempt already dispatched or requires reconciliation")
     // Authorization can change after reservation (including an idempotent
     // readback), so recheck it under the lock that consumes dispatch permission.
+    if (cancellationPending) throw new Error("Workflow cancellation is pending")
     if (["completed", "failed", "cancelled"].includes(run.status)) throw new Error("Workflow run is terminal")
     if (!["queued", "running"].includes(run.status)) throw new Error("Workflow is paused or requires user action")
     row.dispatchedAt = new Date().toISOString()
     await persist(ctx, run, journal)
   })
+}
+
+/** Pure journal projection for HTTP observers; no lock files or mirror repair. */
+export async function projectRunUsage(ctx: WorkflowContext, id: string): Promise<Pick<ToolRun, "usage" | "allowance">> {
+  const { run, journal } = await state(ctx, id)
+  const usage = totals(journal, run.model.engine !== "api")
+  return { allowance: journal.allowance, usage: { modelCalls: usage.modelCalls, commandCalls: usage.commandCalls, activeSeconds: usage.activeSeconds, costUsd: usage.costUsd } }
 }

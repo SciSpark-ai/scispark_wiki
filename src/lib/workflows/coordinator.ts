@@ -9,14 +9,14 @@ import { withVaultExclusive } from "../vault/exclusive"
 import { getWorkflowAdapter } from "./adapters"
 import { withRunAttemptScope } from "./attempt-scope"
 import { resolveWorkflowContext, type WorkflowContext } from "./context"
-import { DEFAULT_RUN_ALLOWANCE, StartRunInputSchema, ToolRunSchema, UsageJournalSchema, type StartRunInput, type ToolRun } from "./contracts"
+import { DEFAULT_RUN_ALLOWANCE, RunEventInputSchema, StartRunInputSchema, ToolRunSchema, UsageJournalSchema, type StartRunInput, type ToolRun } from "./contracts"
 import { actionOnRun, canonicalJson, claimRunLease, emitRunEvent, hasUncertainWork, journalStep, leaseOwnerAlive,
-  readWorkflowJournal, releaseRunLease, renewRunLease, transitionRun, UncertainWorkflowError, type WorkflowLease } from "./journal"
+  readWorkflowJournal, releaseRunLease, renewRunLease, runCancellationRequested, acknowledgeRunCancellation, transitionRun, UncertainWorkflowError, type WorkflowLease } from "./journal"
 import { resolveRunModel, settingsForRunModel } from "./model"
 import { readRun, writeRun } from "./store"
 import { getRunUsage, WorkflowLimitError } from "./usage"
 
-interface Worker { abort: AbortController; done: Promise<void> }
+interface Worker { abort: AbortController; done: Promise<void>; cancel?: (operationId: string) => Promise<void> }
 interface Runtime { workers: Map<string, Worker>; background: Set<Promise<void>>; stop?: () => void; stopped: boolean }
 const globalRuntime = globalThis as typeof globalThis & { __scisparkWorkflowCoordinator?: Runtime }
 const runtime: Runtime = globalRuntime.__scisparkWorkflowCoordinator ??= { workers: new Map(), background: new Set(), stopped: false }
@@ -123,8 +123,12 @@ export async function observeRun(ctx: WorkflowContext, id: string): Promise<Tool
     usage: { modelCalls: usage.modelCalls, commandCalls: usage.commandCalls, activeSeconds: usage.activeSeconds, costUsd: usage.costUsd } }
 }
 export async function cancelRun(ctx: WorkflowContext, id: string, operationId: string): Promise<void> {
-  await actionOnRun(ctx, id, operationId, "cancel")
-  runtime.workers.get(key(ctx, id))?.abort.abort(new Error("Workflow cancelled"))
+  const worker = runtime.workers.get(key(ctx, id))
+  if (worker?.cancel) await worker.cancel(operationId)
+  else {
+    await actionOnRun(ctx, id, operationId, "cancel")
+    worker?.abort.abort(new Error("Workflow cancelled"))
+  }
   schedule(ctx)
 }
 export async function resumeRun(ctx: WorkflowContext, id: string, operationId: string): Promise<ToolRun> {
@@ -134,15 +138,55 @@ export async function resumeRun(ctx: WorkflowContext, id: string, operationId: s
   return run
 }
 
+/** Snapshot coalescing belongs at the durable server writer. Even terminal flushes
+ * wait for the 250ms spacing, then finish before the lifecycle status commits. */
+function textWriter(write: (text: string) => Promise<void>) {
+  // The initial delay also preserves spacing across immediate resumes/restarts.
+  let pending: string | null = null, lastWrite = Date.now()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let queue = Promise.resolve()
+  const flush = () => {
+    clearTimeout(timer); timer = undefined
+    queue = queue.then(async () => {
+      if (pending === null) return
+      const delay = Math.max(0, 250 - (Date.now() - lastWrite))
+      if (delay) await new Promise(resolve => setTimeout(resolve, delay))
+      const text = pending; pending = null
+      await write(text)
+      lastWrite = Date.now()
+    })
+    return queue
+  }
+  return { flush, emit: async (text: string) => {
+    pending = text
+    if (Date.now() - lastWrite >= 250) await flush()
+    else if (!timer) timer = setTimeout(() => { void flush().catch(() => {}) }, Math.max(0, 250 - (Date.now() - lastWrite)))
+  } }
+}
 class WorkflowSetupError extends Error {}
 async function executeOwned(ctx: WorkflowContext, id: string, lease: WorkflowLease, abort: AbortController): Promise<void> {
-  let heartbeatPending = false
+  const text = textWriter(value => emitRunEvent(ctx, id, lease, { type: "text", text: value }))
+  let cancellation: Promise<void> | undefined
+  const finishCancellation = () => cancellation ??= (async () => {
+    abort.abort(new Error("Workflow cancelled"))
+    await text.flush()
+    await acknowledgeRunCancellation(ctx, id, lease)
+  })()
+  let heartbeatPending = false, lastRenewal = Date.now()
+  // Read pending intents frequently for prompt process/signal cancellation;
+  // lease renewal retains its original one-second write cadence.
   const heartbeat = setInterval(() => {
     if (heartbeatPending) return
     heartbeatPending = true
-    void renewRunLease(ctx, id, lease).then(status => { if (status !== "running") abort.abort(new Error("Workflow stopped")) })
-      .catch(() => abort.abort(new Error("Workflow ownership lost"))).finally(() => { heartbeatPending = false })
-  }, 1000)
+    void (async () => {
+      if (await runCancellationRequested(ctx, id, lease)) { await finishCancellation(); return }
+      if (Date.now() - lastRenewal >= 1000) {
+        const status = await renewRunLease(ctx, id, lease)
+        lastRenewal = Date.now()
+        if (status !== "running") abort.abort(new Error("Workflow stopped"))
+      }
+    })().catch(() => abort.abort(new Error("Workflow ownership lost"))).finally(() => { heartbeatPending = false })
+  }, 50)
   heartbeat.unref?.()
   try {
     const run = (await readRun(ctx, id))!
@@ -156,24 +200,46 @@ async function executeOwned(ctx: WorkflowContext, id: string, lease: WorkflowLea
         await provider.preflight?.(run.model.tierModels[tier].model)
       }
     } catch { throw new WorkflowSetupError("Restore the captured tool, model or connection before resuming.") }
+    if (await runCancellationRequested(ctx, id, lease)) { await finishCancellation(); return }
     if ((await readWorkflowJournal(ctx, id)).status !== "running" || abort.signal.aborted) return
+    const activeWorker = runtime.workers.get(key(ctx, id))
+    // Cancellation and emissions share a queue, so an accepted snapshot cannot
+    // slip between the final flush and the terminal journal commit. Rejected
+    // actions leave the queue usable and never abort the worker.
+    let emissions = Promise.resolve()
+    const serializeEmission = (work: () => Promise<void>) => {
+      const next = emissions.catch(() => {}).then(work)
+      emissions = next
+      return next
+    }
+    if (activeWorker) activeWorker.cancel = operationId => serializeEmission(async () => {
+      await actionOnRun(ctx, id, operationId, "cancel")
+      await finishCancellation()
+    })
     const io = {
       signal: abort.signal,
       step: <T>(intent: Parameters<typeof journalStep>[3], work: () => Promise<T>) => {
         abort.signal.throwIfAborted()
         return journalStep(ctx, id, lease, intent, async () => { abort.signal.throwIfAborted(); return work() })
       },
-      emit: async (event: Parameters<typeof emitRunEvent>[3]) => {
+      emit: (input: Parameters<typeof emitRunEvent>[3]) => serializeEmission(async () => {
+        const event = RunEventInputSchema.parse(input)
         abort.signal.throwIfAborted()
+        if (event.type === "text") { await text.emit(event.text); return }
+        await text.flush()
         await emitRunEvent(ctx, id, lease, event)
         if (event.type === "status") abort.abort(new Error("Workflow waiting for user action"))
-      },
+      }),
     }
     await withRunAttemptScope(ctx, id, () => adapter.execute(ctx, run, io), abort.signal)
+    if (await runCancellationRequested(ctx, id, lease)) { await finishCancellation(); return }
+    await text.flush()
     if ((await readWorkflowJournal(ctx, id)).status === "running") {
       await transitionRun(ctx, id, await hasUncertainWork(ctx, id) ? "needs_attention" : abort.signal.aborted ? "interrupted" : "completed", lease)
     }
   } catch (error) {
+    if (await runCancellationRequested(ctx, id, lease).catch(() => false)) { await finishCancellation(); return }
+    await text.flush().catch(() => {})
     const current = await readWorkflowJournal(ctx, id)
     if (current.status === "running" && current.lease?.id === lease.id) {
       const uncertain = error instanceof UncertainWorkflowError || await hasUncertainWork(ctx, id)
@@ -195,6 +261,10 @@ export async function recoverWorkflowRuns(contexts: WorkflowContext[]): Promise<
     const claimed = await withVaultExclusive(ctx.storage, "workflow-coordinator", async () => {
       await restoreStartRecords(ctx)
       const runs = await listRuns(ctx)
+      for (const run of runs) {
+        const journal = await readWorkflowJournal(ctx, run.id)
+        if (journal.cancelRequested && !leaseOwnerAlive(journal.lease)) await actionOnRun(ctx, run.id, journal.cancelRequested, "cancel")
+      }
       // A cancelled/paused owner can still be unwinding a process. Do not start
       // another root until it releases ownership, even after lease expiry.
       for (const run of runs) if (leaseOwnerAlive((await readWorkflowJournal(ctx, run.id)).lease)) return null

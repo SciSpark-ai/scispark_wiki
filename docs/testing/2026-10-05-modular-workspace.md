@@ -273,3 +273,111 @@ claims and an independently reserved wrapper are denied, callbacks never run, ne
 reservations consume no usage, and usage.json stays byte-identical. Separate
 runId/profileId/vaultId/status corruptions fail closed. Only this review finding
 was changed; Task 4's existing unpushed commit is amended for scoped rereview.
+
+### Task 5 — authenticated workflow APIs and resumable observation
+
+Added profile-bound tools/runs collection, start, snapshot, finite NDJSON cursor
+replay and strict cancel/resume/extend routes. Shared request handling uses the
+proxy's mutation guard, an authenticated session plus exact expected profile,
+64 KiB streamed-byte body limits, generic redacted errors and no-store responses.
+The catalog shares curated native choices and includes only this profile's
+imported bindings/pins, including disabled choices. Public run DTOs omit input,
+vault identity, captured model/configuration, environments, connections and native
+internal references; lifecycle leases/journals are never returned.
+
+HTTP snapshots project committed lifecycle/usage journals and durable event tails
+without repairing mirrors, starting recovery or taking write locks. The small
+read-only context option avoids recreating a removed private extension runtime;
+existing profile bootstrap/auth behavior is preserved. Browser helpers validate
+these same schemas, replay NDJSON with a cursor, poll and drain a terminal cursor,
+and detach by aborting observation alone. A server emission queue coalesces text
+snapshots at 250 ms spacing (including immediate resumes/restarts), flushes before
+lifecycle transitions/cancellation, and keeps rejected action conflicts from
+aborting the worker. Cross-kind action ID reuse conflicts under the existing run
+lock. Task 1's deferred M1 is included: appends and lifecycle writers read bounded
+tail payloads; cursor replay reads only requested event payloads, retaining
+identity validation and event-before-cursor crash recovery.
+
+| Check | Result |
+| --- | --- |
+| Initial focused RED | Missing tools route module; one failed API suite, expected before implementation |
+| Final focused GREEN | 67 passed across API/store/recovery/context; pristine output |
+| `npx tsc --noEmit` | Exit 0; 3.48 seconds |
+| `npm run lint` | Exit 0; existing ConnectAiCard warning and generated-cards Babel note only; 15.48 seconds |
+| `npx vitest run` | 2826 passed/19 gated skips; 282 passed/7 skipped files; command 30.56 seconds |
+| Isolated `npm run build` | Exit 0; compiled in 9.4 seconds; all five workflow routes present |
+| `git diff --check` | Exit 0 |
+
+Full gate: `python3 .superpowers/sdd/2026-10-05-modular-workspace/verify-task.py task-5`.
+Exact logs/results: `.superpowers/sdd/2026-10-05-modular-workspace/verification/task-5/`.
+Focused/RED logs and full report are in the local SDD scratch directory. Build
+logs, exit statuses, exact pre-build config backups and cleanup evidence are in
+its `task-5-build/` folder. The build used `.next-modular-task-5`, disposable
+`/tmp/scispark-modular-task-5/{vault,profiles}` roots and scheduler off. Turbopack
+stalled under the sandbox; only that identified build process was stopped (143),
+then the same isolated build passed with scoped escalation. Only this build's
+two generated tsconfig includes and routes/root-params import paths were restored,
+after validating the differences against this task's exact pre-build bytes.
+
+17 actual-handler tests exercise real disposable session expiry plus deterministic
+adapters, stale profile/foreign origin, body bytes/strict schemas/IDs, disabled and
+missing/foreign tools, durable start/action idempotency, cumulative resume usage,
+failed lifecycle/usage mirror read-only projection, observer disconnect and cursor
+reconnect, terminal text ordering, cancelled text flushing, rejected cancellation
+and text spacing across resumptions. The store read-count regression checks a
+100-event history. No human vault, real installed-skill scan, live model request,
+package installation, push or merge occurred. Build/offline adapter checks do not
+claim live engine compatibility or participant validation.
+
+#### Task 5 independent-review fix 1 — transport replay and owner cancellation acknowledgement
+
+Observer reconnection now retries rejected fetches, errored stream reads and
+incomplete terminal JSON fragments from the last successfully delivered cursor.
+Retry waits and active stream observation detach on abort. Authentication,
+complete-event schema, cursor and owner failures remain fatal, and observation
+never sends action requests. Terminal snapshot cursors are still drained.
+
+Cancellation of a live owner now commits a private journal intent while retaining
+the existing status. New attempts, reserved-attempt claims, steps, lease claims,
+resume and non-cancellation lifecycle transitions are fenced by that authoritative
+intent. The owning lease polls intents every 50 ms, aborts its root signal before
+waiting for text spacing, flushes accepted snapshots and acknowledges the terminal
+cancelled status. Lease renewal writes retain their one-second cadence. Dead-owner
+recovery finalizes the intent without dispatch or usage refunds. Repeat cancellation
+after acknowledgement cannot reopen a pending intent while the owner unwinds.
+
+The private intent is an optional UUID in WorkflowJournal. Public ToolRunDto adds
+only `cancelRequested: boolean`; true supports "Stopping…" until acknowledgement,
+then false. RunStatus/action request variants are unchanged. Start responses also
+use the authoritative projection so idempotent starts reflect pending cancellation.
+
+| Check | Result |
+| --- | --- |
+| I1/I2 focused RED | 5 failed/55 passed: rejected fetch, errored stream, partial EOF, retry abort and non-owner pending-text loss |
+| Terminal-repeat RED | 1 failed/21 skipped: acknowledged cancellation became pending again with a new action ID |
+| Final API/recovery GREEN | 62 passed across 2 files; pristine output |
+| `npx tsc --noEmit` | Exit 0; 3.37 seconds |
+| `npm run lint` | Exit 0; baseline ConnectAiCard warning and generated-cards Babel note only; 15.62 seconds |
+| `npx vitest run` | 2833 passed/19 gated skips; 282 passed/7 skipped files; command 30.30 seconds |
+| Final isolated `npm run build` | Exit 0; compiled in 5.6 seconds; TypeScript 3.2 seconds; all workflow routes compiled |
+| `git diff --check` | Exit 0 |
+
+Full gate: `python3 .superpowers/sdd/2026-10-05-modular-workspace/verify-task.py task-5-fix-1`.
+Exact logs/results: `verification/task-5-fix-1/` in the local SDD directory;
+focused logs: `task-5-fix-1-{red,green,terminal-repeat-red}.log`.
+The build used the documented elevated path, `.next-modular-task-5-fix-1`, disposable
+`/tmp/scispark-modular-task-5-fix-1/{vault,profiles}` roots and scheduler off.
+`task-5-fix-1-build/` preserves full logs, exit status, current-task backups and
+validated generated-config cleanup; the user's normal build output was preserved.
+
+The actual two-process regression pauses its child coordinator immediately after
+accepting buffered text (SIGSTOP), requests cancellation from the other runtime,
+proves the intent is pending with no persisted text/terminal event, then resumes
+that owner (SIGCONT). Its signal aborts and the final text precedes cancelled.
+Separate dead-owner coverage denies new/reserved dispatch and checkpoint work,
+then kills the disposable owner and verifies cancellation without replay while
+retaining cumulative usage. Deterministic rejected-fetch/errored-stream/mid-line
+replay delivers sequences exactly once and never calls actions; auth/owner/schema
+failures and retry detachment are covered. Public pending projection is read-only
+and excludes the private operation/lease IDs. No live models, human vault,
+installed-skill scan, package installation, push or merge occurred.

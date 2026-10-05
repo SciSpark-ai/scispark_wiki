@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { mkdtemp, mkdir, realpath, rm, symlink } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -67,6 +67,17 @@ describe("workflow contracts and private store", () => {
     expect((await readRun(ctx, run.id))?.eventCursor).toBe(3)
     await expect(listRunEvents(ctx, run.id, -1)).rejects.toThrow()
     await expect(appendEvent(ctx, "55555555-5555-4555-8555-555555555555", { type: "text", text: "missing" })).rejects.toThrow(/not found/)
+  })
+
+  it("reads only the tail payload for append and only new payloads for replay", async () => {
+    const { ctx, run } = workflowFixture(); await writeRun(ctx, run)
+    for (let i = 0; i < 100; i++) await appendEvent(ctx, run.id, { type: "text", text: String(i) })
+    const read = vi.spyOn(ctx.storage, "read")
+    await appendEvent(ctx, run.id, { type: "text", text: "tail" })
+    expect(read.mock.calls.filter(([path]) => path.includes("/events/"))).toHaveLength(1)
+    read.mockClear()
+    expect(await listRunEvents(ctx, run.id, 100)).toHaveLength(1)
+    expect(read.mock.calls.filter(([path]) => path.includes("/events/"))).toHaveLength(1)
   })
 
   it("recovers an event committed before its cursor update without overwriting it", async () => {

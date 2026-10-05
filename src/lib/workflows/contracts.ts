@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { isSafeVaultRelativePath } from "../vault/safe-path"
-import { DigestSchema, ProfileIdSchema, RoleTiersSchema, TierModelsSchema, ToolRefSchema, UuidSchema } from "../extensions/contracts"
+import { ToolManifestSchema, DigestSchema, ProfileIdSchema, RoleTiersSchema, TierModelsSchema, ToolRefSchema, UuidSchema } from "../extensions/contracts"
 
 const CountSchema = z.number().int().nonnegative().safe()
 const SecondsSchema = z.number().finite().nonnegative()
@@ -22,7 +22,7 @@ export const WorkflowLeaseSchema = z.object({
 export type WorkflowLease = z.infer<typeof WorkflowLeaseSchema>
 export const WorkflowJournalSchema = z.object({
   schemaVersion: z.literal(1), runId: UuidSchema, profileId: ProfileIdSchema, vaultId: DigestSchema,
-  status: RunStatusSchema, lease: WorkflowLeaseSchema.nullable(),
+  status: RunStatusSchema, lease: WorkflowLeaseSchema.nullable(), cancelRequested: UuidSchema.optional(),
   actions: z.array(z.object({ operationId: UuidSchema, type: z.enum(["cancel", "resume"]) }).strict()),
 }).strict()
 export type WorkflowJournal = z.infer<typeof WorkflowJournalSchema>
@@ -112,3 +112,18 @@ export const UsageJournalSchema = z.object({
   attempts: z.array(z.object({ ticket: AttemptTicketSchema, state: z.enum(["reserved", "known", "unknown"]), dispatchedAt: z.iso.datetime().optional(), result: AttemptResultSchema.optional() }).strict()),
 }).strict()
 export type UsageJournal = z.infer<typeof UsageJournalSchema>
+
+/** Public observation deliberately excludes input, captured configuration and internal references. */
+export const ToolRunDtoSchema = ToolRunSchema.pick({ schemaVersion: true, id: true, profileId: true, operationId: true,
+  tool: true, dependencies: true, sessionId: true, contextRefs: true, writeIntent: true, allowance: true, usage: true,
+  status: true, createdAt: true, updatedAt: true, eventCursor: true, artifacts: true }).extend({ cancelRequested: z.boolean().default(false) })
+export type ToolRunDto = z.infer<typeof ToolRunDtoSchema>
+const PositiveDeltaSchema = RunAllowanceSchema.partial().refine(delta => Object.keys(delta).length > 0 && Object.values(delta).every(v => v !== null && v > 0), "Expected positive allowance deltas")
+export const RunActionInputSchema = z.discriminatedUnion("action", [
+  z.object({ operationId: UuidSchema, action: z.literal("cancel") }).strict(),
+  z.object({ operationId: UuidSchema, action: z.literal("resume") }).strict(),
+  z.object({ operationId: UuidSchema, action: z.literal("extend"), delta: PositiveDeltaSchema }).strict(),
+])
+export type RunActionInput = z.infer<typeof RunActionInputSchema>
+export const ToolSummarySchema = ToolManifestSchema.pick({ ref: true, name: true, description: true, capabilities: true, kind: true, engines: true, outputKinds: true }).extend({ enabled: z.boolean() })
+export type ToolSummary = z.infer<typeof ToolSummarySchema>

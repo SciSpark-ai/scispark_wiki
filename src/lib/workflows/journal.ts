@@ -6,7 +6,7 @@ import { processIsAlive } from "../vault/node-fs-storage"
 import type { WorkflowContext } from "./context"
 import { RunEventInputSchema, RunEventSchema, RunStatusSchema, StepIntentSchema, UsageJournalSchema, WorkflowJournalSchema,
   type RunEventInput, type RunStatus, type StepIntent, type ToolRun, type WorkflowJournal, type WorkflowLease } from "./contracts"
-import { listRunEvents, readRun } from "./store"
+import { readRunEventTail, readRun } from "./store"
 import { WorkflowLimitError } from "./usage"
 
 const runtime = globalThis as typeof globalThis & { __scisparkWorkflowProcessId?: string }
@@ -35,8 +35,8 @@ async function state(ctx: WorkflowContext, id: string): Promise<{ run: ToolRun; 
   return { run, journal }
 }
 async function eventUnderLock(ctx: WorkflowContext, run: ToolRun, input: RunEventInput): Promise<ToolRun> {
-  const events = await listRunEvents(ctx, run.id, 0)
-  const seq = Math.max(run.eventCursor, events.at(-1)?.seq ?? 0) + 1
+  const tail = await readRunEventTail(ctx, run.id)
+  const seq = Math.max(run.eventCursor, tail?.seq ?? 0) + 1
   const event = RunEventSchema.parse({ ...RunEventInputSchema.parse(input), runId: run.id, seq })
   await ctx.storage.write(`${root(run.id)}/events/${String(seq).padStart(16, "0")}.json`, JSON.stringify(event))
   return { ...run, eventCursor: seq, updatedAt: new Date().toISOString() }
@@ -46,10 +46,10 @@ async function eventUnderLock(ctx: WorkflowContext, run: ToolRun, input: RunEven
 async function persist(ctx: WorkflowContext, run: ToolRun, journal: WorkflowJournal): Promise<ToolRun> {
   const serialized = JSON.stringify(WorkflowJournalSchema.parse(journal))
   if (await ctx.storage.read(`${root(run.id)}/journal.json`) !== serialized) await ctx.storage.write(`${root(run.id)}/journal.json`, serialized)
-  const events = await listRunEvents(ctx, run.id, 0)
-  if (events.filter(e => e.type === "status").at(-1)?.status !== journal.status) run = await eventUnderLock(ctx, run, { type: "status", status: journal.status })
-  const changed = run.status !== journal.status || run.eventCursor !== (events.at(-1)?.seq ?? 0)
-  const updated = { ...run, status: journal.status, eventCursor: Math.max(run.eventCursor, events.at(-1)?.seq ?? 0), updatedAt: changed ? new Date().toISOString() : run.updatedAt }
+  const tail = await readRunEventTail(ctx, run.id)
+  if (!tail || (run.status !== journal.status && !(tail.type === "status" && tail.status === journal.status))) run = await eventUnderLock(ctx, run, { type: "status", status: journal.status })
+  const changed = run.status !== journal.status || run.eventCursor < (tail?.seq ?? 0)
+  const updated = { ...run, status: journal.status, eventCursor: Math.max(run.eventCursor, tail?.seq ?? 0), updatedAt: changed ? new Date().toISOString() : run.updatedAt }
   const runJson = JSON.stringify(updated, null, 2)
   if (await ctx.storage.read(`${root(run.id)}/run.json`) !== runJson) await ctx.storage.write(`${root(run.id)}/run.json`, runJson)
   return updated
@@ -72,7 +72,7 @@ export async function readWorkflowJournal(ctx: WorkflowContext, id: string): Pro
 export async function claimRunLease(ctx: WorkflowContext, id: string): Promise<WorkflowLease | null> {
   return withVaultExclusive(ctx.storage, `workflow-${UuidSchema.parse(id)}`, async () => {
     const { run, journal } = await state(ctx, id)
-    if (leaseOwnerAlive(journal.lease) || !["queued", "running", "interrupted"].includes(journal.status)) return null
+    if (journal.cancelRequested || leaseOwnerAlive(journal.lease) || !["queued", "running", "interrupted"].includes(journal.status)) return null
     const lease = { id: randomUUID(), processId, pid: process.pid, expiresAt: Date.now() + LEASE_MILLISECONDS }
     journal.lease = lease; journal.status = "running"
     await persist(ctx, run, journal)
@@ -100,6 +100,7 @@ export async function transitionRun(ctx: WorkflowContext, id: string, status: Ru
   RunStatusSchema.parse(status)
   return withVaultExclusive(ctx.storage, `workflow-${UuidSchema.parse(id)}`, async () => {
     const { run, journal } = await state(ctx, id)
+    if (journal.cancelRequested) throw new Error("Workflow cancellation is pending")
     if (lease) {
       assertLease(journal, lease)
       if (journal.status !== "running") throw new Error("Workflow is not running")
@@ -113,15 +114,26 @@ export async function actionOnRun(ctx: WorkflowContext, id: string, operationId:
   UuidSchema.parse(operationId)
   return withVaultExclusive(ctx.storage, `workflow-${UuidSchema.parse(id)}`, async () => {
     const { run, journal } = await state(ctx, id)
+    const usageRaw = await ctx.storage.read(`${root(id)}/usage.json`)
+    if (usageRaw !== null) {
+      const usage = UsageJournalSchema.parse(JSON.parse(usageRaw))
+      if (usage.runId !== id || usage.profileId !== ctx.profileId || usage.vaultId !== ctx.vaultId) throw new Error("Workflow usage owner mismatch")
+      if (usage.extensions.some(e => e.operationId === operationId)) throw new Error("Workflow action operation conflict")
+    }
     const previous = journal.actions.find(a => a.operationId === operationId)
     if (previous) {
       if (previous.type !== type) throw new Error("Workflow action operation conflict")
+      if (type === "cancel" && journal.cancelRequested && !leaseOwnerAlive(journal.lease)) {
+        delete journal.cancelRequested; journal.status = "cancelled"
+      }
       return persist(ctx, run, journal)
     }
     if (type === "cancel") {
       if (["completed", "failed"].includes(journal.status)) throw new Error("Workflow run is terminal")
-      journal.status = "cancelled"
+      if (journal.status !== "cancelled" && leaseOwnerAlive(journal.lease)) journal.cancelRequested ??= operationId
+      else { delete journal.cancelRequested; journal.status = "cancelled" }
     } else {
+      if (journal.cancelRequested) throw new Error("Workflow cancellation is pending")
       if (journal.status === "needs_attention") throw new Error("Reconcile the uncertain outcome before resuming")
       if (journal.status === "waiting_for_choice") throw new Error("Resolve the required choice before resuming")
       if (!["paused_limit", "interrupted", "waiting_for_setup"].includes(journal.status)) throw new Error("Workflow cannot resume in its current state")
@@ -157,6 +169,7 @@ export async function journalStep<T>(ctx: WorkflowContext, id: string, lease: Wo
   const prepared = await withVaultExclusive(ctx.storage, `workflow-${UuidSchema.parse(id)}`, async () => {
     const { journal } = await state(ctx, id)
     assertLease(journal, lease)
+    if (journal.cancelRequested) throw new Error("Workflow cancellation is pending")
     if (journal.status !== "running") throw new Error("Workflow is not running")
     const raw = await ctx.storage.read(path)
     if (raw !== null) {
@@ -216,4 +229,29 @@ export async function hasUncertainWork(ctx: WorkflowContext, id: string): Promis
     if (record.state === "completed" && (record.response === undefined || workflowHash(record.response) !== record.responseHash)) return true
   }
   return false
+}
+
+/** Observation projects committed lifecycle authority without creating or repairing records. */
+export async function projectWorkflowRun(ctx: WorkflowContext, id: string): Promise<ToolRun & { cancelRequested: boolean }> {
+  const { run, journal } = await state(ctx, id)
+  const tail = await readRunEventTail(ctx, id)
+  return { ...run, status: journal.status, eventCursor: Math.max(run.eventCursor, tail?.seq ?? 0), cancelRequested: journal.cancelRequested !== undefined }
+}
+
+/** The owning lease can flush while cancellation fences dispatch. Only that
+ * owner may acknowledge a live intent; dead owners are finalized by actionOnRun. */
+export async function runCancellationRequested(ctx: WorkflowContext, id: string, lease: WorkflowLease): Promise<boolean> {
+  const { journal } = await state(ctx, id)
+  assertLease(journal, lease)
+  return journal.cancelRequested !== undefined
+}
+export async function acknowledgeRunCancellation(ctx: WorkflowContext, id: string, lease: WorkflowLease): Promise<void> {
+  await withVaultExclusive(ctx.storage, `workflow-${UuidSchema.parse(id)}`, async () => {
+    const { run, journal } = await state(ctx, id)
+    assertLease(journal, lease)
+    if (!journal.cancelRequested) return
+    delete journal.cancelRequested
+    journal.status = "cancelled"
+    await persist(ctx, run, journal)
+  })
 }
