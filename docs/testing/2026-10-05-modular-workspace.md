@@ -827,3 +827,88 @@ Isolated Next build exit0,66 pages; generated config bytes inspected/restored be
 the gate. Full report and exact RED/GREEN/build/gate outputs remain in the local
 SDD task-10 report and verification/task-10-fix-1. Existing real runtime/provider
 limitations remain unchanged; no new live/source/user-data calls or publication.
+
+## Task 11 — OpenCite supported slice (R27)
+
+Pinned `research-skills` source revision
+`f0219bde233abb44d8a0c5d73f41ea27073e1493` and independently downloaded/hashed
+OpenCite 0.5.4 wheel `4c8266dc371cd30b894ffbfb78ea642271762cce008f783af63ac884a0dbad84`.
+The original skill and its three linked references plus BSD-3-Clause/MIT notices
+are preserved. A no-build metadata resolution pins 49 transitive dependencies,
+including `markitdown[pdf]` (OpenCite's extra alone omits the local PDF parser).
+Exact dependency license metadata accompanies the catalog. Lock target is
+CPython 3.12 / Linux glibc 2.28 x86_64; wheel hashes are enforced by existing
+binary-only Task9 preparation. Metadata resolution is not installation evidence.
+
+Supported production operations are Semantic Scholar search, exact observed open
+PDF retrieval, local Markdown conversion, and BibTeX. A versioned reviewed Python
+wrapper uses the pinned client/parser and JSON/BibTeX formatters, explicit
+`Config()` and `converter="markitdown"`. It never loads ambient user config or
+Mistral credentials. Catalog metadata/input advertises this limited slice;
+original broader instructions are retained as reference resources only.
+
+The catalog stages verified bundled files into the ordinary inspection/review/
+import flow; it does not install, enable, or execute on discovery. The registered
+workflow adapter validates exact package/recipe/file identities, uses the captured
+venv/provider/connection root, and supports explicit helper frames with stable
+frame-scoped IDs and unchanged root IO. Task8 remains sole command accounting
+owner. Dynamic readiness is exported for the later Tools integration.
+
+The existing inspected virtual-HTTP broker now grants document requests only
+from successful validated source records, scoped to its owning profile/run and
+live instance. It pins public IPv4 DNS at connect time, bounds each document at
+512 KiB/30 seconds, caps requests, sends no source credentials to publishers,
+and rejects redirects. Arbitrary command/model URLs cannot grant access. Grants
+expire on broker close/restart; each new command must search again. An opaque
+interruption remains uncertain and cannot silently repeat the command to regain
+access. Original DOI/URLs survive normalization. An advertised inaccessible PDF
+stays abstract-only; failed conversion still preserves the accessible PDF.
+
+Focused deterministic tests: normalization/catalog/import/helper orchestration,
+actual local broker with fixture upstream/DNS, invalid records/URLs, cross-run
+and restarted grants, private DNS, redirects, byte ceilings, cancellation, and
+provenance. Synthetic worker orchestration is labeled separately. The opt-in
+`opencite-worker.test.ts` gate uses actual Task9 preparation/Task8 worker, exact
+CLI `--help`, the production adapter and deterministic source fixtures. It is
+UNRUN here: Mac descendant ownership remains unsupported; Linux actual execution
+is not established. A separate `SCISPARK_OPENCITE_LIVE=1` mode requires
+`SCISPARK_OPENCITE_REAL_WORKER=1` plus an explicit disposable test S2 credential;
+it requests search/full text/BibTeX and no LLM. This live mode is also UNRUN.
+No package code was executed outside the worker, and no real source/model call,
+human vault/profile/key access, global package install, push or merge occurred.
+
+Isolated build passed with `.next-modular-task-11`, disposable vault/profile
+roots, scheduler off. Exact pre-build `tsconfig.json` and `next-env.d.ts` bytes
+were restored after verifying only generated dist substitutions. All seven Tools
+route traces include the reviewed Python wrapper, lock and original skill.
+Final gate ran exactly once: TypeScript exit0/3.94s; ESLint exit0/18.17s
+(existing ConnectAiCard applyPreset warning and generated-card Babel note only);
+Vitest exit0/36.07s wrapper,34.96s suite,2999 passed/21 gated skips across
+291 passed/8 skipped files. Focused tests passed17 with1 explicit acceptance
+gate skipped. `git diff --check` passed. No broad suite followed this success.
+
+### Task 11 independent review fix 1 — inert HTTP provenance
+
+Important1 reproduced: an otherwise valid search result containing an HTTP paper
+or PDF reference failed whole-envelope validation, including search-only mode.
+Shared inert source-reference validation now accepts original HTTP/HTTPS URLs.
+Requested unavailable HTTP documents retain their URLs and abstract-only access;
+successful HTTP document content is still rejected. The actual broker remains
+HTTPS-only, with all existing credential, redirect and public-DNS guards unchanged.
+
+Focused command: `npx vitest run src/lib/extensions/__tests__/opencite.test.ts
+src/lib/extensions/__tests__/connections.test.ts`. RED:2 expected normalization
+failures/19 passed. GREEN:21 passed across2 files,1.16s. Added a real loopback broker
+regression with deterministic upstream data proving HTTP provenance survives its
+source response while attempted HTTP document retrieval gets403 and no additional
+upstream request. No package execution or real source request occurred.
+
+Fix-round isolated build passed using `.next-modular-task-11-fix-1`, disposable
+vault/profile roots and scheduler off. Exact task-local pre-build generated
+configuration bytes were restored; all7 Tools traces retain the wrapper/lock/skill.
+Final fix gate ran exactly once: TypeScript exit0/7.48s; ESLint exit0/18.49s
+(existing warning/Babel note only); Vitest exit0/37.53s wrapper,36.30s suite,
+3003 passed/21 gated skips across291 passed/8 skipped files. Build compilation
+11.7s, build TypeScript10.8s,66 pages. `git diff --check` passed; no additional
+broad suite followed these successful gates. Real-worker/live acceptance remains
+UNRUN with fail-closed platform readiness preserved.

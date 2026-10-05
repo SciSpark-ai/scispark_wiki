@@ -58,3 +58,11 @@ export async function resolveCommandConnections(ctx: WorkflowContext, connection
   if (bindings.length && !await getServerS2Key(ctx.storage)) throw new Error("Semantic Scholar credentials need setup")
   return {bindings}
 }
+
+/** OpenCite uses only this root run's immutable S2 binding. Other helper services
+ * do not acquire this command's broker capability. No current settings selection. */
+export async function capturedOpenCiteConnections(ctx: WorkflowContext, refs: ConnectionConfigurationRef[]): Promise<CommandConnections> {
+  const bindings = (await Promise.all(refs.map(ref => readConnectionRevision(ctx, ref)))).filter(binding => binding.service === "semantic-scholar")
+  if (bindings.length !== 1) throw new Error("OpenCite requires one captured Semantic Scholar connection")
+  return { bindings }
+}

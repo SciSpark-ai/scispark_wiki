@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "packageVersion": "0.5.4",
+  "sourceStatus": "ok",
+  "papers": [{"title":"Fixture paper","authors":[{"name":"A Researcher","family_name":"Researcher","given_name":"A"}],"year":2024,"ids":{"doi":"10.1234/Original.DOI","pmid":"","pmcid":"","openalex_id":"","s2_id":"abc","arxiv_id":""},"citation_count":2,"url":"https://www.semanticscholar.org/paper/abc","is_oa":true,"oa_status":"","data_sources":["s2"],"abstract":"Fixture abstract","pdf_locations":[{"url":"https://papers.example.org/open.pdf","source":"s2","is_oa":true,"version":"","license":""}]}],
+  "bibtex":"@article{fixture, title={Fixture paper}, doi={10.1234/Original.DOI}}",
+  "documents":[]
+}

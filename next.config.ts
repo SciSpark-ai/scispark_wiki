@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
-    "/api/tools{,/**}": ["./scripts/tool-command-worker.mjs", "./node_modules/@anthropic-ai/sandbox-runtime/**", "./node_modules/@pondwader/socks5-server/**", "./node_modules/node-forge/**", "./node_modules/commander/**", "./node_modules/zod/**"],
+    "/api/tools{,/**}": ["./src/lib/extensions/catalog/opencite/**", "./scripts/tool-command-worker.mjs", "./node_modules/@anthropic-ai/sandbox-runtime/**", "./node_modules/@pondwader/socks5-server/**", "./node_modules/node-forge/**", "./node_modules/commander/**", "./node_modules/zod/**"],
     "/api/reviews/*/pdf": ["./scripts/review-pdf-worker.mjs", "./node_modules/pdfjs-dist/**", "./node_modules/@napi-rs/canvas*/**"],
     "/api/reviews/*": ["./scripts/review-pdf-worker.mjs", "./node_modules/pdfjs-dist/**", "./node_modules/@napi-rs/canvas*/**"],
     "/api/skills/chat": ["./scripts/review-pdf-worker.mjs", "./node_modules/pdfjs-dist/**", "./node_modules/@napi-rs/canvas*/**"],

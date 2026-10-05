@@ -1,0 +1,537 @@
+[
+  {
+    "name": "annotated-types",
+    "version": "0.8.0",
+    "metadataUrl": "https://pypi.org/pypi/annotated-types/0.8.0/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Changelog": "https://github.com/annotated-types/annotated-types/releases",
+      "Homepage": "https://github.com/annotated-types/annotated-types",
+      "Source": "https://github.com/annotated-types/annotated-types"
+    }
+  },
+  {
+    "name": "anyio",
+    "version": "4.15.1",
+    "metadataUrl": "https://pypi.org/pypi/anyio/4.15.1/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Changelog": "https://anyio.readthedocs.io/en/stable/versionhistory.html",
+      "Documentation": "https://anyio.readthedocs.io/en/latest/",
+      "Issue tracker": "https://github.com/agronholm/anyio/issues",
+      "Source code": "https://github.com/agronholm/anyio"
+    }
+  },
+  {
+    "name": "beautifulsoup4",
+    "version": "4.15.0",
+    "metadataUrl": "https://pypi.org/pypi/beautifulsoup4/4.15.0/json",
+    "license": "MIT License",
+    "projectUrls": {
+      "Download": "https://www.crummy.com/software/BeautifulSoup/bs4/download/",
+      "Homepage": "https://www.crummy.com/software/BeautifulSoup/bs4/"
+    }
+  },
+  {
+    "name": "certifi",
+    "version": "2026.7.22",
+    "metadataUrl": "https://pypi.org/pypi/certifi/2026.7.22/json",
+    "license": "MPL-2.0",
+    "projectUrls": {
+      "Homepage": "https://github.com/certifi/python-certifi",
+      "Source": "https://github.com/certifi/python-certifi"
+    }
+  },
+  {
+    "name": "cffi",
+    "version": "2.1.1",
+    "metadataUrl": "https://pypi.org/pypi/cffi/2.1.1/json",
+    "license": "MIT-0",
+    "projectUrls": {
+      "Changelog": "https://cffi.readthedocs.io/en/latest/whatsnew.html",
+      "Contact": "https://groups.google.com/forum/#!forum/python-cffi",
+      "Documentation": "https://cffi.readthedocs.io/",
+      "Download": "https://github.com/python-cffi/cffi/releases",
+      "Issue Tracker": "https://github.com/python-cffi/cffi/issues",
+      "Source Code": "https://github.com/python-cffi/cffi"
+    }
+  },
+  {
+    "name": "charset-normalizer",
+    "version": "3.5.2",
+    "metadataUrl": "https://pypi.org/pypi/charset-normalizer/3.5.2/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Changelog": "https://github.com/jawah/charset_normalizer/blob/master/CHANGELOG.md",
+      "Code": "https://github.com/jawah/charset_normalizer",
+      "Documentation": "https://charset-normalizer.readthedocs.io/",
+      "Issue tracker": "https://github.com/jawah/charset_normalizer/issues"
+    }
+  },
+  {
+    "name": "click",
+    "version": "8.5.0",
+    "metadataUrl": "https://pypi.org/pypi/click/8.5.0/json",
+    "license": "BSD-3-Clause",
+    "projectUrls": {
+      "Changes": "https://click.palletsprojects.com/page/changes/",
+      "Chat": "https://discord.gg/pallets",
+      "Documentation": "https://click.palletsprojects.com/",
+      "Donate": "https://palletsprojects.com/donate",
+      "Source": "https://github.com/pallets/click/"
+    }
+  },
+  {
+    "name": "cryptography",
+    "version": "50.0.2",
+    "metadataUrl": "https://pypi.org/pypi/cryptography/50.0.2/json",
+    "license": "Apache-2.0 OR BSD-3-Clause",
+    "projectUrls": {
+      "changelog": "https://cryptography.io/en/latest/changelog/",
+      "documentation": "https://cryptography.io/",
+      "homepage": "https://github.com/pyca/cryptography",
+      "issues": "https://github.com/pyca/cryptography/issues",
+      "source": "https://github.com/pyca/cryptography/"
+    }
+  },
+  {
+    "name": "defusedxml",
+    "version": "0.7.1",
+    "metadataUrl": "https://pypi.org/pypi/defusedxml/0.7.1/json",
+    "license": "PSFL",
+    "projectUrls": {
+      "Download": "https://pypi.python.org/pypi/defusedxml",
+      "Homepage": "https://github.com/tiran/defusedxml"
+    }
+  },
+  {
+    "name": "eval-type-backport",
+    "version": "0.4.0",
+    "metadataUrl": "https://pypi.org/pypi/eval-type-backport/0.4.0/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Homepage": "https://github.com/alexmojaki/eval_type_backport"
+    }
+  },
+  {
+    "name": "flatbuffers",
+    "version": "25.12.19",
+    "metadataUrl": "https://pypi.org/pypi/flatbuffers/25.12.19/json",
+    "license": "Apache 2.0",
+    "projectUrls": {
+      "Documentation": "https://google.github.io/flatbuffers/",
+      "Homepage": "https://google.github.io/flatbuffers/",
+      "Source": "https://github.com/google/flatbuffers"
+    }
+  },
+  {
+    "name": "h11",
+    "version": "0.16.0",
+    "metadataUrl": "https://pypi.org/pypi/h11/0.16.0/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Homepage": "https://github.com/python-hyper/h11"
+    }
+  },
+  {
+    "name": "httpcore",
+    "version": "1.0.9",
+    "metadataUrl": "https://pypi.org/pypi/httpcore/1.0.9/json",
+    "license": "BSD-3-Clause",
+    "projectUrls": {
+      "Documentation": "https://www.encode.io/httpcore",
+      "Homepage": "https://www.encode.io/httpcore/",
+      "Source": "https://github.com/encode/httpcore"
+    }
+  },
+  {
+    "name": "httpcore2",
+    "version": "2.13.1",
+    "metadataUrl": "https://pypi.org/pypi/httpcore2/2.13.1/json",
+    "license": "BSD-3-Clause",
+    "projectUrls": {
+      "Changelog": "https://github.com/pydantic/httpx2/blob/main/src/httpcore2/CHANGELOG.md",
+      "Homepage": "https://github.com/pydantic/httpx2",
+      "Source": "https://github.com/pydantic/httpx2/blob/main/src/httpcore2"
+    }
+  },
+  {
+    "name": "httpx",
+    "version": "0.28.1",
+    "metadataUrl": "https://pypi.org/pypi/httpx/0.28.1/json",
+    "license": "BSD-3-Clause",
+    "projectUrls": {
+      "Changelog": "https://github.com/encode/httpx/blob/master/CHANGELOG.md",
+      "Documentation": "https://www.python-httpx.org",
+      "Homepage": "https://github.com/encode/httpx",
+      "Source": "https://github.com/encode/httpx"
+    }
+  },
+  {
+    "name": "httpx2",
+    "version": "2.13.1",
+    "metadataUrl": "https://pypi.org/pypi/httpx2/2.13.1/json",
+    "license": "BSD-3-Clause",
+    "projectUrls": {
+      "Changelog": "https://github.com/pydantic/httpx2/blob/main/src/httpx2/CHANGELOG.md",
+      "Homepage": "https://github.com/pydantic/httpx2",
+      "Source": "https://github.com/pydantic/httpx2"
+    }
+  },
+  {
+    "name": "idna",
+    "version": "3.20",
+    "metadataUrl": "https://pypi.org/pypi/idna/3.20/json",
+    "license": "BSD-3-Clause",
+    "projectUrls": {
+      "Changelog": "https://github.com/kjd/idna/blob/master/HISTORY.md",
+      "Issue tracker": "https://github.com/kjd/idna/issues",
+      "Source": "https://github.com/kjd/idna"
+    }
+  },
+  {
+    "name": "jsonpath-python",
+    "version": "1.1.6",
+    "metadataUrl": "https://pypi.org/pypi/jsonpath-python/1.1.6/json",
+    "license": "MIT License\n        \n        Copyright (c) 2020 sean2077\n        \n        Permission is hereby granted, free of charge, to any person obtaining a copy\n        of this software and associated documentation files (the \"Software\"), to deal\n        in the Software without restriction, including without limitation the rights\n        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n        copies of the Software, and to permit persons to whom the Software is\n        furnished to do so, subject to the following conditions:\n        \n        The above copyright notice and this permission notice shall be included in all\n        copies or substantial portions of the Software.\n        \n        THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n        SOFTWARE.",
+    "projectUrls": {
+      "Homepage": "https://github.com/sean2077/jsonpath-python",
+      "Issues": "https://github.com/sean2077/jsonpath-python/issues",
+      "Repository": "https://github.com/sean2077/jsonpath-python"
+    }
+  },
+  {
+    "name": "magika",
+    "version": "0.6.3",
+    "metadataUrl": "https://pypi.org/pypi/magika/0.6.3/json",
+    "license": "Apache-2.0",
+    "projectUrls": {
+      "Changelog": "https://github.com/google/magika/blob/main/python/CHANGELOG.md",
+      "Documentation": "https://github.com/google/magika/blob/main/python/README.md",
+      "Homepage": "https://github.com/google/magika",
+      "Issues": "https://github.com/google/magika/issues",
+      "Repository": "https://github.com/google/magika/"
+    }
+  },
+  {
+    "name": "markdownify",
+    "version": "1.2.3",
+    "metadataUrl": "https://pypi.org/pypi/markdownify/1.2.3/json",
+    "license": "License :: OSI Approved :: MIT License",
+    "projectUrls": {
+      "Download": "http://github.com/matthewwithanm/python-markdownify/tarball/master",
+      "Homepage": "http://github.com/matthewwithanm/python-markdownify"
+    }
+  },
+  {
+    "name": "markit-mistral",
+    "version": "0.2.3",
+    "metadataUrl": "https://pypi.org/pypi/markit-mistral/0.2.3/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Documentation": "https://github.com/neuromechanist/markit-mistral#readme",
+      "Homepage": "https://github.com/neuromechanist/markit-mistral",
+      "Issues": "https://github.com/neuromechanist/markit-mistral/issues",
+      "Repository": "https://github.com/neuromechanist/markit-mistral.git"
+    }
+  },
+  {
+    "name": "markitdown",
+    "version": "0.1.8",
+    "metadataUrl": "https://pypi.org/pypi/markitdown/0.1.8/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Documentation": "https://github.com/microsoft/markitdown#readme",
+      "Issues": "https://github.com/microsoft/markitdown/issues",
+      "Source": "https://github.com/microsoft/markitdown"
+    }
+  },
+  {
+    "name": "mistralai",
+    "version": "3.0.0",
+    "metadataUrl": "https://pypi.org/pypi/mistralai/3.0.0/json",
+    "license": "not declared",
+    "projectUrls": {
+      "Repository": "https://github.com/mistralai/client-python.git"
+    }
+  },
+  {
+    "name": "numpy",
+    "version": "2.5.3",
+    "metadataUrl": "https://pypi.org/pypi/numpy/2.5.3/json",
+    "license": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
+    "projectUrls": {
+      "documentation": "https://numpy.org/doc/",
+      "download": "https://pypi.org/project/numpy/#files",
+      "homepage": "https://numpy.org",
+      "release notes": "https://numpy.org/doc/stable/release",
+      "source": "https://github.com/numpy/numpy",
+      "tracker": "https://github.com/numpy/numpy/issues"
+    }
+  },
+  {
+    "name": "onnxruntime",
+    "version": "1.30.0",
+    "metadataUrl": "https://pypi.org/pypi/onnxruntime/1.30.0/json",
+    "license": "MIT License",
+    "projectUrls": {
+      "Download": "https://github.com/microsoft/onnxruntime/tags",
+      "Homepage": "https://onnxruntime.ai"
+    }
+  },
+  {
+    "name": "opencite",
+    "version": "0.5.4",
+    "metadataUrl": "https://pypi.org/pypi/opencite/0.5.4/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Documentation": "https://neuromechanist.github.io/opencite/",
+      "Homepage": "https://neuromechanist.github.io/opencite/",
+      "Issues": "https://github.com/neuromechanist/opencite/issues",
+      "Repository": "https://github.com/neuromechanist/opencite"
+    }
+  },
+  {
+    "name": "opentelemetry-api",
+    "version": "1.45.0",
+    "metadataUrl": "https://pypi.org/pypi/opentelemetry-api/1.45.0/json",
+    "license": "Apache-2.0",
+    "projectUrls": {
+      "Homepage": "https://github.com/open-telemetry/opentelemetry-python/tree/main/opentelemetry-api",
+      "Repository": "https://github.com/open-telemetry/opentelemetry-python"
+    }
+  },
+  {
+    "name": "opentelemetry-semantic-conventions",
+    "version": "0.66b0",
+    "metadataUrl": "https://pypi.org/pypi/opentelemetry-semantic-conventions/0.66b0/json",
+    "license": "Apache-2.0",
+    "projectUrls": {
+      "Homepage": "https://github.com/open-telemetry/opentelemetry-python/tree/main/opentelemetry-semantic-conventions",
+      "Repository": "https://github.com/open-telemetry/opentelemetry-python"
+    }
+  },
+  {
+    "name": "packaging",
+    "version": "26.3",
+    "metadataUrl": "https://pypi.org/pypi/packaging/26.3/json",
+    "license": "Apache-2.0 OR BSD-2-Clause",
+    "projectUrls": {
+      "Documentation": "https://packaging.pypa.io/",
+      "Source": "https://github.com/pypa/packaging"
+    }
+  },
+  {
+    "name": "pdfminer-six",
+    "version": "20260107",
+    "metadataUrl": "https://pypi.org/pypi/pdfminer-six/20260107/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Homepage": "https://github.com/pdfminer/pdfminer.six"
+    }
+  },
+  {
+    "name": "pdfplumber",
+    "version": "0.11.10",
+    "metadataUrl": "https://pypi.org/pypi/pdfplumber/0.11.10/json",
+    "license": "License :: OSI Approved :: MIT License",
+    "projectUrls": {
+      "Homepage": "https://github.com/jsvine/pdfplumber"
+    }
+  },
+  {
+    "name": "pillow",
+    "version": "12.3.0",
+    "metadataUrl": "https://pypi.org/pypi/pillow/12.3.0/json",
+    "license": "MIT-CMU",
+    "projectUrls": {
+      "Changelog": "https://github.com/python-pillow/Pillow/releases",
+      "Documentation": "https://pillow.readthedocs.io",
+      "Funding": "https://tidelift.com/subscription/pkg/pypi-pillow?utm_source=pypi-pillow&utm_medium=pypi",
+      "Homepage": "https://python-pillow.github.io",
+      "Mastodon": "https://fosstodon.org/@pillow",
+      "Release notes": "https://pillow.readthedocs.io/en/stable/releasenotes/index.html",
+      "Source": "https://github.com/python-pillow/Pillow"
+    }
+  },
+  {
+    "name": "protobuf",
+    "version": "7.36.2",
+    "metadataUrl": "https://pypi.org/pypi/protobuf/7.36.2/json",
+    "license": "3-Clause BSD License",
+    "projectUrls": {
+      "Homepage": "https://developers.google.com/protocol-buffers/"
+    }
+  },
+  {
+    "name": "pyalex",
+    "version": "0.21",
+    "metadataUrl": "https://pypi.org/pypi/pyalex/0.21/json",
+    "license": "MIT",
+    "projectUrls": null
+  },
+  {
+    "name": "pycparser",
+    "version": "3.0",
+    "metadataUrl": "https://pypi.org/pypi/pycparser/3.0/json",
+    "license": "BSD-3-Clause",
+    "projectUrls": {
+      "Homepage": "https://github.com/eliben/pycparser"
+    }
+  },
+  {
+    "name": "pydantic",
+    "version": "2.13.5",
+    "metadataUrl": "https://pypi.org/pypi/pydantic/2.13.5/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Changelog": "https://docs.pydantic.dev/latest/changelog/",
+      "Documentation": "https://docs.pydantic.dev",
+      "Funding": "https://github.com/sponsors/samuelcolvin",
+      "Homepage": "https://github.com/pydantic/pydantic",
+      "Source": "https://github.com/pydantic/pydantic"
+    }
+  },
+  {
+    "name": "pydantic-core",
+    "version": "2.46.5",
+    "metadataUrl": "https://pypi.org/pypi/pydantic-core/2.46.5/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Funding": "https://github.com/sponsors/samuelcolvin",
+      "Homepage": "https://github.com/pydantic",
+      "Source": "https://github.com/pydantic/pydantic/tree/main/pydantic-core"
+    }
+  },
+  {
+    "name": "pypdf2",
+    "version": "3.0.1",
+    "metadataUrl": "https://pypi.org/pypi/pypdf2/3.0.1/json",
+    "license": "License :: OSI Approved :: BSD License",
+    "projectUrls": {
+      "Bug Reports": "https://github.com/py-pdf/PyPDF2/issues",
+      "Changelog": "https://pypdf2.readthedocs.io/en/latest/meta/CHANGELOG.html",
+      "Documentation": "https://pypdf2.readthedocs.io/en/latest/",
+      "Source": "https://github.com/py-pdf/PyPDF2"
+    }
+  },
+  {
+    "name": "pypdfium2",
+    "version": "5.14.0",
+    "metadataUrl": "https://pypi.org/pypi/pypdfium2/5.14.0/json",
+    "license": "BSD-3-Clause, Apache-2.0, dependency licenses",
+    "projectUrls": {
+      "Changelog": "https://pypdfium2.readthedocs.io/en/stable/changelog.html",
+      "Documentation": "https://pypdfium2.readthedocs.io",
+      "Homepage": "https://github.com/pypdfium2-team/pypdfium2",
+      "Source": "https://github.com/pypdfium2-team/pypdfium2",
+      "Tracker": "https://github.com/pypdfium2-team/pypdfium2/issues"
+    }
+  },
+  {
+    "name": "python-dateutil",
+    "version": "2.9.0.post0",
+    "metadataUrl": "https://pypi.org/pypi/python-dateutil/2.9.0.post0/json",
+    "license": "Dual License",
+    "projectUrls": {
+      "Documentation": "https://dateutil.readthedocs.io/en/stable/",
+      "Homepage": "https://github.com/dateutil/dateutil",
+      "Source": "https://github.com/dateutil/dateutil"
+    }
+  },
+  {
+    "name": "python-dotenv",
+    "version": "1.2.4",
+    "metadataUrl": "https://pypi.org/pypi/python-dotenv/1.2.4/json",
+    "license": "BSD-3-Clause",
+    "projectUrls": {
+      "Source": "https://github.com/theskumar/python-dotenv"
+    }
+  },
+  {
+    "name": "python-magic",
+    "version": "0.4.27",
+    "metadataUrl": "https://pypi.org/pypi/python-magic/0.4.27/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Homepage": "http://github.com/ahupp/python-magic"
+    }
+  },
+  {
+    "name": "requests",
+    "version": "2.34.2",
+    "metadataUrl": "https://pypi.org/pypi/requests/2.34.2/json",
+    "license": "Apache-2.0",
+    "projectUrls": {
+      "Documentation": "https://requests.readthedocs.io",
+      "Source": "https://github.com/psf/requests"
+    }
+  },
+  {
+    "name": "six",
+    "version": "1.17.0",
+    "metadataUrl": "https://pypi.org/pypi/six/1.17.0/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Homepage": "https://github.com/benjaminp/six"
+    }
+  },
+  {
+    "name": "soupsieve",
+    "version": "2.10",
+    "metadataUrl": "https://pypi.org/pypi/soupsieve/2.10/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Homepage": "https://github.com/facelessuser/soupsieve"
+    }
+  },
+  {
+    "name": "truststore",
+    "version": "0.10.4",
+    "metadataUrl": "https://pypi.org/pypi/truststore/0.10.4/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Documentation": "https://truststore.readthedocs.io",
+      "Source": "https://github.com/sethmlarson/truststore"
+    }
+  },
+  {
+    "name": "typing-extensions",
+    "version": "4.16.0",
+    "metadataUrl": "https://pypi.org/pypi/typing-extensions/4.16.0/json",
+    "license": "PSF-2.0",
+    "projectUrls": {
+      "Bug Tracker": "https://github.com/python/typing_extensions/issues",
+      "Changes": "https://github.com/python/typing_extensions/blob/main/CHANGELOG.md",
+      "Documentation": "https://typing-extensions.readthedocs.io/",
+      "Home": "https://github.com/python/typing_extensions",
+      "Q & A": "https://github.com/python/typing/discussions",
+      "Repository": "https://github.com/python/typing_extensions"
+    }
+  },
+  {
+    "name": "typing-inspection",
+    "version": "0.4.4",
+    "metadataUrl": "https://pypi.org/pypi/typing-inspection/0.4.4/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Changelog": "https://github.com/pydantic/typing-inspection/blob/main/HISTORY.md",
+      "Documentation": "https://pydantic.github.io/typing-inspection/dev/",
+      "Homepage": "https://github.com/pydantic/typing-inspection",
+      "Source": "https://github.com/pydantic/typing-inspection"
+    }
+  },
+  {
+    "name": "urllib3",
+    "version": "2.8.0",
+    "metadataUrl": "https://pypi.org/pypi/urllib3/2.8.0/json",
+    "license": "MIT",
+    "projectUrls": {
+      "Changelog": "https://github.com/urllib3/urllib3/blob/main/CHANGES.rst",
+      "Code": "https://github.com/urllib3/urllib3",
+      "Documentation": "https://urllib3.readthedocs.io",
+      "Issue tracker": "https://github.com/urllib3/urllib3/issues",
+      "Security policy": "https://urllib3.readthedocs.io/en/latest/security.html"
+    }
+  }
+]

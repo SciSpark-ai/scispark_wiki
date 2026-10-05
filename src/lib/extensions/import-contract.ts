@@ -96,3 +96,21 @@ export const ConnectionRecordSchema = ConnectionBindingSchema.extend({
   profileId: ProfileIdSchema, vaultId: DigestSchema, revision: DigestSchema,
 }).strict()
 export type ConnectionRecord = z.infer<typeof ConnectionRecordSchema>
+
+/** Optional catalog suggestions never enable or execute a tool. */
+export const CatalogEntrySchema = z.object({
+  id: Text, name: Text, source: ImportSourceSchema, version: Text,
+  proposal: AdapterProposalSchema, requiredConnections: z.array(Text), expectedCapabilities: z.array(Text),
+  notices: z.array(PackagePathSchema), bundleDigest: DigestSchema,
+}).strict()
+export type CatalogEntry = z.infer<typeof CatalogEntrySchema>
+/** Inert source provenance only; this schema grants no network authority. */
+export const OpenCiteSourceReferenceSchema = z.string().max(2048).refine(value => {
+  try { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password && !url.hash && !url.port } catch { return false }
+}, "Expected an HTTP or HTTPS source reference")
+export const OpenCiteResultSchema = z.object({
+  sourceStatus: z.enum(["ok", "no-results", "rate-limited", "unavailable"]),
+  papers: z.array(z.object({ title: z.string().min(1).max(2000), doi: z.string().max(1000), url: z.union([OpenCiteSourceReferenceSchema,z.literal("")]), authors: z.array(z.string().max(500)).max(50), year: z.number().int().min(1000).max(9999).nullable(), abstract: z.string().max(16000), access: z.enum(["abstract", "full-text"]), sourceRefs: z.array(z.string().max(2048)).max(20) }).strict()).max(20),
+  artifacts: z.array(z.object({kind:z.enum(["papers","bibtex","file","markdown"]),title:z.string().max(500),mediaType:z.string(),sourceRefs:z.array(z.string().max(2048)).max(1000),text:z.string().max(500000).optional(),base64:z.string().max(700000).optional()}).strict()).max(8),
+}).strict()
+export type OpenCiteResult = z.infer<typeof OpenCiteResultSchema>

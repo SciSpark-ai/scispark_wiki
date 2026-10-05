@@ -19,3 +19,6 @@ export const NATIVE_TOOL_MANIFESTS: readonly ToolManifest[] = [
     provenance: { source: "builtin", locator: "scispark.builtin", revision: declaration.version },
   })
 })
+
+/** Optional suggestions are separate from native manifests and profile bindings. */
+export { openciteCatalogEntry } from "./catalog/opencite"

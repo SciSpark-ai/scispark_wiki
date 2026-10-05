@@ -51,10 +51,10 @@ async function client(port:number,handle:string,path="http://semantic-scholar.sc
     req.on("error",reject);req.end()
   })
 }
-async function prepared(){
+async function prepared(publicDocuments=false){
   const f=await fixture();await saveS2Key(f.ctx.storage,secret)
   const {bindings}=await resolveCommandConnections(f.ctx,[f.binding.id])
-  const broker=await createConnectionBroker(f.ctx,f.run.id,bindings);brokers.push(broker)
+  const broker=await createConnectionBroker(f.ctx,f.run.id,bindings,{publicDocuments});brokers.push(broker)
   const cap=connectionBrokerCapability(f.ctx,f.run.id,[f.binding.id],broker)
   return {...f,broker,cap}
 }
@@ -133,4 +133,61 @@ describe("scoped source connections and inspected HTTP broker",()=>{
     expect((await client(cap.port,broker.handles[0].handle)).status).toBe(200)
   })
 
+})
+
+// Actual loopback broker with deterministic HTTPS/DNS fixtures; no real source I/O.
+describe("OpenCite observed public document capability",()=>{
+  it("only grants exact URLs in validated successful source records, with no credential forwarding",async()=>{
+    const {cap,broker}=await prepared(true),handle=broker.handles[0].handle
+    const url="https://publisher.example/open.pdf",document="http://semantic-scholar.scispark.invalid/document?url="+encodeURIComponent(url)
+    expect((await client(cap.port,handle,document)).status).toBe(403)
+    upstreamBody=JSON.stringify({data:[{title:"Paper",isOpenAccess:true,openAccessPdf:{url}}]})
+    expect((await client(cap.port,handle)).status).toBe(200)
+    upstreamBody="%PDF-1.4 fixture"
+    expect((await client(cap.port,handle,document)).text).toBe(upstreamBody)
+    expect(upstreamCalls.at(-1)?.headers).not.toHaveProperty("x-api-key")
+    expect((await client(cap.port,handle,document+"%3Fchanged")).status).toBe(403)
+    const another=await prepared(true)
+    expect((await client(another.cap.port,another.broker.handles[0].handle,document)).status).toBe(403)
+  })
+  it("fails closed on restart, invalid records, private DNS, redirects and oversized documents",async()=>{
+    const {ctx,run,binding,cap,broker}=await prepared(true),handle=broker.handles[0].handle
+    const url="https://publisher.example/open.pdf",document="http://semantic-scholar.scispark.invalid/document?url="+encodeURIComponent(url)
+    upstreamBody=JSON.stringify({data:[{title:42,isOpenAccess:true,openAccessPdf:{url}}]})
+    expect((await client(cap.port,handle)).status).toBe(502)
+    expect((await client(cap.port,handle,document)).status).toBe(403)
+    upstreamBody=JSON.stringify({data:[{title:"Paper",isOpenAccess:true,openAccessPdf:{url}}]})
+    await client(cap.port,handle)
+    vi.mocked(lookup).mockResolvedValue([{address:"127.0.0.1",family:4}] as never)
+    expect((await client(cap.port,handle,document)).status).toBe(502)
+    vi.mocked(lookup).mockResolvedValue([{address:"1.1.1.1",family:4}] as never)
+    upstreamStatus=302
+    expect((await client(cap.port,handle,document)).status).toBe(403)
+    // A new broker has no grants even for the same captured run/connection.
+    const replacement=await createConnectionBroker(ctx,run.id,[await readConnectionRevision(ctx,run.connectionConfigurationRefs[0])],{publicDocuments:true});brokers.push(replacement)
+    const next=connectionBrokerCapability(ctx,run.id,[binding.id],replacement)
+    expect((await client(next.port,replacement.handles[0].handle,document)).status).toBe(403)
+  })
+})
+
+it("bounds document bytes and refuses an already aborted DNS request before dispatch",async()=>{
+  const aborted=new AbortController();aborted.abort()
+  await expect(requestPublicHttps(new URL("https://publisher.example/open.pdf"),{},524288,aborted.signal)).rejects.toThrow()
+  expect(httpsRequest).not.toHaveBeenCalled()
+  const {cap,broker}=await prepared(true),url="https://publisher.example/open.pdf"
+  upstreamBody=JSON.stringify({data:[{title:"Paper",isOpenAccess:true,openAccessPdf:{url}}]})
+  await client(cap.port,broker.handles[0].handle)
+  upstreamBody="%PDF-"+"x".repeat(524288)
+  expect((await client(cap.port,broker.handles[0].handle,"http://semantic-scholar.scispark.invalid/document?url="+encodeURIComponent(url))).status).toBe(502)
+})
+
+it("retains HTTP source provenance without granting document retrieval",async()=>{
+  const {cap,broker}=await prepared(true),url="http://publisher.example/open.pdf",paperUrl="http://www.semanticscholar.org/paper/abc"
+  upstreamBody=JSON.stringify({data:[{title:"Paper",url:paperUrl,isOpenAccess:true,openAccessPdf:{url}}]})
+  const source=await client(cap.port,broker.handles[0].handle)
+  expect(source.status).toBe(200)
+  expect(JSON.parse(source.text).data[0]).toMatchObject({url:paperUrl,openAccessPdf:{url}})
+  expect((await client(cap.port,broker.handles[0].handle,"http://semantic-scholar.scispark.invalid/document?url="+encodeURIComponent(url))).status).toBe(403)
+  expect(upstreamCalls).toHaveLength(1)
+  expect(upstreamCalls[0].url.origin).toBe("https://api.semanticscholar.org")
 })
