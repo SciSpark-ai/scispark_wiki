@@ -1,4 +1,5 @@
 import { resolve } from "node:path"
+import { isGenericVaultSymlinkPath, isPrivateWorkflowPath } from "@/lib/server/workflow-private-paths"
 import { getServerVault } from "@/lib/server/vault"
 import { isSafeVaultRelativePath } from "@/lib/vault/safe-path"
 
@@ -14,7 +15,8 @@ import { isSafeVaultRelativePath } from "@/lib/vault/safe-path"
  * "rejects" the path). Changeset audit records remain readable for backup and
  * review compatibility, but generic clients cannot write or delete them; the
  * server mutation coordinator is their only writer. Other `.scispark/*` app
- * data (events, usage, run records, etc.) is unaffected.
+ * data remains compatible, except private modular tool state under tools/ and
+ * tool-runs/, which workflow APIs own.
  *
  * The guard must agree with how storage actually resolves a path, not with a
  * second independent normalizer. A prior version used `posix.normalize()`,
@@ -68,10 +70,16 @@ export async function GET(req: Request): Promise<Response> {
   if (isProtectedPath(path)) {
     return Response.json({ error: "settings are managed via /api/settings" }, { status: 403 })
   }
+  if (isPrivateWorkflowPath(path)) {
+    return Response.json({ error: "workflow state is managed via workflow APIs" }, { status: 403 })
+  }
   if (!isSafeVaultRelativePath(path)) return invalidPathResponse()
 
   try {
     const storage = await getServerVault()
+    if (await isGenericVaultSymlinkPath(storage, path)) {
+      return Response.json({ error: "generic vault paths must not traverse symlinks" }, { status: 403 })
+    }
     const bytes = await storage.readBinary(path)
     if (bytes === null) return Response.json({ error: "not found" }, { status: 404 })
 
@@ -91,6 +99,9 @@ export async function PUT(req: Request): Promise<Response> {
   if (isProtectedPath(path)) {
     return Response.json({ error: "settings are managed via /api/settings" }, { status: 403 })
   }
+  if (isPrivateWorkflowPath(path)) {
+    return Response.json({ error: "workflow state is managed via workflow APIs" }, { status: 403 })
+  }
   if (!isSafeVaultRelativePath(path)) return invalidPathResponse()
   if (isChangesetAuditPath(path)) {
     return Response.json({ error: "changeset audit records are server-managed" }, { status: 403 })
@@ -99,6 +110,9 @@ export async function PUT(req: Request): Promise<Response> {
   try {
     const bytes = new Uint8Array(await req.arrayBuffer())
     const storage = await getServerVault()
+    if (await isGenericVaultSymlinkPath(storage, path)) {
+      return Response.json({ error: "generic vault paths must not traverse symlinks" }, { status: 403 })
+    }
 
     if (req.headers.get("x-vault-text") === "1") {
       await storage.write(path, new TextDecoder("utf-8").decode(bytes))
@@ -119,6 +133,9 @@ export async function DELETE(req: Request): Promise<Response> {
   if (isProtectedPath(path)) {
     return Response.json({ error: "settings are managed via /api/settings" }, { status: 403 })
   }
+  if (isPrivateWorkflowPath(path)) {
+    return Response.json({ error: "workflow state is managed via workflow APIs" }, { status: 403 })
+  }
   if (!isSafeVaultRelativePath(path)) return invalidPathResponse()
   if (isChangesetAuditPath(path)) {
     return Response.json({ error: "changeset audit records are server-managed" }, { status: 403 })
@@ -126,6 +143,9 @@ export async function DELETE(req: Request): Promise<Response> {
 
   try {
     const storage = await getServerVault()
+    if (await isGenericVaultSymlinkPath(storage, path)) {
+      return Response.json({ error: "generic vault paths must not traverse symlinks" }, { status: 403 })
+    }
     await storage.delete(path)
 
     return new Response(null, { status: 204 })

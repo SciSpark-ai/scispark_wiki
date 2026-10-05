@@ -54,6 +54,8 @@ const FILE_EXTENSIONS = new Set([".ts", ".tsx"])
  * is added, add its path here.
  */
 const CLIENT_LIB_FILES = [
+  "src/lib/extensions/contracts.ts",
+  "src/lib/workflows/contracts.ts",
   "src/lib/skills/job-contract.ts",
   "src/lib/skills/job-client.ts",
   "src/lib/papers/text-contract.ts",
@@ -98,6 +100,10 @@ const WHOLE_MODULE_BANS = new Set([
   "lib/trending/dashboard",
   "lib/skills/consolidation",
   "lib/companion/run",
+  "lib/server/local-profiles",
+  "lib/workflows/context",
+  "lib/workflows/store",
+  "lib/extensions/store",
 ])
 const PROVIDERS_PREFIX = "lib/llm/providers"
 
@@ -356,6 +362,10 @@ function scanFile(file: string, source = readFileSync(file, "utf-8")): Violation
 
 describe("browser purity", () => {
   it.each([
+    ['import { getProfileRegistryRoot } from "@/lib/server/local-profiles"', "src/app/page.tsx"],
+    ['import { readRun } from "@/lib/workflows/store"', "src/lib/workflows/contracts.ts"],
+    ['import { readProfileTools } from "@/lib/extensions/store"', "src/lib/extensions/contracts.ts"],
+    ['import { getWorkflowContext } from "@/lib/workflows/context"', "src/app/page.tsx"],
     ['import { loadBoard } from "@/lib/trending/dashboard"', "src/app/trending/page.tsx"],
     ['export { isStale } from "./dashboard"', "src/lib/trending/cache.ts"],
     ['import { anchorsMatchBoard } from "../../lib/trending/dashboard.ts"', "src/app/trending/page.tsx"],

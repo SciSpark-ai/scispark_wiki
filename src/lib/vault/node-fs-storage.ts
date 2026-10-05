@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile, rm, readdir, rename } from "node:fs/promises"
-import { dirname, join, resolve, sep } from "node:path"
+import { mkdir, readFile, writeFile, rm, readdir, rename, realpath, lstat } from "node:fs/promises"
+import { dirname, join, resolve, sep, relative } from "node:path"
 import type { VaultStorage } from "./storage"
 import { randomUUID } from "node:crypto"
 
@@ -68,6 +68,26 @@ export class NodeFsVaultStorage implements VaultStorage {
       throw new Error(`path escapes outside the vault root: ${path}`)
     }
     return full
+  }
+
+  /** Raw generic APIs must not follow aliases to private or out-of-vault data.
+   * Resolve the root itself (e.g. /tmp aliases are valid), then inspect every
+   * requested component without following symlinks. Missing leaves are safe
+   * only after all existing ancestors have been inspected. */
+  async hasSymlinkTraversal(path: string): Promise<boolean> {
+    const full = this.abs(path)
+    let current = await realpath(/* turbopackIgnore: true */ this.root)
+    const components = relative(this.root, full).split(sep).filter(Boolean)
+    for (const component of components) {
+      current = join(current, component)
+      try {
+        if ((await lstat(current)).isSymbolicLink()) return true
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return false
+        throw error
+      }
+    }
+    return false
   }
 
   async read(path: string): Promise<string | null> {

@@ -1,4 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, afterEach } from "vitest"
+import { mkdtemp, mkdir, rm, symlink } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { NodeFsVaultStorage } from "../../vault/node-fs-storage"
 import type { VaultStorage } from "../../vault/storage"
 import { MemoryVaultStorage } from "../../vault/memory-storage"
 import { RemoteVaultStorage } from "../../vault/remote-storage"
@@ -91,6 +95,30 @@ describe("vault API", () => {
     await storage.write("wiki/a.md", "x"); await storage.write("notes/n.md", "x")
     const res = await listRoute.GET(new Request("http://x/api/vault/list?prefix=wiki/"))
     expect(await res.json()).toEqual({ paths: ["wiki/a.md"] })
+  })
+
+  it.each([
+    ".scispark/tools/state.json", ".scispark/tool-runs/44444444-4444-4444-8444-444444444444/run.json",
+    ".scispark/tools", ".scispark/tool-runs", "./.scispark/tools/state.json/",
+    ".SciSpark/TOOLS/state.json", "x/../.scispark/tool-runs/run/events/1.json",
+    ".scispark//tool-runs/run/artifacts/private.md",
+  ])("keeps new workflow state private through generic file routes: %s", async (path) => {
+    await storage.write(path, "private workflow state")
+    const url = "http://x/api/vault/file?path=" + encodeURIComponent(path)
+    expect((await fileRoute.GET(new Request(url))).status).toBe(403)
+    expect((await fileRoute.PUT(new Request(url, { method: "PUT", body: "forged" }))).status).toBe(403)
+    expect((await fileRoute.DELETE(new Request(url, { method: "DELETE" }))).status).toBe(403)
+    expect(await storage.read(path)).toBe("private workflow state")
+  })
+
+  it("omits new workflow paths from lists while preserving unrelated existing records", async () => {
+    for (const path of [".scispark/tools/state.json", ".SciSpark/TOOL-RUNS/run/run.json", ".scispark/usage/x.jsonl", "wiki/a.md", ".scispark/tools-other/file.json"]) {
+      await storage.write(path, "fixture")
+    }
+    expect(await (await listRoute.GET(new Request("http://x/api/vault/list"))).json()).toEqual({
+      paths: [".scispark/tools-other/file.json", ".scispark/usage/x.jsonl", "wiki/a.md"],
+    })
+    expect(await (await listRoute.GET(new Request("http://x/api/vault/list?prefix=.scispark/tools/"))).json()).toEqual({ paths: [] })
   })
 
   it("missing path param → 400", async () => {
@@ -547,5 +575,51 @@ describe("vault API", () => {
     const body = await res.json()
     expect(body).toHaveProperty("error")
     expect(body.error).toMatch(/failure/)
+  })
+})
+
+
+describe("generic filesystem vault routes reject symlink traversal", () => {
+  let root: string
+  let storage: NodeFsVaultStorage
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "scispark-private-routes-"))
+    storage = new NodeFsVaultStorage(root)
+    setServerVaultForTests(storage)
+    await mkdir(join(root, "wiki"))
+  })
+  afterEach(async () => {
+    setServerVaultForTests(null)
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it.each(["tools", "tool-runs"])("denies existing and new leaves via aliases of %s", async (namespace) => {
+    const privatePath = `.scispark/${namespace}/state.json`
+    await storage.write(privatePath, "private workflow state")
+    await symlink(join(root, ".scispark", namespace), join(root, "wiki", "private"))
+    await symlink(join(root, privatePath), join(root, "wiki", "private-leaf.json"))
+    for (const path of ["wiki/private/state.json", "wiki/private/new.json", "wiki/private/missing-parent/new.json", "wiki/private-leaf.json"]) {
+      const url = "http://x/api/vault/file?path=" + encodeURIComponent(path)
+      expect((await fileRoute.GET(new Request(url))).status).toBe(403)
+      expect((await fileRoute.PUT(new Request(url, { method: "PUT", body: "forged" }))).status).toBe(403)
+      expect((await fileRoute.DELETE(new Request(url, { method: "DELETE" }))).status).toBe(403)
+    }
+    expect(await storage.read(privatePath)).toBe("private workflow state")
+    expect(await storage.read(`.scispark/${namespace}/new.json`)).toBeNull()
+    expect(await storage.read(`.scispark/${namespace}/missing-parent/new.json`)).toBeNull()
+  })
+
+  it("preserves direct legacy access and legitimate aliases of the vault root", async () => {
+    await symlink(root, `${root}-alias`)
+    try {
+      storage = new NodeFsVaultStorage(`${root}-alias`)
+      setServerVaultForTests(storage)
+      for (const path of ["wiki/normal.md", ".scispark/usage/ordinary.jsonl", "wiki/new-parent/new.md"]) {
+        const url = "http://x/api/vault/file?path=" + encodeURIComponent(path)
+        expect((await fileRoute.PUT(new Request(url, { method: "PUT", headers: { "x-vault-text": "1" }, body: "legacy" }))).status).toBe(204)
+        expect(await (await fileRoute.GET(new Request(url))).text()).toBe("legacy")
+        expect((await fileRoute.DELETE(new Request(url, { method: "DELETE" }))).status).toBe(204)
+      }
+    } finally { await rm(`${root}-alias`, { force: true }) }
   })
 })

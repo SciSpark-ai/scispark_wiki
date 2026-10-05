@@ -22,14 +22,18 @@ function registryRoot(env: NodeJS.ProcessEnv): string {
   return root
 }
 
-async function registryStorage(env: NodeJS.ProcessEnv): Promise<NodeFsVaultStorage> {
+export async function getProfileRegistryRoot(env: NodeJS.ProcessEnv = process.env): Promise<string> {
   const vault = resolve(resolveVaultRoot(env))
   // Resolve aliases before comparing ownership boundaries (e.g. /var vs /private/var).
   await mkdir(vault, { recursive: true })
   await mkdir(registryRoot(env), { recursive: true, mode: 0o700 })
   const [root, canonicalVault] = await Promise.all([realpath(/* turbopackIgnore: true */ registryRoot(env)), realpath(/* turbopackIgnore: true */ vault)])
   if (root === canonicalVault || root.startsWith(canonicalVault + sep)) throw new Error("Profile registry must be outside the research vault")
-  return new NodeFsVaultStorage(root)
+  return root
+}
+
+async function registryStorage(env: NodeJS.ProcessEnv): Promise<NodeFsVaultStorage> {
+  return new NodeFsVaultStorage(await getProfileRegistryRoot(env))
 }
 
 async function readRegistry(storage: NodeFsVaultStorage): Promise<LocalProfile[]> {
