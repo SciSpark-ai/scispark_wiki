@@ -3,7 +3,7 @@ import { NodeFsVaultStorage } from "../vault/node-fs-storage"
 import { resolveVaultRoot } from "../vault/vault-path"
 import { openVault } from "../vault/scaffold"
 import { cookies, headers } from "next/headers"
-import { getProfileSession } from "./local-profiles"
+import { getProfileSession, initializeLocalProfiles } from "./local-profiles"
 import { PROFILE_COOKIE, PROFILE_HEADER } from "../local-profile-contract"
 
 const vaults = new Map<string, Promise<VaultStorage>>()
@@ -32,8 +32,12 @@ export function openServerVault(root: string): Promise<VaultStorage> {
 }
 
 /** Startup recovery and the opt-in scheduler retain their explicit configured vault. */
-export function getDefaultServerVault(): Promise<VaultStorage> {
-  return testOverride ? Promise.resolve(testOverride) : openServerVault(resolveVaultRoot())
+export async function getDefaultServerVault(): Promise<VaultStorage> {
+  if (testOverride) return testOverride
+  // Startup recovery opens/scaffolds this vault before the profile UI. Capture
+  // new versus legacy origin first, so a fresh launch never inherits tools.
+  await initializeLocalProfiles()
+  return openServerVault(resolveVaultRoot())
 }
 
 /** Resolve the request's session once before handing storage to background work. */

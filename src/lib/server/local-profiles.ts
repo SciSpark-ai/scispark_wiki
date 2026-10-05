@@ -2,6 +2,8 @@ import { createHash, randomBytes, randomUUID } from "node:crypto"
 import { mkdir, realpath } from "node:fs/promises"
 import { dirname, join, resolve, sep } from "node:path"
 import { z } from "zod"
+import { initializeProfileTools } from "../extensions/profile-state"
+import { resolveWorkflowContext } from "../workflows/context"
 import { NodeFsVaultStorage } from "../vault/node-fs-storage"
 import { resolveVaultRoot } from "../vault/vault-path"
 import { openVault } from "../vault/scaffold"
@@ -55,11 +57,20 @@ async function registerConfiguredVault(storage: NodeFsVaultStorage, env: NodeJS.
   const configured = resolve(resolveVaultRoot(env))
   await mkdir(configured, { recursive: true })
   const vaultPath = await realpath(/* turbopackIgnore: true */ configured)
+  // Registered profiles predate modular tools unless an earlier origin marker
+  // says otherwise. Initialization preserves that marker and disabled bindings.
+  for (const profile of profiles) await initializeProfileTools(await resolveWorkflowContext(profile, env), "legacy")
   if (profiles.some((p) => p.vaultPath === vaultPath)) return profiles
   if (profiles.some((p) => vaultPath.startsWith(p.vaultPath + sep) || p.vaultPath.startsWith(vaultPath + sep))) {
     throw new Error("Profile vault folders must not contain one another")
   }
-  profiles.push({ id: hash(vaultPath).slice(0, 32), name: "My profile", vaultPath })
+  const profile = { id: hash(vaultPath).slice(0, 32), name: "My profile", vaultPath }
+  const vault = new NodeFsVaultStorage(vaultPath)
+  const existingFiles = (await vault.list()).filter((path) => !path.startsWith(".scispark/tools/") && !path.startsWith(".scispark/locks/") && path !== ".DS_Store")
+  // Classification is persisted before any scaffold or registry publication;
+  // initializeProfileTools gives a previous marker precedence on retries.
+  await initializeProfileTools(await resolveWorkflowContext(profile, env), existingFiles.length ? "legacy" : "new")
+  profiles.push(profile)
   await storage.write("profiles.json", JSON.stringify({ version: 1, profiles }, null, 2))
   return profiles
 }
@@ -74,10 +85,14 @@ async function displayProfile(profile: LocalProfile): Promise<LocalProfile> {
   }
 }
 
-export async function listLocalProfiles(env: NodeJS.ProcessEnv = process.env): Promise<LocalProfile[]> {
+/** Bootstrap ownership/tools without loading user-authored research metadata. */
+export async function initializeLocalProfiles(env: NodeJS.ProcessEnv = process.env): Promise<LocalProfile[]> {
   const storage = await registryStorage(env)
-  const profiles = await storage.exclusive("profiles", () => registerConfiguredVault(storage, env))
-  return Promise.all(profiles.map(displayProfile))
+  return storage.exclusive("profiles", () => registerConfiguredVault(storage, env))
+}
+
+export async function listLocalProfiles(env: NodeJS.ProcessEnv = process.env): Promise<LocalProfile[]> {
+  return Promise.all((await initializeLocalProfiles(env)).map(displayProfile))
 }
 
 export async function createLocalProfile(name: string, env: NodeJS.ProcessEnv = process.env): Promise<LocalProfile> {
@@ -90,6 +105,7 @@ export async function createLocalProfile(name: string, env: NodeJS.ProcessEnv = 
     if (displayed.some((p) => p.name.toLocaleLowerCase() === name.toLocaleLowerCase())) throw new Error("A profile with this name already exists")
     const id = randomUUID()
     const profile = { id, name, vaultPath: join(await realpath(/* turbopackIgnore: true */ registryRoot(env)), "vaults", id) }
+    await initializeProfileTools(await resolveWorkflowContext(profile, env), "new")
     await openVault(new NodeFsVaultStorage(profile.vaultPath))
     await storage.write("profiles.json", JSON.stringify({ version: 1, profiles: [...profiles, profile] }, null, 2))
     return profile

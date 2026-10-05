@@ -88,3 +88,47 @@ Full checks ran once on final fixed source. Logs:
 M1 event-log append performance is deferred to Task 5 by the controller;
 model/runtime/connection/artifact/recovery integrations retain their later-task
 ownership. Task 1 remains one amended local commit, pending independent review.
+
+### Task 2 implementation candidate — independent review pending
+
+Added profile-specific tool bindings, pins and model overrides, with an atomic
+read/modify/write helper under the existing profile-tools exclusion boundary.
+Native catalog identities are `scispark.builtin` / `trending`, `find-papers`,
+`deep-review`, `idea-spark`; their respective capabilities are `field-trends`,
+`paper-search`, `literature-review`, `research-ideas`.
+Enabled catalog entries remain distinct from exact-version adapter readiness;
+no production adapter is registered in this task. Imported metadata can use the
+same registry and profile-binding operations without discovery or execution.
+
+New configured and created profiles persist empty tool state before registry
+publication. Registered profiles without an origin marker adopt legacy defaults
+once. Origin is persisted outside research in
+`extensions/profiles/<profileId>/origin.json`, checked against the profile and
+canonical vault identity, before state writing/scaffolding/publication. Failed
+state or registry publication retains that origin for retry. Default-vault startup
+now captures ownership/origin before its existing scaffold and review-recovery
+path; bootstrap does not load user-authored profile metadata. Disabled bindings,
+existing native pins, separate overrides, and existing chat/review bytes remain
+preserved.
+
+| Check | Result |
+| --- | --- |
+| Initial RED: profile-state file | Missing native-catalog module; 1 failed suite |
+| Profile integration RED: local-profiles file | 5 failed, 4 passed; missing migration/state and startup origin |
+| Registry parity RED: profile-state file | 1 failed, 9 passed; missing registerToolManifest |
+| Final focused GREEN: profile-state/local-profiles/workflow-context | 20 passed across 3 files |
+| Final `npx tsc --noEmit` | Exit 0; 5.89 seconds |
+| Final `npm run lint` | Exit 0; existing ConnectAiCard warning only; 15.35 seconds |
+| Final `npx vitest run` | 2750 passed, 19 gated skips; 278 passed/7 skipped files; command 30.43 seconds |
+| `git diff --check` | Exit 0 |
+
+Added 13 regressions: 10 profile-state cases and 3 local-profile integration cases;
+existing adoption/creation cases also assert migration and empty-state behavior.
+Fixtures are disposable in-memory storage plus temporary filesystem registries.
+Full gates ran once on final source via `verify-task.py task-2`; logs/results are
+in `.superpowers/sdd/2026-10-05-modular-workspace/verification/task-2/`.
+RED and focused logs: `/tmp/scispark-task-2-{red,profiles-red,registry-red,focused}.log`.
+No build was required by this task. No human vault/profile reads or migrations,
+installed-skill scans, live provider calls, installs, push or merge were performed.
+Registry installation, adapter implementation and user-facing routing retain
+later-task ownership; this is an implementation candidate, not a release claim.
