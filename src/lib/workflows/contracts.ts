@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { ScopedPriceSchema } from "../llm/scoped-pricing"
 import { isSafeVaultRelativePath } from "../vault/safe-path"
 import { ToolManifestSchema, DigestSchema, ProfileIdSchema, RoleTiersSchema, TierModelsSchema, ToolRefSchema, UuidSchema } from "../extensions/contracts"
 
@@ -62,6 +63,7 @@ export type WikiProposalInput = z.infer<typeof WikiProposalInputSchema>
 export const SaveRunInputSchema = z.object({ artifactIds: ArtifactIdsSchema, operationId: UuidSchema }).strict()
 
 export const RunModelSchema = z.object({
+  scopedPrices: z.object({ fast: ScopedPriceSchema.optional(), strong: ScopedPriceSchema.optional() }).strict().optional(),
   engine: z.enum(["api", "codex", "claude-code"]), tierModels: TierModelsSchema,
   roleTiers: RoleTiersSchema, timeoutSeconds: z.number().int().min(30).max(600).optional(),
 }).strict()

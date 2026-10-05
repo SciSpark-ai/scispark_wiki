@@ -1,3 +1,5 @@
+import { z } from "zod"
+import { ToolRefSchema, UuidSchema } from "../extensions/contracts"
 import type { WorkflowContext } from "./context"
 import type { Artifact, ArtifactInput, WikiProposalInput, RunEventInput, StepIntent, ToolRun } from "./contracts"
 
@@ -8,7 +10,15 @@ export interface WorkflowIO {
   submitWikiProposal(input: WikiProposalInput): Promise<void>
   signal: AbortSignal
 }
+export const HelperInvocationSchema = z.object({ frameId: UuidSchema, tool: ToolRefSchema, input: z.record(z.string(), z.unknown()) }).strict()
+export const HelperResultSchema = z.object({ summary: z.string().max(32000), artifactIds: z.array(UuidSchema).max(100) }).strict()
+export type HelperInvocation = z.infer<typeof HelperInvocationSchema>
+export type HelperResult = z.infer<typeof HelperResultSchema>
 export interface WorkflowAdapter {
+  /** Explicit supporting entrypoint. Root identity/configuration stays unchanged.
+   * Derive step IDs from invocation.frameId; all attempts use the root IO/scope.
+   * The host journals opaque enter/return without another reservation. */
+  executeHelper?(ctx: WorkflowContext, root: ToolRun, invocation: HelperInvocation, io: WorkflowIO): Promise<HelperResult>
   execute(ctx: WorkflowContext, run: ToolRun, io: WorkflowIO): Promise<void>
 }
 
@@ -20,4 +30,12 @@ export function registerWorkflowAdapter(kind: string, adapter: WorkflowAdapter):
   if (!kind.trim() || typeof adapter.execute !== "function") throw new Error("Invalid workflow adapter")
   adapters.set(kind, adapter)
 }
-export function getWorkflowAdapter(kind: string): WorkflowAdapter | undefined { return adapters.get(kind) }
+const instructionAdapter: WorkflowAdapter = {
+  execute: async (ctx, run, io) => {
+    const { executeInstructionWorkflow } = await import("./agent")
+    await executeInstructionWorkflow(ctx, run, io)
+  },
+}
+export function getWorkflowAdapter(kind: string): WorkflowAdapter | undefined {
+  return adapters.get(kind) ?? (kind === "instructions" ? instructionAdapter : undefined)
+}

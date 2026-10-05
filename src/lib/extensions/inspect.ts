@@ -152,6 +152,7 @@ async function closure(ctx: WorkflowContext, stage: StagedPackage, proposal: Ada
     needed.add(path); pending.push(path)
   }
   add(proposal.entrypoint); proposal.resources.forEach(add)
+  proposal.executionCommands?.forEach(command => add(command.entrypoint))
   if (proposal.setup.environment) {
     add(proposal.setup.environment.lockFile)
     if (proposal.setup.environment.runtime === "node22") add("package.json")
@@ -190,6 +191,7 @@ async function buildTool(ctx: WorkflowContext, stage: StagedPackage, input: Adap
   boundedValue(input.inputSchema)
   const proposal = AdapterProposalSchema.parse(input); validateInputSchema(proposal.inputSchema)
   if (new Set(proposal.dependencySlots.map((slot) => slot.id)).size !== proposal.dependencySlots.length) throw new Error("Duplicate dependency slot")
+  if (new Set(proposal.executionCommands?.map(command => command.id)).size !== (proposal.executionCommands?.length ?? 0)) throw new Error("Duplicate execution command")
   const files = await closure(ctx, stage, proposal)
   // Host detections cannot be cleared by package metadata or review edits.
   // No host-validated resolution exists in this inspection-only phase.

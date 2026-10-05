@@ -773,3 +773,57 @@ passed/20 gated skips. Isolated Next build exit0,66 pages, all7 tool traces reta
 worker/runtime assets; generated config bytes checked/restored before the gate.
 Exact report and RED/GREEN/full/build evidence remain in the local SDD directory.
 Mac unsupported/Linux unrun and authenticated-service acceptance limits remain.
+
+## Task 10 — controlled instruction execution and supporting skills
+
+Added bounded typed host actions, schema-validated durable helper frames/choices,
+paged required-resource reads, sanitized readonly wiki/chat/project projection,
+and separate public synthesis using actual provider onText callbacks. All model
+steps retain Task3 root accounting; command reservation remains solely Task8.
+Per-parent declared edges/slots enforce invocation authority within the captured
+closure. Artifact publication and complete wiki proposals use Task6 IO.
+
+Reviewed runtime executionCommands now select fixed prepared Node/Python recipes;
+Node scripts resolve from the prepared project and Python uses the captured venv.
+Canonical endpoint/provider/model catalog quotes are captured in immutable run
+models; unknown/custom endpoints need setup before spending. Optional explicit
+executeHelper adapters receive the unchanged root and validated frame/tool/input;
+committed opaque results replay, unknown results require reconciliation. Task11/14
+implement supporting command/native adapters; Task17 owns user choice and uncertain
+outcome routes. No ordinary adapter fallback or provider CLI tools were enabled.
+
+TDD RED: missing agent module. Focused GREEN:94/94 across host, usage and import
+suites, including18 new host tests; deterministic provider calls exercise actual
+JSON decisions, journal accounting and onText streaming. Prepared command transport
+and native helper results are labeled fixtures. Fresh storage/context recovery
+covers persisted helper enter/result and unknown outcomes. Overflow preserves all
+read pages and stops explicitly instead of silently dropping resource context.
+
+Required task-10 gate: TypeScript exit0 (4.70s), ESLint exit0 (19.04s; existing
+ConnectAiCard applyPreset warning only), Vitest2986 passed/20 gated skips across
+290 passed/7 skipped files (45.54s). Isolated Next16.3.2 build passed,66 pages;
+current-task generated tsconfig/next-env changes were inspected and exact prior
+bytes restored before the gate. Full local evidence: SDD task-10-report.md and
+verification/task-10. No broad suites repeated after successful final checks.
+
+Mac command execution remains unsupported; Linux/real installed-tool transport,
+actual package installation and sandbox-to-broker acceptance are UNRUN. No live
+provider/source calls, human vault/profile/credentials, real installed-skill scans,
+push or merge. Catalog quote dates are provenance, not newly verified market prices.
+
+Task10 independent-review fix1: production preparation now treats an empty native
+engine list as unrestricted, while an explicit incompatible list rejects before
+run persistence. Supporting instruction roots exercise both paths through the real
+preparation resolver and startRun. Completed synthesis now drains live callback
+writes, persists authoritative returned text, emits the root snapshot and then
+retires its frame. Cached crash replay restores a complete answer from a prefix;
+a no-callback provider also publishes its final result. Both retain exactly the
+original decision+synthesis calls/reservations; actual live streaming still passes.
+
+Behavioral RED reproduced3 failures; focused GREEN34/34 across agent/setup suites.
+Final task-10-fix-1 gate: TypeScript exit0/4.32s, ESLint exit0/19.01s (same baseline
+warning),2990 passed/20 gated skips,290 passed/7 skipped files,40.47s Vitest.
+Isolated Next build exit0,66 pages; generated config bytes inspected/restored before
+the gate. Full report and exact RED/GREEN/build/gate outputs remain in the local
+SDD task-10 report and verification/task-10-fix-1. Existing real runtime/provider
+limitations remain unchanged; no new live/source/user-data calls or publication.

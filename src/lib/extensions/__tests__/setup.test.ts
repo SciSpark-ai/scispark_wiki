@@ -13,6 +13,10 @@ import { probeSandbox, runIsolatedCommand } from "../sandbox"
 import { writeProfileTools } from "../store"
 import { startRun, waitForWorkflowIdle } from "../../workflows/coordinator"
 import { sha256 } from "../acquire"
+import * as registry from "../registry"
+import { NATIVE_TOOL_MANIFESTS } from "../native-catalog"
+import { registerWorkflowAdapter } from "../../workflows/adapters"
+import { workflowFixture } from "../../workflows/__tests__/fixtures"
 vi.mock("../sandbox", async original => ({ ...await original<typeof import("../sandbox")>(), probeSandbox: vi.fn(), runIsolatedCommand: vi.fn() }))
 vi.mock("../toolchains", async original => ({ ...await original<typeof import("../toolchains")>(), prepareToolchain: vi.fn() }))
 const roots: string[] = []
@@ -117,6 +121,32 @@ describe("managed setup lifecycle (deterministic execution fixtures)",()=>{
     const stage=join(ctx.runtimeRoot,"profiles",ctx.profileId,"commands/setup",ready.setupId,"output")
     await writeFile(join(stage,"project/package.json"),"tampered")
     await expect(resolvePreparedEnvironmentRefs(ctx,[ref])).rejects.toThrow("integrity")
+  })
+
+  it.each([{engines:[]}, {engines:["claude-code"]}])("enforces native engine restrictions at production start: $engines", async ({engines}) => {
+    const {ctx,source}=await fixture(),nativeFixture=workflowFixture()
+    const native={...NATIVE_TOOL_MANIFESTS[0],engines}
+    const original=registry.getToolManifest
+    const manifestLookup=vi.spyOn(registry,"getToolManifest").mockImplementation(ref=>ref.digest===native.ref.digest?native:original(ref))
+    try {
+      const entrypoint=`root-${crypto.randomUUID()}.md`
+      await writeFile(join(source,entrypoint),"Offline root fixture")
+      const preview=await inspectPackage(ctx,await acquirePackage(ctx,{kind:"local-folder",path:source,packageId:"native-helper-root"}))
+      const reviewed=await reviewImport(ctx,preview.id,[{...preview.tools[0].proposal,entrypoint,engines:["api"],dependencies:[native.ref]}])
+      const [root]=await commitImport(ctx,reviewed.id,[reviewed.tools[0].manifest.ref])
+      registerWorkflowAdapter(entrypoint,{execute:async()=>{}}) // No model or source execution.
+      await writeProfileTools(ctx,{schemaVersion:1,enabled:[{tool:root,enabled:true}],pins:[root],overrides:[],migrated:true})
+      const request={operationId:crypto.randomUUID(),tool:root,input:{},contextRefs:[],writeIntent:"outputs_only" as const}
+      if(engines.length){
+        await expect(resolvePreparedEnvironmentRefs(ctx,[root,native.ref],nativeFixture.run.model)).rejects.toThrow("provider/model")
+        await expect(startRun(ctx,request)).rejects.toThrow("provider/model")
+        expect(await ctx.storage.list(".scispark/tool-runs/")).toEqual([])
+      } else {
+        expect(await resolvePreparedEnvironmentRefs(ctx,[root,native.ref],nativeFixture.run.model)).toEqual([])
+        const run=await startRun(ctx,request)
+        expect(run.dependencies).toEqual([native.ref]);expect(run.preparedEnvironmentRefs).toEqual([])
+      }
+    } finally { await waitForWorkflowIdle(); manifestLookup.mockRestore() }
   })
 
   it("reports missing host prerequisites before command execution",async()=>{

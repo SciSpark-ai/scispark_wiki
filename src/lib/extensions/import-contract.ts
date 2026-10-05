@@ -25,10 +25,17 @@ export const SetupRecipeSchema = z.object({
 }).strict()
 export type SetupRecipe = z.infer<typeof SetupRecipeSchema>
 export const DependencySlotSchema = z.object({ id: Text, capability: Text, eligible: z.array(ToolRefSchema).min(1).max(50) }).strict()
+/** Reviewed runtime recipes are separate from environment installation. */
+export const ExecutionCommandSchema = z.object({
+  id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,119}$/),
+  executableId: z.enum(["node", "python"]), entrypoint: PackagePathSchema,
+  argv: z.array(z.string().max(4000).refine(value => !value.includes("\0"))).max(100),
+}).strict()
 export const AdapterProposalSchema = z.object({
   skillId: Text, name: Text, description: z.string().max(16000), kind: z.enum(["instructions", "command"]), entrypoint: PackagePathSchema,
   capabilities: z.array(Text).max(100), resources: z.array(PackagePathSchema).max(1000), dependencies: z.array(ToolRefSchema).max(100),
   dependencySlots: z.array(DependencySlotSchema).max(30), connections: z.array(Text).max(100), engines: z.array(Text).max(30),
+  executionCommands: z.array(ExecutionCommandSchema).max(30).optional(),
   inputSchema: z.record(z.string(), z.unknown()), outputKinds: z.array(Text).max(100), setup: SetupRecipeSchema,
 }).strict()
 export type AdapterProposal = z.infer<typeof AdapterProposalSchema>

@@ -179,7 +179,7 @@ async function installDependencies(ctx:WorkflowContext,record:EnvironmentRecord,
 }
 export async function resolvePreparedEnvironmentRefs(ctx:WorkflowContext,tools:ToolRef[],model?:RunModel):Promise<PreparedEnvironmentRef[]>{
   const refs:PreparedEnvironmentRef[]=[]
-  for(const ref of tools){const native=getToolManifest(ref);if(native?.kind==="native" && model && !native.engines.includes(model.engine))throw new Error("Required provider/model change needs explicit selection")}
+  for(const ref of tools){const native=getToolManifest(ref);if(native?.kind==="native" && model && native.engines.length && !native.engines.includes(model.engine))throw new Error("Required provider/model change needs explicit selection")}
   const needed=tools.filter(ref=>getToolManifest(ref)?.kind!=="native")
   if(!needed.length)return refs
   const imported=await readImportedManifests(ctx)
@@ -188,7 +188,7 @@ export async function resolvePreparedEnvironmentRefs(ctx:WorkflowContext,tools:T
     const tool=await importedTool(ctx,ref)
     if(model && (!tool.manifest.engines.includes(model.engine) || tool.requirements.requiredModels?.some(m=>!Object.values(model.tierModels).some(t=>t.model===m))))throw new Error("Required provider/model change needs explicit selection")
     if(!tool.reviewed || tool.hostUnsupported.length || tool.requirements.unsupported.length || tool.requirements.internalModelCalls)throw new Error("Tool requirements remain unsupported")
-    if(!tool.requirements.environment){if(tool.manifest.kind==="command" || tool.requirements.commands.length || tool.requirements.runtimes.length)throw new Error("Tool environment needs setup");continue}
+    if(!tool.requirements.environment){if(tool.manifest.kind==="command" || tool.proposal.executionCommands?.length || tool.requirements.commands.length || tool.requirements.runtimes.length)throw new Error("Tool environment needs setup");continue}
     const record=await readState(ctx,ref)
     if(!record)throw new Error("Tool environment needs setup")
     await verifiedRecord(ctx,record)
@@ -210,7 +210,7 @@ export async function checkToolReadiness(ctx:WorkflowContext,ref:ToolRef):Promis
     if(!bindings.some(b=>b.service==="semantic-scholar") || !await getServerS2Key(ctx.storage))return {status:"needs-setup",reasons:["Bind Semantic Scholar and configure its credential"]}
   }
   const state=await readState(ctx,ref)
-  if(tool.requirements.environment || tool.manifest.kind==="command" || tool.requirements.commands.length || tool.requirements.runtimes.length){
+  if(tool.requirements.environment || tool.manifest.kind==="command" || tool.proposal.executionCommands?.length || tool.requirements.commands.length || tool.requirements.runtimes.length){
     if(!state || state.state!=="ready")return {status:state?.state==="unsupported"?"unsupported":"needs-setup",reasons:[state?.reason||"Prepare a managed environment"]}
     try{await verifiedRecord(ctx,state)}catch{return {status:"needs-setup",reasons:["Prepared environment integrity needs repair"]}}
     const isolation=await probeSandbox()

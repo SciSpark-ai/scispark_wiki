@@ -1,3 +1,5 @@
+import { PRICES } from "../llm/pricing"
+import type { ScopedPrice } from "../llm/scoped-pricing"
 import { DEFAULT_ENGINES } from "../engines/contracts"
 import { ToolRefSchema, toolKey, type ToolRef } from "../extensions/contracts"
 import { readProfileTools } from "../extensions/store"
@@ -12,6 +14,22 @@ export function modelEndpoint(selection: RunModel["tierModels"][Tier]): string {
     : selection.provider === "google" ? "https://generativelanguage.googleapis.com" : "https://api.anthropic.com"
   if (selection.baseUrl && !["openai", "openrouter"].includes(selection.provider) && selection.baseUrl.replace(/\/+$/, "") !== defaultUrl) throw new Error("This provider does not support a custom endpoint")
   return selection.baseUrl ?? defaultUrl
+}
+
+/** Exact catalog identity only. The date is the catalog's provenance, not a live
+ * pricing verification. Never apply a canonical quote to a proxy or alias. */
+export function captureCatalogPrice(selection: RunModel["tierModels"][Tier]): ScopedPrice | undefined {
+  const providerModels: Record<string, string[]> = {
+    anthropic: ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"],
+    openai: ["gpt-5.6-sol", "gpt-5.4-mini"], google: ["gemini-3.1-pro-preview", "gemini-3.5-flash"],
+  }
+  const canonical = modelEndpoint({ provider: selection.provider, model: selection.model })
+  if (modelEndpoint(selection).replace(/\/+$/, "") !== canonical || !providerModels[selection.provider]?.includes(selection.model)) return undefined
+  const rates = PRICES[selection.model]
+  if (!rates) return undefined
+  return { provider: selection.provider, model: selection.model, baseUrl: canonical,
+    rates: { inputPerMillion: rates.inPerM, outputPerMillion: rates.outPerM },
+    provenance: "SciSpark pricing catalog; catalog verification dated 2026-07-12", recordedAt: "2026-07-12T00:00:00.000Z" }
 }
 
 /** Capture only explicit settings, never package instructions or credentials. */
@@ -32,6 +50,10 @@ export async function resolveRunModel(ctx: WorkflowContext, binding: ToolRef): P
   const model = RunModelSchema.parse({ engine: engine.kind, tierModels: { fast: select("fast"), strong: select("strong") },
     roleTiers: { root: "strong", helper: "fast", ...override?.roleTiers }, timeoutSeconds: engine.timeoutSeconds })
   Object.values(model.tierModels).forEach(modelEndpoint)
+  if (model.engine === "api") {
+    const fast = captureCatalogPrice(model.tierModels.fast), strong = captureCatalogPrice(model.tierModels.strong)
+    model.scopedPrices = { ...(fast ? { fast } : {}), ...(strong ? { strong } : {}) }
+  }
   return model
 }
 
