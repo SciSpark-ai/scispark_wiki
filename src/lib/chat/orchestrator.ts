@@ -1,3 +1,10 @@
+import type { WorkflowContext } from "../workflows/context"
+import { currentRunAttemptScope } from "../workflows/attempt-scope"
+import { resolveToolIntent, intentOperationId, deriveWriteIntent, toolRunInput } from "../extensions/intent"
+import { ToolRefSchema, type ToolRef } from "../extensions/contracts"
+import { startRun } from "../workflows/coordinator"
+import { listToolLibrary } from "../extensions/library"
+import { exactRef } from "../extensions/dependencies"
 import type { VaultStorage } from "../vault/storage"
 import type { LLMProvider, Tier } from "../llm/types"
 import type { LLMSettings } from "../llm/settings"
@@ -63,6 +70,7 @@ export interface AskChatInput {
   sources?: SourceId[]
   operationId?: string
   selection?: ChatSelection
+  explicitTool?: ToolRef
 }
 
 export interface AskChatResult {
@@ -73,6 +81,8 @@ export interface AskChatResult {
 }
 
 export interface AskChatOpts {
+  /** Authenticated host context; never parsed from browser JSON. */
+  workflowContext?: WorkflowContext
   input: AskChatInput
   settings?: LLMSettings
   providerOverride?: Partial<Record<Tier, LLMProvider>>
@@ -92,7 +102,7 @@ export function parseAskChatInput(value: unknown): AskChatInput {
     throw new Error("chat input must be an object")
   }
   const record = value as Record<string, unknown>
-  const allowed = new Set(["sessionId", "question", "readSourcesOnly", "projectId", "paperSlug", "mode", "sources", "operationId", "selection"])
+  const allowed = new Set(["sessionId", "question", "readSourcesOnly", "projectId", "paperSlug", "mode", "sources", "operationId", "selection", "explicitTool"])
   if (Object.keys(record).some((key) => !allowed.has(key))) {
     throw new Error("chat input contains unsupported fields")
   }
@@ -122,9 +132,11 @@ export function parseAskChatInput(value: unknown): AskChatInput {
   ) {
     throw new Error("projectId must be a non-empty string")
   }
+  if (record.explicitTool !== undefined && (record.readSourcesOnly === true || record.selection !== undefined)) throw new Error("Choose a tool or a saved-paper discussion scope")
   const selection = record.selection === undefined ? undefined : ChatSelectionSchema.parse(record.selection)
   if (selection && record.mode === "search") throw new Error("Selected passages require paper chat")
   return {
+    ...(record.explicitTool !== undefined ? { explicitTool: ToolRefSchema.parse(record.explicitTool) } : {}),
     ...(selection ? { selection } : {}),
     sessionId: record.sessionId,
     question: record.question,
@@ -168,6 +180,8 @@ export function parseAskChatInput(value: unknown): AskChatInput {
  */
 export async function askChat(storage: VaultStorage, opts: AskChatOpts): Promise<AskChatResult> {
   const input = parseAskChatInput(opts.input)
+  if (input.sessionId === null && input.operationId) input.sessionId = `chat_${intentOperationId("new", input.operationId)}`
+  if (input.explicitTool && !opts.workflowContext && !currentRunAttemptScope()) throw new Error("Open a local profile to use tools")
   const validatedOpts: AskChatOpts = { ...opts, input }
   // A client normally disables its own composer while a turn is running, but
   // the same vault/session can still be open in two tabs. Serialize the whole
@@ -217,15 +231,22 @@ async function askChatTurn(storage: VaultStorage, opts: AskChatOpts): Promise<As
   const now = opts.now ?? (() => new Date())
   const { input } = opts
   const { session, project } = await loadOrCreateSession(storage, input, now)
+  const nativeScope = currentRunAttemptScope()
+  const internalToolResult = !!nativeScope && session.messages.some(m => m.blocks?.some(b => b.type === "tool-run" && b.runId === nativeScope.runId))
   if (input.selection && !session.paperContext) throw new ChatScopeError("Select a passage from a paper to ask about it")
-  const requestSignature = JSON.stringify({ ...(input.selection ? { selection: input.selection } : {}), mode: input.mode ?? "chat", readSourcesOnly: input.readSourcesOnly, sources: input.sources ? [...new Set(input.sources)].sort() : null })
+  const requestSignature = JSON.stringify({ ...(input.selection ? { selection: input.selection } : {}), ...(input.explicitTool ? { explicitTool: input.explicitTool } : {}), mode: input.mode ?? "chat", readSourcesOnly: input.readSourcesOnly, sources: input.sources ? [...new Set(input.sources)].sort() : null })
   if (input.operationId && session.messages.some((m) => m.operationId === input.operationId)) {
     const question = session.messages.find((m) => m.operationId === input.operationId && m.role === "user")
-    if (question?.content !== input.question) throw new Error("This operation already belongs to a different question")
-    if (question.requestSignature && question.requestSignature !== requestSignature) throw new Error("This operation already belongs to different search options")
+    if (question?.content !== input.question && !(internalToolResult && !question)) throw new Error("This operation already belongs to a different question")
+    if (question?.requestSignature && question.requestSignature !== requestSignature) throw new Error("This operation already belongs to different search options")
     const previous = session.messages.find((m) => m.operationId === input.operationId && m.role === "assistant")
-    if (!previous) throw new Error("This turn was interrupted. Your question is in History; send a new message to retry.")
-    return { sessionId: session.id, message: previous, paperSource: sourceInfo(session) }
+    if (previous) return { sessionId: session.id, message: previous, paperSource: sourceInfo(session) }
+    if (!opts.workflowContext || currentRunAttemptScope()) throw new Error("This turn was interrupted. Your question is in History; send a new message to retry.")
+    const resumed = await routeToolQuestion(opts, session)
+    if (!resumed) throw new Error("This turn was interrupted. Your question is in History; send a new message to retry.")
+    resumed.operationId = input.operationId
+    session.messages.push(resumed); await saveSession(storage, session)
+    return { sessionId: session.id, message: resumed, paperSource: sourceInfo(session) }
   }
 
   // The history the skills see: prior turns only (the current question travels
@@ -243,16 +264,17 @@ async function askChatTurn(storage: VaultStorage, opts: AskChatOpts): Promise<As
     .slice(-MAX_HISTORY_TURNS)
     .map((m) => ({ role: m.role, content: m.selection ? `Selected passage: ${m.selection.text}\n${m.content}` : m.content }))
 
-  session.messages.push({ role: "user", content: input.question, ...(input.selection ? { selection: input.selection } : {}), ...(input.operationId ? { operationId: input.operationId, requestSignature } : {}) })
+  if (!internalToolResult) session.messages.push({ role: "user", content: input.question, ...(input.selection ? { selection: input.selection } : {}), ...(input.operationId ? { operationId: input.operationId, requestSignature } : {}) })
   session.updatedAt = now().toISOString()
   // Persisted BEFORE any LLM call: everything below can fail, and when it does
   // the user must still find their question in the transcript.
   await saveSession(storage, session)
   opts.onSession?.(session.id)
 
-  const message = input.mode === "search"
+  const routed = await routeToolQuestion(opts, session)
+  const message = routed ?? (input.mode === "search"
     ? await searchQuestion(storage, opts, session, project)
-    : await answerQuestion(storage, opts, history, project, session)
+    : await answerQuestion(storage, opts, history, project, session))
   if (input.operationId) message.operationId = input.operationId
 
   session.messages.push(message)
@@ -261,6 +283,32 @@ async function askChatTurn(storage: VaultStorage, opts: AskChatOpts): Promise<As
 
   if (input.selection && session.paperContext) await logEvent(storage, { type: "reading_ask", paperKey: paperKey(session.paperContext.paper) })
   return { sessionId: session.id, message, paperSource: sourceInfo(session) }
+}
+
+async function routeToolQuestion(opts: AskChatOpts, session: ChatSession): Promise<ChatMessage | null> {
+  const ctx = opts.workflowContext, input = opts.input
+  // Internal native Find Papers inherits the actual host scope. No client flag
+  // can suppress routing or obtain this authorization.
+  if (!ctx || currentRunAttemptScope() || input.selection || input.readSourcesOnly) return null
+  const previousRun = session.messages.slice(0, -1).toReversed().flatMap(m => m.blocks ?? []).find(b => b.type === "tool-run")
+  const followup = /^(?:continue|resume|retry|keep going|carry on)\b/i.test(input.question)
+  const operationId = input.operationId ?? `turn_${session.messages.length}`
+  const intentInput = { question: input.question, operationId, sessionId: session.id, contextRefs: session.paperContext ? [`wiki/papers/${session.paperContext.slug}`] : session.projectId ? [`project:${session.projectId}`] : [],
+    ...(input.explicitTool ? { explicitTool: input.explicitTool } : {}), ...(input.sources ? { sources: input.sources } : {}),
+    ...(followup && previousRun?.type === "tool-run" ? { existingRunId: previousRun.runId } : {}),
+    conversation: session.messages.slice(0, -1).slice(-6).map(m => `${m.role}: ${m.content}`).join("\n").slice(0,16000),
+    ...(session.paperContext ? { paperContext: session.paperContext.paper.title } : {}),
+  }
+  const resolution = await resolveToolIntent(ctx, intentInput)
+  if (resolution.kind === "chat") return null
+  if (resolution.kind === "clarify") return { role: "assistant", content: resolution.question }
+  if (resolution.kind === "add-tool") return { role: "assistant", content: resolution.message }
+  if (resolution.kind === "choose") return { role: "assistant", content: resolution.choice.prompt, blocks: [{ type: "tool-choice", choice: resolution.choice }] }
+  if (resolution.existingRunId) return { role: "assistant", content: "Your existing run is retained. Open it to continue its saved work.", blocks: [{ type: "tool-run", runId: resolution.existingRunId, tool: resolution.tool }] }
+  const available = (await listToolLibrary(ctx)).tools.some(t => t.enabled && t.readiness.status === "ready" && exactRef(t.ref) === exactRef(resolution.tool))
+  if (!available) return { role: "assistant", content: "This tool changed. Open Tools to enable its current version or finish setup." }
+  const run = await startRun(ctx, { operationId: intentOperationId(session.id, operationId), tool: resolution.tool, input: toolRunInput(intentInput, resolution.tool), sessionId: session.id, contextRefs: intentInput.contextRefs, writeIntent: deriveWriteIntent(input.question) })
+  return { role: "assistant", content: "Your research run is saved.", blocks: [{ type: "tool-run", runId: run.id, tool: run.tool }] }
 }
 
 function sourceInfo(session: ChatSession): PaperTextInfo | undefined {

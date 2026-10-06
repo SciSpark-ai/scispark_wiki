@@ -1,3 +1,4 @@
+import { ChatSessionIdSchema } from "../extensions/contracts"
 import { z } from "zod"
 import { ScopedPriceSchema } from "../llm/scoped-pricing"
 import { isSafeVaultRelativePath } from "../vault/safe-path"
@@ -21,13 +22,13 @@ export type WorkflowLease = z.infer<typeof WorkflowLeaseSchema>
 export const WorkflowJournalSchema = z.object({
   schemaVersion: z.literal(1), runId: UuidSchema, profileId: ProfileIdSchema, vaultId: DigestSchema,
   status: RunStatusSchema, lease: WorkflowLeaseSchema.nullable(), cancelRequested: UuidSchema.optional(),
-  actions: z.array(z.object({ operationId: UuidSchema, type: z.enum(["cancel", "resume"]) }).strict()),
+  actions: z.array(z.object({ operationId: UuidSchema, type: z.enum(["cancel", "resume", "choose-helper"]) }).strict()),
 }).strict()
 export type WorkflowJournal = z.infer<typeof WorkflowJournalSchema>
 const WriteIntentSchema = z.enum(["outputs_only", "update_wiki"])
 export const StartRunInputSchema = z.object({
   operationId: UuidSchema, tool: ToolRefSchema, input: z.record(z.string(), z.unknown()),
-  sessionId: UuidSchema.optional(), contextRefs: z.array(z.string().min(1)),
+  sessionId: ChatSessionIdSchema.optional(), contextRefs: z.array(z.string().min(1)),
   allowance: RunAllowanceSchema.partial().optional(), writeIntent: WriteIntentSchema,
 }).strict()
 export type StartRunInput = z.infer<typeof StartRunInputSchema>
@@ -73,7 +74,7 @@ export type ConnectionConfigurationRef = z.infer<typeof ConnectionConfigurationR
 export const ToolRunSchema = z.object({
   schemaVersion: z.literal(1), id: UuidSchema, profileId: ProfileIdSchema, vaultId: DigestSchema,
   operationId: UuidSchema, tool: ToolRefSchema, dependencies: z.array(ToolRefSchema),
-  input: z.record(z.string(), z.unknown()), sessionId: UuidSchema.optional(), contextRefs: z.array(z.string().min(1)),
+  input: z.record(z.string(), z.unknown()), sessionId: ChatSessionIdSchema.optional(), contextRefs: z.array(z.string().min(1)),
   model: RunModelSchema, preparedEnvironmentRefs: z.array(PreparedEnvironmentRefSchema),
   connectionConfigurationRefs: z.array(ConnectionConfigurationRefSchema),
   writeIntent: WriteIntentSchema, allowance: RunAllowanceSchema, usage: RunAllowanceSchema,

@@ -342,3 +342,12 @@ export async function waitForWorkflowIdle(): Promise<void> {
     await Promise.all([...runtime.workers.values()].map(worker => worker.done).concat([...runtime.background]))
   }
 }
+
+/** R39 handoff: Task17 owns the public action/UI, this service retains the root. */
+export async function chooseHelper(ctx: WorkflowContext, runId: string, choiceId: string, tool: import("../extensions/contracts").ToolRef, operationId: string): Promise<ToolRun> {
+  const { commitHelperChoice } = await import("./journal")
+  const run = await withVaultExclusive(ctx.storage, "workflow-coordinator", () => commitHelperChoice(ctx, runId, choiceId, tool, operationId))
+  runtime.stopped = false
+  schedule(ctx)
+  return run
+}

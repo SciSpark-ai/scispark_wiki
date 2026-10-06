@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { ToolChoiceSchema, ToolRefSchema, UuidSchema } from "../extensions/contracts"
 import { slugifyTitle } from "../wiki/authoring"
 import { PaperTextSchema } from "../papers/text-contract"
 
@@ -47,6 +48,8 @@ export const SearchResultSchema = z.object({
   costUsd: z.number().nullable(), warnings: z.array(z.string()),
 })
 export const ChatBlockSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("tool-choice"), choice: ToolChoiceSchema }).strict(),
+  z.object({ type: z.literal("tool-run"), runId: UuidSchema, tool: ToolRefSchema }).strict(),
   z.object({ type: z.literal("review-citations"), runId: z.string().regex(/^[A-Za-z0-9_-]{1,100}$/), versionId: z.string().regex(/^[A-Za-z0-9_-]{1,100}$/), sourceIds: z.array(z.string().regex(/^P\d+$/)) }),
   z.object({ type: z.literal("review"), runId: z.string().regex(/^[A-Za-z0-9_-]{1,100}$/) }),
   z.object({ type: z.literal("paper-results"), retrievedAt: z.string().datetime(), result: SearchResultSchema }),

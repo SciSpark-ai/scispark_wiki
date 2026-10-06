@@ -1299,3 +1299,111 @@ existing setup tests cover explicit discard accounting. Real installation,
 platform isolation/broker acceptance, provider/source access, and human agent
 scan remain unrun Task19 gates. Detailed contract/caller/lock notes are appended in
 `task-15-report.md`. No subagents, human state, push, merge or PR.
+
+## Task16 — intent routing and overlapping-tool chooser (2026-10-05)
+
+Implemented strict operation-keyed chat/tool intent, deterministic explicit ref/
+current-name selection, bounded semantic classification and persisted top-level
+choices. One ready match starts centrally; overlapping matches present equal
+name/source/distinction choices. Server selection uses one durable winner and
+idempotent root operation, rejects concurrent alternatives and refreshes stale
+candidates. Request/choice/run blocks survive History. R37 links select only;
+malformed, stale and disabled refs block send. Enabled profile capabilities replace
+fixed optional controls while retaining core discussion and legacy mode parsing.
+
+R5 classification captures an immutable global chat model and complete bounded
+candidate snapshot, uses one raw structured singleAttempt (512 tokens,60seconds,
+32,000-character payload/100 candidates), and persists private reservation,
+dispatch and known/unknown outcome. Existing daily/API/local-engine controls and
+Meter are retained; durable Meter response-loss settlement prevents duplicate
+financial holds. No root charge, repair attempt, silent candidate truncation or
+reload redispatch. Private records inherit generic-vault/source denial.
+
+R39 advances only chooseHelper into coordinator/journal/host continuation ownership.
+Stopped-owner, cancellation, opaque-uncertainty, parent frame/slot/captured graph
+and operation checks precede one durable winner. Receipt/continuation/queue crash
+repair resumes the same root/model/allowance/counters. Task17 consumes the service
+for its public action and shared run UI. R40 shares a bounded path-safe chat-session
+reference schema across start/run DTOs; actual chat_<...> IDs now roundtrip, while
+traversal, empty and oversize refs are rejected. Native Find Papers' actual
+adapter-to-chat path retains one root, native-only accounting and one user turn.
+
+TDD: missing-module RED; focused172/172. Actual HTTP/native integration exposed
+and corrected UUID-only chat references. Combined focused343/343 across15files.
+Additional RED/GREEN cover malformed JSON metering, Meter committed-write response
+loss (41/41 relevant tests), native duplicate transcript turns (155/155), and
+chooser reload operation stability (46/46). Actual coordinator chooseHelper/host
+completion suite23/23 demonstrates one root with3 cumulative model calls.
+Logs are retained in ignored
+.superpowers/sdd/2026-10-05-modular-workspace/verification/task-16/.
+
+Initial build compiled but failed an optional-question TypeScript guard; the
+corrected guard and legacy request-signature compatibility passed162/162 focused.
+All isolated build configurations were restored from fresh exact byte snapshots.
+Final build-ui-final passed14.38s, using .next-modular-task-16, disposable vault/
+profile roots and scheduler off. Human .next and servers were preserved.
+Production disposable browser gate5/5 in39.5s: chat Markdown, desktop/mobile and
+light/dark drafts/options, paper context/History, selected-passage navigation/
+reload recovery, and malformed/stale/disabled R37 links with zero navigation
+execution. Final control-style/reload correction received a narrow2/2 production
+browser repeat in7.1s. Phone screenshot inspected; semantic selected-state styling
+and wrapping preserved. These are deterministic fixture checks, not live source,
+provider, imported-command or user-installed-tool acceptance (Task19-owned).
+Task17 still owns /tools/runs/[id], shared run results, public helper action and
+remaining continuation controls. No human-vault/profile/key/home scan, live call,
+sandbox bypass, push, merge or PR occurred. Final offline master results follow.
+
+
+The first master gate passed TypeScript (4.44s) and lint (18.26s, existing
+ConnectAiCard applyPreset warning/generated-card Babel note), then exposed eight
+page regression failures (3,139 passed/21 skipped). Original logs and results are
+retained under master-initial/. The Tools fetch consumed the source-preference
+Response in old fixtures, a partial search-params mock lacked has(), and legacy
+search mode lacked its selected control state. Dedicated Tools fixtures, matching
+has()/get() mocks and legacy selected-state mapping corrected these issues without
+weakening source-narrowing or last-session assertions. page-fixtures-green.log:
+64/64 across chat-page, papers-page and chat-components. This source correction
+required build-compatibility-final/result.json: exit0/14.54s, exact configuration
+restoration; the final browser repeat is browser-compatibility-final.log.
+The corrected master gate follows; earlier statements that the master gate had
+not run describe the pre-gate checkpoint, not final acceptance.
+
+
+Authoritative corrected final master: verify-task.py task-16 exited0. TypeScript
+passed3.64s; lint passed18.35s with the one existing ConnectAiCard applyPreset
+warning and generated-card Babel size note. Vitest:3,147 passed/21 skipped across
+299 passed/8 skipped files (307 total),37.08s suite/38.32s wrapper. Final production
+browser-compatibility-final.log:2/2 in7.2s. The complete five-test paper-context/
+selection/chat gate remains browser.log; no further source changes followed these
+gates. git diff --check passed. Final evidence is results.json, tsc.log, lint.log,
+vitest.log, build-compatibility-final/result.json and browser-compatibility-final.log.
+
+
+### Task16 review fix round 1
+
+Four review defects received RED/GREEN coverage: qualified/negated save authority,
+explicit native source narrowing/empty-subset guards, invalid-link replacement
+through tool/core choices across library refresh, and empty-profile contextual
+discussion. RED10failed/21passed; corrected31/31, then expanded34/34. Relevant
+five-suite pass111/111 precedes the final added URL-change regression. Dedicated
+R39 host suite25/25 covers pending cancellation after lease release and a fault
+after durable queue publication; repair retains one root/model/allowance and
+completed replay keeps three total model calls with unchanged usage/host state.
+Empty/pending link validation is covered with the same selection fix.
+Existing session parsing consumes ChatBlockSchema; MessageList renders through
+MessageBubble. These actual integration boundaries replace no-op listed-file
+edits. Task17 shared UI/actions and Task19 real execution remain downstream.
+Evidence: verification/task-16/fix1-{red,green,focused,final-focused,helper}.log.
+All earlier gate evidence retained, including master-before-fix1. Final isolated
+build-fix1-final passed17.51s and restored exact configs. Final gates follow.
+
+
+Final fix-round acceptance: verify-task.py task-16 exited0. TypeScript10.16s;
+lint19.31s with only baseline warning/size note; Vitest3,165passed/21skipped,
+299passed/8skipped files,36.92s suite/38.14s wrapper. browser-fix1-final.log:
+5/5 in40.5s on build-fix1-final, including narrowed native subset/empty guard,
+empty/malformed/stale/disabled links, replacement with valid tool/core plus library
+refresh, and existing paper context/History/selection/navigation/reload/Markdown.
+Exactly one final build, master and full browser gate ran for this fix round.
+No source changes followed those gates; git diff --check passed. No live provider,
+source, human-state, sandbox bypass, push, merge or PR occurred.

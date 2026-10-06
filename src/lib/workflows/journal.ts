@@ -255,3 +255,54 @@ export async function acknowledgeRunCancellation(ctx: WorkflowContext, id: strin
     await persist(ctx, run, journal)
   })
 }
+
+/** R39: called under coordinator exclusion; this journal owns the one winner
+ * and stopped-owner fence. No opaque step is cleared or replay-authorized. */
+export async function commitHelperChoice(ctx: WorkflowContext, id: string, choiceId: string, tool: import("../extensions/contracts").ToolRef, operationId: string): Promise<ToolRun> {
+  const { ToolRefSchema } = await import("../extensions/contracts")
+  const { HostContinuationSchema, prepareHostHelperChoice, readHostContinuation, writeHostContinuation } = await import("./host-tools")
+  const selection = z.object({ choiceId: UuidSchema, tool: ToolRefSchema, operationId: UuidSchema }).strict().parse({ choiceId, tool, operationId })
+  const Receipt = z.object({ selection: z.object({ choiceId: UuidSchema, tool: ToolRefSchema, operationId: UuidSchema }).strict(), next: HostContinuationSchema, complete: z.boolean() }).strict()
+  return withVaultExclusive(ctx.storage, `workflow-${UuidSchema.parse(id)}`, async () => {
+    const { run, journal } = await state(ctx, id)
+    const path = `${root(id)}/helper-choices/${choiceId}.json`, raw = await ctx.storage.read(path)
+    let receipt = raw ? Receipt.parse(JSON.parse(raw)) : null
+    if (receipt && canonicalJson(receipt.selection) !== canonicalJson(selection)) throw new Error("Supporting choice operation conflict")
+    if (receipt?.complete) return persist(ctx, run, journal)
+    // The journal action proves queue publication even if the final receipt
+    // response was lost and the worker has since progressed or completed.
+    if (receipt && journal.actions.some(a => a.operationId === operationId && a.type === "choose-helper")) {
+      receipt.complete = true; await ctx.storage.write(path, JSON.stringify(receipt))
+      return persist(ctx, run, journal)
+    }
+    if (journal.cancelRequested || leaseOwnerAlive(journal.lease)) throw new Error("Workflow owner is still stopping")
+    if (await hasUncertainWork(ctx, id)) throw new Error("Reconcile uncertain work before choosing a helper")
+    const priorAction = journal.actions.find(a => a.operationId === operationId)
+    if (priorAction && (!receipt || priorAction.type !== "choose-helper")) throw new Error("Workflow action operation conflict")
+    const usageRaw = await ctx.storage.read(`${root(id)}/usage.json`)
+    if (usageRaw && UsageJournalSchema.parse(JSON.parse(usageRaw)).extensions.some(e => e.operationId === operationId)) throw new Error("Workflow allowance operation conflict")
+    if (!receipt) {
+      if (journal.status !== "waiting_for_choice") throw new Error("Workflow is not waiting for this choice")
+      const next = await prepareHostHelperChoice(ctx, run, choiceId, tool)
+      const { validateCapturedPreparation } = await import("../extensions/setup")
+      await validateCapturedPreparation(ctx, run)
+      receipt = { selection, next, complete: false }
+      await ctx.storage.write(path, JSON.stringify(receipt))
+    }
+    const current = await readHostContinuation(ctx, id)
+    if (journal.status === "queued" && canonicalJson(current) === canonicalJson(receipt.next)) {
+      receipt.complete = true; await ctx.storage.write(path, JSON.stringify(receipt))
+      return persist(ctx, run, journal)
+    }
+    if (journal.status !== "waiting_for_choice") throw new Error("Supporting choice publication requires its stopped parent")
+    // Revalidate after a failed receipt/continuation write, before any mutation.
+    const next = await prepareHostHelperChoice(ctx, run, choiceId, tool)
+    if (canonicalJson(next) !== canonicalJson(receipt.next)) throw new Error("Supporting choice parent changed")
+    await writeHostContinuation(ctx, receipt.next)
+    journal.actions.push({ operationId, type: "choose-helper" })
+    journal.status = "queued"
+    const result = await persist(ctx, run, journal)
+    receipt.complete = true; await ctx.storage.write(path, JSON.stringify(receipt))
+    return result
+  })
+}

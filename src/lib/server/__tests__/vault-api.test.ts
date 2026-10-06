@@ -98,6 +98,7 @@ describe("vault API", () => {
   })
 
   it.each([
+    ".scispark/tools/choices/11111111-1111-4111-8111-111111111111.json", ".scispark/tools/classifications/11111111-1111-4111-8111-111111111111111.json",
     ".scispark/usage/native-attempts.json", ".SCISPARK/usage/NATIVE-attempts.json/",
     "x/../.scispark/usage/native-attempts.json",
     ".scispark/tool-runs/44444444-4444-4444-8444-444444444444/native-reconciliations/receipt.json",

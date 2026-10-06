@@ -9,12 +9,18 @@ import type { ChatSession } from "@/lib/chat/session"
 
 const mocks = vi.hoisted(() => ({
   router: { push: vi.fn(), replace: vi.fn() },
-  params: { get: vi.fn<(key: string) => string | null>(() => null) },
+  params: { get: vi.fn<(key: string) => string | null>(() => null), has: vi.fn<(key: string) => boolean>() },
   ask: vi.fn(), vault: vi.fn(), list: vi.fn(), load: vi.fn(),
-  resolve: vi.fn(), handoff: vi.fn(),
+  resolve: vi.fn(), handoff: vi.fn(), tools: vi.fn(),
 }))
 vi.mock("next/navigation", () => ({ useRouter: () => mocks.router, useSearchParams: () => mocks.params }))
 vi.mock("@/lib/chat/client", () => ({ askChatRemote: mocks.ask }))
+// Tools observation has its own fixture so source preferences retain their
+// original response and narrowing assertions.
+vi.mock("@/lib/extensions/client", async original => ({
+  ...await original<object>(),
+  listToolsRemote: mocks.tools,
+}))
 vi.mock("@/lib/vault/get-vault", () => ({ getOpenVault: mocks.vault }))
 vi.mock("@/lib/chat/session", () => ({ listSessions: mocks.list, loadSession: mocks.load }))
 vi.mock("@/lib/vault/bundle", () => ({ loadBundle: async () => ({ pages: new Map(), links: [], errors: [] }) }))
@@ -49,7 +55,7 @@ async function mount(element: React.ReactElement = <PapersPage />) {
   await act(async () => root.render(element))
   const cleanup = () => { act(() => root.unmount()); host.remove() }
   disposals.push(cleanup)
-  return { host, cleanup }
+  return { host, cleanup, rerender: async (element: React.ReactElement) => { await act(async () => root.render(element)) } }
 }
 function enter(textarea: HTMLTextAreaElement, value: string) {
   act(() => {
@@ -64,6 +70,8 @@ describe("Search in the unified conversation workspace", () => {
   beforeEach(() => {
     vi.clearAllMocks(); sessionStorage.clear()
     mocks.params.get.mockReturnValue(null)
+    mocks.params.has.mockImplementation(key => mocks.params.get(key) !== null)
+    mocks.tools.mockResolvedValue({tools:[{name:"Find papers",skillId:"find-papers"},{name:"Deep literature review",skillId:"deep-review"}].map(({name,skillId})=>({name,ref:{packageId:"scispark.builtin",skillId,version:"1",digest:"a".repeat(64)},enabled:true,readiness:{status:"ready"}}))})
     mocks.vault.mockResolvedValue({})
     mocks.list.mockResolvedValue([])
     mocks.load.mockResolvedValue(SESSION)
@@ -75,6 +83,54 @@ describe("Search in the unified conversation workspace", () => {
   afterEach(() => {
     disposals.splice(0).forEach((dispose) => dispose())
     useUIStore.getState().closeSettingsModal(); vi.unstubAllGlobals()
+  })
+  it.each([["Find papers","find-papers"],["Deep literature review","deep-review"]])("preserves narrowed sources and guards an empty subset for explicit %s", async (name,skillId) => {
+    sessionStorage.setItem("scispark:chat-draft:new:options", JSON.stringify({mode:"search",readSourcesOnly:false,sources:["openalex"]}))
+    const {host}=await mount()
+    act(()=>button(host,name).click())
+    expect(host.querySelector("summary")?.textContent).toBe("Search scope")
+    const selected=host.querySelector<HTMLInputElement>('input[type="checkbox"]:checked')!
+    expect(selected?.parentElement?.textContent).toBe("OpenAlex")
+    enter(host.querySelector("textarea")!,"Find language papers")
+    act(()=>selected.click())
+    await act(async()=>button(host,"Send").click())
+    expect(mocks.ask).not.toHaveBeenCalled()
+    act(()=>selected.click())
+    await act(async()=>button(host,"Send").click())
+    expect(mocks.ask).toHaveBeenCalledTimes(1)
+    expect(mocks.ask.mock.calls[0][0]).toMatchObject({mode:"chat",explicitTool:{skillId},sources:["openalex"]})
+  })
+  it.each(["Find papers","Discuss research"])("replaces invalid link selection with %s and does not revive it on refresh",async option=>{
+    const {host}=await mount(<ChatWorkspace initialTool="not-json" />)
+    expect(host.textContent).toContain("tool link is unavailable")
+    act(()=>button(host,option).click())
+    await act(async()=>window.dispatchEvent(new Event("scispark-tools-changed")))
+    expect(host.textContent).not.toContain("tool link is unavailable")
+    enter(host.querySelector("textarea")!,"Discuss language methods")
+    await act(async()=>button(host,"Send").click())
+    expect(mocks.ask).toHaveBeenCalledTimes(1)
+    expect(mocks.ask.mock.calls[0][0].explicitTool?.skillId).toBe(option==="Find papers"?"find-papers":undefined)
+  })
+  it("blocks an empty tool link and submission while exact-ref validation is pending",async()=>{
+    let release!:(value:unknown)=>void
+    const ready=mocks.tools.getMockImplementation()!()
+    mocks.tools.mockReturnValueOnce(new Promise(resolve=>{release=resolve}))
+    const {host}=await mount(<ChatWorkspace initialTool="" />)
+    enter(host.querySelector("textarea")!,"A research request")
+    await act(async()=>button(host,"Send").click())
+    expect(mocks.ask).not.toHaveBeenCalled()
+    await act(async()=>release(await ready))
+    expect(host.textContent).toContain("tool link is unavailable")
+    await act(async()=>button(host,"Send").click())
+    expect(mocks.ask).not.toHaveBeenCalled()
+  })
+  it("validates a new URL choice after replacing an earlier invalid link", async()=>{
+    const {host,rerender}=await mount(<ChatWorkspace initialTool="not-json" />)
+    act(()=>button(host,"Discuss research").click())
+    const ref={packageId:"scispark.builtin",skillId:"find-papers",version:"1",digest:"a".repeat(64)}
+    await rerender(<ChatWorkspace initialTool={JSON.stringify(ref)} />)
+    expect(button(host,"Find papers").getAttribute("aria-pressed")).toBe("true")
+    expect(mocks.ask).not.toHaveBeenCalled()
   })
   it("opens a natural-language composer with optional source refinements", async () => {
     const { host } = await mount()

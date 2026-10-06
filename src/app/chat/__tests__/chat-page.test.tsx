@@ -24,6 +24,12 @@ let paramsValue: { id?: string } = {}
 vi.mock("@/lib/skills/job-client", () => ({
   observeSkillJob: (...args: unknown[]) => observeSkillJobMock(...args),
 }))
+// Tools observation has its own fixture so source preferences retain their
+// original response and narrowing assertions.
+vi.mock("@/lib/extensions/client", async original => ({
+  ...await original<object>(),
+  listToolsRemote: async () => ({ tools: [{ ref: { packageId: "scispark.builtin", skillId: "find-papers", version: "1", digest: "a".repeat(64) }, name: "Find papers", enabled: true, readiness: { status: "ready" } }] }),
+}))
 vi.mock("@/lib/vault/get-vault", () => ({
   getOpenVault: (...args: unknown[]) => getOpenVaultMock(...args),
 }))

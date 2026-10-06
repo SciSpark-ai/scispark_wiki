@@ -182,3 +182,20 @@ export async function dispatchHostAction(ctx: WorkflowContext, runId: string, ac
 }
 // Keep the imported schema dependency explicit for callers inspecting snapshots.
 export type InstructionTool = z.infer<typeof ImportToolSchema>
+
+/** Prepare a human choice against the immutable parent frame/declared slot.
+ * The journal owns exclusion, the winner receipt and queue publication. */
+export async function prepareHostHelperChoice(ctx: WorkflowContext, run: import("./contracts").ToolRun, choiceId: string, tool: ToolRef): Promise<HostContinuation> {
+  const state = await readHostContinuation(ctx, run.id), choice = state?.waitingChoice
+  if (!state || state.completed || !choice || choice.id !== choiceId) throw new Error("Supporting choice is stale")
+  const frame = state.frames.at(-1)
+  if (!frame || frame.id !== choice.parentFrameId || frame.decision?.type !== "invoke_skill" || frame.decision.slotId !== choice.slotId || choice.id !== hostStepId(frame, "action")) throw new Error("Supporting choice parent changed")
+  const parent = await readInstructionTool(ctx, frame.tool)
+  const slot = parent.tool.proposal.dependencySlots.find(s => s.id === choice.slotId)
+  if (!slot || canonicalJson(slot.eligible) !== canonicalJson(choice.candidates) || !choice.candidates.some(t => exactRef(t) === exactRef(tool)) || !run.dependencies.some(t => exactRef(t) === exactRef(tool))) throw new Error("Helper is outside the captured declared slot")
+  if (choice.selected && exactRef(choice.selected) !== exactRef(tool)) throw new Error("Supporting choice already selected")
+  const selected = await resolveHostManifest(ctx, tool)
+  if (selected.engines.length && !selected.engines.includes(run.model.engine)) throw new Error("Captured engine unavailable")
+  choice.selected = tool
+  return state
+}

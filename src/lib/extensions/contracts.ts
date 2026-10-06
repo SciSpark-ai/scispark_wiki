@@ -75,3 +75,26 @@ export const ProfileToolsSchema = z.object({
   }
 })
 export type ProfileTools = z.infer<typeof ProfileToolsSchema>
+
+export const ChatSessionIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,100}$/)
+export const ChatOperationIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,100}$/)
+export const ToolIntentInputSchema = z.object({
+  question: z.string().trim().min(1).max(20000), operationId: ChatOperationIdSchema,
+  sessionId: ChatSessionIdSchema, explicitTool: ToolRefSchema.optional(), existingRunId: UuidSchema.optional(),
+  conversation: z.string().max(16000).optional(), paperContext: z.string().max(16000).optional(),
+  contextRefs: z.array(z.string().max(2048)).max(1000).default([]),
+  sources: z.array(z.enum(["arxiv", "openalex", "s2", "pubmed"])).max(4).optional(),
+}).strict()
+export type ToolIntentInput = z.infer<typeof ToolIntentInputSchema>
+export const ToolChoiceCandidateSchema = z.object({ tool: ToolRefSchema, name: z.string().min(1).max(1000), source: z.string().max(1000), distinction: z.string().max(1000) }).strict()
+export const ToolChoiceSchema = z.object({ id: UuidSchema, prompt: z.string().max(1000), candidates: z.array(ToolChoiceCandidateSchema).max(100), runId: UuidSchema.optional() }).strict()
+export type ToolChoice = z.infer<typeof ToolChoiceSchema>
+export const ToolIntentResolutionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("chat") }).strict(),
+  z.object({ kind: z.literal("clarify"), question: z.string().max(1000) }).strict(),
+  z.object({ kind: z.literal("add-tool"), message: z.string().max(1000) }).strict(),
+  z.object({ kind: z.literal("run"), tool: ToolRefSchema, existingRunId: UuidSchema.optional() }).strict(),
+  z.object({ kind: z.literal("choose"), choice: ToolChoiceSchema }).strict(),
+])
+export type ToolIntentResolution = z.infer<typeof ToolIntentResolutionSchema>
+export const ChooseToolInputSchema = z.object({ tool: ToolRefSchema, operationId: UuidSchema }).strict()

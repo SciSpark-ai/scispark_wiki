@@ -1,4 +1,4 @@
-import { nativeSkillRoute } from "@/lib/server/native-workflow"
+import { nativeSkillRoute, nativeContext } from "@/lib/server/native-workflow"
 import { ndjsonSkillRoute, getSkillTestOverrides } from "@/lib/server/skill-route"
 import { runSkillJob } from "@/lib/server/skill-jobs"
 import { loadSettings } from "@/lib/llm/settings"
@@ -37,6 +37,7 @@ const coreChat = ndjsonSkillRoute<unknown>(async (rawInput, vault, emit) => {
 
     const result: AskChatResult = await askChat(vault, {
       input,
+      workflowContext: await nativeContext().catch(() => undefined),
       settings,
       providerOverride: overrides.providerOverride,
       paperTextDeps: overrides.fetchFn ? { fetchFn: overrides.fetchFn } : undefined,
@@ -50,6 +51,6 @@ const coreChat = ndjsonSkillRoute<unknown>(async (rawInput, vault, emit) => {
 
 export async function POST(request: Request) {
   const raw = await request.clone().json().catch(() => null)
-  if (raw?.mode === "search") return nativeSkillRoute("find-papers", "ndjson", value => ({ ...parseAskChatInput(value), transport: "chat" }))(request)
+  if (raw?.mode === "search" && raw?.explicitTool === undefined) return nativeSkillRoute("find-papers", "ndjson", value => ({ ...parseAskChatInput(value), transport: "chat" }))(request)
   return coreChat(request)
 }

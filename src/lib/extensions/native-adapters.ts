@@ -142,7 +142,7 @@ async function executeInvocation(ctx: WorkflowContext, root: ToolRun, skill: str
       const searchFn = overrides.searchFn ?? nodeResearchSearchFn({ reportErrors: true, storage: ctx.storage })
       if (input.transport === "search" || input.transport === "chat") {
         const chatInput = input.transport === "chat" ? parseAskChatInput(Object.fromEntries(Object.entries(input).filter(([key]) => key !== "transport"))) : parseAskChatInput({ sessionId: input.sessionId ?? null, question: Search.parse(input).query, mode: "search", readSourcesOnly: false, sources: input.sources, operationId: input.operationId ?? root.operationId })
-        const result = await askChat(ctx.storage, { input: chatInput, settings, providerOverride: overrides.providerOverride, searchFn, onProgress: stage => progress({ type: "progress", stage }), onText: text => progress({ type: "text", text }) })
+        const result = await askChat(ctx.storage, { input: chatInput, workflowContext: ctx, settings, providerOverride: overrides.providerOverride, searchFn, onProgress: stage => progress({ type: "progress", stage }), onText: text => progress({ type: "text", text }) })
         if (input.transport === "chat") return result
         if (result.message.error) throw new Error(result.message.error)
         const block = result.message.blocks?.find(item => item.type === "paper-results")

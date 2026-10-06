@@ -317,3 +317,22 @@ it("returns actionable recovery conflicts without discarding the owning run or a
   expect(response.status).toBe(409)
   expect(await response.json()).toMatchObject({ code: "changeset_recovery_conflict", runId: f.run.id, changesetId, conflicts: ["wiki/notes/edited.md"] })
 })
+
+it("selects exactly one saved top-level choice through authenticated HTTP and replays its winner", async () => {
+  const { saveToolChoice } = await import("../../extensions/choice-store"), choices = await import("@/app/api/tools/choices/[id]/route")
+  const second = { ...f.tool, ref: { ...f.tool.ref, skillId: "alternative" }, name: "Alternative" }, remove = registerToolManifest(second)
+  try {
+    await writeProfileTools(f.ctx, { schemaVersion:1, enabled:[f.tool,second].map(t => ({tool:t.ref,enabled:true})), pins:[], overrides:[], migrated:true })
+    const id = randomUUID(), input = { question:"Review hearing research", sessionId:"chat_choice", operationId:randomUUID(), contextRefs:[] }
+    await saveToolChoice(f.ctx,{id,prompt:"Choose one",candidates:[f.tool,second].map(t => ({tool:t.ref,name:t.name,source:t.ref.packageId,distinction:t.description}))},input)
+    const selections = [f.tool,second].map(t => ({tool:t.ref,operationId:randomUUID()}))
+    expect((await choices.POST(request(`/choices/${id}`, { ...selections[0], tools:[f.tool.ref,second.ref] }),params(id))).status).toBe(400)
+    const responses = await Promise.all(selections.map(selection => choices.POST(request(`/choices/${id}`,selection),params(id))))
+    expect(responses.map(r => r.status).sort()).toEqual([200,409])
+    const winner = responses.findIndex(r => r.status === 200), run = (await responses[winner].json()).result
+    const replay = await choices.POST(request(`/choices/${id}`,selections[winner]),params(id))
+    expect(replay.status).toBe(200); expect((await replay.json()).result.id).toBe(run.id)
+    expect((await f.ctx.storage.list(".scispark/tool-runs/")).filter(p => p.endsWith("/run.json"))).toHaveLength(1)
+    expect((await choices.POST(request(`/choices/${id}`,selections[winner],{origin:"https://foreign.test"}),params(id))).status).toBe(403)
+  } finally { await waitForWorkflowIdle(); remove() }
+})

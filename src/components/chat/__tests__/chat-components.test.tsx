@@ -428,3 +428,24 @@ describe("SourcesToggle", () => {
     expect(onChange).toHaveBeenCalledWith(true)
   })
 })
+
+it("renders equal-source tool choices and a saved run without offering save-as-answer", () => {
+  const ref = { packageId: "fixture.import", skillId: "review", version: "1", digest: "a".repeat(64) }
+  const html = renderToStaticMarkup(<MessageList messages={[assistantMessage({ blocks: [{ type: "tool-choice", choice: { id: "11111111-1111-4111-8111-111111111111", prompt: "Choose one", candidates: [{ tool: ref, name: "Evidence Atlas", source: "Local import", distinction: "Structured synthesis" }] } }] })]} pageTitleById={{}} onSaveMessage={() => {}} savingIndex={null} />)
+  expect(html).toContain("Evidence Atlas"); expect(html).toContain("Local import"); expect(html).toContain("Structured synthesis")
+  expect(html).not.toContain("Recommended")
+})
+
+it("reuses the choice operation after a lost response and component reload", async () => {
+  const remote = await import("@/lib/extensions/client"), {ToolChoiceBlock}=await import("../ToolChoiceBlock")
+  const choose=vi.spyOn(remote,"chooseToolRemote").mockRejectedValue(new Error("Response lost"))
+  const tool={packageId:"fixture",skillId:"review",version:"1",digest:"a".repeat(64)},choice={id:"11111111-1111-4111-8111-111111111111",prompt:"Choose",candidates:[{tool,name:"Review",source:"Fixture",distinction:"Evidence"}]}
+  try {
+    const first=mount(<ToolChoiceBlock choice={choice}/>)
+    await act(async()=>{first.host.querySelector("button")!.click()})
+    first.rerender(<div/>)
+    const second=mount(<ToolChoiceBlock choice={choice}/>)
+    await act(async()=>{second.host.querySelector("button")!.click()})
+    expect(choose.mock.calls[0][2]).toBe(choose.mock.calls[1][2])
+  } finally {choose.mockRestore()}
+})

@@ -28,3 +28,18 @@ export async function discoverAgentSkillsRemote(action: DiscoveryAction, fetchFn
   return result(await fetchFn("/api/tools/discovery", json(DiscoveryActionSchema.parse(action))), z.union([DiscoveryGrantDtoSchema, z.array(DiscoveredSkillSchema), DiscoveryStageDtoSchema, z.object({ revoked: z.literal(true) }).strict()]))
 }
 export function notifyToolsChanged() { if (typeof window !== "undefined") window.dispatchEvent(new Event("scispark-tools-changed")) }
+
+export class ToolChoiceRemoteConflict extends Error {
+  constructor(readonly choice: import("./contracts").ToolChoice) { super("This choice changed. Select an available tool.") }
+}
+export async function chooseToolRemote(id: string, tool: import("./contracts").ToolRef, operationId: string, fetchFn: typeof fetch = fetch) {
+  const { ChooseToolInputSchema, ToolChoiceSchema } = await import("./contracts")
+  const { ToolRunDtoSchema } = await import("../workflows/contracts")
+  const response = await fetchFn(`/api/tools/choices/${UuidSchema.parse(id)}`, json(ChooseToolInputSchema.parse({ tool, operationId })))
+  if (response.status === 409) {
+    const body = await response.json(), choice = ToolChoiceSchema.safeParse(body.choice)
+    if (choice.success) throw new ToolChoiceRemoteConflict(choice.data)
+    throw new Error("The choice could not be applied. Refresh its saved state.")
+  }
+  return result(response, ToolRunDtoSchema)
+}

@@ -410,3 +410,25 @@ it.each([false, true])("releases local-review preparation without plan usage (co
   expect(provider.complete).not.toHaveBeenCalled()
   expect(await new Meter(ctx.storage).nativeReservationsToday()).toBe(0)
 })
+
+it("routes an explicit Find Papers request through its real native adapter and internal chat exactly once", async () => {
+  const { askChat } = await import("../../chat/orchestrator"), { loadSession } = await import("../../chat/session")
+  const { ctx } = await nativeFixture()
+  // Remove the accounting-only fixture root before actual coordinator execution.
+  for (const path of await ctx.storage.list(".scispark/tool-runs/")) await ctx.storage.delete(path)
+  const provider = new MockProvider([completion({ interpretation:"Speech research",sort:"relevance",fromDate:null,queries:[{source:"arxiv",query:"speech",rationale:"Relevant"}] }), completion({items:[{key:"doi:10.1/intent",score:95,whyMatch:"Speech research"}]})])
+  setSkillTestOverrides({providerOverride:{strong:provider,fast:provider},searchFn:async()=>[{ids:{doi:"10.1/intent"},title:"Speech research",abstract:"Speech methods",authors:[],fields:[],source:"arxiv"}]})
+  const tool = NATIVE_TOOL_MANIFESTS.find(t=>t.ref.skillId==="find-papers")!
+  const input = {sessionId:"chat_native_intent",question:"Find papers about speech",readSourcesOnly:false,explicitTool:tool.ref,operationId:randomUUID()}
+  const result = await askChat(ctx.storage,{input,workflowContext:ctx})
+  expect(result.message.blocks?.[0].type).toBe("tool-run")
+  await waitForWorkflowIdle()
+  const runs = (await ctx.storage.list(".scispark/tool-runs/")).filter(p=>p.endsWith("/run.json"))
+  expect(runs).toHaveLength(1)
+  expect(await ctx.storage.list(".scispark/tools/classifications/")).toEqual([])
+  const session = await loadSession(ctx.storage,input.sessionId)
+  expect(session?.messages.some(m=>m.blocks?.some(b=>b.type==="paper-results")), JSON.stringify(session)).toBe(true)
+  expect(session?.messages.filter(m=>m.role === "user")).toHaveLength(1)
+  const replay = await askChat(ctx.storage,{input,workflowContext:ctx})
+  expect(replay).toEqual(result); expect(provider.calls).toHaveLength(2)
+})

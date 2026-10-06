@@ -295,3 +295,122 @@ describe("instruction host (deterministic providers, no installed tools)", () =>
   })
 
 })
+
+it("accepts one stopped supporting choice, repairs continuation loss, and retains the original root", async () => {
+  const { commitHelperChoice, transitionRun, releaseRunLease } = await import("../journal")
+  const f = await fixture(), a = await f.tool("helper-a"), b = await f.tool("helper-b"), root = await f.tool("choice-root", { slots:[{id:"search",capability:"search",eligible:[a,b]}] })
+  f.run.tool=root; f.run.dependencies=[a,b]; await writeRun(f.ctx,f.run)
+  const lease = (await claimRunLease(f.ctx,f.run.id))!
+  const frame={id:f.run.id,tool:root,input:{},turn:0,observations:[],publicText:"",decision:{type:"invoke_skill" as const,slotId:"search",input:{}}}
+  const choiceId=hostStepId(frame,"action")
+  await writeHostContinuation(f.ctx,{schemaVersion:1,runId:f.run.id,frames:[frame],completed:false,choices:[],waitingChoice:{id:choiceId,parentFrameId:frame.id,slotId:"search",candidates:[a,b]}})
+  await transitionRun(f.ctx,f.run.id,"waiting_for_choice",lease)
+  await expect(commitHelperChoice(f.ctx,f.run.id,choiceId,a,randomUUID())).rejects.toThrow(/stopping/)
+  await releaseRunLease(f.ctx,f.run.id,lease)
+  const operationId=randomUUID(), originalWrite=f.ctx.storage.write.bind(f.ctx.storage)
+  let fail=true
+  vi.spyOn(f.ctx.storage,"write").mockImplementation(async(path,text)=>{ if(fail&&path.endsWith("host-continuation.json")){fail=false;throw Error("Fixture publication loss")}; return originalWrite(path,text) })
+  await expect(commitHelperChoice(f.ctx,f.run.id,choiceId,a,operationId)).rejects.toThrow(/publication/)
+  await expect(commitHelperChoice(f.ctx,f.run.id,choiceId,b,randomUUID())).rejects.toThrow(/conflict/)
+  const run=await commitHelperChoice(f.ctx,f.run.id,choiceId,a,operationId)
+  expect(run.id).toBe(f.run.id); expect(run.status).toBe("queued"); expect(run.model).toEqual(f.run.model);expect(run.allowance).toEqual(f.run.allowance);expect(run.usage).toEqual(f.run.usage)
+  expect((await readHostContinuation(f.ctx,run.id))?.waitingChoice?.selected).toEqual(a)
+  expect((await f.ctx.storage.list(".scispark/tool-runs/")).filter(p=>p.endsWith("/run.json"))).toHaveLength(1)
+  expect((await commitHelperChoice(f.ctx,run.id,choiceId,a,operationId)).id).toBe(run.id)
+})
+it("fences two concurrent supporting selections", async () => {
+  const { commitHelperChoice, transitionRun, releaseRunLease } = await import("../journal")
+  const f = await fixture(), a = await f.tool("a"), b = await f.tool("b"), root=await f.tool("root",{slots:[{id:"s",capability:"search",eligible:[a,b]}]})
+  f.run.tool=root;f.run.dependencies=[a,b];await writeRun(f.ctx,f.run)
+  const lease=(await claimRunLease(f.ctx,f.run.id))!, frame={id:f.run.id,tool:root,input:{},turn:0,observations:[],publicText:"",decision:{type:"invoke_skill" as const,slotId:"s",input:{}}}, choiceId=hostStepId(frame,"action")
+  await writeHostContinuation(f.ctx,{schemaVersion:1,runId:f.run.id,frames:[frame],completed:false,choices:[],waitingChoice:{id:choiceId,parentFrameId:frame.id,slotId:"s",candidates:[a,b]}})
+  await transitionRun(f.ctx,f.run.id,"waiting_for_choice",lease);await releaseRunLease(f.ctx,f.run.id,lease)
+  const stepId=randomUUID(), stepPath=`.scispark/tool-runs/${f.run.id}/steps/${stepId}.json`
+  const opaque = JSON.stringify({schemaVersion:1,runId:f.run.id,intent:{id:stepId,kind:"command",replay:"reconcile",inputHash:"a".repeat(64)},leaseId:lease.id,state:"pending"})
+  await f.ctx.storage.write(stepPath,opaque)
+  await expect(commitHelperChoice(f.ctx,f.run.id,choiceId,a,randomUUID())).rejects.toThrow(/uncertain/)
+  expect(await f.ctx.storage.read(stepPath)).toBe(opaque)
+  await f.ctx.storage.delete(stepPath) // fixture removes the unrelated opaque attempt
+  const outcomes=await Promise.allSettled([a,b].map(t=>commitHelperChoice(f.ctx,f.run.id,choiceId,t,randomUUID())))
+  expect(outcomes.map(o=>o.status).sort()).toEqual(["fulfilled","rejected"])
+  expect(provider.complete).not.toHaveBeenCalled()
+})
+
+it("the coordinator chooseHelper service resumes the actual host on the same captured root", async () => {
+  const {chooseHelper,waitForWorkflowIdle}=await import("../coordinator"), {transitionRun,releaseRunLease}=await import("../journal")
+  const f=await fixture(),a=await f.tool("service-a"),b=await f.tool("service-b"),root=await f.tool("service-root",{slots:[{id:"s",capability:"search",eligible:[a,b]}]})
+  f.run.tool=root;f.run.dependencies=[a,b];await writeRun(f.ctx,f.run)
+  const lease=(await claimRunLease(f.ctx,f.run.id))!,frame={id:f.run.id,tool:root,input:{},turn:0,observations:[],publicText:"",decision:{type:"invoke_skill" as const,slotId:"s",input:{}}},choiceId=hostStepId(frame,"action"),operationId=randomUUID()
+  await writeHostContinuation(f.ctx,{schemaVersion:1,runId:f.run.id,frames:[frame],completed:false,choices:[],waitingChoice:{id:choiceId,parentFrameId:frame.id,slotId:"s",candidates:[a,b]}})
+  await transitionRun(f.ctx,f.run.id,"waiting_for_choice",lease);await releaseRunLease(f.ctx,f.run.id,lease)
+  decisions(finish,{...finish,synthesize:true},"stream")
+  try {
+    expect((await chooseHelper(f.ctx,f.run.id,choiceId,b,operationId)).id).toBe(f.run.id)
+    await waitForWorkflowIdle()
+    const resumed=(await readRun(f.ctx,f.run.id))!
+    expect(resumed.status).toBe("completed");expect(resumed.model).toEqual(f.run.model);expect(resumed.allowance).toEqual(f.run.allowance)
+    expect(resumed.usage.modelCalls).toBe(3)
+    expect((await f.ctx.storage.list(".scispark/tool-runs/")).filter(p=>p.endsWith("/run.json"))).toHaveLength(1)
+    expect((await chooseHelper(f.ctx,f.run.id,choiceId,b,operationId)).id).toBe(f.run.id)
+    expect(provider.complete).toHaveBeenCalledTimes(3)
+  } finally {await waitForWorkflowIdle()}
+})
+
+async function pendingHelperFixture() {
+  const {transitionRun}=await import("../journal")
+  const f=await fixture(), a=await f.tool("fault-a"), b=await f.tool("fault-b")
+  const root=await f.tool("fault-root",{slots:[{id:"s",capability:"search",eligible:[a,b]}]})
+  f.run.tool=root; f.run.dependencies=[a,b]; await writeRun(f.ctx,f.run)
+  const lease=(await claimRunLease(f.ctx,f.run.id))!
+  const frame={id:f.run.id,tool:root,input:{},turn:0,observations:[],publicText:"",decision:{type:"invoke_skill" as const,slotId:"s",input:{}}}
+  const choiceId=hostStepId(frame,"action")
+  await writeHostContinuation(f.ctx,{schemaVersion:1,runId:f.run.id,frames:[frame],completed:false,choices:[],waitingChoice:{id:choiceId,parentFrameId:frame.id,slotId:"s",candidates:[a,b]}})
+  await transitionRun(f.ctx,f.run.id,"waiting_for_choice",lease)
+  return {...f,a,b,lease,choiceId}
+}
+it("refuses a pending cancellation even after the supporting-choice owner stops", async()=>{
+  const {actionOnRun,releaseRunLease,readWorkflowJournal,commitHelperChoice}=await import("../journal")
+  const f=await pendingHelperFixture(), operationId=randomUUID()
+  await actionOnRun(f.ctx,f.run.id,operationId,"cancel")
+  await releaseRunLease(f.ctx,f.run.id,f.lease)
+  const before=await readHostContinuation(f.ctx,f.run.id)
+  expect(await readWorkflowJournal(f.ctx,f.run.id)).toMatchObject({lease:null,cancelRequested:operationId})
+  await expect(commitHelperChoice(f.ctx,f.run.id,f.choiceId,f.a,randomUUID())).rejects.toThrow(/stopping/)
+  expect(await readHostContinuation(f.ctx,f.run.id)).toEqual(before)
+  expect(await readWorkflowJournal(f.ctx,f.run.id)).toMatchObject({cancelRequested:operationId})
+  expect(await f.ctx.storage.list(`.scispark/tool-runs/${f.run.id}/helper-choices/`)).toEqual([])
+  expect(provider.complete).not.toHaveBeenCalled()
+})
+it("repairs a lost queue-publication response without resetting or rerunning the same root", async()=>{
+  const {releaseRunLease,commitHelperChoice}=await import("../journal")
+  const {chooseHelper,waitForWorkflowIdle}=await import("../coordinator")
+  const f=await pendingHelperFixture(), operationId=randomUUID()
+  await releaseRunLease(f.ctx,f.run.id,f.lease)
+  const originalWrite=f.ctx.storage.write.bind(f.ctx.storage)
+  let failed=false
+  vi.spyOn(f.ctx.storage,"write").mockImplementation(async(path,text)=>{
+    await originalWrite(path,text)
+    if(!failed&&path.endsWith("journal.json")&&JSON.parse(text).actions?.some((action:{type:string})=>action.type==="choose-helper")) {
+      failed=true; throw Error("Fixture lost queue publication response")
+    }
+  })
+  await expect(commitHelperChoice(f.ctx,f.run.id,f.choiceId,f.a,operationId)).rejects.toThrow(/queue publication/)
+  const journal=JSON.parse((await f.ctx.storage.read(`.scispark/tool-runs/${f.run.id}/journal.json`))!)
+  expect(journal).toMatchObject({status:"queued",actions:[{type:"choose-helper",operationId}]})
+  expect(JSON.parse((await f.ctx.storage.read(`.scispark/tool-runs/${f.run.id}/helper-choices/${f.choiceId}.json`))!).complete).toBe(false)
+  expect(provider.complete).not.toHaveBeenCalled()
+  decisions(finish,{...finish,synthesize:true},"stream")
+  try {
+    const queued=await chooseHelper(f.ctx,f.run.id,f.choiceId,f.a,operationId)
+    expect(queued).toMatchObject({id:f.run.id,model:f.run.model,allowance:f.run.allowance,usage:f.run.usage})
+    await waitForWorkflowIdle()
+    const done=(await readRun(f.ctx,f.run.id))!, host=await readHostContinuation(f.ctx,f.run.id)
+    expect(done).toMatchObject({status:"completed",model:f.run.model,allowance:f.run.allowance,usage:{modelCalls:3}})
+    await chooseHelper(f.ctx,f.run.id,f.choiceId,f.a,operationId)
+    await waitForWorkflowIdle()
+    expect((await readRun(f.ctx,f.run.id))!.usage).toEqual(done.usage)
+    expect(await readHostContinuation(f.ctx,f.run.id)).toEqual(host)
+    expect(provider.complete).toHaveBeenCalledTimes(3)
+    expect((await f.ctx.storage.list(".scispark/tool-runs/")).filter(path=>path.endsWith("/run.json"))).toHaveLength(1)
+  } finally {await waitForWorkflowIdle()}
+})

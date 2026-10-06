@@ -1,3 +1,4 @@
+import { classificationRecords } from "../extensions/classification-record"
 import { readNativeReservations } from "./native-reservations"
 import { UsageJournalSchema } from "../workflows/contracts"
 import type { VaultStorage } from "../vault/storage"
@@ -142,6 +143,23 @@ export class Meter {
     return held
   }
 
+  async classificationReservationsToday(): Promise<number> {
+    let held = 0
+    for (const row of await classificationRecords(this.storage)) {
+      if (row.reservedUsd === null || (row.state === "known" && row.day !== this.now().toISOString().slice(0, 10))) continue
+      const billed = (await this.recordsForDay(row.day)).find(record => record.runId === row.id)
+      // Classification has exactly one raw call. A matching persisted Meter
+      // result is settlement proof even if its write response or decision was
+      // lost. The decision remains unknown and is never dispatched again.
+      const selected = row.model.tierModels.fast
+      if (billed?.skill === "tool-intent" && billed.provider === selected.provider && billed.model === selected.model
+        && billed.usage?.reported !== false && typeof billed.costUsd === "number" && Number.isFinite(billed.costUsd) && billed.costUsd >= 0) continue
+      const amount = row.state === "known" ? row.costUsd ?? row.reservedUsd : Math.max(row.reservedUsd, row.costUsd ?? 0)
+      held += Math.max(0, amount - (typeof billed?.costUsd === "number" ? billed.costUsd : 0))
+    }
+    return held
+  }
+
   async reviewReservationsToday(): Promise<number> {
     const raw = await this.storage.read(".scispark/usage/review-attempts.json")
     if (raw === null) return 0
@@ -176,7 +194,7 @@ export async function checkBudget(
   const spending = await meter.spendingToday()
   const spentUsd = spending.knownUsd
   if (spending.unpricedCount) onWarning?.("Budget coverage is incomplete: unpriced calls are recorded, but only known costs count toward the local limit. Check your provider’s spending limit.")
-  const projected = spentUsd + await meter.reviewReservationsToday() + await meter.workflowReservationsToday() + await meter.nativeReservationsToday() + (estimatedNextCallUsd ?? 0)
+  const projected = spentUsd + await meter.reviewReservationsToday() + await meter.workflowReservationsToday() + await meter.nativeReservationsToday() + await meter.classificationReservationsToday() + (estimatedNextCallUsd ?? 0)
   if (projected >= settings.dailyBudgetUsd) {
     throw new BudgetExceededError(spentUsd, settings.dailyBudgetUsd)
   }
