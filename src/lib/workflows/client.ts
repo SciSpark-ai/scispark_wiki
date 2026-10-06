@@ -4,9 +4,17 @@ import { readErrorMessage } from "../http"
 import { RunActionInputSchema, RunEventSchema, StartRunInputSchema, ToolRunDtoSchema,
   type RunActionInput, type RunEvent, type StartRunInput, type ToolRunDto } from "./contracts"
 
+const RecoveryConflictSchema = z.object({ code: z.literal("changeset_recovery_conflict"), runId: UuidSchema, changesetId: UuidSchema, conflicts: z.array(z.string()), error: z.string() }).strict()
+export class WorkflowRecoveryConflict extends Error {
+  constructor(readonly details: z.infer<typeof RecoveryConflictSchema>) { super(`${details.error} Affected pages: ${details.conflicts.join(", ")}`) }
+}
 async function result<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
-  if (!response.ok) throw new Error(await readErrorMessage(response, "Could not access the workflow. Refresh its saved state."))
-  return schema.parse((await response.json()).result)
+  if (!response.ok) {
+    const conflict = RecoveryConflictSchema.safeParse(await response.clone().json().catch(() => null))
+    if (conflict.success) throw new WorkflowRecoveryConflict(conflict.data)
+    throw new Error(await readErrorMessage(response, "Could not access the workflow. Refresh its saved state."))
+  }
+  return z.object({ result: schema }).parse(await response.json()).result
 }
 const runPath = (id: string) => `/api/tools/runs/${UuidSchema.parse(id)}`
 export async function startToolRemote(input: StartRunInput, fetchFn: typeof fetch = fetch): Promise<ToolRunDto> {
@@ -33,7 +41,7 @@ function delay(signal: AbortSignal): Promise<void> {
 /** Consumes finite replay batches, then polls with the last delivered cursor.
  * Aborting detaches only this observer; cancel/resume are explicit actions. The
  * skill readNdjson result/progress envelope is intentionally not a RunEvent. */
-export async function watchToolRunRemote(id: string, onEvent: (event: RunEvent) => void | Promise<void>, signal: AbortSignal, after = 0, fetchFn: typeof fetch = fetch): Promise<void> {
+export async function watchToolRunRemote(id: string, onEvent: (event: RunEvent) => void | Promise<void>, signal: AbortSignal, after = 0, fetchFn: typeof fetch = fetch, onSnapshot?: (run: ToolRunDto) => void): Promise<void> {
   const path = runPath(id)
   let cursor = z.number().int().nonnegative().safe().parse(after)
   const transport: typeof fetch = async (url, init) => {
@@ -52,7 +60,8 @@ export async function watchToolRunRemote(id: string, onEvent: (event: RunEvent) 
       const deliver = async (line: string) => {
         if (!line.trim() || signal.aborted) return
         const event = RunEventSchema.parse(JSON.parse(line))
-        if (event.runId !== id || event.seq <= cursor) throw new Error("Workflow event cursor or owner mismatch")
+        if (event.runId !== id) throw new Error("Workflow event owner mismatch")
+        if (event.seq <= cursor) return // Replay batches may overlap; observers deliver each durable cursor once.
         await onEvent(event); cursor = event.seq
       }
       try {
@@ -75,10 +84,9 @@ export async function watchToolRunRemote(id: string, onEvent: (event: RunEvent) 
         }
       } finally { signal.removeEventListener("abort", detach); await reader.cancel().catch(() => {}); reader.releaseLock() }
       if (signal.aborted) return
-      let run: ToolRunDto
-      try { run = await getToolRunRemote(id, transport, signal) }
-      catch (error) { if (error instanceof TypeError) throw new ObservationTransportError("Workflow snapshot transport interrupted"); throw error }
+      const run = await getToolRunRemote(id, transport, signal)
       if (run.id !== id) throw new Error("Workflow snapshot owner mismatch")
+      onSnapshot?.(run)
       // A terminal transition can land between event replay and snapshot. Drain
       // that durable cursor before stopping, including the terminal text flush.
       if (["completed", "failed", "cancelled"].includes(run.status) && cursor >= run.eventCursor) return
@@ -89,4 +97,14 @@ export async function watchToolRunRemote(id: string, onEvent: (event: RunEvent) 
       await delay(signal)
     }
   }
+}
+
+export async function saveToolRunRemote(id: string, artifactIds: string[], operationId: string, fetchFn: typeof fetch = fetch) {
+  const { SaveRunInputSchema } = await import("./contracts")
+  return result(await fetchFn(`${runPath(id)}/save`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(SaveRunInputSchema.parse({ artifactIds, operationId })) }), z.object({ changesetId: UuidSchema }).strict())
+}
+export async function getToolArtifactRemote(runId: string, artifactId: string, fetchFn: typeof fetch = fetch, signal?: AbortSignal) {
+  const response = await fetchFn(`${runPath(runId)}/artifacts/${UuidSchema.parse(artifactId)}`, { cache: "no-store", signal })
+  if (!response.ok) throw new Error(await readErrorMessage(response, "Could not read the saved artifact."))
+  return response
 }

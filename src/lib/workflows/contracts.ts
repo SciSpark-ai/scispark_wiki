@@ -1,3 +1,4 @@
+import { ReviewId } from "../review/contracts"
 import { ChatSessionIdSchema } from "../extensions/contracts"
 import { z } from "zod"
 import { ScopedPriceSchema } from "../llm/scoped-pricing"
@@ -22,7 +23,7 @@ export type WorkflowLease = z.infer<typeof WorkflowLeaseSchema>
 export const WorkflowJournalSchema = z.object({
   schemaVersion: z.literal(1), runId: UuidSchema, profileId: ProfileIdSchema, vaultId: DigestSchema,
   status: RunStatusSchema, lease: WorkflowLeaseSchema.nullable(), cancelRequested: UuidSchema.optional(),
-  actions: z.array(z.object({ operationId: UuidSchema, type: z.enum(["cancel", "resume", "choose-helper"]) }).strict()),
+  actions: z.array(z.object({ operationId: UuidSchema, type: z.enum(["cancel", "resume", "choose-helper", "resolve-uncertain"]) }).strict()),
 }).strict()
 export type WorkflowJournal = z.infer<typeof WorkflowJournalSchema>
 const WriteIntentSchema = z.enum(["outputs_only", "update_wiki"])
@@ -107,7 +108,7 @@ export const AttemptEstimateSchema = RunAllowanceSchema.extend({ accountingOwner
 export type AttemptEstimate = z.infer<typeof AttemptEstimateSchema>
 export const FinancialLedgerRefSchema = z.object({ ledger: z.enum(["review", "local-review", "meter"]), attemptId: UuidSchema }).strict()
 export const AttemptTicketSchema = z.object({
-  id: UuidSchema, runId: UuidSchema, step: StepIntentSchema, estimate: AttemptEstimateSchema, reservedAt: z.iso.datetime(),
+  id: UuidSchema, runId: UuidSchema, checkpointId: UuidSchema.optional(), retryOperation: UuidSchema.optional(), step: StepIntentSchema, estimate: AttemptEstimateSchema, reservedAt: z.iso.datetime(),
 }).strict()
 export type AttemptTicket = z.infer<typeof AttemptTicketSchema>
 export const AttemptResultSchema = RunAllowanceSchema.extend({
@@ -126,17 +127,33 @@ export const UsageJournalSchema = z.object({
   schemaVersion: z.literal(1), runId: UuidSchema, profileId: ProfileIdSchema, vaultId: DigestSchema,
   baseUsage: RunAllowanceSchema, allowance: RunAllowanceSchema,
   extensions: z.array(z.object({ operationId: UuidSchema, delta: RunAllowanceSchema.partial() }).strict()),
-  attempts: z.array(z.object({ ticket: AttemptTicketSchema, state: z.enum(["reserved", "known", "unknown", "not_dispatched"]), dispatchedAt: z.iso.datetime().optional(), result: AttemptResultSchema.optional() }).strict().refine(row => row.state !== "not_dispatched" || row.ticket.estimate.accountingOwner === "native", "Only proven native preparation can be released")),
+  attempts: z.array(z.object({ ticket: AttemptTicketSchema, state: z.enum(["reserved", "known", "unknown", "not_dispatched"]), dispatchedAt: z.iso.datetime().optional(), result: AttemptResultSchema.optional(), acknowledgedBy: UuidSchema.optional() }).strict().refine(row => row.state !== "not_dispatched" || row.ticket.estimate.accountingOwner === "native", "Only proven native preparation can be released")),
 }).strict()
 export type UsageJournal = z.infer<typeof UsageJournalSchema>
 
 /** Public observation deliberately excludes input, captured configuration and internal references. */
 export const ToolRunDtoSchema = ToolRunSchema.pick({ schemaVersion: true, id: true, profileId: true, operationId: true,
   tool: true, dependencies: true, sessionId: true, contextRefs: true, writeIntent: true, allowance: true, usage: true,
-  status: true, createdAt: true, updatedAt: true, eventCursor: true, artifacts: true }).extend({ cancelRequested: z.boolean().default(false) })
+  status: true, createdAt: true, updatedAt: true, eventCursor: true, artifacts: true }).extend({ cancelRequested: z.boolean().default(false),
+  observation: z.object({
+    text: z.string(), phase: z.string().optional(), usage: RunUsageSchema,
+    choice: z.object({ id: UuidSchema, prompt: z.string(), candidates: z.array(z.object({ tool: ToolRefSchema, label: z.string() }).strict()) }).strict().optional(),
+    uncertainSteps: z.array(z.object({ id: UuidSchema, kind: StepIntentSchema.shape.kind, retryable: z.boolean(),
+      recovery: z.discriminatedUnion("kind", [z.object({ kind: z.literal("wiki_changeset") }).strict(), z.object({ kind: z.literal("native_revision"), reviewId: ReviewId }).strict()]).optional() }).strict()),
+    nativeReview: z.object({ retry: z.boolean(), keep: z.boolean() }).strict().optional(),
+    saves: z.array(z.object({ changesetId: UuidSchema, artifactIds: ArtifactIdsSchema, state: z.enum(["pending", "saved"]) }).strict()),
+    saveableArtifactIds: z.array(UuidSchema), nextSaveArtifactIds: z.array(UuidSchema).optional(), diagnostics: z.array(z.string()),
+  }).strict().optional(),
+})
 export type ToolRunDto = z.infer<typeof ToolRunDtoSchema>
 const PositiveDeltaSchema = RunAllowanceSchema.partial().refine(delta => Object.keys(delta).length > 0 && Object.values(delta).every(v => v !== null && v > 0), "Expected positive allowance deltas")
+export const UncertainResolutionSchema = z.object({ operationId: UuidSchema, action: z.literal("resolve-uncertain"), stepId: UuidSchema, resolution: z.enum(["retry", "stop"]) }).strict()
 export const RunActionInputSchema = z.discriminatedUnion("action", [
+  UncertainResolutionSchema,
+  z.object({ operationId: UuidSchema, action: z.literal("choose-helper"), choiceId: UuidSchema, tool: ToolRefSchema }).strict(),
+  z.object({ operationId: UuidSchema, action: z.literal("native-review"), resolution: z.enum(["retry", "keep"]) }).strict(),
+  z.object({ operationId: UuidSchema, action: z.literal("reconcile-accounting"), resolution: z.enum(["reconcile", "acknowledge"]) }).strict(),
+  z.object({ operationId: UuidSchema, action: z.literal("reconcile-wiki"), changesetId: UuidSchema }).strict(),
   z.object({ operationId: UuidSchema, action: z.literal("cancel") }).strict(),
   z.object({ operationId: UuidSchema, action: z.literal("resume") }).strict(),
   z.object({ operationId: UuidSchema, action: z.literal("extend"), delta: PositiveDeltaSchema }).strict(),
@@ -144,3 +161,22 @@ export const RunActionInputSchema = z.discriminatedUnion("action", [
 export type RunActionInput = z.infer<typeof RunActionInputSchema>
 export const ToolSummarySchema = ToolManifestSchema.pick({ ref: true, name: true, description: true, capabilities: true, kind: true, engines: true, outputKinds: true }).extend({ enabled: z.boolean() })
 export type ToolSummary = z.infer<typeof ToolSummarySchema>
+
+/** Native transport progress is a public status envelope, not answer Markdown. */
+export function workflowPublicText(value: string): string | null {
+  try {
+    const event = JSON.parse(value)
+    if (event && typeof event === "object" && event.type === "text" && typeof event.text === "string") return event.text
+    if (event && typeof event === "object" && event.type === "progress") return null
+  } catch { /* Plain partial Markdown is expected while streaming. */ }
+  return value
+}
+
+export function workflowPublicPhase(value: string): string | undefined {
+  try {
+    const event = JSON.parse(value)
+    if (event?.type !== "progress") return undefined
+    const phases: Record<string, string> = { planning: "Planning search", searching: "Searching sources", ranking: "Ranking papers", grounding: "Reading context", bottleneck: "Finding research gaps", ideation: "Developing ideas", hypothesis: "Shaping the hypothesis", experiment: "Planning the experiment", audit: "Checking evidence", synthesis: "Writing the report" }
+    return phases[String(event.stage ?? event.phase)] ?? "Research in progress"
+  } catch { return undefined }
+}

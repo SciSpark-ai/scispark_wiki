@@ -142,3 +142,21 @@ export async function saveAuthorizedWorkflowOutputs(ctx: WorkflowContext, id: st
     if (ids.length) await saveUnderLock(ctx, id, ids, outputs.automaticOperationId, outputs)
   })
 }
+
+/** Public read-only metadata; exact proposal selection stays server-owned. */
+export async function projectWorkflowSaves(ctx: WorkflowContext, id: string) {
+  const outputs = await load(ctx, id), run = (await readRun(ctx, id))!
+  const saveableArtifactIds = outputs.proposal?.artifactIds ?? run.artifacts.filter(a =>
+    a.kind !== "file" && ["text/markdown", "text/plain", "application/x-bibtex", "text/x-bibtex"].includes(a.mediaType.toLowerCase())).map(a => a.id)
+  const saved = new Set(outputs.saves.filter(save => save.state === "saved").flatMap(save => save.artifactIds))
+  const pending = outputs.saves.find(save => save.state === "pending")
+  // A pending transaction keeps its exact selection. Later arrivals get a new,
+  // disjoint transaction after it settles; proposal selections stay immutable.
+  const nextSaveArtifactIds = pending?.artifactIds ?? (outputs.proposal && !saveableArtifactIds.every(id => saved.has(id)) ? outputs.proposal.artifactIds : saveableArtifactIds.filter(id => !saved.has(id)))
+  return { saves: outputs.saves.map(save => ({ changesetId: save.changeset.id, artifactIds: save.artifactIds, state: save.state })), saveableArtifactIds, nextSaveArtifactIds }
+}
+export async function reconcileWorkflowSave(ctx: WorkflowContext, id: string, changesetId: string, operationId: string) {
+  const outputs = await load(ctx, id), save = outputs.saves.find(item => item.changeset.id === UuidSchema.parse(changesetId))
+  if (!save) throw new Error("Unknown workflow changeset")
+  return saveRunToWiki(ctx, id, save.artifactIds, operationId)
+}

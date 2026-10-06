@@ -225,3 +225,33 @@ describe("recoverable vault mutation transaction", () => {
     } finally { release?.(); await rm(f.root, { recursive: true, force: true }) }
   })
 })
+
+it("projects new-only save selections with disjoint changesets and independent undo", async () => {
+  const f = await fixture(), { projectWorkflowSaves } = await import("../wiki-save")
+  const a = await publishArtifact(f.ctx, f.run.id, input())
+  const first = await saveRunToWiki(f.ctx, f.run.id, [a.id], randomUUID()), old = (await loadChangeset(f.ctx.storage, first.changesetId))!
+  const b = await publishArtifact(f.ctx, f.run.id, { ...input(), title: "New evidence" })
+  const projected = await projectWorkflowSaves(f.ctx, f.run.id)
+  expect(projected.saveableArtifactIds.sort()).toEqual([a.id, b.id].sort()); expect(projected.nextSaveArtifactIds).toEqual([b.id])
+  const second = await saveRunToWiki(f.ctx, f.run.id, projected.nextSaveArtifactIds, randomUUID()), latest = (await loadChangeset(f.ctx.storage, second.changesetId))!
+  expect(latest.changes.map(change => change.path).some(path => old.changes.some(change => change.path === path))).toBe(false)
+  await revertPersistedChangeset(f.ctx.storage, second.changesetId)
+  expect(await f.ctx.storage.read(old.changes[0].path)).toBe(old.changes[0].after)
+  expect(await f.ctx.storage.read(latest.changes[0].path)).toBeNull()
+})
+it("keeps pending exact selections ahead of newly arrived artifacts and preserves proposal exactness", async () => {
+  const f = await fixture(), { projectWorkflowSaves } = await import("../wiki-save")
+  const a = await publishArtifact(f.ctx, f.run.id, input()), write = f.ctx.storage.write.bind(f.ctx.storage)
+  let fail = true
+  f.ctx.storage.write = async (path, text) => { await write(path, text); if (fail && path.endsWith("/outputs.json") && JSON.parse(text).saves?.[0]?.state === "pending") { fail = false; throw new Error("lost pending publication") } }
+  const operation = randomUUID(); await expect(saveRunToWiki(f.ctx, f.run.id, [a.id], operation)).rejects.toThrow("lost pending publication")
+  const b = await publishArtifact(f.ctx, f.run.id, { ...input(), title: "New evidence" })
+  expect((await projectWorkflowSaves(f.ctx, f.run.id)).nextSaveArtifactIds).toEqual([a.id])
+  await saveRunToWiki(f.ctx, f.run.id, [a.id], operation)
+  expect((await projectWorkflowSaves(f.ctx, f.run.id)).nextSaveArtifactIds).toEqual([b.id])
+  const g = await fixture(), c = await publishArtifact(g.ctx, g.run.id, input()), d = await publishArtifact(g.ctx, g.run.id, { ...input(), title: "Outside proposal" })
+  const after = serializeDocument({ type: "note", title: "Proposal", created: "2026-10-05", updated: "2026-10-05", tags: [], related: [], sources: input().sourceRefs }, "Evidence")
+  await submitWikiProposal(g.ctx, g.run.id, { artifactIds: [c.id], changes: [{ path: "wiki/notes/proposal.md", before: null, after }] })
+  expect((await projectWorkflowSaves(g.ctx, g.run.id)).nextSaveArtifactIds).toEqual([c.id])
+  await expect(saveRunToWiki(g.ctx, g.run.id, [d.id], randomUUID())).rejects.toThrow(/exactly/)
+})

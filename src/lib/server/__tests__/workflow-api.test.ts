@@ -336,3 +336,35 @@ it("selects exactly one saved top-level choice through authenticated HTTP and re
     expect((await choices.POST(request(`/choices/${id}`,selections[winner],{origin:"https://foreign.test"}),params(id))).status).toBe(403)
   } finally { await waitForWorkflowIdle(); remove() }
 })
+
+it("projects saved text, exact recovery metadata and typed stop without private checkpoints", async () => {
+  const { journalStep, transitionRun } = await import("../../workflows/journal")
+  const { reserveAttempt, claimAttemptDispatch } = await import("../../workflows/usage")
+  await writeRun(f.ctx, f.run)
+  const lease = (await claimRunLease(f.ctx, f.run.id))!, step = { id: randomUUID(), kind: "model" as const, replay: "reconcile" as const, inputHash: "e".repeat(64) }
+  await expect(journalStep(f.ctx, f.run.id, lease, step, async () => {
+    const ticket = await reserveAttempt(f.ctx, f.run.id, step, { modelCalls: 1, commandCalls: 0, activeSeconds: 5, costUsd: .1, accountingOwner: "workflow" })
+    await claimAttemptDispatch(f.ctx, ticket); throw new Error("lost response")
+  })).rejects.toThrow()
+  await transitionRun(f.ctx, f.run.id, "needs_attention", lease); await releaseRunLease(f.ctx, f.run.id, lease)
+  await appendEvent(f.ctx, f.run.id, { type: "text", text: JSON.stringify({ type: "text", text: "Public answer" }) })
+  await appendEvent(f.ctx, f.run.id, { type: "text", text: JSON.stringify({ type: "progress", stage: "ranking" }) })
+  const res = await runRoute.GET(request(`/runs/${f.run.id}`), params(f.run.id)), data = (await res.json()).result
+  expect(data.observation.text).toBe("Public answer")
+  expect(data.observation.phase).toBe("Ranking papers")
+  expect(data.observation.usage.heldAttempts).toBe(1)
+  expect(data.observation.uncertainSteps).toEqual([{ id: step.id, kind: "model", retryable: true }])
+  expect(JSON.stringify(data)).not.toContain(step.inputHash)
+  const action = { action: "resolve-uncertain", operationId: randomUUID(), stepId: step.id, resolution: "stop" }
+  const stopped = await actionsRoute.POST(request("/actions", action), params(f.run.id)); expect(stopped.status).toBe(200)
+  expect((await stopped.json()).result.status).toBe("cancelled")
+  expect((await actionsRoute.POST(request("/actions", action), params(f.run.id))).status).toBe(200)
+  expect((await actionsRoute.POST(request("/actions", { ...action, resolution: "retry" }), params(f.run.id))).status).toBe(409)
+})
+it("labels supporting choices with retained manifest names and preserves unavailable-history fallback", async () => {
+  await writeRun(f.ctx, { ...f.run, status: "waiting_for_choice" })
+  const missing = { ...f.tool.ref, skillId: "unavailable-helper" }, choiceId = randomUUID()
+  await f.ctx.storage.write(`.scispark/tool-runs/${f.run.id}/host-continuation.json`, JSON.stringify({ schemaVersion: 1, runId: f.run.id, completed: false, frames: [{ id: f.run.id, tool: f.run.tool, input: {}, turn: 0, observations: [], publicText: "" }], choices: [], waitingChoice: { id: choiceId, parentFrameId: f.run.id, slotId: "helpers", candidates: [f.tool.ref, missing] } }))
+  const response = await runRoute.GET(request(`/runs/${f.run.id}`), params(f.run.id)), data = (await response.json()).result
+  expect(data.observation.choice.candidates.map((candidate: { label: string }) => candidate.label)).toEqual(["Review", "unavailable-helper"])
+})

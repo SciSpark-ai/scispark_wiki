@@ -7,7 +7,7 @@ import { readRecommendationPreferences } from "../recommendation/contract"
 import { readRecommendationFeedback } from "../recommendation/feedback-record"
 import { hashReviewData } from "./budget"
 import type { ReviewBrief } from "./contracts"
-import { loadSession } from "../chat/session"
+import { loadSessionStrict } from "../chat/session"
 import { paperRecordFromFrontmatter } from "../papers/resolve"
 
 const words = (s: string) => new Set((s.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [])
@@ -47,7 +47,7 @@ export async function reviewContext(storage: VaultStorage, question: string, pro
 
 /** Only this conversation, selected before the review's own brief is appended. */
 export async function reviewConversationContext(storage: VaultStorage, sessionId: string, question: string): Promise<ReviewBrief["context"]> {
-  const session = await loadSession(storage, sessionId)
+  const session = await loadSessionStrict(storage, sessionId)
   return (session?.messages ?? []).filter((m) => !m.error && !m.blocks?.length && contextOverlap(question, m.content) > 0).slice(-6).map((m) => {
     const text = `${m.role}: ${m.content.slice(0, 2200)}`
     const hash = hashReviewData(text)

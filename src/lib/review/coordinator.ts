@@ -8,11 +8,11 @@ import { loadSettings } from "../llm/settings"
 import { readEnabledPaperSources } from "../papers/source-preferences"
 import { getProject } from "../projects/repository"
 import { saveAnswerAsQuery } from "../chat/save-query"
-import { BriefSchema, ContextItemSchema, ReviewActionSchema, ReviewRunSchema, type ReviewRun } from "./contracts"
+import { BriefSchema, ContextItemSchema, ReviewActionSchema, ReviewRunSchema, reviewConversationId, type ReviewRun } from "./contracts"
 import { loadReview, updateReview, appendReviewMessage, reviewPath, REVIEW_DIR } from "./store"
 import { reviewModel, reviewSpend, acknowledgeReviewCharge, reviewComplete } from "./budget"
 import { reviewContext, reviewConversationContext } from "./context"
-import { loadSession } from "../chat/session"
+import { loadSessionStrict } from "../chat/session"
 import { runReviewPipeline, type ReviewDeps } from "./pipeline"
 import { exportReview } from "./report"
 import { invalidateAnswerCoverage } from "./coverage"
@@ -60,7 +60,8 @@ async function checkAuthorization(storage: VaultStorage, run: ReviewRun) {
   if (run.brief.usePersonalContext) {
     const current = await reviewContext(storage, run.brief.question, run.brief.projectId)
     if (JSON.stringify(current.map((c) => ContextItemSchema.parse(c))) !== JSON.stringify(run.brief.context.filter((c) => c.kind !== "conversation"))) throw new Error("The selected personal context changed or was revoked. Review the brief before resuming.")
-    const session = await loadSession(storage, run.sessionId)
+    const conversationId = reviewConversationId(run)
+    const session = conversationId === null ? null : await loadSessionStrict(storage, conversationId)
     if (run.brief.context.some((c) => c.kind === "conversation" && !session?.messages.some((m) => `${m.role}: ${m.content.slice(0, 2200)}` === c.text))) throw new Error("A selected conversation message changed or was removed. Update the brief.")
   }
 }
@@ -127,10 +128,12 @@ async function publishCompletion(storage: VaultStorage, run: ReviewRun) {
     content: run.status === "completed" ? "Your review draft is ready. Its claims passed automated source checks; this is not independent scientific validation." : version.verification === "checked-draft" ? "Source checks passed, but the saved draft leaves essential parts of your question unresolved. See its answer-coverage assessment." : "The review is saved with unresolved claim checks. Supported material is available for inspection.",
     blocks: [{ type: "review-citations", runId: run.id, versionId: version.id, sourceIds: [] }] })
   if (!run.completionEvent) {
+    const conversationId = reviewConversationId(run)
+    const conversation = conversationId === null ? null : await loadSessionStrict(storage, conversationId)
     let claimed = false
     await updateReview(storage, run.id, (r) => { if (!r.completionEvent) { r.completionEvent = true; claimed = true } })
     // Claim BEFORE logging: prefer silence after a crash to a duplicate nudge.
-    if (claimed) await logEvent(storage, { type: "literature_review_ready", reviewId: run.id, sessionId: run.sessionId, title: run.brief.question })
+    if (claimed && conversationId && conversation) await logEvent(storage, { type: "literature_review_ready", reviewId: run.id, sessionId: conversationId, title: run.brief.question })
   }
 }
 
@@ -149,7 +152,7 @@ export async function actOnReview(storage: VaultStorage, id: string, raw: unknow
     r.brief = BriefSchema.parse({ ...r.brief, question: action.question, scope: action.scope, allowanceUsd: action.allowanceUsd,
       usePersonalContext: action.usePersonalContext,
       context: [...await reviewContext(storage, action.question, r.brief.projectId),
-        ...(r.approvedRevision === null ? await reviewConversationContext(storage, r.sessionId, action.question) : r.brief.context.filter((c) => c.kind === "conversation"))],
+        ...(reviewConversationId(r) === null ? [] : r.approvedRevision === null ? await reviewConversationContext(storage, reviewConversationId(r)!, action.question) : r.brief.context.filter((c) => c.kind === "conversation"))],
       sources,
       model: { ...reviewModel(await loadSettings(storage)), rates: action.rates } })
     r.status = "awaiting-approval"; r.error = null; r.stage = "Updated brief awaiting approval"
@@ -165,7 +168,7 @@ export async function actOnReview(storage: VaultStorage, id: string, raw: unknow
     const version = run.versions.find((v) => v.id === action.versionId)
     if (!version) throw new Error("Report version not found")
     return saveAnswerAsQuery(storage, { question: run.brief.question, answer: `${exportReview(run, version, "markdown")}\n\nReview provenance: ${run.id}/${version.id}. Verification: ${version.verification}.`,
-      sessionId: run.sessionId, citedPageIds: [] })
+      sessionId: reviewConversationId(run) ?? undefined, citedPageIds: [] })
   }
   if (action.action === "revise") {
     const run = await loadReview(storage, id)

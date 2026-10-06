@@ -165,18 +165,29 @@ function isChatSessionShape(value: unknown, expectedId: string): value is ChatSe
   )
 }
 
+/** Shared validation for tolerant history reads and authoritative linked reads. */
+function parseSession(raw: string, id: string): ChatSession {
+  const parsed: unknown = JSON.parse(raw)
+  if (!isChatSessionShape(parsed, id)) throw new Error("Invalid conversation data")
+  return parsed
+}
+
+/** Missing linked conversations are optional; corrupt or unreadable ones are not. */
+export async function loadSessionStrict(storage: VaultStorage, id: string): Promise<ChatSession | null> {
+  const raw = await storage.read(sessionPath(id))
+  return raw == null ? null : parseSession(raw, id)
+}
+
 /**
  * Loads one session by id. Returns null for a missing file, unparseable
  * JSON, or a payload that does not fully match `ChatSession` — corruption
- * reads as absent, never as a thrown error.
+ * reads as absent. Storage read failures still propagate.
  */
 export async function loadSession(storage: VaultStorage, id: string): Promise<ChatSession | null> {
   const raw = await storage.read(sessionPath(id))
   if (raw == null) return null
   try {
-    const parsed: unknown = JSON.parse(raw)
-    if (!isChatSessionShape(parsed, id)) return null
-    return parsed
+    return parseSession(raw, id)
   } catch {
     return null
   }

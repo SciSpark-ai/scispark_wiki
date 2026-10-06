@@ -41,7 +41,7 @@ export const ReportVersionSchema = z.object({
 }).strict()
 export type ReportVersion = z.infer<typeof ReportVersionSchema>
 export const ReviewRunSchema = z.object({
-  version: z.literal(1), id: ReviewId, sessionId: ReviewId, revision: z.number().int().nonnegative(),
+  version: z.literal(1), id: ReviewId, sessionId: ReviewId, conversationId: ReviewId.nullable().optional(), revision: z.number().int().nonnegative(),
   createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(), brief: BriefSchema,
   status: z.enum(["awaiting-approval", "queued", "running", "interrupted", "paused", "completed", "partial", "cancelled", "failed"]),
   stage: z.string(), approvedRevision: z.number().int().nullable(), ownerPid: z.number().int().nullable(),
@@ -54,6 +54,8 @@ export const ReviewRunSchema = z.object({
   approvals: z.array(z.object({ revision: z.number().int(), at: z.iso.datetime(), brief: BriefSchema }).strict()).default([]),
 }).strict()
 export type ReviewRun = z.infer<typeof ReviewRunSchema>
+/** Undefined is the legacy chat link; null explicitly has no conversation. */
+export const reviewConversationId = (run: ReviewRun): string | null => run.conversationId === undefined ? run.sessionId : run.conversationId
 export const BriefInputSchema = z.object({ sessionId: ReviewId, operationId: ReviewId,
   question: z.string().trim().min(5).max(2000), sources: z.array(ReviewSource).min(1).max(4),
 }).strict()

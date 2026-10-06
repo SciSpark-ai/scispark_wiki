@@ -83,6 +83,10 @@ export async function startRun(ctx: WorkflowContext, input: StartRunInput): Prom
       if (!await readRun(ctx, previous.run.id)) await writeRun(ctx, previous.run)
       return (await readRun(ctx, previous.run.id))!
     }
+    if (request.tool.packageId === "scispark.builtin" && request.tool.skillId === "deep-review" && request.input.reviewId !== undefined) {
+      const { assertNativeReviewAdmission } = await import("./review-ownership")
+      await assertNativeReviewAdmission(ctx, z.string().parse(request.input.reviewId))
+    }
     const state = await readProfileTools(ctx)
     const binding = state?.enabled.find(b => b.enabled && toolKey(b.tool) === toolKey(request.tool))
     const pinned = state?.pins.find(ref => toolKey(ref) === toolKey(request.tool))
@@ -350,4 +354,34 @@ export async function chooseHelper(ctx: WorkflowContext, runId: string, choiceId
   runtime.stopped = false
   schedule(ctx)
   return run
+}
+
+/** Explicit checkpoint acknowledgement; all dispatch still passes normal limits. */
+export async function resolveUncertain(ctx: WorkflowContext, runId: string, operationId: string, stepId: string, resolution: "retry" | "stop") {
+  const { commitUncertainResolution } = await import("./journal")
+  const run = await withVaultExclusive(ctx.storage, "workflow-coordinator", () => commitUncertainResolution(ctx, runId, operationId, stepId, resolution))
+  if (run.status === "queued") { runtime.stopped = false; schedule(ctx) }
+  return run
+}
+
+export async function reconcileWiki(ctx: WorkflowContext, runId: string, changesetId: string, operationId: string) {
+  await withVaultExclusive(ctx.storage, "workflow-coordinator", async () => {
+    const journal = await readWorkflowJournal(ctx, runId)
+    if (leaseOwnerAlive(journal.lease) || journal.cancelRequested) throw new Error("Workflow owner is still stopping")
+    await (await import("./wiki-save")).reconcileWorkflowSave(ctx, runId, changesetId, operationId)
+    if (journal.status === "needs_attention" && await workflowOutputsCompleted(ctx, runId) && !await hasUncertainWork(ctx, runId)) await transitionRun(ctx, runId, "queued")
+  })
+  runtime.stopped = false; schedule(ctx)
+}
+
+export async function reconcileAccounting(ctx: WorkflowContext, runId: string, operationId: string, resolution: "reconcile" | "acknowledge") {
+  await (await import("./native-recovery")).reconcileNativeAccounting(ctx, runId, operationId, resolution)
+  await withVaultExclusive(ctx.storage, "workflow-coordinator", async () => {
+    const journal = await readWorkflowJournal(ctx, runId)
+    if (leaseOwnerAlive(journal.lease) || journal.cancelRequested || journal.status !== "needs_attention" || await hasUncertainWork(ctx, runId)) return
+    const saves = await (await import("./wiki-save")).projectWorkflowSaves(ctx, runId)
+    if (saves.saves.some(save => save.state === "pending")) return
+    const run = (await readRun(ctx, runId))!
+    await transitionRun(ctx, runId, run.nativeRunRef?.kind === "deep-review" ? "waiting_for_choice" : "interrupted")
+  })
 }

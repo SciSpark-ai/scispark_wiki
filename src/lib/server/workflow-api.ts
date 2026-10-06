@@ -6,8 +6,8 @@ import { PROFILE_COOKIE, PROFILE_HEADER } from "../local-profile-contract"
 import { getProfileSession } from "./local-profiles"
 import { mutationRequestRejection } from "./mutation-request-security"
 import { resolveWorkflowContext, type WorkflowContext } from "../workflows/context"
-import { ToolRunDtoSchema } from "../workflows/contracts"
-import { projectWorkflowRun } from "../workflows/journal"
+import { workflowPublicText, workflowPublicPhase, ToolRunDtoSchema } from "../workflows/contracts"
+import { checkpointRecovery, uncertainCheckpoints, projectWorkflowRun } from "../workflows/journal"
 import { projectRunUsage } from "../workflows/usage"
 
 class HttpError extends Error { constructor(readonly status: number, message: string) { super(message) } }
@@ -54,5 +54,32 @@ export async function workflowBody<T>(request: Request, schema: z.ZodType<T>): P
 }
 export async function workflowSnapshot(ctx: WorkflowContext, id: string) {
   const run = await projectWorkflowRun(ctx, id)
-  return ToolRunDtoSchema.strip().parse({ ...run, ...await projectRunUsage(ctx, id) })
+  const [{ detailedUsage, ...usage }, events, saves, steps] = await Promise.all([
+    projectRunUsage(ctx, id), (await import("../workflows/store")).listRunEvents(ctx, id, 0),
+    (await import("../workflows/wiki-save")).projectWorkflowSaves(ctx, id), uncertainCheckpoints(ctx, id),
+  ])
+  const text = events.filter(e => e.seq <= run.eventCursor).filter(e => e.type === "text").map(e => workflowPublicText(e.text)).filter(text => text !== null).at(-1) ?? ""
+  const diagnostics = events.filter(e => e.type === "error").map(e => e.message)
+  const uncertainSteps = await Promise.all(steps.map(async step => ({ id: step.intent.id, kind: step.intent.kind, ...await checkpointRecovery(ctx, id, step.intent) })))
+  let choice, nativeReview
+  if (run.status === "waiting_for_choice") {
+    const { readHostContinuation, resolveHostManifest } = await import("../workflows/host-tools")
+    const continuation = await readHostContinuation(ctx, id)
+    const waiting = continuation?.waitingChoice
+    if (waiting) choice = { id: waiting.id, prompt: "Choose a supporting skill", candidates: await Promise.all(waiting.candidates.map(async tool => {
+      let label = tool.skillId
+      try { label = (await resolveHostManifest(ctx, tool)).name } catch { /* Retained run history remains readable if a snapshot is unavailable. */ }
+      return { tool, label }
+    })) }
+  }
+  if (!uncertainSteps.some(step => step.recovery?.kind === "native_revision") && run.nativeRunRef?.kind === "deep-review" && ["waiting_for_choice", "needs_attention", "paused_limit", "interrupted", "waiting_for_setup"].includes(run.status)) {
+    const review = await (await import("../review/store")).loadReview(ctx.storage, run.nativeRunRef.id)
+    const limited = review.status === "partial" && review.versions.at(-1)?.verification === "checked-draft" && review.versions.at(-1)?.answerCoverage?.status === "limited"
+    nativeReview = { retry: ["awaiting-approval", "paused", "interrupted", "failed", "partial"].includes(review.status) && !limited,
+      keep: ["partial", "paused", "interrupted", "failed", "completed"].includes(review.status) && review.versions.length > 0 }
+  }
+  return ToolRunDtoSchema.strip().parse({ ...run, ...usage, observation: {
+    text, phase: events.filter(e => e.seq <= run.eventCursor && e.type === "text").map(e => e.type === "text" ? workflowPublicPhase(e.text) : undefined).filter(Boolean).at(-1), usage: detailedUsage, choice, nativeReview, ...saves, diagnostics,
+    uncertainSteps,
+  } })
 }

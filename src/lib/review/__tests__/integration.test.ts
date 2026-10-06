@@ -565,3 +565,191 @@ it("reconciles an explicitly acknowledged lost native review response without do
     expect((await getRunUsage(ctx, id)).costUsd).toBeCloseTo((await reviewSpend(storage, run.id)).spentUsd)
   } finally { await waitForWorkflowIdle(); setNativeWorkflowContextForTests(); setSkillTestOverrides() }
 })
+
+
+describe("Tools and helper review ownership without a legacy index", () => {
+  afterEach(async () => { await waitForWorkflowIdle(); setNativeWorkflowContextForTests(); setSkillTestOverrides() })
+  it.each(["root", "helper"])("rejects a new paid revision owned by a %s without creating a root or calling a model", async kind => {
+    const { storage, run, provider, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+    const { workflowFixture } = await import("../../workflows/__tests__/fixtures"), { writeRun } = await import("../../workflows/store")
+    const owner = { ...workflowFixture().run, profileId: ctx.profileId, vaultId: ctx.vaultId, status: "needs_attention" as const, ...(kind === "root" ? { nativeRunRef: { kind: "deep-review", id: run.id } } : {}) }
+    await writeRun(ctx, owner)
+    if (kind === "helper") await storage.write(`.scispark/tool-runs/${owner.id}/native-review-${randomUUID()}.json`, JSON.stringify({ reviewId: run.id, generation: 0, operationId: randomUUID(), action: { action: "revise", parent: "v_fixture", instruction: "Clarify" } }))
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    const before = await storage.list(".scispark/tool-runs/start-operations/")
+    await expect(legacyReviewAction(ctx, run.id, { action: "revise", parent: "v_fixture", instruction: "Clarify" })).rejects.toThrow(/owning workflow/)
+    expect(await storage.list(".scispark/tool-runs/start-operations/")).toEqual(before); expect(provider.complete).not.toHaveBeenCalled()
+  })
+  it("admits only one concurrent root while its legacy index is missing", async () => {
+    const { storage, run, provider, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+    let release!: () => void; const held = new Promise<void>(resolve => { release = resolve })
+    Object.assign(provider, { preflight: () => held })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    try {
+      const results = await Promise.allSettled([0, 1].map(() => startNativeWorkflow(ctx, "deep-review", { reviewId: run.id, action: { action: "approve", revision: 0 }, operationId: randomUUID() })))
+      expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1)
+      expect(await storage.list(".scispark/tool-runs/start-operations/")).toHaveLength(1)
+      expect(provider.complete).not.toHaveBeenCalled()
+    } finally { release(); await waitForWorkflowIdle() }
+  })
+  it("restores an accepted root before rejecting a competing admission after publication loss", async () => {
+    const { storage, run, provider } = await setup(), ctx = await enableNativeFixture(storage), write = storage.write.bind(storage)
+    let fail = true
+    storage.write = async (path, text) => { await write(path, text); if (fail && path.includes("/start-operations/")) { fail = false; throw new Error("lost start publication") } }
+    const operationId = randomUUID(), input = { reviewId: run.id, action: { action: "approve", revision: 0 }, operationId }
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: vi.fn(async () => []), fetchFn: vi.fn() })
+    await expect(startNativeWorkflow(ctx, "deep-review", input)).rejects.toThrow("lost start publication")
+    await expect(startNativeWorkflow(ctx, "deep-review", { reviewId: run.id, action: { action: "approve", revision: 0 }, operationId: randomUUID() })).rejects.toThrow(/owning workflow/)
+    expect(await storage.list(".scispark/tool-runs/start-operations/")).toHaveLength(1); expect(provider.complete).not.toHaveBeenCalled()
+    const receipt = JSON.parse((await storage.read((await storage.list(".scispark/tool-runs/start-operations/"))[0]))!)
+    const repaired = await startNativeWorkflow(ctx, "deep-review", input)
+    expect(repaired.id).toBe(receipt.run.id); await waitForWorkflowIdle()
+    expect(await storage.list(".scispark/tool-runs/start-operations/")).toHaveLength(1)
+  })
+  it("keeps an uncertain revision stopped and its accounting retained, then admits a new explicit revision through the existing POST", async () => {
+    const { storage, run, provider, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    await legacyReviewAction(ctx, run.id, { action: "approve", revision: 0 }); await waitForWorkflowIdle()
+    const saved = (await loadReview(storage, run.id)).versions.at(-1)!
+    const lost = mockProvider(() => { throw new Error("lost revision response") })
+    setSkillTestOverrides({ providerOverride: { strong: lost }, searchFn: search, fetchFn: fetch })
+    await expect(legacyReviewAction(ctx, run.id, { action: "revise", parent: saved.id, instruction: "First uncertain revision" })).rejects.toThrow()
+    await waitForWorkflowIdle()
+    const owner = JSON.parse((await storage.read(`.scispark/reviews/${run.id}/workflow.json`))!).id
+    const { uncertainCheckpoints, commitUncertainResolution } = await import("../../workflows/journal")
+    const { reconcileNativeAccounting } = await import("../../workflows/native-recovery")
+    const pending = (await uncertainCheckpoints(ctx, owner))[0]
+    await expect(commitUncertainResolution(ctx, owner, randomUUID(), pending.intent.id, "retry")).rejects.toThrow("new explicit native revision")
+    await commitUncertainResolution(ctx, owner, randomUUID(), pending.intent.id, "stop")
+    // Missing index cannot evade the terminal owner's still-uncertain ledger.
+    await storage.delete(`.scispark/reviews/${run.id}/workflow.json`)
+    await expect(legacyReviewAction(ctx, run.id, { action: "revise", parent: saved.id, instruction: "New explicit revision" })).rejects.toThrow(/owning workflow/)
+    await reconcileNativeAccounting(ctx, owner, randomUUID(), "acknowledge")
+    const oldUsage = await getRunUsage(ctx, owner), oldLedger = await storage.read(`.scispark/tool-runs/${owner}/usage.json`)
+    await storage.delete(`.scispark/chats/${run.sessionId}.json`)
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    const { POST } = await import("../../../app/api/reviews/[id]/route")
+    const result = await POST(new Request("http://fixture/api/reviews", { method: "POST", body: JSON.stringify({ action: "revise", parent: saved.id, instruction: "New explicit revision" }) }), { params: Promise.resolve({ id: run.id }) })
+    expect(result.status).toBe(200); await waitForWorkflowIdle()
+    const next = JSON.parse((await storage.read(`.scispark/reviews/${run.id}/workflow.json`))!).id
+    expect(next).not.toBe(owner); expect((await observeRun(ctx, next)).nativeRunRef?.id).toBe(run.id)
+    expect((await loadReview(storage, run.id)).versions[0]).toEqual(saved)
+    expect(await getRunUsage(ctx, owner)).toEqual(oldUsage); expect(await storage.read(`.scispark/tool-runs/${owner}/usage.json`)).toBe(oldLedger)
+    expect(await uncertainCheckpoints(ctx, owner)).toEqual([pending])
+    expect(await loadSession(storage, run.sessionId)).toBeNull()
+    expect((await reviewSnapshot(storage, run.id)).run.versions).toHaveLength(2)
+  })
+  it("serializes helper binding publication with direct admission without waiting on the legacy observation lock", async () => {
+    const { storage, run, provider, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+    const { workflowFixture } = await import("../../workflows/__tests__/fixtures"), { writeRun } = await import("../../workflows/store")
+    const { NATIVE_TOOL_MANIFESTS } = await import("../../extensions/native-catalog"), { nativeWorkflowAdapter } = await import("../../extensions/native-adapters")
+    const { withVaultExclusive } = await import("../../vault/exclusive")
+    const tool = NATIVE_TOOL_MANIFESTS.find(tool => tool.ref.skillId === "deep-review")!.ref, frameId = randomUUID()
+    const owner = { ...workflowFixture().run, profileId: ctx.profileId, vaultId: ctx.vaultId, status: "running" as const, dependencies: [tool] }
+    await writeRun(ctx, owner); setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    let release!: () => void, entered!: () => void
+    const held = new Promise<void>(resolve => { release = resolve }), bound = new Promise<void>(resolve => { entered = resolve }), write = storage.write.bind(storage)
+    storage.write = async (path, text) => { await write(path, text); if (path.endsWith(`native-review-${frameId}.json`)) { entered(); await held } }
+    const helper = withVaultExclusive(storage, `native-review-${run.id}`, () => nativeWorkflowAdapter.executeHelper(ctx, owner, { frameId, tool, input: { reviewId: run.id, action: { action: "revise", parent: "v_fixture", instruction: "Clarify" } } }, {
+      step: async () => { throw new Error("fixture stops before dispatch") }, emit: vi.fn(), publishArtifact: vi.fn(), submitWikiProposal: vi.fn(), signal: new AbortController().signal,
+    })).catch(error => error as Error)
+    await bound
+    const admission = startNativeWorkflow(ctx, "deep-review", { reviewId: run.id, action: { action: "approve", revision: 0 }, operationId: randomUUID() }).catch(error => error as Error)
+    release()
+    expect(await helper).toMatchObject({ message: "fixture stops before dispatch" })
+    expect(await admission).toBeInstanceOf(Error)
+    expect(await storage.list(".scispark/tool-runs/start-operations/")).toHaveLength(0); expect(provider.complete).not.toHaveBeenCalled()
+  })
+
+  it("creates Tools-origin review and explicit revisions without a transcript, while GET retains the report", async () => {
+    const { storage, run: legacy, provider, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    const before = await storage.list(".scispark/chats/"), transcript = await storage.read(`.scispark/chats/${legacy.sessionId}.json`)
+    const root = await startNativeWorkflow(ctx, "deep-review", { question: "Compare adult decoding methods", sources: ["openalex"], sessionId: legacy.sessionId, operationId: randomUUID() })
+    await waitForWorkflowIdle()
+    const native = await loadReview(storage, root.nativeRunRef!.id)
+    expect(native.conversationId).toBeNull(); expect(native.status).toBe("completed")
+    expect(native.brief.context.filter(context => context.kind === "conversation")).toEqual([])
+    expect(await storage.list(".scispark/chats/")).toEqual(before)
+    const { GET } = await import("../../../app/api/reviews/[id]/route"), { setServerVaultForTests } = await import("../../server/vault")
+    setServerVaultForTests(storage)
+    try { expect((await GET(new Request("http://fixture/api/reviews"), { params: Promise.resolve({ id: native.id }) })).status).toBe(200) }
+    finally { setServerVaultForTests(null) }
+    await legacyReviewAction(ctx, native.id, { action: "revise", parent: native.versions[0].id, instruction: "Clarify the wording" }); await waitForWorkflowIdle()
+    expect((await reviewSnapshot(storage, native.id)).run.versions).toHaveLength(2)
+    expect(await storage.list(".scispark/chats/")).toEqual(before)
+    expect(await storage.read(`.scispark/chats/${legacy.sessionId}.json`)).toBe(transcript)
+  })
+  it("does not recreate a deleted legacy conversation on report GET or explicit revision", async () => {
+    const { storage, run, provider, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    await legacyReviewAction(ctx, run.id, { action: "approve", revision: 0 }); await waitForWorkflowIdle()
+    const native = await loadReview(storage, run.id)
+    await storage.delete(`.scispark/chats/${run.sessionId}.json`)
+    expect((await reviewSnapshot(storage, run.id)).run.versions).toEqual(native.versions)
+    await legacyReviewAction(ctx, run.id, { action: "revise", parent: native.versions[0].id, instruction: "Clarify wording without restoring chat" }); await waitForWorkflowIdle()
+    expect((await reviewSnapshot(storage, run.id)).run.versions).toHaveLength(2)
+    expect(await loadSession(storage, run.sessionId)).toBeNull()
+  })
+  it("host creation links only the existing authorized root conversation, once", async () => {
+    const { storage, run, provider, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+    const { NATIVE_TOOL_MANIFESTS } = await import("../../extensions/native-catalog")
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    const tool = NATIVE_TOOL_MANIFESTS.find(tool => tool.ref.skillId === "deep-review")!.ref, operationId = randomUUID()
+    const request = { tool, operationId, sessionId: run.sessionId, input: { question: "Compare adult decoding methods", sources: ["openalex"] }, contextRefs: [], writeIntent: "outputs_only" as const }
+    const before = await storage.list(".scispark/chats/"), root = await startRun(ctx, request); await waitForWorkflowIdle()
+    expect((await loadReview(storage, root.nativeRunRef!.id)).conversationId).toBe(run.sessionId)
+    const messages = (await loadSession(storage, run.sessionId))!.messages
+    expect(messages.filter(message => message.operationId === `${operationId}-brief`)).toHaveLength(1)
+    await startRun(ctx, request); await waitForWorkflowIdle()
+    expect((await loadSession(storage, run.sessionId))!.messages).toEqual(messages)
+    expect(await storage.list(".scispark/chats/")).toEqual(before)
+  })
+
+  it("unlinked brief updates cannot import provenance conversation context, and deleted root links persist as null", async () => {
+    const { storage, run } = await setup()
+    const input = { sessionId: run.sessionId, operationId: "tools-provenance", question: "Compare adult decoding methods", sources: ["openalex"] }
+    const isolated = await createReview(storage, input, { conversationId: null })
+    expect(isolated.brief.context.filter(item => item.kind === "conversation")).toEqual([])
+    await actOnReview(storage, isolated.id, { action: "amend", revision: isolated.revision, question: input.question, scope: "", allowanceUsd: 1, usePersonalContext: true, rates: isolated.brief.model.rates })
+    expect((await loadReview(storage, isolated.id)).brief.context.filter(item => item.kind === "conversation")).toEqual([])
+    const missing = await createReview(storage, { ...input, operationId: "deleted-root-link" }, { conversationId: "missing_chat" })
+    expect(missing.conversationId).toBeNull(); expect(await loadSession(storage, "missing_chat")).toBeNull()
+  })
+
+  it("does not capture a stale native approval while review prices still need setup", async () => {
+    const { storage, run, provider, search, fetch } = await setup(), ctx = await enableNativeFixture(storage)
+    await updateReview(storage, run.id, review => { review.brief.model.rates = null })
+    setSkillTestOverrides({ providerOverride: { strong: provider }, searchFn: search, fetchFn: fetch })
+    const root = await startNativeWorkflow(ctx, "deep-review", { reviewId: run.id, operationId: randomUUID() }); await waitForWorkflowIdle()
+    expect((await observeRun(ctx, root.id)).status).toBe("waiting_for_setup")
+    expect(await storage.read(`.scispark/tool-runs/${root.id}/native-review-${root.id}.json`)).toBeNull()
+    const before = await loadReview(storage, run.id)
+    await actOnReview(storage, run.id, { action: "amend", revision: before.revision, question: before.brief.question, scope: before.brief.scope, allowanceUsd: 1, usePersonalContext: before.brief.usePersonalContext, rates: { inputPerMillion: .75, outputPerMillion: 4.5 } })
+    const { resumeRun } = await import("../../workflows/coordinator")
+    await resumeRun(ctx, root.id, randomUUID()); await waitForWorkflowIdle()
+    expect((await observeRun(ctx, root.id)).status).toBe("completed")
+    expect(provider.complete).toHaveBeenCalled()
+  })
+
+})
+
+describe("strict retained conversation checks", () => {
+  it.each(["{broken-json", JSON.stringify({ id: "chat_review", messages: "invalid" })])("rejects corrupt conversation during approval and completion publication: %s", async (payload) => {
+    const { storage, run, provider, search, fetch } = await setup()
+    const path = `.scispark/chats/${run.sessionId}.json`, valid = (await storage.read(path))!
+    await storage.write(path, payload)
+    const before = await storage.read(reviewPath(run.id))
+    await expect(actOnReview(storage, run.id, { action: "approve", revision: run.revision }, { provider, search, fetch })).rejects.toThrow()
+    expect(provider.complete).not.toHaveBeenCalled()
+    expect(await storage.read(reviewPath(run.id))).toBe(before)
+    await storage.write(path, valid)
+    await actOnReview(storage, run.id, { action: "approve", revision: run.revision }, { provider, search, fetch }); await waitForReview(storage, run.id)
+    await updateReview(storage, run.id, current => { current.completionEvent = false })
+    const completed = await storage.read(reviewPath(run.id))
+    await storage.write(path, payload)
+    await expect(reviewSnapshot(storage, run.id)).rejects.toThrow()
+    expect(await storage.read(reviewPath(run.id))).toBe(completed)
+    expect(await storage.read(path)).toBe(payload)
+  })
+})

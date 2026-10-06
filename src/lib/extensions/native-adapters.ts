@@ -1,3 +1,4 @@
+import { withVaultExclusive } from "../vault/exclusive"
 import { exportReview } from "../review/report"
 import { getRunUsage } from "../workflows/usage"
 import { buildProvider } from "../llm/settings"
@@ -44,23 +45,33 @@ async function executeReview(ctx: WorkflowContext, root: ToolRun, input: Record<
   if (!reviewId) {
     const sessionId = typeof input.sessionId === "string" ? input.sessionId : root.sessionId ?? frame
     const question = z.string().trim().min(1).parse(input.question ?? input.query)
-    const created = await createReview(ctx.storage, { sessionId, operationId: frame, question, sources: input.sources ?? await readEnabledPaperSources(ctx.storage) })
+    const created = await createReview(ctx.storage, { sessionId, operationId: frame, question, sources: input.sources ?? await readEnabledPaperSources(ctx.storage) }, { conversationId: root.sessionId ?? null })
     reviewId = created.id
   } else if (!input.reviewId && !await ctx.storage.read(`.scispark/reviews/${reviewId}/run.json`)) {
     await createReview(ctx.storage, { sessionId: input.sessionId ?? root.sessionId ?? root.operationId, operationId: root.operationId,
-      question: z.string().trim().min(1).parse(input.question ?? input.query), sources: input.sources ?? await readEnabledPaperSources(ctx.storage) })
+      question: z.string().trim().min(1).parse(input.question ?? input.query), sources: input.sources ?? await readEnabledPaperSources(ctx.storage) }, { conversationId: root.sessionId ?? null })
   }
-  await recoverReviewJobs(ctx.storage)
   let review = await loadReview(ctx.storage, reviewId)
   if (!review.brief.model.engine && !review.brief.model.rates) {
     await io.emit({ type: "status", status: "waiting_for_setup" })
     return { summary: "Configure prices in the review brief before continuing.", artifactIds: [] }
   }
-  if (!continuation) {
-    const action = input.action ? ReviewActionSchema.parse(input.action) : { action: "approve" as const, revision: review.revision }
-    continuation = NativeReviewContinuationSchema.parse({ reviewId, action, generation: 0, operationId: root.operationId })
-    await ctx.storage.write(nativePath(root.id, `review-${frame}`), JSON.stringify(continuation))
-  }
+  if (continuation && continuation.reviewId !== reviewId) throw new Error("Native continuation identity mismatch")
+  // Bind helper origins before any native recovery/dispatch. Admission shares
+  // the coordinator exclusion with durable root starts, never the legacy lock.
+  continuation = await withVaultExclusive(ctx.storage, "workflow-coordinator", async () => {
+    await (await import("../workflows/review-ownership")).assertNativeReviewAdmission(ctx, reviewId!, root.id)
+    if (!continuation) {
+      const review = await loadReview(ctx.storage, reviewId!)
+      const action = input.action ? ReviewActionSchema.parse(input.action) : { action: "approve" as const, revision: review.revision }
+      const next = NativeReviewContinuationSchema.parse({ reviewId, action, generation: 0, operationId: root.operationId })
+      await ctx.storage.write(nativePath(root.id, `review-${frame}`), JSON.stringify(next))
+      return next
+    }
+    return continuation
+  })
+  await recoverReviewJobs(ctx.storage)
+  review = await loadReview(ctx.storage, reviewId)
   const receipt = nativePath(root.id, `review-dispatched-${frame}-${continuation.generation}`)
   const dispatch = async () => {
     if (await ctx.storage.read(receipt)) return

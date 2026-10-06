@@ -1407,3 +1407,137 @@ refresh, and existing paper context/History/selection/navigation/reload/Markdown
 Exactly one final build, master and full browser gate ran for this fix round.
 No source changes followed those gates; git diff --check passed. No live provider,
 source, human-state, sandbox bypass, push, merge or PR occurred.
+
+## Task17 — shared run observation, results and explicit recovery
+
+The shared `/tools/runs/[id]` page and `ToolRunBlock` use the authenticated workflow
+client; the actual chat render boundary is MessageBubble. History adds Runs without
+inventing conversations. Observer detach is read-only, overlapping cursors are
+ignored, terminal text drains, malformed/null DTOs fail instead of retrying as a
+network fault, and profile changes abort/clear old content. Native public progress
+envelopes become concise phase labels; actual answer snapshots remain Markdown.
+Existing Markdown/streaming, source-linked paper cards, semantic tokens and reduced
+motion are retained. Typed artifact fetches stay profile-bound and download-only;
+explicit wiki save/History undo continue to use Task6 authority.
+
+R39 choose-helper is wired to the existing coordinator primitive. Native retry/keep
+and separate financial reconciliation retain R33–R35 ownership. R41 refuses only
+an exact retained native wording-revision checkpoint; it does not blanket-block
+native report publication. R42 uncertain-action decisions bind a stopped root,
+exact checkpoint, operation and retry/stop winner. Receipts preserve old checkpoints
+and attempt journals. A private retry context changes only workflow-owned attempt
+and command output identities; original checkpoint IDs remain stable, completed
+nested work stays cached, pending children require their own acknowledgement,
+and native financial identities are untouched. Retry reserves at the existing
+predispatch boundary; cumulative counters/daily holds never reset. Later uncertain
+generations carry durable checkpointId/retryOperation links. Wiki recovery selects
+the existing Task6 changeset ID and preserves divergence conflicts.
+
+Evidence under `.superpowers/sdd/2026-10-05-modular-workspace/verification/task-17/`:
+initial actions RED (missing primitive/schema), then 4/4 GREEN; expanded recovery
+18/18 and focused 171/171 across8 files. The initial UI RED also exposed a missing
+test harness dependency; tests were converted to existing ReactDOM/jsdom without
+installation. A later limit regression caught generation loss on refusal and passed
+after repair. Winner-payload RED proved a changed retry/stop payload could win after
+an acceptance response loss; strict full-decision persistence fixed it (50/50 across
+4files). Native revision narrowing passed40/40 across2files. Browser fixture is
+persisted disposable data, with actual authenticated observation/save/undo/download
+routes; no runtime/model/command execution is claimed. The chooser is a persisted
+fixture screen; backend same-root choice behavior retains its R39 tests.
+
+Initial build passed25.90s; UI/limit correction build19.52s; authoritative recovery
+build20.63s. All use `.next-modular-task-17`, disposable `/tmp` vault/profile roots
+and scheduler off, restoring exact fresh tsconfig/next-env bytes. The initial and
+expanded production browser checks passed1/1 each (5.8s and4.9s). They verify desktop/
+390px run and chooser views, native progress/partial/final Markdown, report/paper/
+BibTeX results, citations, profile headers, downloads, save/undo, and navigation back
+to an observed running job with zero start/action requests. Screenshot copies are
+in `screens/`; initial rendering retained in `screens-initial/`. Final gate follows.
+No human vault/profile/key, installed-agent home, live provider/source call,
+installation, unsupported command bypass, push, merge or PR was used. Real execution,
+provider/source compatibility and server-kill acceptance remain Task19.
+
+Final controller visual correction: helper-label RED1failed/25passed caught raw IDs;
+GREEN33/33 across2files verifies captured human names and disabled/missing metadata
+fallback. Final fixture uses saved partial prose and Find papers/Deep review names.
+The previous composite chooser is intermediate evidence only. Authoritative build
+`build-label-final/build-result.json` passed16.71s with exact configs restored.
+`browser-label-final.log` passed1/1 in5.9s. Retained final screenshots are
+`verification/task-17/screens-final/{run-desktop,run-phone,chooser-desktop,chooser-phone}.png`.
+Final `verify-task.py task-17` exited0: TypeScript4.02s; lint18.38s with the one
+baseline ConnectAiCard applyPreset warning and generated-card Babel size note;
+Vitest3,194passed/21skipped,302passed/8skipped files,35.82s suite/37.08s wrapper.
+The preceding3193-test master is preserved in `master-before-label-fix/`. No source
+changes followed the final build/browser/master gates; git diff --check passed.
+
+
+Task17 fix round1 addresses all three Important review findings: selected uncertain
+workflow tickets acknowledge independently while other holds keep needs_attention;
+artifact save state/operations track exact sorted selections; exact native wording
+recovery explains Stop/reconcile/new revision and embeds the existing report UI.
+Controller R43–R45 narrow extensions close the existing native owner-index gap and
+Tools-origin fallback transcripts. Existing coordinator exclusion serializes restored
+start receipts, new native admission and exact helper continuation binding. Active/
+cancel-pending/financially uncertain owners block new paid roots; stopped audit
+checkpoints remain retained. Explicit revision still uses the existing native POST.
+Optional retained conversationId separates legacy linkage, authorized existing-root
+chat linkage and null/no-chat provenance. No-chat creation, context selection, GET
+and revision retain reports without creating/resurrecting conversations. Drafts are
+profile-scoped; legacy unowned draft keys are ignored. Existing native ledger IDs,
+partial retry/keep and setup-resume behavior remain covered.
+
+Evidence: fix1-red4failed/18passed; I2/report RED; owner-red4failed and green4passed;
+conversation-red3failed; final focused157passed across8files. The intermediate time
+assertion was corrected to distinguish settled activeSeconds from heldActiveSeconds.
+Screens remain saved synthetic state; real execution/helper dispatch/server-kill and
+full mobile running-header acceptance remain Task19. Final fix-round gates follow.
+
+
+Production browser follow-through exposed an overlapping-save conflict: the UI
+correctly selected a new operation, but Task6 requires fresh paths for ordinary
+notes. Controller R46 adds nextSaveArtifactIds alongside unchanged saveable IDs:
+new-only selection from saved receipts, pending exact selection first, immutable
+proposal selection preserved. UI coverage uses saved union; pending/local operations
+stay selection-keyed through two arrivals/late replies. No Task6 mutation schema or
+before-image rule changed. New-selection RED2failed/18passed; GREEN31passed/3files;
+expanded R46 focused96passed/5files. Tests prove disjoint saves and latest Undo leaves
+old notes. First fix1 build22.24s passed; browser1passed/1failed retained as evidence.
+First master had11existing loopback EPERM failures because invocation lacked the
+established scoped allowance (tsc/lint passed,3205tests passed/21skipped). Authoritative
+post-R46 build/browser and scoped-loopback full gate follow; failed evidence retained.
+
+
+Authoritative fix1 acceptance: build-fix1-r46 exit0/19.79s, exact fresh configs
+restored. browser-fix1-r46:2/2passed in8.3s; both saved-state production fixtures use
+actual authenticated routes. Final scoped-loopback verify-task.py task-17 exited0:
+tsc9.77s; lint18.32s with one baseline warning/size note; Vitest3,219passed/21skipped,
+304passed/8skipped files,35.07s suite/36.29s wrapper. No source edits followed these
+gates. Six final screenshot copies in verification/task-17/screens-fix1-final:
+run/chooser/recovery × desktop/phone. Results phone and recovery desktop are scrolled
+views, not proof of an unseen running heading. Real execution remains Task19.
+git diff --check passed. Amend retains the planned title, attribution and parent;
+no push, merge or PR. Full fix-round report contains caller/lock/metadata handoffs.
+
+Task17 fix round2 closes R45's invalid-session boundary. A shared parser retains
+legacy tolerant chat/history reads while loadSessionStrict distinguishes absent
+linked conversations from malformed JSON/shape and storage read failures. Review
+creation/replay/append/context/approval/publication use the strict boundary; invalid
+contents cannot silently become null linkage, overwrite the transcript or claim a
+completion event. Existing review-control/chat locks and native authority remain.
+Brief replay recognizes both retained run.id-brief and current operationId-brief.
+Focused RED9failed/9passed; GREEN83passed/3files (4.69s), including no model call or
+run mutation on corrupt approval and no publication receipt on invalid transcript.
+No rendered changes; prior fix1 production browser evidence retained without rerun.
+Initial build hit known worker port-bind EPERM; fast escalated retry retained the
+same cached error. Both failures and exact config restores are retained. Final
+scoped-loopback full gate and fresh isolated build follow.
+
+Fix2 final acceptance: verify-task.py task-17 exit0 with scoped loopback allowance.
+TypeScript10.86s; lint21.55s baseline warning only; Vitest3,239passed/21skipped,
+305passed/8skipped files,64.34s suite/65.68s wrapper. Fresh isolated production build
+.next-modular-task-17-fix2-clean exit0/41.85s, disposable vault/profiles, scheduler
+off; fresh exact tsconfig/next-env bytes restored. Evidence under Task17 verification:
+fix2-red.log, fix2-green-final.log, master-fix2-wrapper.log, results.json and
+build-fix2-clean/build-result.json. Failed default/cached build logs remain retained.
+No source changes followed final gates; git diff --check passed. No UI rerun, live
+execution, human state, installation, push, merge or PR; Task19 limits unchanged.

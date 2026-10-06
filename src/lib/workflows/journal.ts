@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks"
 import { createHash, randomUUID } from "node:crypto"
 import { z } from "zod"
 import { DigestSchema, UuidSchema } from "../extensions/contracts"
@@ -15,7 +16,7 @@ export const LEASE_MILLISECONDS = 30_000
 export type { WorkflowJournal, WorkflowLease } from "./contracts"
 const StepSchema = z.object({
   schemaVersion: z.literal(1), runId: UuidSchema, intent: StepIntentSchema, leaseId: UuidSchema,
-  state: z.enum(["not_started", "pending", "completed"]), response: z.string().optional(), responseHash: DigestSchema.optional(),
+  state: z.enum(["not_started", "pending", "completed"]), retryOperation: UuidSchema.optional(), response: z.string().optional(), responseHash: DigestSchema.optional(),
 }).strict()
 const root = (id: string) => `.scispark/tool-runs/${UuidSchema.parse(id)}`
 export const workflowHash = (value: string) => createHash("sha256").update(value).digest("hex")
@@ -163,6 +164,21 @@ function replaySafe(intent: StepIntent): boolean {
   return (intent.kind === "read" && intent.replay === "read_only") || (intent.kind === "wiki_write" && intent.replay === "idempotent")
 }
 export class UncertainWorkflowError extends Error {}
+// Acknowledgement scope affects only the chosen checkpoint and its unfinished
+// descendants. Completed siblings outside this call keep their cached identities.
+const retryScope = new AsyncLocalStorage<{ operationId: string; stepId: string; mapped: Map<string, string> }>()
+export const currentWorkflowRetry = () => retryScope.getStore()
+export function workflowRetryIdentity(id: string): string {
+  const scope = retryScope.getStore()
+  if (!scope || [...scope.mapped.values()].includes(id)) return id
+  let mapped = scope.mapped.get(id)
+  if (!mapped) {
+    const h = workflowHash(`${scope.operationId}:${id}`)
+    mapped = `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`
+    scope.mapped.set(id, mapped)
+  }
+  return mapped
+}
 export async function journalStep<T>(ctx: WorkflowContext, id: string, lease: WorkflowLease, input: StepIntent, work: () => Promise<T>): Promise<T> {
   const intent = StepIntentSchema.parse(input)
   const path = `${root(id)}/steps/${intent.id}.json`
@@ -172,8 +188,10 @@ export async function journalStep<T>(ctx: WorkflowContext, id: string, lease: Wo
     if (journal.cancelRequested) throw new Error("Workflow cancellation is pending")
     if (journal.status !== "running") throw new Error("Workflow is not running")
     const raw = await ctx.storage.read(path)
+    let retryOperation: string | undefined
     if (raw !== null) {
       const previous = StepSchema.parse(JSON.parse(raw))
+      retryOperation = previous.retryOperation
       if (previous.runId !== id || canonicalJson(previous.intent) !== canonicalJson(intent)) throw new Error("Workflow step identity conflict")
       if (previous.state === "completed") {
         if (previous.response === undefined || workflowHash(previous.response) !== previous.responseHash) throw new UncertainWorkflowError("Checkpoint response hash mismatch")
@@ -183,18 +201,18 @@ export async function journalStep<T>(ctx: WorkflowContext, id: string, lease: Wo
       // A repeated step in the same live adapter is not a second dispatch.
       if (previous.state === "pending" && previous.leaseId === lease.id) throw new Error("Workflow step is already pending in this owner")
     }
-    await ctx.storage.write(path, JSON.stringify(StepSchema.parse({ schemaVersion: 1, runId: id, intent, leaseId: lease.id, state: "pending" })))
-    return { cached: false as const }
+    await ctx.storage.write(path, JSON.stringify(StepSchema.parse({ schemaVersion: 1, runId: id, intent, leaseId: lease.id, state: "pending", retryOperation })))
+    return { cached: false as const, retryOperation }
   })
   if (prepared.cached) return prepared.value
   let value: T
-  try { value = await work() } // Never hold state exclusivity across external work.
+  try { value = prepared.retryOperation ? await retryScope.run({ operationId: prepared.retryOperation, stepId: intent.id, mapped: new Map() }, work) : await work() } // Never hold state exclusivity across external work.
   catch (error) {
-    if (error instanceof WorkflowLimitError && error.runId === id && error.stepId === intent.id) {
+    if (error instanceof WorkflowLimitError && error.runId === id && (error.stepId === intent.id || error.stepId === (prepared.retryOperation ? retryScope.run({ operationId: prepared.retryOperation, stepId: intent.id, mapped: new Map() }, () => workflowRetryIdentity(intent.id)) : workflowRetryIdentity(intent.id)))) {
       await withVaultExclusive(ctx.storage, `workflow-${id}`, async () => {
         const { journal } = await state(ctx, id)
         assertLease(journal, lease)
-        await ctx.storage.write(path, JSON.stringify(StepSchema.parse({ schemaVersion: 1, runId: id, intent, leaseId: lease.id, state: "not_started" })))
+        await ctx.storage.write(path, JSON.stringify(StepSchema.parse({ schemaVersion: 1, runId: id, intent, leaseId: lease.id, state: "not_started", retryOperation: prepared.retryOperation })))
       })
     }
     throw error
@@ -204,7 +222,7 @@ export async function journalStep<T>(ctx: WorkflowContext, id: string, lease: Wo
     const { journal } = await state(ctx, id)
     assertLease(journal, lease)
     await ctx.storage.write(path, JSON.stringify(StepSchema.parse({ schemaVersion: 1, runId: id, intent, leaseId: lease.id,
-      state: "completed", response, responseHash: workflowHash(response) })))
+      state: "completed", retryOperation: prepared.retryOperation, response, responseHash: workflowHash(response) })))
   })
   return value
 }
@@ -305,4 +323,99 @@ export async function commitHelperChoice(ctx: WorkflowContext, id: string, choic
     receipt.complete = true; await ctx.storage.write(path, JSON.stringify(receipt))
     return result
   })
+}
+
+/** Read-only redaction: callers cannot infer a retry from a financial settlement. */
+export async function uncertainCheckpoints(ctx: WorkflowContext, id: string) {
+  const records = []
+  for (const path of await ctx.storage.list(`${root(id)}/steps/`)) {
+    if (!/\/[0-9a-f-]{36}\.json$/.test(path)) continue
+    const record = StepSchema.parse(JSON.parse((await ctx.storage.read(path))!))
+    if (record.runId !== id || path !== `${root(id)}/steps/${record.intent.id}.json`) throw new Error("Workflow checkpoint identity mismatch")
+    if (record.state === "pending" && !replaySafe(record.intent)) records.push(record)
+  }
+  return records
+}
+
+/** Wording revision has a dispatch receipt, but no resumable native stage.
+ * Match the retained frame/generation; ordinary report publication is separate. */
+export async function checkpointRetryable(ctx: WorkflowContext, id: string, intent: StepIntent): Promise<boolean> {
+  return (await checkpointRecovery(ctx, id, intent)).retryable
+}
+export async function checkpointRecovery(ctx: WorkflowContext, id: string, intent: StepIntent) {
+  if (intent.kind === "wiki_write") return { retryable: false, recovery: { kind: "wiki_changeset" as const } }
+  const { NativeReviewContinuationSchema, nativeStepId } = await import("../extensions/native-adapters")
+  const prefix = `${root(id)}/native-review-`
+  for (const path of await ctx.storage.list(prefix)) {
+    const frame = path.slice(prefix.length).match(/^([0-9a-f-]{36})\.json$/)?.[1]
+    if (!frame) continue
+    const continuation = NativeReviewContinuationSchema.parse(JSON.parse((await ctx.storage.read(path))!))
+    if (continuation.action.action === "revise" && intent.id === nativeStepId(frame, `revision-${continuation.generation}`)) return { retryable: false, recovery: { kind: "native_revision" as const, reviewId: continuation.reviewId } }
+  }
+  return { retryable: true }
+}
+
+/** Coordinator exclusion precedes ai-spend then workflow-<id>. A receipt saves
+ * the old checkpoint/charge before acknowledgement, and repairs publication loss.
+ * Native ledgers must be reconciled separately; this never invents native usage. */
+export async function commitUncertainResolution(ctx: WorkflowContext, id: string, operationId: string, stepId: string, resolution: "retry" | "stop"): Promise<ToolRun> {
+  const { UncertainResolutionSchema } = await import("./contracts")
+  const request = UncertainResolutionSchema.parse({ action: "resolve-uncertain", operationId, stepId, resolution })
+  const Receipt = z.object({ request: UncertainResolutionSchema, checkpoint: StepSchema, usage: UsageJournalSchema.nullable(), complete: z.boolean() }).strict()
+  return withVaultExclusive(ctx.storage, "ai-spend", () => withVaultExclusive(ctx.storage, `workflow-${UuidSchema.parse(id)}`, async () => {
+    const { run, journal } = await state(ctx, id)
+    const path = `${root(id)}/uncertain-resolutions/${operationId}.json`, raw = await ctx.storage.read(path)
+    let receipt = raw ? Receipt.parse(JSON.parse(raw)) : null
+    if (receipt && canonicalJson(receipt.request) !== canonicalJson(request)) throw new Error("Uncertain resolution already selected")
+    if (receipt?.complete || (receipt && journal.actions.some(a => a.operationId === operationId && a.type === "resolve-uncertain"))) return persist(ctx, run, journal)
+    if (leaseOwnerAlive(journal.lease) || journal.cancelRequested) throw new Error("Workflow owner is still stopping")
+    if (journal.status !== "needs_attention") throw new Error("Workflow is not awaiting uncertainty resolution")
+    const usagePath = `${root(id)}/usage.json`, usageRaw = await ctx.storage.read(usagePath)
+    const usage = usageRaw ? UsageJournalSchema.parse(JSON.parse(usageRaw)) : null
+    if (usage && (usage.runId !== id || usage.profileId !== ctx.profileId || usage.vaultId !== ctx.vaultId)) throw new Error("Workflow usage owner mismatch")
+    if (usage?.extensions.some(e => e.operationId === operationId) || journal.actions.some(a => a.operationId === operationId)) throw new Error("Workflow action operation conflict")
+    if (!receipt) {
+      for (const winnerPath of await ctx.storage.list(`${root(id)}/uncertain-winners/`)) {
+        const winner = UncertainResolutionSchema.parse(JSON.parse((await ctx.storage.read(winnerPath))!))
+        if (winner.operationId === operationId && canonicalJson(winner) !== canonicalJson(request)) throw new Error("Workflow action operation conflict")
+      }
+      const checkpoints = await uncertainCheckpoints(ctx, id)
+      const checkpoint = checkpoints.find(s => s.intent.id === stepId)
+      if (!checkpoint) throw new Error("Unknown uncertain checkpoint")
+      const winnerPath = `${root(id)}/uncertain-winners/${stepId}-${checkpoint.retryOperation ?? stepId}.json`
+      const winner = await ctx.storage.read(winnerPath)
+      if (winner && canonicalJson(UncertainResolutionSchema.parse(JSON.parse(winner))) !== canonicalJson(request)) throw new Error("Uncertain resolution already selected")
+      if (resolution === "retry") {
+        if (checkpoint.intent.kind === "wiki_write") throw new Error("Reconcile the saved changeset instead of retrying a wiki write")
+        if (!await checkpointRetryable(ctx, id, checkpoint.intent)) throw new Error("Use a new explicit native revision")
+        // Other exactly associated workflow checkpoints keep their own hold and
+        // decision. Native or legacy/unmatched attempts still need their owner.
+        if (usage?.attempts.some(a =>
+          (a.state === "unknown" || (a.dispatchedAt && !["known", "not_dispatched"].includes(a.state))) &&
+          (a.ticket.estimate.accountingOwner !== "workflow" || !checkpoints.some(step => step.intent.id === (a.ticket.checkpointId ?? a.ticket.step.id))))) throw new Error("Reconcile other uncertain usage before retrying this checkpoint")
+      }
+      receipt = { request, checkpoint, usage, complete: false }
+      await ctx.storage.write(winnerPath, JSON.stringify(request))
+      await ctx.storage.write(path, JSON.stringify(receipt))
+    }
+    if (resolution === "retry") {
+      if (usage) {
+        for (const row of usage.attempts) {
+          if ((row.ticket.checkpointId ?? row.ticket.step.id) !== stepId || row.ticket.estimate.accountingOwner !== "workflow" || row.state === "known") continue
+          const estimate = row.ticket.estimate
+          row.result = { modelCalls: Math.max(estimate.modelCalls, row.result?.modelCalls ?? 0), commandCalls: Math.max(estimate.commandCalls, row.result?.commandCalls ?? 0),
+            activeSeconds: Math.max(estimate.activeSeconds, row.result?.activeSeconds ?? 0), costUsd: run.model.engine === "api" ? Math.max(estimate.costUsd ?? 0, row.result?.costUsd ?? 0) : null, outcome: "known" }
+          row.state = "known"; row.acknowledgedBy = operationId
+        }
+        await ctx.storage.write(usagePath, JSON.stringify(UsageJournalSchema.parse(usage)))
+      }
+      // The receipt retains the original pending record and attempt results.
+      await ctx.storage.write(`${root(id)}/steps/${stepId}.json`, JSON.stringify({ ...receipt.checkpoint, state: "not_started", retryOperation: operationId }))
+      journal.status = await hasUncertainWork(ctx, id) ? "needs_attention" : "queued"
+    } else journal.status = "cancelled"
+    journal.actions.push({ operationId, type: "resolve-uncertain" })
+    const updated = await persist(ctx, run, journal)
+    receipt.complete = true; await ctx.storage.write(path, JSON.stringify(receipt))
+    return updated
+  }))
 }

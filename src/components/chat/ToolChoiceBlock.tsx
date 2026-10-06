@@ -3,10 +3,7 @@ import { useRef, useState } from "react"
 import Link from "next/link"
 import type { ToolChoice, ToolRef } from "@/lib/extensions/contracts"
 import { chooseToolRemote, ToolChoiceRemoteConflict } from "@/lib/extensions/client"
-/** Task17 owns the shared run view; this durable link is its invocation handoff. */
-export function ToolRunLink({ runId }: { runId: string }) {
-  return <Link href={`/tools/runs/${runId}`} className="text-sm text-accent-ink underline">Open research run</Link>
-}
+import { ToolRunBlock } from "./ToolRunBlock"
 export function ToolChoiceBlock({ choice: initial }: { choice: ToolChoice }) {
   const [choice, setChoice] = useState(initial), [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null), [runId, setRunId] = useState<string | null>(null)
   const request = useRef<{ tool: ToolRef; operationId: string } | null>(null), sending = useRef(false)
@@ -20,7 +17,7 @@ export function ToolChoiceBlock({ choice: initial }: { choice: ToolChoice }) {
       setError(error instanceof Error ? error.message : "Could not select this tool.")
     } finally { sending.current = false; setBusy(false) }
   }
-  if (runId) return <ToolRunLink runId={runId} />
+  if (runId) return <ToolRunBlock runId={runId} />
   return <section aria-label="Choose a research tool" className="mt-3 rounded-card border border-border-warm bg-light-surface p-4">
     <p className="mb-3 text-sm text-espresso">{choice.prompt}</p>
     <div className="flex flex-col gap-2">{choice.candidates.map(candidate => <button key={JSON.stringify(candidate.tool)} type="button" disabled={busy} onClick={() => choose(candidate.tool)} className="rounded-btn border border-border-warm p-3 text-left hover:bg-card-surface focus-visible:outline-2 focus-visible:outline-accent-ink disabled:opacity-50">

@@ -73,7 +73,9 @@ export async function getRunUsage(ctx: WorkflowContext, runId: string): Promise<
  * Workflow callers share ai-spend with all existing API dispatch paths. */
 export async function reserveAttempt(ctx: WorkflowContext, runId: string, stepInput: StepIntent, estimateInput: AttemptEstimate): Promise<AttemptTicket> {
   UuidSchema.parse(runId)
-  const step = StepIntentSchema.parse(stepInput), estimate = AttemptEstimateSchema.parse(estimateInput)
+  const { workflowRetryIdentity, currentWorkflowRetry } = await import("./journal")
+  const estimate = AttemptEstimateSchema.parse(estimateInput)
+  const step = StepIntentSchema.parse({ ...stepInput, id: estimate.accountingOwner === "native" ? stepInput.id : workflowRetryIdentity(stepInput.id) })
   if ((step.kind === "model" && estimate.modelCalls < 1) || (step.kind === "command" && estimate.commandCalls < 1)) throw new Error("Attempt must reserve its dispatch count")
   if (estimate.activeSeconds <= 0) throw new Error("Attempt requires an active time limit")
   const reserve = () => withVaultExclusive(ctx.storage, `workflow-${runId}`, async () => {
@@ -99,7 +101,8 @@ export async function reserveAttempt(ctx: WorkflowContext, runId: string, stepIn
       if (daily.unpricedCount) throw new Error("Daily spending includes unknown pricing")
       if (daily.knownUsd + await meter.reviewReservationsToday() + await meter.workflowReservationsToday() + await meter.nativeReservationsToday() + (estimate.costUsd ?? 0) >= settings.dailyBudgetUsd) throw new WorkflowLimitError("Daily budget limit reached", runId, step.id)
     }
-    const ticket = AttemptTicketSchema.parse({ id: randomUUID(), runId, step, estimate, reservedAt: new Date().toISOString() })
+    const retry = estimate.accountingOwner === "workflow" ? currentWorkflowRetry() : undefined
+    const ticket = AttemptTicketSchema.parse({ id: randomUUID(), runId, step, ...(retry ? { checkpointId: retry.stepId, retryOperation: retry.operationId } : {}), estimate, reservedAt: new Date().toISOString() })
     journal.attempts.push({ ticket, state: "reserved" })
     await persist(ctx, run, journal)
     return ticket
@@ -204,8 +207,8 @@ export async function claimAttemptDispatch(ctx: WorkflowContext, input: AttemptT
 }
 
 /** Pure journal projection for HTTP observers; no lock files or mirror repair. */
-export async function projectRunUsage(ctx: WorkflowContext, id: string): Promise<Pick<ToolRun, "usage" | "allowance">> {
+export async function projectRunUsage(ctx: WorkflowContext, id: string): Promise<Pick<ToolRun, "usage" | "allowance"> & { detailedUsage: RunUsage }> {
   const { run, journal } = await state(ctx, id)
   const usage = totals(journal, run.model.engine !== "api")
-  return { allowance: journal.allowance, usage: { modelCalls: usage.modelCalls, commandCalls: usage.commandCalls, activeSeconds: usage.activeSeconds, costUsd: usage.costUsd } }
+  return { detailedUsage: usage, allowance: journal.allowance, usage: { modelCalls: usage.modelCalls, commandCalls: usage.commandCalls, activeSeconds: usage.activeSeconds, costUsd: usage.costUsd } }
 }

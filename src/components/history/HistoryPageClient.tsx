@@ -15,9 +15,12 @@ import type {
   ChangesetHistoryPreview,
   ChangesetHistoryRecord,
 } from "@/lib/vault/history"
+import { useLocalProfile } from "@/components/layout/ProfileGate"
+import { listToolRunsRemote } from "@/lib/workflows/client"
+import type { ToolRunDto } from "@/lib/workflows/contracts"
 import { LoadingState } from "@/components/ui/LoadingState"
 
-type Tab = "conversations" | "changes"
+type Tab = "conversations" | "changes" | "runs"
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("en-US", {
@@ -44,8 +47,19 @@ function statusExplanation(change: ChangesetHistoryRecord): string | null {
 }
 
 export function HistoryPageClient() {
+  const profile = useLocalProfile()
+  return <ProfileHistory key={profile?.id ?? "local"} />
+}
+function ProfileHistory() {
   const searchParams = useSearchParams()
-  const activeTab: Tab = searchParams.get("tab") === "changes" ? "changes" : "conversations"
+  const activeTab: Tab = searchParams.get("tab") === "runs" ? "runs" : searchParams.get("tab") === "changes" ? "changes" : "conversations"
+  const [runs, setRuns] = useState<ToolRunDto[] | null>(null), [runError, setRunError] = useState<string | null>(null)
+  useEffect(() => {
+    if (activeTab !== "runs") return
+    let active = true
+    void listToolRunsRemote().then(value => { if (active) setRuns(value) }).catch(error => { if (active) setRunError(error instanceof Error ? error.message : "Could not load runs.") })
+    return () => { active = false }
+  }, [activeTab])
   const [sessions, setSessions] = useState<ChatSession[] | null>(null)
   const [changes, setChanges] = useState<ChangesetHistoryRecord[] | null>(null)
   const [sessionError, setSessionError] = useState<string | null>(null)
@@ -140,10 +154,10 @@ export function HistoryPageClient() {
   return (
     <div className="p-7">
       <h1 className="font-heading text-[28px] tracking-heading text-espresso">History</h1>
-      <p className="mt-1 text-[14px] text-muted-text">Revisit conversations and inspect recoverable vault changes.</p>
+      <p className="mt-1 text-[14px] text-muted-text">Revisit conversations, research runs and recoverable vault changes.</p>
 
       <nav aria-label="History views" className="mt-5 flex gap-1 border-b border-border-warm/30">
-        {(["conversations", "changes"] as const).map((tab) => (
+        {(["conversations", "runs", "changes"] as const).map((tab) => (
           <Link
             key={tab}
             href={`/history?tab=${tab}`}
@@ -185,6 +199,8 @@ export function HistoryPageClient() {
           ))}
         </section>
       )}
+
+      {activeTab === "runs" && <section className="mt-5 space-y-3" aria-label="Research runs">{runError ? <p role="alert" className="text-sm text-espresso">{runError}</p> : runs === null ? <LoadingState label="Loading runs…" /> : runs.length === 0 ? <p className="text-sm text-muted-text">No research runs yet.</p> : runs.map(run => <article key={run.id} className="rounded-card border border-border-warm bg-light-surface p-4"><Link href={`/tools/runs/${run.id}`} className="block text-sm text-espresso">{run.tool.skillId}<span className="mt-1 block text-xs text-muted-text">{run.cancelRequested ? "Stopping…" : run.status.replaceAll("_", " ")} · {run.usage.modelCalls} calls used · {formatDate(run.updatedAt)}</span></Link>{run.sessionId && <Link href={`/chat/${encodeURIComponent(run.sessionId)}`} className="mt-2 inline-block text-xs text-accent-ink">Conversation</Link>}</article>)}</section>}
 
       {activeTab === "changes" && (
         <section className="mt-5">

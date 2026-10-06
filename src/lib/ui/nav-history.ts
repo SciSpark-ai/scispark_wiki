@@ -67,3 +67,8 @@ export function hasInAppHistory(store: NavStore | null = defaultStore()): boolea
     return false
   }
 }
+
+/** Direct workflow links fall back to their actual conversation or saved Runs. */
+export function workflowHistoryHref(sessionId?: string): string {
+  return sessionId ? `/chat/${encodeURIComponent(sessionId)}` : "/history?tab=runs"
+}
