@@ -1,0 +1,16 @@
+{
+  "exitCode": 0,
+  "mode": "production",
+  "distDir": ".next-modular-e2e",
+  "specs": [
+    "e2e/tools-library.spec.ts",
+    "e2e/tool-choice.spec.ts",
+    "e2e/tool-background.spec.ts",
+    "e2e/tool-restart.spec.ts",
+    "e2e/tool-profile-isolation.spec.ts",
+    "e2e/tool-review.spec.ts"
+  ],
+  "files": 23,
+  "bytes": 1278845,
+  "liveProviders": false
+}

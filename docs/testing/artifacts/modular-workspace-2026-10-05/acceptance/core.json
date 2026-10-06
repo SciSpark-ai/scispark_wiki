@@ -1,0 +1,16 @@
+{
+  "exitCode": 0,
+  "mode": "production",
+  "distDir": ".next-modular-e2e",
+  "specs": [
+    "e2e/paper-chat-context.spec.ts",
+    "e2e/selection-sparky.spec.ts",
+    "e2e/chat-markdown.spec.ts",
+    "e2e/feed-background.spec.ts",
+    "e2e/literature-review.spec.ts",
+    "e2e/review-restart.spec.ts"
+  ],
+  "files": 16,
+  "bytes": 1639350,
+  "liveProviders": false
+}

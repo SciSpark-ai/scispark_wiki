@@ -1,0 +1,285 @@
+[
+  {
+    "path": "baseline/build-elevated.log.gz",
+    "originalPath": "baseline/build-elevated.log",
+    "rawSha256": "b656088ca0bbf6e7beefc9610c0315fc9a01bda1083dfd32da58b750c9ede7ef",
+    "rawBytes": 3099
+  },
+  {
+    "path": "baseline/build.log.gz",
+    "originalPath": "baseline/build.log",
+    "rawSha256": "5936370b177382571ea9f42052df1390750a40781234564b94de4c7d743021f4",
+    "rawBytes": 192
+  },
+  {
+    "path": "baseline/lint.log.gz",
+    "originalPath": "baseline/lint.log",
+    "rawSha256": "ce95cdc64b0b5bf2a79f082c4f933ee6352c1155acec748fe68c918c4de8164d",
+    "rawBytes": 526
+  },
+  {
+    "path": "baseline/tsc.log.gz",
+    "originalPath": "baseline/tsc.log",
+    "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rawBytes": 0
+  },
+  {
+    "path": "baseline/vitest.log.gz",
+    "originalPath": "baseline/vitest.log",
+    "rawSha256": "e487f1392a1db81f6291e5073254803b183559d457f1c0d0d3bc5dca577ea5f3",
+    "rawBytes": 275
+  },
+  {
+    "path": "browser-logs/browser-r57.log.gz",
+    "originalPath": "browser-logs/browser-r57.log",
+    "rawSha256": "a8b86a30aaa56915a0310997a66dabbd43150a8ba08776d746ece710fbd9b165",
+    "rawBytes": 2645
+  },
+  {
+    "path": "browser-logs/core-corrected.log.gz",
+    "originalPath": "browser-logs/core-corrected.log",
+    "rawSha256": "2359ceac3cda9ff1b46579aa0b676c09979cbc31e2ba733ac8689dc7c25d748a",
+    "rawBytes": 5395
+  },
+  {
+    "path": "browser-logs/core-initial.log.gz",
+    "originalPath": "browser-logs/core-initial.log",
+    "rawSha256": "00863d9775728e7543f95dac3b7dce9beab61c217192f1b51378761a85d39617",
+    "rawBytes": 8905
+  },
+  {
+    "path": "browser-logs/core-r57.log.gz",
+    "originalPath": "browser-logs/core-r57.log",
+    "rawSha256": "9f05119e1d895a5e9325a3087a34f3135f39570da81e4e7dcbe91c74fd212cbf",
+    "rawBytes": 1864
+  },
+  {
+    "path": "browser-logs/fix1-final-focused.log.gz",
+    "originalPath": "browser-logs/fix1-final-focused.log",
+    "rawSha256": "2e78025827f46e4924075baf855b491d4964761210bd0d905783c8378e9f5967",
+    "rawBytes": 237
+  },
+  {
+    "path": "browser-logs/fix1-native-browser.log.gz",
+    "originalPath": "browser-logs/fix1-native-browser.log",
+    "rawSha256": "0454689a6e726b3d4c99ad5593d9ad5b0647395ba35d8f6eb991f8ac696ddc16",
+    "rawBytes": 1138
+  },
+  {
+    "path": "browser-logs/fix1-red.log.gz",
+    "originalPath": "browser-logs/fix1-red.log",
+    "rawSha256": "29200af92763536acf99ad038468e1c482094875ab806edd226f0379d00048b3",
+    "rawBytes": 5339
+  },
+  {
+    "path": "browser-logs/macos-sandbox.log.gz",
+    "originalPath": "browser-logs/macos-sandbox.log",
+    "rawSha256": "89392fc847a4fd4aa486768c540d24d2f5cb00aec2624b154134f2d58582794f",
+    "rawBytes": 3034
+  },
+  {
+    "path": "browser-logs/native-approval-red.log.gz",
+    "originalPath": "browser-logs/native-approval-red.log",
+    "rawSha256": "73e04b32e0ef92bc4987746fdad9d79de95e1e0eba6155433df811c427e425c9",
+    "rawBytes": 1278
+  },
+  {
+    "path": "browser-logs/native-ui-red.log.gz",
+    "originalPath": "browser-logs/native-ui-red.log",
+    "rawSha256": "748a206a22cd17be625e66b56907a53cb68a23b6566bbcd6c71f37250500bee7",
+    "rawBytes": 937
+  },
+  {
+    "path": "build-acceptance/build.log.gz",
+    "originalPath": "build-acceptance/build.log",
+    "rawSha256": "23ed64d529e5e39f934f9ab164d80e39562d12c86381eb5d336f0fbd2fd0de63",
+    "rawBytes": 3526
+  },
+  {
+    "path": "build-acceptance/next-env.d.ts.diff.gz",
+    "originalPath": "build-acceptance/next-env.d.ts.diff",
+    "rawSha256": "2040e7a1c1b22aa6e30a1dfd2f90f2cc168b5dc89e12c9a79a49ee40522bb223",
+    "rawBytes": 507
+  },
+  {
+    "path": "build-acceptance/tsconfig.json.diff.gz",
+    "originalPath": "build-acceptance/tsconfig.json.diff",
+    "rawSha256": "fb88f48578eb024bace7513d3bbb8d5f2dcc545598fea8b18014235440198fe8",
+    "rawBytes": 394
+  },
+  {
+    "path": "build-regular/build.log.gz",
+    "originalPath": "build-regular/build.log",
+    "rawSha256": "187ed83ab4737c800c676368966f62eb50a735b3757c1222d425a127fa98d859",
+    "rawBytes": 3534
+  },
+  {
+    "path": "build-regular/next-env.d.ts.diff.gz",
+    "originalPath": "build-regular/next-env.d.ts.diff",
+    "rawSha256": "d53e4e6550d847b531aa4392e3c10287e3562fa6cfe87c39a395a588cff5133e",
+    "rawBytes": 515
+  },
+  {
+    "path": "build-regular/tsconfig.json.diff.gz",
+    "originalPath": "build-regular/tsconfig.json.diff",
+    "rawSha256": "da027b90a200f7eb70ea053592ea2d3ac12734a88e5d1aab8eb9a29fd0305a6d",
+    "rawBytes": 402
+  },
+  {
+    "path": "final-gates/lint.log.gz",
+    "originalPath": "final-gates/lint.log",
+    "rawSha256": "ce95cdc64b0b5bf2a79f082c4f933ee6352c1155acec748fe68c918c4de8164d",
+    "rawBytes": 526
+  },
+  {
+    "path": "final-gates/tsc.log.gz",
+    "originalPath": "final-gates/tsc.log",
+    "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rawBytes": 0
+  },
+  {
+    "path": "final-gates/vitest.log.gz",
+    "originalPath": "final-gates/vitest.log",
+    "rawSha256": "211a61a917576c9bb70ed18baae83c458f0364ce640697585afe2ed753b50b0e",
+    "rawBytes": 276
+  },
+  {
+    "path": "runtime/restart-server.log.gz",
+    "originalPath": "runtime/restart-server.log",
+    "rawSha256": "4ca2c47a4e7e10c5d38086b337fc938a7d9acc6362569088dbb2742e1637ef44",
+    "rawBytes": 638
+  },
+  {
+    "path": "task12-scratch/task-12-report.md.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/task-12-report.md",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/task-12-report.md",
+    "rawSha256": "545599bbb01c139449f94c651cfe3d6036ee5800470b8c237c565baa126eb5c6",
+    "rawBytes": 12532
+  },
+  {
+    "path": "task12-scratch/verification/task-12-fix-1/build-before-test-annotations.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/build-before-test-annotations.log",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/build-before-test-annotations.log",
+    "rawSha256": "7b03a6a5d7ce4c45803a265aec0e91399c5f7d76163dd9c08b651ae432d8d6a1",
+    "rawBytes": 1237
+  },
+  {
+    "path": "task12-scratch/verification/task-12-fix-1/build-result.json.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/build-result.json",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/build-result.json",
+    "rawSha256": "ca73212612f55e393e3db569cd3b58df23a9e58ae958c08110178ed8e45c948d",
+    "rawBytes": 776
+  },
+  {
+    "path": "task12-scratch/verification/task-12-fix-1/build.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/build.log",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/build.log",
+    "rawSha256": "62f74ed2d19e5c7a8f94e46ff2dd181b4b2b0809ad8ecee1b7f64369f75ebf95",
+    "rawBytes": 3361
+  },
+  {
+    "path": "task12-scratch/verification/task-12-fix-1/focused-green.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/focused-green.log",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/focused-green.log",
+    "rawSha256": "3708cabbf278e1e149be35974425fd2a115074c7baf132ad0f8f77d3848647a9",
+    "rawBytes": 235
+  },
+  {
+    "path": "task12-scratch/verification/task-12-fix-1/focused-red.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/focused-red.log",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/focused-red.log",
+    "rawSha256": "11934f899cff261ef75b916b24a45f87ba28b5bb9c6a076ccf1b87c010ba73e8",
+    "rawBytes": 7205
+  },
+  {
+    "path": "task12-scratch/verification/task-12-fix-1/lint.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/lint.log",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/lint.log",
+    "rawSha256": "ce95cdc64b0b5bf2a79f082c4f933ee6352c1155acec748fe68c918c4de8164d",
+    "rawBytes": 526
+  },
+  {
+    "path": "task12-scratch/verification/task-12-fix-1/results.json.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/results.json",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/results.json",
+    "rawSha256": "b60ece0e396034d8eb9803023272d2c91538526887e3d3e81ae78feea1c63865",
+    "rawBytes": 406
+  },
+  {
+    "path": "task12-scratch/verification/task-12-fix-1/tsc.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/tsc.log",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/tsc.log",
+    "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rawBytes": 0
+  },
+  {
+    "path": "task12-scratch/verification/task-12-fix-1/vitest.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/vitest.log",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12-fix-1/vitest.log",
+    "rawSha256": "f487b2f31be553334a0d4869b0392f22ccb0f8d37035bf32d5bebb55600415d8",
+    "rawBytes": 276
+  },
+  {
+    "path": "task12-scratch/verification/task-12/build-before-tracing-fix.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/build-before-tracing-fix.log",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/build-before-tracing-fix.log",
+    "rawSha256": "fbe621ddf398189457b594b519d35b899292baec36d7492ed993244480906a1a",
+    "rawBytes": 9294
+  },
+  {
+    "path": "task12-scratch/verification/task-12/build-result.json.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/build-result.json",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/build-result.json",
+    "rawSha256": "ba309d134e55c3eafb6f1db071b75c7ee9960e561f32a6b8e053de927829eee8",
+    "rawBytes": 758
+  },
+  {
+    "path": "task12-scratch/verification/task-12/build.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/build.log",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/build.log",
+    "rawSha256": "59397083e762e582eac4a14d5360f85021753efeb57e33b9f0f03a5f6197e87c",
+    "rawBytes": 3349
+  },
+  {
+    "path": "task12-scratch/verification/task-12/focused-green.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/focused-green.log",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/focused-green.log",
+    "rawSha256": "e76b1547f79a93f48fd35a7f2ef48cdeeb853daf71174831ce139f69a905ffdf",
+    "rawBytes": 235
+  },
+  {
+    "path": "task12-scratch/verification/task-12/focused-red.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/focused-red.log",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/focused-red.log",
+    "rawSha256": "343c866d6ec4eec6dfa8b1230ee122c23fb68c9904d0171227f76365eb03f4a7",
+    "rawBytes": 1113
+  },
+  {
+    "path": "task12-scratch/verification/task-12/lint.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/lint.log",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/lint.log",
+    "rawSha256": "ce95cdc64b0b5bf2a79f082c4f933ee6352c1155acec748fe68c918c4de8164d",
+    "rawBytes": 526
+  },
+  {
+    "path": "task12-scratch/verification/task-12/results.json.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/results.json",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/results.json",
+    "rawSha256": "4aa66c47cdc2d2553f9c658c4e37d6ae2774a98ac8c09ff61090ec7ad2fc7eb3",
+    "rawBytes": 407
+  },
+  {
+    "path": "task12-scratch/verification/task-12/tsc.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/tsc.log",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/tsc.log",
+    "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rawBytes": 0
+  },
+  {
+    "path": "task12-scratch/verification/task-12/vitest.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/vitest.log",
+    "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/vitest.log",
+    "rawSha256": "23d9d2b68bad78ae47960d131c3c08fe050ca0a47baca3f76c975c4ded81876d",
+    "rawBytes": 277
+  }
+]

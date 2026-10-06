@@ -1,0 +1,12 @@
+{
+  "exitCode": 0,
+  "mode": "production",
+  "distDir": ".next-modular-e2e",
+  "specs": [
+    "e2e/literature-review.spec.ts",
+    "e2e/review-restart.spec.ts"
+  ],
+  "files": 5,
+  "bytes": 608723,
+  "liveProviders": false
+}

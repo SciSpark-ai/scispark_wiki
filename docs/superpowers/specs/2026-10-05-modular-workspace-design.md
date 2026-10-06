@@ -2,9 +2,14 @@
 
 Date: 2026-10-05
 
-Status: Product decisions captured from the completed design interview.
-Architecture, migration details, and delivery phases remain proposals for
-review, not implemented functionality or approval to begin coding.
+Status: Confirmed product contract with Tasks1–19 implementation reviewed on
+`codex/modular-research-workspace`; Task20 documentation and final whole-branch
+review are pending. Offline/unit and production browser gates passed. Real
+imported-command, OS/provider/source and scientific acceptance remain OPEN.
+The proposal/interview wording retained below records original intent; the
+[current requirement/evidence map](../../testing/2026-10-05-modular-workspace.md)
+and [R1–R59 rulings with costs](../../testing/artifacts/modular-workspace-2026-10-05/decisions.md)
+identify implemented boundaries, superseded proposals and current limits.
 
 Implementation planning: [master plan and three linked delivery plans](../plans/2026-10-05-modular-workspace.md).
 
@@ -72,7 +77,7 @@ in the current profile. It does not start a research task.
 
 ### Reuse skills installed in another agent
 
-Proposed flow, consistent with the user's opt-in requirement:
+Implemented selected-root flow, retaining the user's opt-in requirement:
 
 1. Offer to find research skills installed on this computer.
 2. Obtain permission to inspect the selected agents' skill locations, or a
@@ -121,10 +126,10 @@ An uncertain external action requires reconciliation or a user decision before
 repetition. The UI must distinguish working, waiting for a choice, reaching a
 limit, interrupted, and failed states with concise next actions.
 
-Recommendation: retain the current shared History entry point for conversations
+Implemented: retain the shared History entry point for conversations
 and related runs, with direct links between a run and its originating conversation.
 Tools and Sparky should open the same result rather than creating duplicate
-records. This navigation detail is a proposal, not a separately confirmed choice.
+records. Shared History/run links are covered by Tasks17/19; this does not close live research acceptance.
 
 ### Use results
 
@@ -140,9 +145,9 @@ limits and source-grounding checks remain in force.
 
 ## 4. Proposed architecture
 
-### Current implementation evidence
+### Interview baseline (historical)
 
-Source inspected during this interview:
+Source inspected before implementation; these are not current feature-status claims:
 
 - `src/components/layout/Sidebar.tsx` has fixed navigation groups.
 - `src/components/chat/ChatWorkspace.tsx` has fixed chat/search/review modes and
@@ -253,8 +258,15 @@ Use `neuromechanist/research-skills`:
   using its declared supporting skills. Optional GitHub project orchestration is
   not required for a SciSpark-local review.
 
-At implementation time pin a tested source revision and dependency versions;
-the links above identify inspected source, not a completed compatibility test.
+The imported graph pins research-skills revision
+`f0219bde233abb44d8a0c5d73f41ea27073e1493`, OpenCite0.5.4 and reviewed host
+bindings. The source links above identify the upstream intent; current bundled
+scope is Semantic Scholar, bounded public PDF/Markdown and BibTeX, with one local
+Markdown review. Other sources, DOI/canonical lookup, enhanced conversion/PDF
+figure review and optional GitHub/LaTeX remain unadapted. Fixture calibration is
+26model+2command calls, not live quality. Supported-host install/CLI/broker,
+real OpenCite/source, API/Codex/Claude provider and human scientific checks remain
+OPEN under the [live protocol](../../testing/modular-workspace-live-check.md).
 
 Proposed bounded acceptance request:
 
@@ -311,10 +323,9 @@ Literature Review, Find Papers, and Idea Spark are available to add from Tools
 when wanted. Their presence in the catalog does not enable or execute them.
 Discovery of skills from another agent remains opt-in.
 
-Proposed migration: register the existing built-in workflows as enabled native
+Implemented idempotent migration (Tasks2/14/19): register the existing built-in workflows as enabled native
 tools for existing profiles, preserving access to their current functionality
-and saved results. This is an implementation recommendation; the user's new
-profile choice does not authorize disabling existing workflows or deleting data.
+and saved results. The new-profile choice does not authorize disabling existing workflows or deleting data; no human vault migration was executed during validation.
 
 The initial product interview has no unanswered selection remaining. Before
 implementation, turn the architectural proposals into concrete contracts,
@@ -329,3 +340,34 @@ pill shapes are for action buttons. Show short status text and a meaningful next
 action; put setup details and logs behind disclosures. Preserve readable Markdown,
 streaming, loading cues, reduced-motion support, paper context, source links, and
 accessible interaction. A tools system is not authorization for a brand redesign.
+
+## 9. Current implementation and acceptance boundary
+
+The requirement map covers every confirmed decision, all20 tasks, source callers,
+reviewed commits and final3291passed/24gatedskips. It retains production modular11,
+core6 and the fresh R58 native2 scopes separately. Browser close/relaunch and a real
+owned production Next SIGKILL/restart passed; model/GitHub/source fixtures are not
+live transport. Both fresh builds passed and restored exact config bytes.
+
+R31 preserves fail-closed unsupported execution on this Mac: the actual probe
+failed descendant lifetime ownership. Linux/Windows are unrun, and real worker,
+install, CLI, broker, OpenCite retrieval, provider and scientific gates remain open.
+The full phase acceptance described in §5–6 is not complete. R21's Unix-socket
+proposal is superseded by R22's inspected authenticated runtime HTTP proxy; all
+59 rulings and costs remain chronological in the durable decision ledger.
+
+R41–45 preserve native revision ownership, retained reports and explicit recovery;
+R42 preserves retry generations and prior billing; R46 saves only still-unsaved
+artifacts. R47–52 add bounded two-strand execution, current-root artifact paging
+and per-turn immutable prompts. R54 uses in-memory-only live credential bindings.
+R56–58 preserve core browser behavior, explicit brief approval and a server-only
+validated native action bridge: generic run admission rejects action/reviewId.
+
+Deferred minor observations remain in the [final-review handoff](../../testing/artifacts/modular-workspace-2026-10-05/review-handoff.md).
+Final whole-branch review and publication remain pending; these documentation
+updates do not imply a live or scientific compatibility pass.
+
+R59 preserves all 19 accidentally tracked Task12 scratch report/log files as lossless
+gzip evidence with original paths and hashes, then removes only their Git index
+entries. Local originals remain for controller final review. The final unfiltered
+branch whitespace check has only the two R53 upstream occurrences.

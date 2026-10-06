@@ -1,6 +1,16 @@
 # Modular Research Workspace Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Current tracking (Task20):** Checked items record reviewed implementation and
+executed offline/fixture checks, including explicit unsupported outcomes; they
+are not live/OS/scientific passes. Mixed steps below remain unchecked where their
+actual worker/install/CLI or final-review clause is open. The
+[current requirement/evidence map](../../testing/2026-10-05-modular-workspace.md)
+and [chronological R1–R59 rulings/costs](../../testing/artifacts/modular-workspace-2026-10-05/decisions.md)
+govern current scope. Deferred minors remain in the
+[final-review handoff](../../testing/artifacts/modular-workspace-2026-10-05/review-handoff.md).
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Deliver the agreed modular workspace, including optional native tools, imported research skills, consented discovery from other agents, and durable background execution.
 
@@ -44,16 +54,16 @@ in order; a phase passing is not a claim that the entire feature is complete.
 | Plan | Tasks | Independently testable outcome |
 | --- | --- | --- |
 | [1. Foundation](2026-10-05-modular-workspace-1-foundation.md) | 1–6 | Profile-bound registry, durable jobs, model/usage accounting, authenticated observation, artifacts and undoable saves; validated with deterministic adapters. |
-| [2. Imports and execution](2026-10-05-modular-workspace-2-imports.md) | 7–13 | GitHub/local/agent imports, isolated setup/execution, pinned dependencies, updates, and an actual OpenCite command path. |
+| [2. Imports and execution](2026-10-05-modular-workspace-2-imports.md) | 7–13 | GitHub/local/agent imports, isolated setup/execution, pinned dependencies, updates, and a fail-closed OpenCite command path; actual supported-host phase acceptance remains OPEN (R31). |
 | [3. Product integration](2026-10-05-modular-workspace-3-product.md) | 14–20 | Native tools, Tools UI, Sparky choice/routing, History, imported literature review, production browser/restart checks and release evidence. |
 
 ### Before Task 1
 
-- [ ] Read the spec, `AGENTS.md`, `CLAUDE.md`, `design.md`, and the installed Next.js route-handler/instrumentation guides. Verify `agents.md` and `project_memory.md` exist.
-- [ ] Inspect current Git state and preserve all unrelated work. Planning baseline was `main` at `435afcd886d810b66258aaae83734c5868f721cf`; only the design document was untracked before this plan was written. Recheck before execution.
-- [ ] Create `codex/modular-research-workspace` from the reviewed main baseline. Do not discard changes or move to a different starting revision silently. Carry these plan/spec files into the implementation branch.
-- [ ] Record fresh `npx tsc --noEmit`, `npm run lint`, `npx vitest run`, and `npm run build` results in `docs/testing/2026-10-05-modular-workspace.md`. Do not reuse historical test counts as current evidence.
-- [ ] Preserve the human server and vault. All fixtures, migration tests, installs, command execution, and E2E use disposable roots and isolated ports. No actual installed-skill scan or paid experiment is authorized merely by this plan.
+- [x] Read the spec, `AGENTS.md`, `CLAUDE.md`, `design.md`, and the installed Next.js route-handler/instrumentation guides. Verify `agents.md` and `project_memory.md` exist.
+- [x] Inspect current Git state and preserve all unrelated work. Planning baseline was `main` at `435afcd886d810b66258aaae83734c5868f721cf`; only the design document was untracked before this plan was written. Recheck before execution.
+- [x] Create `codex/modular-research-workspace` from the reviewed main baseline. Do not discard changes or move to a different starting revision silently. Carry these plan/spec files into the implementation branch.
+- [x] Record fresh `npx tsc --noEmit`, `npm run lint`, `npx vitest run`, and `npm run build` results in `docs/testing/2026-10-05-modular-workspace.md`. Do not reuse historical test counts as current evidence.
+- [x] Preserve the human server and vault. All fixtures, migration tests, installs, command execution, and E2E use disposable roots and isolated ports. No actual installed-skill scan or paid experiment is authorized merely by this plan.
 
 ### Task verification and commits
 
@@ -191,10 +201,11 @@ and completed source-linked results. Missing live or OS evidence is a specific
 open gate, not proof of compatibility. Do not label a prototype or simulated
 review as a fully verified external workflow.
 
-Plan self-review: all confirmed decisions map to tasks above; existing modify
-targets and local document links were checked against the planning checkout.
-Runtime isolation and real provider compatibility remain execution-time gates,
-not validation completed while writing these documents.
+Current tracking: implementation Tasks1–19 have reviewed commits and completed
+offline/production browser gates. Task20 docs/evidence are ready for review.
+The requirement map checks actual source callers and preserves every confirmed
+decision. Real command isolation/install/CLI/broker, real sources/providers and
+scientific acceptance remain OPEN; final whole-branch review is pending.
 
 ## Execution preflight clarifications — 2026-10-05
 
@@ -213,3 +224,14 @@ These engineering rulings repair cross-task contracts without changing the agree
 - **R11:** Run contracts capture immutable prepared environment/lock refs and non-secret connection configuration revisions. Task 9 resolves these, Task 13 retains them for active/recoverable runs. Real credentials stay server-side and may rotate without copying secrets into run state. Reason: Version-pinned code must also resume in its original dependency environment. Cost if wrong: Retained environments use additional disk space until safe collection.
 
 - **R12: Move only new private tools/tool-runs generic-vault file/list protections and their vault-api regression cases from Task 6 into Task 1. Task 6 retains artifact/save extensions. This makes private storage private immediately without changing legacy accessible records. Cost if wrong: a previously unknown generic consumer of the new namespaces would need a dedicated API.**
+
+## Current unresolved acceptance
+
+- [ ] Actual supported-host imported-command/OpenCite phase gate; Mac unsupported (descendant ownership), Linux/Windows unrun.
+- [ ] Real source acquisition, selected API/Codex/Claude Code compatibility and human claim/coverage validation under the exact [live-check protocol](../../testing/modular-workspace-live-check.md).
+- [ ] Task20 review and one separate final whole-branch review; deferred minors remain recorded.
+
+Final code gate:3291passed/24gatedskips (baseline2710/19), type/lint0 with one
+baseline warning; fresh regular27.55s/acceptance27.18s builds restore exact config
+bytes. Production modular11/core6 remain valid for unchanged scopes; fresh R58
+native2 covers the prepared native admission correction. No full live phase claim.

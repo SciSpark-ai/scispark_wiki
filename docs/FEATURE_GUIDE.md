@@ -30,9 +30,64 @@ presence flags, the generic vault-file API blocks access to
 `.scispark/settings.json`, and persisted changeset records cannot be forged or
 deleted through generic file mutations.
 
+## Modular Tools workspace
+
+New profiles have the core Feed, reading, Sparky discussion, Wiki, Graph and
+Projects. Trending, Find papers, Deep review and Idea Spark are optional tools.
+Existing profiles adopt the built-in tools once; disabled bindings, settings,
+conversations, reports and research files are preserved. Catalog presence does
+not enable a tool or start it. Disabling or removing a tool preserves saved runs.
+
+In **Tools**, choose a catalog entry or **Add tools** to inspect a GitHub URL,
+folder or ZIP. Review the available workflows, resources, dependencies and setup
+before confirming the selection. The imported literature review requires the
+exact OpenCite dependency to be imported separately; it enables only the selected
+root workflow. **Find installed skills** requires consent for selected Codex,
+Claude Code or custom agent locations. Scanning is local metadata discovery;
+selecting a snapshot does not execute it or copy agent credentials/hooks.
+
+Enable a prepared tool for this profile, pin it in the sidebar if useful, and
+choose model tier overrides in its settings. Otherwise it inherits the profile's
+selected fast/strong models. Setup exposes missing connections, prices, runtimes
+or unsupported isolation. Tools never silently change the chosen model/provider.
+Manual update checks produce a preview; apply or roll back deliberately. Saved
+active runs retain their original tool graph, model and environment revisions.
+
+Tools and Sparky share a run. Name a ready tool or select it directly; clear intent
+with one eligible implementation starts it, while overlapping tools show a
+chooser with name, source and distinction. Contextual relevance alone does not
+start work. One top-level tool owns supporting skills and all cumulative usage.
+New top-level native Deep review first shows its editable brief; only the explicit
+**Start review** action approves it. Generic Continue does not approve a brief.
+
+History retains progress, results and source-linked artifacts independently of
+whether a tool stays enabled. Navigation/reload/browser close does not cancel
+server-owned work. Keep the local runtime available; reopening is read-only.
+Continue adds a positive allowance to the same run; prior calls, time, costs and
+uncertain holds remain. Explicit retry/stop applies to an uncertain checkpoint;
+completed checkpoints stay cached. Interrupted native wording revisions expose
+the retained report and require Stop/reconcile followed by a new explicit revision.
+
+Reports, paper lists, BibTeX and supported files use shared previews/downloads.
+Outputs are saved automatically. **Add to wiki** applies a validated, atomic,
+undoable changeset; an original explicit wiki-update request uses the same path.
+Newly arrived artifacts save separately from already-saved notes. Source links
+and abstract/full-text labels describe retained evidence, not independent truth.
+
+Node>=22.12 is required for the pinned command runtime. Command tools additionally
+need a successful actual platform probe and a locked managed environment;
+OpenCite uses Python3.12 and requires a Semantic Scholar connection. The current
+Mac probe fails descendant ownership and command execution stays unsupported.
+Linux/Windows, real installs/CLI/broker, API/Codex/Claude Code imported execution,
+real source acquisition and scientific acceptance remain open. Native/core paths
+and synthetic imported fixtures passed the recorded offline/browser gates.
+See [current evidence](testing/2026-10-05-modular-workspace.md) and the separate
+[authorized live-check protocol](testing/modular-workspace-live-check.md).
+
 ## Sparky conversations and recoverable paper searches
 
-The sidebar now has one **Sparky** workspace. **Find papers** runs the existing
+The sidebar has one **Sparky** workspace. Once enabled in Tools, **Find papers**
+runs the existing
 bounded AI search planner and ranker; **Discuss research** answers from saved
 research or the latest search's paper abstracts. This is quick research search,
 not an exhaustive literature review. `/papers` remains a compatible entry point,
@@ -63,7 +118,8 @@ never replayed merely by reopening its History entry.
 
 ## Deep literature review (integrated preview)
 
-Choose **Deep literature review** in Sparky's composer. The question becomes an
+Enable **Deep review** in Tools, then choose **Deep literature review** in Sparky's
+composer or start it from Tools. The question becomes an
 inline, editable brief: confirm the scope, selected indexes, personal context,
 actual model and estimated allowance, then choose **Start review**. Preparing or
 reopening a brief makes no paid call. The question, brief, sources, progress,
@@ -180,7 +236,7 @@ This Next.js version includes breaking API and file-layout changes. Read
 
 ## Getting started
 
-Requirements: Node.js 20 or newer and npm.
+Requirements: Node.js 22.12 or newer and npm.
 
 ```bash
 npm install

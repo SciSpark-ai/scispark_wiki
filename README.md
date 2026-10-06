@@ -116,8 +116,9 @@ highly cited papers.
 
 ### Deep research — investigate a question across the literature
 
-Ask Sparky a research question, review the proposed scope and spending allowance,
-and start a **Deep literature review**. The workflow searches scholarly sources,
+Enable **Deep review** in Tools, ask Sparky a research question, and review the
+proposed scope and spending allowance.
+Start a **Deep literature review**. The workflow searches scholarly sources,
 reads available evidence, compares studies, and builds a cited report with
 supporting passages and explicit gaps in coverage. You can attach readable PDFs
 before starting and select relevant personal or project context.
@@ -162,7 +163,8 @@ supported edits to your research workspace.
 
 ### Idea Spark — develop possibilities from what you know
 
-**Quick Spark** generates a few idea seeds grounded in your vault. Save a seed
+Enable **Idea Spark** in Tools. **Quick Spark** generates a few idea seeds grounded
+in your vault. Save a seed
 or choose **Deep Spark** to develop it through additional literature retrieval,
 problem analysis, structured ideation, related-work checks, and a falsification
 plan describing what evidence could disprove the idea.
@@ -275,7 +277,7 @@ History. Saving the report to the wiki is a separate choice.
 
 ## Getting started
 
-Requirements: **Node.js 20.9+**, **npm**, and either an AI provider API key
+Requirements: **Node.js 22.12+**, **npm**, and either an AI provider API key
 or a signed-in **Codex / Claude Code CLI** for AI features.
 
 ```bash
@@ -297,7 +299,7 @@ Open **[http://127.0.0.1:3000](http://127.0.0.1:3000)**.
 | **3 · Confirm your profile** | Edit the proposed answers and start your first feed. |
 | **4 · Follow a paper** | Open it, read, ask questions, and save useful material. |
 | **5 · Build context** | Add knowledge to the wiki and organize a project around a question. |
-| **6 · Explore a direction** | Start a deep review or develop an idea in Spark. |
+| **6 · Add a research tool** | Open Tools to enable Deep review, Find papers, Trending, or Idea Spark when wanted. |
 
 For local engines, sign in with `codex login` or `claude auth login`, then use
 **Check connection** and select the engine in Settings. These connections use
@@ -342,6 +344,37 @@ configured vault; `SCISPARK_PROFILES_DIR` can select a different registry folder
 outside any research vault. Back up that registry along with each vault.
 Local API clients must open `/api/local-profiles/session` with a profile ID,
 retain the session cookie, and send `x-scispark-profile` on vault API requests.
+
+### Optional research tools
+
+New profiles start with Feed, reading, Sparky discussion, Wiki, Graph, and Projects.
+Open **Tools** to add Trending, Find papers, Deep review, or Idea Spark. Existing
+profiles keep their enabled built-in tools and saved work. Each profile controls
+its own enabled tools, sidebar pins, connections, and model overrides.
+
+Tools can come from the catalog, a GitHub repository, or a local folder/ZIP.
+Review the selected workflow and its setup requirements before importing it.
+**Find installed skills** asks for the agent locations to inspect and lets you
+choose what to add; discovering or importing a skill does not run it.
+
+Start an enabled, ready tool in Tools or name it in Sparky. A clear request with
+one matching tool starts directly; several matches show a chooser. Supporting
+skills share the chosen run's scope and usage limit. Results are retained in
+History, with source links and explicit **Add to wiki** and Undo controls.
+
+Keep the local runtime running while work continues. Navigation and closing the
+browser detach the view; they do not cancel work. Reopen the same run to follow
+progress. Continue adds to its allowance while retaining prior usage; uncertain
+work requires a recovery decision. Updates are applied manually, with rollback
+available and active runs pinned to their original versions.
+
+Imported commands need verified isolation, a managed environment, and their
+required connections. This validation host's macOS isolation probe is unsupported;
+command tools such as OpenCite remain unavailable here. Linux/Windows and real
+imported provider/source execution remain unverified. The imported literature
+review's recorded evidence is a synthetic fixture, not scientific acceptance.
+See the [validation record](docs/testing/2026-10-05-modular-workspace.md) for the
+current platform and live gates.
 
 ## Configure your workspace
 

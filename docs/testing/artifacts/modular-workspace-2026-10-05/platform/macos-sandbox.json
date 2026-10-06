@@ -1,0 +1,77 @@
+{
+  "status": "unsupported",
+  "platform": "darwin",
+  "runtimeVersion": "0.0.78",
+  "evidence": [
+    {
+      "check": "actual-worker",
+      "status": "passed",
+      "detail": "worker termination=exited; exit=0; "
+    },
+    {
+      "check": "literal-argv",
+      "status": "passed",
+      "detail": "argv preserved without expansion"
+    },
+    {
+      "check": "write-boundary",
+      "status": "passed",
+      "detail": "other-profile-write:denied\nhost-config/.npm/_logs-write:denied\nhost-config/.claude/debug-write:denied\nsibling-run-write:denied\nsibling-invocation-write:denied\npackage-write:denied\nshared-runtime-temp-write:denied"
+    },
+    {
+      "check": "filesystem",
+      "status": "passed",
+      "detail": "other-profile:denied\nhost-config:denied\nsibling-run:denied\nresearch-read:allowed\nresearch-write:denied\noutput-write:allowed\ntemp-write:allowed"
+    },
+    {
+      "check": "setup-without-research",
+      "status": "passed",
+      "detail": "setup-research:denied\nsetup-write:allowed"
+    },
+    {
+      "check": "network",
+      "status": "passed",
+      "detail": "denied,denied,denied,denied"
+    },
+    {
+      "check": "setup-proxy-private-resolution",
+      "status": "passed",
+      "detail": "deterministic DNS fixture; target connections=0; rfc1918.scispark.invalid:GET:guard-denied\nrfc1918.scispark.invalid:CONNECT:guard-denied\nula.scispark.invalid:GET:guard-denied\nula.scispark.invalid:CONNECT:guard-denied\ncgnat.scispark.invalid:GET:guard-denied\ncgnat.scispark.invalid:CONNECT:guard-denied\nloopback.scispark.invalid:GET:guard-denied\nloopback.scispark.invalid:CONNECT:guard-denied; "
+    },
+    {
+      "check": "output-limit",
+      "status": "passed",
+      "detail": "output-limit"
+    },
+    {
+      "check": "timeout",
+      "status": "passed",
+      "detail": "timeout"
+    },
+    {
+      "check": "child-tree-cancellation",
+      "status": "failed",
+      "detail": "descendant survived supervisor termination"
+    },
+    {
+      "check": "parent-ipc-loss",
+      "status": "failed",
+      "detail": "descendant survived supervisor termination"
+    },
+    {
+      "check": "detached-child-ownership",
+      "status": "failed",
+      "detail": "descendant survived supervisor termination"
+    },
+    {
+      "check": "normal-exit-descendants",
+      "status": "failed",
+      "detail": "descendant survived supervisor termination"
+    },
+    {
+      "check": "kernel-process-ownership",
+      "status": "unavailable",
+      "detail": "Pinned runtime has no proven OS lifetime container on this platform"
+    }
+  ]
+}

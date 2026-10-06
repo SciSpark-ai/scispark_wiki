@@ -1,0 +1,4 @@
+{"action":"start-owned-production","pid":42670,"port":54090}
+{"action":"kill-owned-server","pid":42670,"signal":"SIGKILL"}
+{"action":"start-owned-production","pid":42706,"port":54090}
+{"action":"kill-owned-server","pid":42706,"signal":"SIGKILL"}

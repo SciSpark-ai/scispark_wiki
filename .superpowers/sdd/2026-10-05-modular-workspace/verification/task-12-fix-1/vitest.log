@@ -1,9 +1,0 @@
-
- RUN  v4.1.10 /Users/tongshan/Documents/SciSpark_paper_manager
-
-
- Test Files  292 passed | 8 skipped (300)
-      Tests  3026 passed | 21 skipped (3047)
-   Start at  14:37:41
-   Duration  34.61s (transform 14.95s, setup 0ms, import 71.51s, tests 117.02s, environment 87.27s)
-
