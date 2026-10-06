@@ -8,9 +8,14 @@ import { readImportPreview, inspectPackage, reviewImport, reviseImportPreview, c
 import { DiscoveryStageDtoSchema, IMPORT_LIMITS, type ImportPreview } from "./import-contract"
 import { ImportRequestSchema, ImportStateSchema, ImportActionSchema } from "./ui-contract"
 import { stageOpenCiteCatalogEntry, openciteCatalogEntry } from "./catalog/opencite"
+import { stageLiteratureReviewCatalogEntry, literatureReviewCatalogGraph } from "./catalog/literature-review"
+import { readImportedManifests } from "./store"
 import { observeToolPreparation } from "./observation"
 import { canonicalJSON, withDiscoveryGrant, importStorage, profileRuntimePath } from "./store"
 import { StagedPackageSchema } from "./import-contract"
+export class ImportPrerequisiteError extends Error {
+  constructor() { super("Import the exact pinned OpenCite supporting tool first. Review OpenCite from this dialog, then return to Literature review.") }
+}
 /** Project before returning anything: source paths, owners and runtime records stay private. */
 export function projectImport(preview: ImportPreview) {
   return DiscoveryStageDtoSchema.parse({ schemaVersion: preview.schemaVersion, id: preview.id, stageId: preview.stageId, recognizedMetadata: preview.recognizedMetadata, warnings: preview.warnings,
@@ -20,8 +25,15 @@ export async function previewImport(ctx: WorkflowContext, input: z.infer<typeof 
   const request = ImportRequestSchema.parse(input)
   let preview
   if ("catalogId" in request) {
-    preview = await inspectPackage(ctx, await stageOpenCiteCatalogEntry(ctx))
-    preview = await reviseImportPreview(ctx, preview.id, [openciteCatalogEntry().proposal])
+    if (request.catalogId === "literature-review") {
+      const graph = literatureReviewCatalogGraph()
+      if (!(await readImportedManifests(ctx)).some(m => canonicalJSON(m.ref) === canonicalJSON(graph.opencite.manifest.ref))) throw new ImportPrerequisiteError()
+      preview = await inspectPackage(ctx, await stageLiteratureReviewCatalogEntry(ctx), graph.nodes.map(n => n.proposal.skillId))
+      preview = await reviseImportPreview(ctx, preview.id, graph.nodes.map(n => n.proposal))
+    } else {
+      preview = await inspectPackage(ctx, await stageOpenCiteCatalogEntry(ctx))
+      preview = await reviseImportPreview(ctx, preview.id, [openciteCatalogEntry().proposal])
+    }
   } else preview = await inspectPackage(ctx, await acquirePackage(ctx, request.source))
   return projectImport(preview)
 }
@@ -53,6 +65,11 @@ export async function actOnImport(ctx: WorkflowContext, id: string, input: z.inf
   const stage = StagedPackageSchema.parse(JSON.parse((await storage.read(`imports/${preview.stageId}/stage.json`)) ?? "null"))
   return withDiscoveryGrant(ctx, stage.discoveryGrantId, async () => {
     if (action.selected.some(ref => !preview.tools.some(t => canonicalJSON(t.manifest.ref) === canonicalJSON(ref)))) throw new Error("Stale import selection")
+    if (preview.tools.some(t => t.manifest.ref.packageId === "neuromechanist.literature-review")) {
+      const graph = literatureReviewCatalogGraph()
+      if (action.selected.length !== 1 || action.selected[0].skillId !== graph.root.manifest.ref.skillId) throw new Error("Select Literature review as the only top-level tool; its supporting skills stay internal")
+      if (!(await readImportedManifests(ctx)).some(m => canonicalJSON(m.ref) === canonicalJSON(graph.opencite.manifest.ref))) throw new ImportPrerequisiteError()
+    }
     // Review may normalize the proposal/ref; select only the explicitly reviewed skills.
     const reviewed = await reviewImport(ctx, id, action.proposals)
     await commitImport(ctx, reviewed.id, action.selected.map(ref => { const t = reviewed.tools.find(t => t.manifest.ref.skillId === ref.skillId); if (!t) throw new Error("Missing reviewed tool"); return t.manifest.ref }))

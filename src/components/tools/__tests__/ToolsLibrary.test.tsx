@@ -98,3 +98,14 @@ it('hands blocked supporting setup from import to root Manage with an explicit c
   expect(api.mutate).toHaveBeenCalledWith(JSON.stringify([rootRef.packageId, rootRef.skillId]), expect.objectContaining({ action: 'bind-connection', target: helper, service: 'semantic-scholar' }))
   expect(api.confirm).toHaveBeenCalledTimes(1)
 })
+
+it('offers literature review explicitly and an actionable OpenCite prerequisite', async () => {
+  api.preview.mockRejectedValue(new Error('Import the pinned OpenCite supporting tool first.'))
+  await render(); await click('Add tools'); await click('Literature review')
+  expect(api.preview).not.toHaveBeenCalled()
+  await click('Preview literature review')
+  expect(api.preview).toHaveBeenCalledWith({ catalogId: 'literature-review' })
+  expect(node.textContent).toContain('pinned OpenCite')
+  await click('Review OpenCite'); await click('Preview OpenCite')
+  expect(api.preview).toHaveBeenLastCalledWith({ catalogId: 'opencite' })
+})

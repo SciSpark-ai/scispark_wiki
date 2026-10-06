@@ -382,3 +382,35 @@ describe("reference label adjacency", () => {
     ])
   })
 })
+
+it("ignores output links inside fenced and inline Markdown examples, while resolving real links", async () => {
+  const { ctx, source } = await fixture({ "SKILL.md": "Real [resource](good.md). Example: `[<slug>](../research/<slug>/card.md)`.\n\n```markdown\n[template](../missing.md)\n```\n\n``[other](absent.md)``", "good.md": "Required resource" })
+  const preview = await inspectPackage(ctx, await acquirePackage(ctx, { kind: "local-folder", path: source }))
+  expect(preview.tools[0].files.map(f => f.path)).toContain("good.md")
+})
+
+it.each(["`unclosed `` [required](absent.md)", "Read [required](absent.md)", "Read [outside](../../outside.md)"])("retains failure for genuine or ambiguously delimited links: %s", async text => {
+  const { ctx, source } = await fixture({ "SKILL.md": text })
+  await expect(inspectPackage(ctx, await acquirePackage(ctx, { kind: "local-folder", path: source }))).rejects.toThrow()
+})
+
+it.each([
+  "Escaped \\` [required](absent.md) `",
+  "Escaped \\` [required] `\n\n[required]: absent.md",
+  "```bad`info\n[required](absent.md)",
+  "```bad`info\n[required]\n\n[required]: absent.md",
+])("rejects genuine missing resources behind escaped/invalid Markdown delimiters: %s", async text => {
+  const { ctx, source } = await fixture({ "SKILL.md": text })
+  await expect(inspectPackage(ctx, await acquirePackage(ctx, { kind: "local-folder", path: source }))).rejects.toThrow()
+})
+
+it("preserves real links after literal escaped backticks and still masks valid code spans", async () => {
+  const { ctx, source } = await fixture({ "SKILL.md": "Escaped \\` [required](good.md) `\n\nExample: ``[missing](absent.md)``", "good.md": "Actual resource" })
+  const preview = await inspectPackage(ctx, await acquirePackage(ctx, { kind: "local-folder", path: source }))
+  expect(preview.tools[0].files.map(f => f.path)).toContain("good.md")
+})
+
+it("fails closed on an unsupported escaped multi-backtick opener", async () => {
+  const { ctx, source } = await fixture({ "SKILL.md": "\\`` [required](absent.md) ``" })
+  await expect(inspectPackage(ctx, await acquirePackage(ctx, { kind: "local-folder", path: source }))).rejects.toThrow()
+})

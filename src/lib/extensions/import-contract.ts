@@ -179,3 +179,9 @@ export type ToolMutationResult = z.infer<typeof ToolMutationResultSchema>
 export const ToolSetupStateSchema = z.object({ tool: ToolRefSchema, setupId: UuidSchema, state: EnvironmentRecordSchema.shape.state, reason: z.string().max(1000) }).strict()
 export const ToolUpdateStateSchema = z.object({ preview: UpdatePreviewSchema, consent: z.enum(["valid", "renewal-required", "not-required"]), preparedTool: ToolRefSchema.optional(), readiness: CompatibilitySchema.optional(), setup: ToolSetupStateSchema.optional() }).strict()
 export type ToolUpdateState = z.infer<typeof ToolUpdateStateSchema>
+
+/** Fixed named supporting nodes only. Ambiguous slots remain user-owned choices. */
+export const ParallelHostActionSchema = z.object({
+  type: z.literal("parallel"),
+  branches: z.array(z.object({ tool: ToolRefSchema, input: z.record(z.string(), z.unknown()) }).strict()).length(2),
+}).strict()

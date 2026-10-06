@@ -81,19 +81,55 @@ function referencePath(from: string, target: string): string | null {
 }
 /** Bounded reference-link subset. Definitions with unsupported syntax fail
  * inspection instead of silently losing a required file from the snapshot. */
+function markdownFenceMarker(line: string, fenced: boolean) {
+  const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)
+  // A backtick fence's info string cannot contain another backtick. Reject this
+  // unsupported form rather than hiding genuine prose/resource links to EOF.
+  if (!fenced && marker?.[1][0] === "`" && line.slice(marker[0].length).includes("`")) throw new Error("Invalid Markdown backtick fence")
+  return marker
+}
+function markdownProse(text: string): string {
+  let fence: { char: string; length: number } | undefined
+  const lines = text.split(/\r?\n/).map(line => {
+    const marker = markdownFenceMarker(line, !!fence)
+    if (marker) {
+      if (!fence) fence = { char: marker[1][0], length: marker[1].length }
+      else if (marker[1][0] === fence.char && marker[1].length >= fence.length && line.slice(marker[0].length).trim() === "") fence = undefined
+      return ""
+    }
+    return fence ? "" : line
+  }).join("\n")
+  // Pair exact-length runs in linear time. Outside code, an odd backslash run
+  // escapes the opening delimiter; inside code, backslashes are literal content.
+  const runs = [...lines.matchAll(/`+/g)], next = new Map<number, number>(), matching: Array<number | undefined> = []
+  for (let i = runs.length - 1; i >= 0; i--) { matching[i] = next.get(runs[i][0].length); next.set(runs[i][0].length, i) }
+  let cursor = 0, prose = ""
+  for (let i = 0; i < runs.length; i++) {
+    const start = runs[i].index!
+    let slashes = 0
+    for (let j = start - 1; j >= 0 && lines[j] === "\\"; j--) slashes++
+    if (slashes % 2 && runs[i][0].length > 1) throw new Error("Unsupported escaped Markdown backtick run")
+    const close = matching[i]
+    if (slashes % 2 || close === undefined) continue
+    prose += lines.slice(cursor, start)
+    cursor = runs[close].index! + runs[close][0].length
+    i = close
+  }
+  return prose + lines.slice(cursor)
+}
 function markdownReferenceTargets(text: string): string[] {
   const definitions = new Map<string, string>(), body: string[] = []
   const label = (value: string) => value.trim().replace(/\s+/g, " ").toUpperCase().toLowerCase()
   let fence: { char: string; length: number } | undefined
   for (const line of text.split(/\r?\n/)) {
-    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)
+    const marker = markdownFenceMarker(line, !!fence)
     if (marker) {
       if (!fence) fence = { char: marker[1][0], length: marker[1].length }
       else if (marker[1][0] === fence.char && marker[1].length >= fence.length && line.slice(marker[0].length).trim() === "") fence = undefined
       body.push(""); continue
     }
     if (fence) { body.push(""); continue }
-    if (line.replace(/`[^`]*`/g, "").includes("]:")) {
+    if (markdownProse(line).includes("]:")) {
       const definition = /^ {0,3}\[([^\[\]\\]{1,999})\]:[ \t]*(?:<([^>\r\n]+)>|(\S+?))(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$/.exec(line)
       if (!definition) throw new Error("Unsupported Markdown reference definition; use a simple single-line destination")
       if (definition[1].includes("`") || /&(?:#\w+|[A-Za-z]+);/.test(definition[2] ?? definition[3])) throw new Error("Unsupported Markdown reference escaping")
@@ -109,7 +145,7 @@ function markdownReferenceTargets(text: string): string[] {
   // explicitly unsupported by this bounded parser, not treated as resolved.
   const rawProse = body.join("\n")
   if (rawProse.includes("``")) throw new Error("Unsupported Markdown reference code delimiter")
-  const prose = rawProse.replace(/`[^`]*`/g, "")
+  const prose = markdownProse(rawProse)
   const targets: string[] = []
   const readLabel = (start: number) => {
     let end = start + 1
@@ -177,7 +213,7 @@ async function closure(ctx: WorkflowContext, stage: StagedPackage, proposal: Ada
     if (/\.(md|markdown)$/i.test(path)) for (const destination of markdownReferenceTargets(text)) {
       const target = referencePath(path, destination); if (target) add(target)
     }
-    for (const match of text.matchAll(/\[[^\]]*\]\(<?([^\s)>]+)>?(?:\s+"[^"]*")?\)/g)) {
+    for (const match of (/\.(md|markdown)$/i.test(path) ? markdownProse(text) : text).matchAll(/\[[^\]]*\]\(<?([^\s)>]+)>?(?:\s+"[^"]*")?\)/g)) {
       const target = referencePath(path, match[1]); if (target) add(target)
     }
     // Inline code often names required scripts/resources. Only copy existing

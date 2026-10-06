@@ -1541,3 +1541,119 @@ fix2-red.log, fix2-green-final.log, master-fix2-wrapper.log, results.json and
 build-fix2-clean/build-result.json. Failed default/cached build logs remain retained.
 No source changes followed final gates; git diff --check passed. No UI rerun, live
 execution, human state, installation, push, merge or PR; Task19 limits unchanged.
+
+
+Task18 adapts the pinned research-skills full local literature-review protocol via
+the generic importer/host, with exact OpenCite + collection/writing/review/prose
+helper graph, root-only enablement and explicit prerequisite UI/API handoff.
+The34-file bundle retains24 upstream originals/license files and10 host bindings;
+research-skills pin f0219bde233abb44d8a0c5d73f41ea27073e1493, bundle
+6db6871c94cdf44516df78325629b26b714f0446ce5838275dc02558b99fe4a5.
+R47–52 add one bounded two-branch continuation batch (no nested parallel), short
+read-modify-write merges, retained dual choices/completed siblings, bounded local
+cancellation and late-callback fencing, Markdown code-example link masking,
+current-root hash-validated textual artifact paging, and immutable per-turn
+prompt snapshots for same-hash checkpoint recovery. Existing R39/R42 owners,
+captured model tiers, cumulative ledger, command serialization and wiki policy
+remain. Original native e2e/literature-review.spec.ts is unchanged.
+
+Invented six-paper/two-strand corpus includes full text/abstract-only/missing
+evidence, contradiction and unsupported clinical comparison. Hand-keyed five
+claim/passage/access checks reject fabricated claims/coverage; JSON/self-review
+is insufficient. Actual coordinator/import/host with offline command/provider
+fixtures uses26model+2command reservations, collection checkpoint13model calls,
+including five read_artifact evidence pages, under unchanged30-model-call cap.
+Injected collection owner loss recovers without repeated acquisition/model work.
+Separate real reservation rendezvous proves two concurrent provider promises;
+fixture command concurrency is one. This is synthetic science and orchestration
+calibration, not actual source/provider/worker acceptance. Production Mac command
+readiness stays fail-closed (R31). Live gates are independently disabled by default:
+SCISPARK_TOOL_REAL_WORKER=1; separate SCISPARK_TOOL_SOURCE_SMOKE=1;
+SCISPARK_TOOL_LIVE_APPROVED=1 plus explicit SCISPARK_TOOL_LIVE_MODEL,
+SCISPARK_TOOL_LIVE_MAX_CALLS, SCISPARK_TOOL_LIVE_MAX_USD(API), and
+SCISPARK_TOOL_EVAL_ROOT. Explicit engine/provider selectors required; normal
+vault overrides rejected; human passage audit required for provider acceptance.
+Unadapted DOI/canonical lookup, other sources, enhanced conversion/PDF figure
+review, optional GitHub/LaTeX disclosed. Task11 missing-fulltext-reason minor and
+512KiB/2MiB caps unchanged. Remote noncooperative cancellation remains unproven.
+
+Focused final125passed/3gatedskipped (sixfiles); R52subset38passed. Browser found
+missing prerequisite error redacted by route; typed constant safe error added
+(preview/confirm), RED1failed11passed thenGREEN12passed, private errors remain
+redacted. First build hit test-only ProcessEnv type error; fix tsc passed. Fresh
+accepted build .next-modular-task-18-accepted exit0/31.21s, disposable roots,
+scheduler off, exact fresh tsconfig/next-env bytes restored. Production browser
+e2e/imported-literature-review.spec.ts final1/1passed16.7s; imports no run, shows
+exact prerequisite and root-only enablement, setup blocked honestly. Four settled
+desktop/phone screenshots inspected and retained under ignored verification/task-18/
+screens/{prerequisite,import}-{desktop,phone}.png. No horizontal overflow. Import
+captures show scrolled root, not the unseen dialog header. Permanent E2E writes
+only Playwright artifact paths; controller/Task19 owns durable artifact collection.
+
+First master was3259passed24skipped before browser route fix. Post-fix master had
+tsc/lint0 and3258passed24skipped, but new heavy catalog import test timed out at
+5.202s; only its timeout raised5->15s, assertions unchanged. Failed logs retained.
+Final master follows. No live gates, actual install, human vault/profile/keys, push,
+merge or PR. Detailed report and commands under ignored Task18 report/verification.
+
+Authoritative Task18 final: verify-task.py task-18 exit0 with scoped loopback.
+TypeScript4.27s; lint20.98s baseline warning/size note; Vitest3259passed24skipped,
+307passed8skipped files,51.87s suite/53.17s wrapper. Only test timeout adjusted
+after accepted build; final settled browser remains1/1. Raw staged diff --check
+has exactly two intentional upstream trailing spaces (rigor-checklist.md:70 and
+verbatim host/lit-review/protocol.md:625); preserved source provenance, no other
+whitespace findings. 55 intended files; scratch report/logs/screens ignored.
+Task19 supported-host/source/provider acceptance and Task20 broad review remain.
+
+Controller pre-review correction R54 replaces the unrun initial live harness's
+substitute gates and credential-file writes with exact Task20 gates above.
+Additional selectors SCISPARK_TOOL_LIVE_ENGINE and, for API,
+SCISPARK_TOOL_LIVE_PROVIDER are explicit; both tiers use LIVE_MODEL and the
+requested model/cost caps. Source-only reserves zero model calls. Unknown API
+prices rejected before setup. EVAL_ROOT is a canonical direct OS-temp child
+scispark-tool-eval-* with empty-first/retained markers; distinct source/provider
+subdirectories permit source-first then synthesis without losing either ledger.
+Changed model/caps/root ownership rejects before probe/setup/network.
+SCISPARK_TOOL_SOURCE_KEY and API-only SCISPARK_TOOL_LIVE_API_KEY are in-memory
+bindings through a test-owned private-settings read overlay; disksettings contain
+no keys. Secret-bearing config/artifact/log/binary writes refused generically;
+real broker/provider and fail-closed worker untouched. No human secure settings
+or real credentials accessed. Five offline harness tests cover gates, zero-model
+source caps, explicit engine selection, retained IDs/cumulative settled usage,
+source-first receipts, root/contract drift and sentinel no-secret writes.
+Focused10passed3skipped/2files5.88s. No app/UI change; accepted build/browser
+retained. Final full correction gate follows. R53 raw base diff --check remains
+exit2 solely for the two exact upstream/excerpt whitespace exceptions recorded
+above, with no persistent Git setting change; correction-only diff check clean.
+
+R54 authoritative correction gate: verify-task.py task-18-live-fix exit0.
+tsc4.34s; lint23.44s baseline warning/size note; Vitest3263passed24skipped,
+307passed8skipped files,57.48s suite/58.89s wrapper. Four net additional ordinary
+tests, three real gates remain skipped. No source changes after this gate.
+
+Task18 independent review fix round1 addresses Important1/2 and adjacent Minor1.
+Shared Markdown fence validation rejects invalid backtick info; exact-length code
+spans respect escaped openers, with ambiguous escaped multi-backtick runs refused
+conservatively. Both inline/reference links remain subject to required resource
+closure. Regression proves escaped real links are retained and absent/traversal
+links fail; original code-example behavior and pinned bytes unchanged.
+Retained human audits now read report and every source via existing readArtifact
+owner/path/hash validation, bind audit hash to validated report and decode textual
+evidence with fatal UTF8. Offline tamper fixture rejects appended report claims
+and modified source bytes. Synthetic fixture guard requires each expected claim
+exactly once; repeated valid claim cannot conceal omitted claims.
+Focused RED6failed72passed3skipped/5.48s; finalGREEN80passed3skipped/3files5.69s.
+Fresh .next-modular-task-18-review-fix1 build exit0/35.11s, exact config bytes
+restored, disposable roots/scheduler off/scoped local binding. No UI/routes changed;
+settled catalog browser/screens retained. adapters.ts intentionally unchanged
+under R55 (existing WorkflowIO/HelperInvocation bridge). Real gates remain off;
+no live calls, credentials, human vault/profile or agent-home access. Full final
+check results follow; controller owns scoped re-review.
+
+Review fix1 final: verify-task.py task-18-review-fix1 exit0; tsc11.71s,
+lint24.16s baseline warning/size note; Vitest3270passed24skipped,307passed8skipped
+files,56.87s. No source changes after gates. Correction diff whitespace clean;
+raw base diff retains only R53's two exact approved upstream trailing spaces.
+Seven intended fix files; bundle/lock/native E2E/adapters unchanged. Important1/2
+and adjacent Minor1 addressed; controller scoped re-review pending. Real worker,
+source/provider/scientific acceptance and actual restart remain open under R31.

@@ -22,3 +22,4 @@ export const NATIVE_TOOL_MANIFESTS: readonly ToolManifest[] = [
 
 /** Optional suggestions are separate from native manifests and profile bindings. */
 export { openciteCatalogEntry } from "./catalog/opencite"
+export { literatureReviewCatalogEntry } from "./catalog/literature-review"

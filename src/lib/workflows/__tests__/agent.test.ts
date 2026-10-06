@@ -414,3 +414,202 @@ it("repairs a lost queue-publication response without resetting or rerunning the
     expect((await f.ctx.storage.list(".scispark/tool-runs/")).filter(path=>path.endsWith("/run.json"))).toHaveLength(1)
   } finally {await waitForWorkflowIdle()}
 })
+
+it("runs two branches concurrently on captured helper tier, merges their snapshots and recovers completed collection", async () => {
+  const f = await fixture(), a = await f.tool("parallel-a"), b = await f.tool("parallel-b"), root = await f.tool("parallel-root", { dependencies: [a,b] })
+  f.run.model.tierModels.fast.model = "fast-fixture"; f.run.model.tierModels.strong.model = "strong-fixture"
+  const io = await f.ready(root, [a,b])
+  let active = 0, maximum = 0, release!: () => void
+  const rendezvous = new Promise<void>(resolve => { release = resolve })
+  provider.complete.mockImplementation(async (model: string, request: LLMRequest) => {
+    const prompt = JSON.parse(request.messages[1].content as string)
+    let json: unknown
+    if (prompt.request?.strand) {
+      expect(model).toBe("fast-fixture"); active++; maximum = Math.max(maximum, active)
+      if (active === 2) release()
+      await rendezvous; active--
+      json = { ...finish, summary: `Collected ${prompt.request.strand}` }
+    } else if (request.jsonSchema) {
+      expect(model).toBe("strong-fixture")
+      json = prompt.observations.length ? { ...finish, synthesize: true } : { type: "parallel", branches: [{ tool: a, input: { strand: "a" } }, { tool: b, input: { strand: "b" } }] }
+    } else return { text: "Integrated both strands", usage: { inputTokens: 1, outputTokens: 1 }, provider: "openai", model, stopReason: "stop" }
+    return { json, text: JSON.stringify(json), usage: { inputTokens: 1, outputTokens: 1 }, provider: "openai", model, stopReason: "stop" }
+  })
+  const write = f.ctx.storage.write.bind(f.ctx.storage); let interrupted = false
+  vi.spyOn(f.ctx.storage, "write").mockImplementation(async (path, text) => {
+    if (path.endsWith("host-continuation.json")) {
+      const next = JSON.parse(text)
+      if (!interrupted && !next.parallel && next.frames[0]?.observations.some((o: string) => o.includes('"parallel"'))) { interrupted = true; throw new Error("Lost parent publication after collection") }
+    }
+    return write(path, text)
+  })
+  await expect(executeInstructionWorkflow(f.ctx, f.run, io)).rejects.toThrow("Lost parent publication")
+  const collected = (await readHostContinuation(f.ctx, f.run.id))!
+  expect(collected.parallel?.branches.every(branch => branch.completed)).toBe(true)
+  expect(maximum).toBe(2); expect(provider.complete).toHaveBeenCalledTimes(3)
+  await executeInstructionWorkflow(f.ctx, f.run, io)
+  expect((await readHostContinuation(f.ctx, f.run.id))?.completed).toBe(true)
+  expect(provider.complete).toHaveBeenCalledTimes(5)
+  const usage = UsageJournalSchema.parse(JSON.parse((await f.ctx.storage.read(`.scispark/tool-runs/${f.run.id}/usage.json`))!))
+  expect(usage.attempts).toHaveLength(5)
+  expect(usage.attempts.every(a => a.ticket.runId === f.run.id)).toBe(true)
+})
+
+it("retains two branch choices and validates exact branch ownership before deterministic selection", async () => {
+  const f = await fixture(), x = await f.tool("choice-x"), y = await f.tool("choice-y")
+  const options = { slots: [{ id: "s", capability: "search", eligible: [x,y] }] }
+  const a = await f.tool("choice-a", options), b = await f.tool("choice-b", options), root = await f.tool("choice-root", { dependencies: [a,b] })
+  const io = await f.ready(root, [a,b,x,y])
+  decisions({ type: "parallel", branches: [{ tool: a, input: {} }, { tool: b, input: {} }] }, { type: "invoke_skill", slotId: "s", input: {} }, { type: "invoke_skill", slotId: "s", input: {} })
+  await executeInstructionWorkflow(f.ctx, f.run, io)
+  const state = (await readHostContinuation(f.ctx, f.run.id))!
+  expect(state.parallel!.branches.map(b => b.waitingChoice)).toHaveLength(2)
+  expect(state.parallel!.branches.every(b => b.waitingChoice?.batchId === state.parallel!.actionId && b.waitingChoice.branchId === b.id)).toBe(true)
+  expect(state.waitingChoice?.id).toBe(state.parallel!.branches[0].waitingChoice?.id)
+  const { prepareHostHelperChoice } = await import("../host-tools")
+  const next = await prepareHostHelperChoice(f.ctx, f.run, state.waitingChoice!.id, x)
+  expect(next.parallel!.branches[0].waitingChoice?.selected).toEqual(x)
+  expect(next.parallel!.branches[1].waitingChoice?.selected).toBeUndefined()
+  state.waitingChoice!.branchId = randomUUID(); await writeHostContinuation(f.ctx, state)
+  await expect(prepareHostHelperChoice(f.ctx, f.run, state.waitingChoice!.id, x)).rejects.toThrow("branch changed")
+})
+
+it("rejects nested parallel before spawning more than two supporting nodes", async () => {
+  const f = await fixture(), leaf = await f.tool("leaf"), helper = await f.tool("nested", { dependencies: [leaf] }), root = await f.tool("nest-root", { dependencies: [helper] })
+  const io = await f.ready(root, [helper,leaf])
+  decisions({ type: "parallel", branches: [{ tool: helper, input: {} }, { tool: helper, input: {} }] }, { type: "parallel", branches: [{ tool: leaf, input: {} }, { tool: leaf, input: {} }] }, finish)
+  await expect(executeInstructionWorkflow(f.ctx, f.run, io)).rejects.toThrow("Nested parallel")
+  expect(provider.complete.mock.calls.length).toBeLessThanOrEqual(3)
+})
+
+it("drains a slow sibling after an ordinary branch failure and keeps its completed result", async () => {
+  const f = await fixture(), a = await f.tool("fail-a"), b = await f.tool("slow-b"), root = await f.tool("fail-root", { dependencies: [a,b] })
+  const io = await f.ready(root, [a,b])
+  let release!: () => void, started!: () => void
+  const delayed = new Promise<void>(resolve => { release = resolve }), entered = new Promise<void>(resolve => { started = resolve })
+  provider.complete.mockImplementation(async (model: string, request: LLMRequest) => {
+    const prompt = JSON.parse(request.messages[1].content as string)
+    let json: unknown
+    if (prompt.request.branch === "bad") json = { type: "invoke_skill", tool: root, input: {} }
+    else if (prompt.request.branch === "slow") { started(); await delayed; expect(request.signal?.aborted).toBe(false); json = finish }
+    else json = { type: "parallel", branches: [{ tool: a, input: { branch: "bad" } }, { tool: b, input: { branch: "slow" } }] }
+    return { json, text: JSON.stringify(json), usage: { inputTokens: 1, outputTokens: 1 }, provider: "openai", model, stopReason: "stop" }
+  })
+  let returned = false
+  const running = executeInstructionWorkflow(f.ctx, f.run, io).catch(error => { returned = true; return error })
+  await entered; await new Promise(resolve => setTimeout(resolve, 20)); expect(returned).toBe(false)
+  release(); expect(await running).toBeInstanceOf(Error)
+  const state = (await readHostContinuation(f.ctx, f.run.id))!
+  expect(state.parallel!.branches[1].completed).toBe(true)
+  expect(state.parallel!.branches[0].completed).toBe(false)
+})
+
+it("fences late non-cooperative branch synthesis callbacks and results after root cancellation", async () => {
+  const f = await fixture(), a = await f.tool("late-a"), b = await f.tool("late-b"), root = await f.tool("late-root", { dependencies: [a,b] })
+  const base = await f.ready(root, [a,b]), abort = new AbortController(), io = { ...base, signal: abort.signal }
+  let started!: () => void, resolveLate!: (value: unknown) => void, onText: ((text: string) => void) | undefined
+  const entered = new Promise<void>(resolve => { started = resolve })
+  provider.complete.mockImplementation(async (model: string, request: LLMRequest) => {
+    const prompt = JSON.parse(request.messages[1].content as string)
+    if (!request.jsonSchema) {
+      onText = request.onText; started()
+      return new Promise(resolve => { resolveLate = resolve })
+    }
+    const json = prompt.request.branch === "late" ? { ...finish, synthesize: true } : prompt.request.branch ? finish : { type: "parallel", branches: [{ tool: a, input: { branch: "late" } }, { tool: b, input: { branch: "done" } }] }
+    return { json, text: JSON.stringify(json), usage: { inputTokens: 1, outputTokens: 1 }, provider: "openai", model, stopReason: "stop" }
+  })
+  const stopped = executeInstructionWorkflow(f.ctx, f.run, io).catch(error => error)
+  await entered; abort.abort(new Error("root stopped")); expect(await stopped).toBeInstanceOf(Error)
+  const before = await f.ctx.storage.read(`.scispark/tool-runs/${f.run.id}/host-continuation.json`)
+  onText?.("LATE PUBLIC TEXT")
+  resolveLate({ text: "LATE FINAL", usage: { inputTokens: 1, outputTokens: 1 }, provider: "openai", model: "fixture", stopReason: "stop" })
+  await new Promise(resolve => setTimeout(resolve, 20))
+  expect(await f.ctx.storage.read(`.scispark/tool-runs/${f.run.id}/host-continuation.json`)).toBe(before)
+  const usage = UsageJournalSchema.parse(JSON.parse((await f.ctx.storage.read(`.scispark/tool-runs/${f.run.id}/usage.json`))!))
+  expect(usage.attempts.some(a => a.state === "unknown")).toBe(true)
+  expect(JSON.stringify(await listRunEvents(f.ctx, f.run.id, 0))).not.toContain("LATE")
+})
+
+it("reads only hash-verified current-root text artifacts through bounded pages", async () => {
+  const f = await fixture(), root = await f.tool("artifact-reader"), io = await f.ready(root)
+  const text = await io.publishArtifact({ kind: "markdown", title: "Source", mediaType: "text/markdown", sourceRefs: ["doi:10.1234/fixture"], bytes: Buffer.from("abcdef") })
+  const pdf = await io.publishArtifact({ kind: "file", title: "PDF", mediaType: "application/pdf", sourceRefs: [], bytes: Buffer.from("%PDF-1.4") })
+  const invalid = await io.publishArtifact({ kind: "file", title: "Invalid UTF8", mediaType: "text/plain", sourceRefs: [], bytes: new Uint8Array([0xff,0xfe]) })
+  async function read(artifactId: string, offset = 0, length = 3, ctx = f.ctx) {
+    const frame = { id: f.run.id, tool: root, input: {}, turn: 0, observations: [], publicText: "", decision: { type: "read_artifact" as const, artifactId, offset, length } }
+    await writeHostContinuation(f.ctx, { schemaVersion: 1, runId: f.run.id, frames: [frame], choices: [], completed: false })
+    return withHostExecution(ctx, f.run.id, io, () => dispatchHostAction(ctx, f.run.id, { ...frame.decision, id: hostStepId(frame, "action") }))
+  }
+  expect(await read(text.id)).toMatchObject({ value: { text: "abc", total: 6, nextOffset: 3, sourceRefs: ["doi:10.1234/fixture"] } })
+  expect(await read(text.id, 3)).toMatchObject({ value: { text: "def", nextOffset: null } })
+  await expect(read(text.id, 7)).rejects.toThrow("page exceeds")
+  await expect(read(text.id, 0, 16001)).rejects.toThrow()
+  await expect(read(randomUUID())).rejects.toThrow("outside the current root")
+  const otherRun = { ...f.run, id: randomUUID() }; await writeRun(f.ctx, otherRun)
+  const otherArtifact = await publishArtifact(f.ctx, otherRun.id, { kind: "markdown", title: "Other root", mediaType: "text/markdown", sourceRefs: [], bytes: Buffer.from("Other root evidence") })
+  await expect(read(otherArtifact.id)).rejects.toThrow("outside the current root")
+  await expect(read(pdf.id)).rejects.toThrow("not supported textual")
+  await expect(read(invalid.id)).rejects.toThrow()
+  await expect(read(text.id, 0, 3, { ...f.ctx, profileId: randomUUID() })).rejects.toThrow()
+  await f.ctx.storage.writeBinary(text.path, Buffer.from("tamper"))
+  await expect(read(text.id)).rejects.toThrow("hash mismatch")
+})
+
+it("resolves both parallel choices through the existing R39 journal without losing the other winner", async () => {
+  const f = await fixture(), x = await f.tool("resolve-x"), y = await f.tool("resolve-y"), options = { slots: [{ id: "s", capability: "search", eligible: [x,y] }] }
+  const a = await f.tool("resolve-a", options), b = await f.tool("resolve-b", options), root = await f.tool("resolve-root", { dependencies: [a,b] })
+  let io = await f.ready(root, [a,b,x,y])
+  const { readWorkflowJournal, releaseRunLease, commitHelperChoice } = await import("../journal")
+  async function select(tool: typeof x) {
+    const state = (await readHostContinuation(f.ctx, f.run.id))!, choice = state.waitingChoice!, operationId = randomUUID()
+    await releaseRunLease(f.ctx, f.run.id, (await readWorkflowJournal(f.ctx, f.run.id)).lease!)
+    await commitHelperChoice(f.ctx, f.run.id, choice.id, tool, operationId)
+    const lease = (await claimRunLease(f.ctx, f.run.id))!
+    io = { ...io, step: (intent, work) => journalStep(f.ctx, f.run.id, lease, intent, work), emit: e => emitRunEvent(f.ctx, f.run.id, lease, e), publishArtifact: input => publishArtifact(f.ctx, f.run.id, input, lease), submitWikiProposal: input => submitWikiProposal(f.ctx, f.run.id, input, lease) }
+    return { choiceId: choice.id, operationId, tool }
+  }
+  decisions({ type: "parallel", branches: [{ tool: a, input: {} }, { tool: b, input: {} }] }, { type: "invoke_skill", slotId: "s", input: {} }, { type: "invoke_skill", slotId: "s", input: {} })
+  await executeInstructionWorkflow(f.ctx, f.run, io)
+  const first = await select(x)
+  decisions(finish, finish)
+  await executeInstructionWorkflow(f.ctx, f.run, io)
+  const midway = (await readHostContinuation(f.ctx, f.run.id))!
+  expect(midway.parallel!.branches[0].completed).toBe(true)
+  expect(midway.waitingChoice!.id).not.toBe(first.choiceId)
+  await select(y)
+  decisions(finish, finish, { ...finish, synthesize: true }, "stream")
+  await executeInstructionWorkflow(f.ctx, f.run, io)
+  const before = await f.ctx.storage.read(`.scispark/tool-runs/${f.run.id}/host-continuation.json`)
+  await commitHelperChoice(f.ctx, f.run.id, first.choiceId, first.tool, first.operationId)
+  expect(await f.ctx.storage.read(`.scispark/tool-runs/${f.run.id}/host-continuation.json`)).toBe(before)
+  expect((await readHostContinuation(f.ctx, f.run.id))!.choices.map(c => c.selected)).toEqual([x,y])
+})
+
+it("reuses the persisted decision prompt when a sibling changes artifact inventory after checkpoint/frame-save loss", async () => {
+  const f = await fixture(), a = await f.tool("prompt-a"), b = await f.tool("prompt-b"), root = await f.tool("prompt-root", { dependencies: [a,b] })
+  const io = await f.ready(root, [a,b])
+  provider.complete.mockImplementation(async (model: string, request: LLMRequest) => {
+    const prompt = JSON.parse(request.messages[1].content as string)
+    if (!request.jsonSchema) return { text: "Done", usage: { inputTokens: 1, outputTokens: 1 }, provider: "openai", model, stopReason: "stop" }
+    let json: unknown
+    if (prompt.request.branch === "a") { expect(prompt.artifacts).toHaveLength(0); json = finish }
+    else if (prompt.request.branch === "b") json = prompt.observations.length ? finish : { type: "publish_artifact", kind: "markdown", title: "New sibling evidence", mediaType: "text/markdown", sourceRefs: [], text: "New evidence" }
+    else if (prompt.observations.length) { expect(prompt.artifacts).toHaveLength(1); json = { ...finish, synthesize: true } }
+    else json = { type: "parallel", branches: [{ tool: a, input: { branch: "a" } }, { tool: b, input: { branch: "b" } }] }
+    return { json, text: JSON.stringify(json), usage: { inputTokens: 1, outputTokens: 1 }, provider: "openai", model, stopReason: "stop" }
+  })
+  const write = f.ctx.storage.write.bind(f.ctx.storage); let lost = false
+  vi.spyOn(f.ctx.storage, "write").mockImplementation(async (path, text) => {
+    if (!lost && path.endsWith("host-continuation.json") && JSON.parse(text).parallel?.branches[0].frames[0]?.decision) { lost = true; throw new Error("Decision frame save lost") }
+    return write(path, text)
+  })
+  await expect(executeInstructionWorkflow(f.ctx, f.run, io)).rejects.toThrow("Decision frame save lost")
+  const pending = (await readHostContinuation(f.ctx, f.run.id))!
+  expect(pending.parallel!.branches[1].completed).toBe(true)
+  expect(pending.parallel!.branches[0].frames[0].decision).toBeUndefined()
+  expect(JSON.parse(pending.parallel!.branches[0].frames[0].prompt!).artifacts).toHaveLength(0)
+  expect(provider.complete).toHaveBeenCalledTimes(4)
+  await executeInstructionWorkflow(f.ctx, f.run, io)
+  expect(provider.complete).toHaveBeenCalledTimes(6)
+  expect((await readHostContinuation(f.ctx, f.run.id))?.completed).toBe(true)
+})

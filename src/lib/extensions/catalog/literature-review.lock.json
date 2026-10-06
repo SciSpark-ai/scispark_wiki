@@ -1,0 +1,423 @@
+{
+  "schemaVersion": 1,
+  "researchSkillsRevision": "f0219bde233abb44d8a0c5d73f41ea27073e1493",
+  "version": "0.2.2-scispark.1",
+  "mode": "full-local-markdown-single-review",
+  "originalVersions": {
+    "lit-review": "0.2.2",
+    "manuscript-writing": "0.2.1",
+    "paper-review": "0.1.1",
+    "humanizer": "0.1.0"
+  },
+  "modelRoles": {
+    "root": "strong",
+    "helper": "fast"
+  },
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "52c155c8e749654e7c7a67663eabe12eec8b7ccacb09a9bc60e927e31c3ba7b6",
+      "bytes": 1508
+    },
+    {
+      "path": "host/collection/SKILL.md",
+      "sha256": "43c3e1db3fc2c85682277bb56fc05f16202f83ed21d40db1da8a540d69b783f3",
+      "bytes": 112
+    },
+    {
+      "path": "host/collection/protocol.md",
+      "sha256": "5e10e409d41d3bc639c791e69a296fbfea1e2184353d496b353cd7d48b3146e0",
+      "bytes": 27992
+    },
+    {
+      "path": "host/humanizer/SKILL.md",
+      "sha256": "7a5661ea9db4bfbd543c6508db57e71a8ee22559bc293c7348256a656d04683e",
+      "bytes": 111
+    },
+    {
+      "path": "host/humanizer/protocol.md",
+      "sha256": "3234036f6a91f7b7a3031e5dcbb757b3b0412d9183f845c232ad4664985c46fc",
+      "bytes": 39951
+    },
+    {
+      "path": "host/lit-review/SKILL.md",
+      "sha256": "f41cf33b291f2791fd7f174bf3b90bd0d93fa45675b8cac66489e2c860086f1c",
+      "bytes": 112
+    },
+    {
+      "path": "host/lit-review/protocol.md",
+      "sha256": "4bb5168d475d6fed913c4bbcb7802df063741978e84bdf9f9a88962a5916e5ae",
+      "bytes": 34437
+    },
+    {
+      "path": "host/manuscript-writing/SKILL.md",
+      "sha256": "0756586f58667b039a0e64b0b0bca6191577e25d5cf3c074d1a582eb13173ce5",
+      "bytes": 120
+    },
+    {
+      "path": "host/manuscript-writing/protocol.md",
+      "sha256": "b8b8acd19582c691c6bb79e66e634a08f3fc69680b6ae184cda47ba665bec484",
+      "bytes": 10002
+    },
+    {
+      "path": "host/paper-review/SKILL.md",
+      "sha256": "07242ee4eba425e50523c921a8c722debabbfd721b23a255e371b56894c64dc7",
+      "bytes": 114
+    },
+    {
+      "path": "host/paper-review/protocol.md",
+      "sha256": "8a260069c15176f3e95064a050fa0ed33cd5073b28eae17a450be8e0fcb4540f",
+      "bytes": 43468
+    },
+    {
+      "path": "humanizer/LICENSE",
+      "sha256": "89254c30602e55cb306c77109d21420388c3407aaefa522be6c9c55f61acff62",
+      "bytes": 1752
+    },
+    {
+      "path": "humanizer/SKILL.md",
+      "sha256": "8b2e63d490a11f72538da83cb38d4bff1416462d11fa695f966d342f1ac0ef55",
+      "bytes": 38066
+    },
+    {
+      "path": "lit-review/SKILL.md",
+      "sha256": "9dc59fb1f0e4012cfbc71868d524c6828ad347bddc347c17d2dee01aefe9f367",
+      "bytes": 12775
+    },
+    {
+      "path": "lit-review/references/brief-template.md",
+      "sha256": "18939fdc603886bb9833d400426115ad79bffe3d7cbce30cb4fcbe9ec3eda28e",
+      "bytes": 3192
+    },
+    {
+      "path": "lit-review/references/direction-paper-template.md",
+      "sha256": "219e31e544d451df3c62a18de161809943ce26d11172070f7395e7baf76951f2",
+      "bytes": 5473
+    },
+    {
+      "path": "lit-review/references/license-rules.md",
+      "sha256": "a6918bc21e920a327b1caf600cffacc9a890b3d34d4cbe1e4488c84b0793317c",
+      "bytes": 4696
+    },
+    {
+      "path": "lit-review/references/paper-card-schema.md",
+      "sha256": "81c429f79c90976b4ddcb4aeb4372b4c6f286adf1041915904c4e5005e236aaa",
+      "bytes": 4786
+    },
+    {
+      "path": "lit-review/references/review-frameworks.md",
+      "sha256": "60a09bd7ec4fc37458135aaad717d0de457f51422cd300ab9453dd40f8988b51",
+      "bytes": 3131
+    },
+    {
+      "path": "lit-review/references/rigor-checklist.md",
+      "sha256": "6e29890a2b2f9e23fa169fc6fcbf5f128c9560c68730482ebbf3fceaeb46252f",
+      "bytes": 5664
+    },
+    {
+      "path": "lit-review/references/single-pass-synthesis.md",
+      "sha256": "fb9a3fb48f954a7219114f1bb9a8a6f8ab7fecffeb2f4f21cb497f5f27fc5815",
+      "bytes": 5774
+    },
+    {
+      "path": "lit-review/references/synthesis-templates.md",
+      "sha256": "59bdea0b4fcd6d88a83a304c607ee5d6eb175fef6c2743ebe2add4db38e4c4ea",
+      "bytes": 4669
+    },
+    {
+      "path": "manuscript-writing/SKILL.md",
+      "sha256": "228ae48c67a694645d4b90c09487ba5c45e11e4ef387de8e6b26ff2b6ab8ecba",
+      "bytes": 4812
+    },
+    {
+      "path": "manuscript-writing/references/revision-response.md",
+      "sha256": "e89f17a03918b950da4172a305a96c5736ba001790e3211c41f2d0150b2c0e15",
+      "bytes": 2928
+    },
+    {
+      "path": "manuscript-writing/references/section-templates.md",
+      "sha256": "93caaa0fe74228418f2f8fe0021b5937486515f46f5cfeec4d30cd1e6a09df59",
+      "bytes": 3195
+    },
+    {
+      "path": "paper-review/SKILL.md",
+      "sha256": "782ccccaa6cf83d96275b3339cb1332633b9d2bc26cde10b8e98eec0f4d67efe",
+      "bytes": 4830
+    },
+    {
+      "path": "paper-review/examples/sample-manuscript-excerpt.md",
+      "sha256": "5dc7ac57c567a80ad74d5111e520d8fb6b18c172c90ed7d9a4aa01f483e0639a",
+      "bytes": 1966
+    },
+    {
+      "path": "paper-review/examples/sample-manuscript-review.md",
+      "sha256": "3baf0cb16b6a787dc42f51b5fb1b4ded85d382df95fd49a12ccc1d63667488c0",
+      "bytes": 4978
+    },
+    {
+      "path": "paper-review/references/figure-review-guide.md",
+      "sha256": "0ec273b08a3438c4b48fd13f8683069219bb49750f38ef138ff7f930effd4001",
+      "bytes": 4275
+    },
+    {
+      "path": "paper-review/references/methodology-checklist.md",
+      "sha256": "37369c882ff0d04a7a21e36bdb4119783690961f93977acfa5d71709e63b8bbc",
+      "bytes": 4987
+    },
+    {
+      "path": "paper-review/references/review-output-template.md",
+      "sha256": "f9b5b7e14ada1a799ce276d3d4f56b7c98f339cc3e6a427820a55ad9d4e0d228",
+      "bytes": 4056
+    },
+    {
+      "path": "paper-review/references/review-principles.md",
+      "sha256": "c7188c32235430500c054d9b532105e7c95cb96c2b4599bf8ca6c09844eca490",
+      "bytes": 6407
+    },
+    {
+      "path": "paper-review/references/review-procedure.md",
+      "sha256": "e970614976f1b36b16460c852dd9a5db1e6f48df57caaeb0e9d18d3f5f221737",
+      "bytes": 9364
+    },
+    {
+      "path": "paper-review/references/statistical-review-guide.md",
+      "sha256": "e1c82bb1b4b4314ff378db98f0930434751ceb800aabfb63e7717d9f03060a90",
+      "bytes": 7043
+    }
+  ],
+  "bundleDigest": "6db6871c94cdf44516df78325629b26b714f0446ce5838275dc02558b99fe4a5",
+  "graph": [
+    {
+      "ref": {
+        "packageId": "neuromechanist.opencite",
+        "skillId": "SKILL.md",
+        "version": "0.5.4-scispark.1",
+        "digest": "a58a9f6e1524fed39aa47e90bbd5f8307b155ce45aaef3f1c75cd5fd72a58285"
+      },
+      "dependencies": []
+    },
+    {
+      "ref": {
+        "packageId": "neuromechanist.literature-review",
+        "skillId": "host/humanizer/SKILL.md",
+        "version": "0.2.2-scispark.1",
+        "digest": "d7d789b47df9dabd8904bad2f3abe19314fa12d2c75d3f7df53aba49871fe3a0"
+      },
+      "dependencies": []
+    },
+    {
+      "ref": {
+        "packageId": "neuromechanist.literature-review",
+        "skillId": "host/manuscript-writing/SKILL.md",
+        "version": "0.2.2-scispark.1",
+        "digest": "ed47d124bd9917118d73bb9bca4c3d4adb954fbbff06ff71581465b0a56b8f57"
+      },
+      "dependencies": [
+        {
+          "packageId": "neuromechanist.literature-review",
+          "skillId": "host/humanizer/SKILL.md",
+          "version": "0.2.2-scispark.1",
+          "digest": "d7d789b47df9dabd8904bad2f3abe19314fa12d2c75d3f7df53aba49871fe3a0"
+        }
+      ]
+    },
+    {
+      "ref": {
+        "packageId": "neuromechanist.literature-review",
+        "skillId": "host/paper-review/SKILL.md",
+        "version": "0.2.2-scispark.1",
+        "digest": "69197f9da56796729c19e6e5274df9ed6997fa8ec83cf29cb7a581a462f2cb37"
+      },
+      "dependencies": [
+        {
+          "packageId": "neuromechanist.opencite",
+          "skillId": "SKILL.md",
+          "version": "0.5.4-scispark.1",
+          "digest": "a58a9f6e1524fed39aa47e90bbd5f8307b155ce45aaef3f1c75cd5fd72a58285"
+        },
+        {
+          "packageId": "neuromechanist.literature-review",
+          "skillId": "host/humanizer/SKILL.md",
+          "version": "0.2.2-scispark.1",
+          "digest": "d7d789b47df9dabd8904bad2f3abe19314fa12d2c75d3f7df53aba49871fe3a0"
+        }
+      ]
+    },
+    {
+      "ref": {
+        "packageId": "neuromechanist.literature-review",
+        "skillId": "host/collection/SKILL.md",
+        "version": "0.2.2-scispark.1",
+        "digest": "ef8e5ef0814a596c7c279ac493e4f0770e30c79e1030c631c4ac8b9d90a77df7"
+      },
+      "dependencies": [
+        {
+          "packageId": "neuromechanist.opencite",
+          "skillId": "SKILL.md",
+          "version": "0.5.4-scispark.1",
+          "digest": "a58a9f6e1524fed39aa47e90bbd5f8307b155ce45aaef3f1c75cd5fd72a58285"
+        }
+      ]
+    },
+    {
+      "ref": {
+        "packageId": "neuromechanist.literature-review",
+        "skillId": "host/lit-review/SKILL.md",
+        "version": "0.2.2-scispark.1",
+        "digest": "60e9fe2416cb769b0a0fc88a631edbb662f4a1488051b1582b64de4b71fe9ed4"
+      },
+      "dependencies": [
+        {
+          "packageId": "neuromechanist.literature-review",
+          "skillId": "host/collection/SKILL.md",
+          "version": "0.2.2-scispark.1",
+          "digest": "ef8e5ef0814a596c7c279ac493e4f0770e30c79e1030c631c4ac8b9d90a77df7"
+        },
+        {
+          "packageId": "neuromechanist.literature-review",
+          "skillId": "host/manuscript-writing/SKILL.md",
+          "version": "0.2.2-scispark.1",
+          "digest": "ed47d124bd9917118d73bb9bca4c3d4adb954fbbff06ff71581465b0a56b8f57"
+        },
+        {
+          "packageId": "neuromechanist.literature-review",
+          "skillId": "host/paper-review/SKILL.md",
+          "version": "0.2.2-scispark.1",
+          "digest": "69197f9da56796729c19e6e5274df9ed6997fa8ec83cf29cb7a581a462f2cb37"
+        },
+        {
+          "packageId": "neuromechanist.literature-review",
+          "skillId": "host/humanizer/SKILL.md",
+          "version": "0.2.2-scispark.1",
+          "digest": "d7d789b47df9dabd8904bad2f3abe19314fa12d2c75d3f7df53aba49871fe3a0"
+        }
+      ]
+    }
+  ],
+  "opencite": {
+    "lockFile": "opencite.lock.json",
+    "bundleDigest": "46c13b76713b36b6ec68a790d3dbd9945a839b18b48bc887e2ae7ce2f2a2580c"
+  },
+  "upstreamFiles": [
+    {
+      "path": "humanizer/LICENSE",
+      "upstreamPath": "plugins/manuscript/skills/humanizer/LICENSE",
+      "sha256": "89254c30602e55cb306c77109d21420388c3407aaefa522be6c9c55f61acff62"
+    },
+    {
+      "path": "humanizer/SKILL.md",
+      "upstreamPath": "plugins/manuscript/skills/humanizer/SKILL.md",
+      "sha256": "8b2e63d490a11f72538da83cb38d4bff1416462d11fa695f966d342f1ac0ef55"
+    },
+    {
+      "path": "lit-review/SKILL.md",
+      "upstreamPath": "plugins/manuscript/skills/lit-review/SKILL.md",
+      "sha256": "9dc59fb1f0e4012cfbc71868d524c6828ad347bddc347c17d2dee01aefe9f367"
+    },
+    {
+      "path": "lit-review/references/brief-template.md",
+      "upstreamPath": "plugins/manuscript/skills/lit-review/references/brief-template.md",
+      "sha256": "18939fdc603886bb9833d400426115ad79bffe3d7cbce30cb4fcbe9ec3eda28e"
+    },
+    {
+      "path": "lit-review/references/direction-paper-template.md",
+      "upstreamPath": "plugins/manuscript/skills/lit-review/references/direction-paper-template.md",
+      "sha256": "219e31e544d451df3c62a18de161809943ce26d11172070f7395e7baf76951f2"
+    },
+    {
+      "path": "lit-review/references/license-rules.md",
+      "upstreamPath": "plugins/manuscript/skills/lit-review/references/license-rules.md",
+      "sha256": "a6918bc21e920a327b1caf600cffacc9a890b3d34d4cbe1e4488c84b0793317c"
+    },
+    {
+      "path": "lit-review/references/paper-card-schema.md",
+      "upstreamPath": "plugins/manuscript/skills/lit-review/references/paper-card-schema.md",
+      "sha256": "81c429f79c90976b4ddcb4aeb4372b4c6f286adf1041915904c4e5005e236aaa"
+    },
+    {
+      "path": "lit-review/references/review-frameworks.md",
+      "upstreamPath": "plugins/manuscript/skills/lit-review/references/review-frameworks.md",
+      "sha256": "60a09bd7ec4fc37458135aaad717d0de457f51422cd300ab9453dd40f8988b51"
+    },
+    {
+      "path": "lit-review/references/rigor-checklist.md",
+      "upstreamPath": "plugins/manuscript/skills/lit-review/references/rigor-checklist.md",
+      "sha256": "6e29890a2b2f9e23fa169fc6fcbf5f128c9560c68730482ebbf3fceaeb46252f"
+    },
+    {
+      "path": "lit-review/references/single-pass-synthesis.md",
+      "upstreamPath": "plugins/manuscript/skills/lit-review/references/single-pass-synthesis.md",
+      "sha256": "fb9a3fb48f954a7219114f1bb9a8a6f8ab7fecffeb2f4f21cb497f5f27fc5815"
+    },
+    {
+      "path": "lit-review/references/synthesis-templates.md",
+      "upstreamPath": "plugins/manuscript/skills/lit-review/references/synthesis-templates.md",
+      "sha256": "59bdea0b4fcd6d88a83a304c607ee5d6eb175fef6c2743ebe2add4db38e4c4ea"
+    },
+    {
+      "path": "manuscript-writing/SKILL.md",
+      "upstreamPath": "plugins/manuscript/skills/manuscript-writing/SKILL.md",
+      "sha256": "228ae48c67a694645d4b90c09487ba5c45e11e4ef387de8e6b26ff2b6ab8ecba"
+    },
+    {
+      "path": "manuscript-writing/references/revision-response.md",
+      "upstreamPath": "plugins/manuscript/skills/manuscript-writing/references/revision-response.md",
+      "sha256": "e89f17a03918b950da4172a305a96c5736ba001790e3211c41f2d0150b2c0e15"
+    },
+    {
+      "path": "manuscript-writing/references/section-templates.md",
+      "upstreamPath": "plugins/manuscript/skills/manuscript-writing/references/section-templates.md",
+      "sha256": "93caaa0fe74228418f2f8fe0021b5937486515f46f5cfeec4d30cd1e6a09df59"
+    },
+    {
+      "path": "paper-review/SKILL.md",
+      "upstreamPath": "plugins/manuscript/skills/paper-review/SKILL.md",
+      "sha256": "782ccccaa6cf83d96275b3339cb1332633b9d2bc26cde10b8e98eec0f4d67efe"
+    },
+    {
+      "path": "paper-review/examples/sample-manuscript-excerpt.md",
+      "upstreamPath": "plugins/manuscript/skills/paper-review/examples/sample-manuscript-excerpt.md",
+      "sha256": "5dc7ac57c567a80ad74d5111e520d8fb6b18c172c90ed7d9a4aa01f483e0639a"
+    },
+    {
+      "path": "paper-review/examples/sample-manuscript-review.md",
+      "upstreamPath": "plugins/manuscript/skills/paper-review/examples/sample-manuscript-review.md",
+      "sha256": "3baf0cb16b6a787dc42f51b5fb1b4ded85d382df95fd49a12ccc1d63667488c0"
+    },
+    {
+      "path": "paper-review/references/figure-review-guide.md",
+      "upstreamPath": "plugins/manuscript/skills/paper-review/references/figure-review-guide.md",
+      "sha256": "0ec273b08a3438c4b48fd13f8683069219bb49750f38ef138ff7f930effd4001"
+    },
+    {
+      "path": "paper-review/references/methodology-checklist.md",
+      "upstreamPath": "plugins/manuscript/skills/paper-review/references/methodology-checklist.md",
+      "sha256": "37369c882ff0d04a7a21e36bdb4119783690961f93977acfa5d71709e63b8bbc"
+    },
+    {
+      "path": "paper-review/references/review-output-template.md",
+      "upstreamPath": "plugins/manuscript/skills/paper-review/references/review-output-template.md",
+      "sha256": "f9b5b7e14ada1a799ce276d3d4f56b7c98f339cc3e6a427820a55ad9d4e0d228"
+    },
+    {
+      "path": "paper-review/references/review-principles.md",
+      "upstreamPath": "plugins/manuscript/skills/paper-review/references/review-principles.md",
+      "sha256": "c7188c32235430500c054d9b532105e7c95cb96c2b4599bf8ca6c09844eca490"
+    },
+    {
+      "path": "paper-review/references/review-procedure.md",
+      "upstreamPath": "plugins/manuscript/skills/paper-review/references/review-procedure.md",
+      "sha256": "e970614976f1b36b16460c852dd9a5db1e6f48df57caaeb0e9d18d3f5f221737"
+    },
+    {
+      "path": "paper-review/references/statistical-review-guide.md",
+      "upstreamPath": "plugins/manuscript/skills/paper-review/references/statistical-review-guide.md",
+      "sha256": "e1c82bb1b4b4314ff378db98f0930434751ceb800aabfb63e7717d9f03060a90"
+    },
+    {
+      "path": "LICENSE",
+      "upstreamPath": "LICENSE",
+      "sha256": "52c155c8e749654e7c7a67663eabe12eec8b7ccacb09a9bc60e927e31c3ba7b6"
+    }
+  ]
+}

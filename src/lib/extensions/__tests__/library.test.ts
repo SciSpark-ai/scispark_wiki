@@ -7,6 +7,7 @@ import * as setup from "../setup"
 import * as toolsRoute from "@/app/api/tools/route"
 import * as importRoute from "@/app/api/tools/imports/route"
 import * as importIdRoute from "@/app/api/tools/imports/[id]/route"
+import * as importUi from "../import-ui"
 import { PROFILE_COOKIE, PROFILE_HEADER } from "../../local-profile-contract"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { mkdtemp, mkdir, writeFile, rm, realpath } from "node:fs/promises"
@@ -100,11 +101,23 @@ describe("Tools HTTP boundary", () => {
     expect((await importRoute.POST(request("/imports", {}, { [PROFILE_HEADER]: "stale" }))).status).toBe(409)
     expect((await importRoute.POST(request("/imports", { source: { kind: "local-folder", path: source }, command: "execute" }))).status).toBe(400)
     expect((await importRoute.POST(request("/imports", { source: { kind: "local-folder", path: "a".repeat(70000) } }))).status).toBe(413)
+    const missingCatalogDependency = await importRoute.POST(request("/imports", { catalogId: "literature-review" }))
+    expect(missingCatalogDependency.status).toBe(409)
+    expect((await missingCatalogDependency.json()).error).toContain("pinned OpenCite")
     const response = await importRoute.POST(request("/imports", { source: { kind: "local-folder", path: source } }))
     expect(response.status).toBe(200)
     const preview = (await response.json()).result
     const confirmed = await importIdRoute.POST(request(`/imports/${preview.id}`, { action: "confirm", selected: [preview.tools[0].manifest.ref], proposals: preview.tools.map((t: { proposal: unknown }) => t.proposal) }), { params: Promise.resolve({ id: preview.id }) })
     expect(confirmed.status).toBe(200)
+    const confirmBody = { action: "confirm", selected: [preview.tools[0].manifest.ref], proposals: preview.tools.map((t: { proposal: unknown }) => t.proposal) }
+    const confirmFailure = vi.spyOn(importUi, "actOnImport").mockRejectedValueOnce(new importUi.ImportPrerequisiteError())
+    const missingAtConfirm = await importIdRoute.POST(request(`/imports/${preview.id}`, confirmBody), { params: Promise.resolve({ id: preview.id }) })
+    expect(missingAtConfirm.status).toBe(409)
+    expect((await missingAtConfirm.json()).error).toContain("pinned OpenCite")
+    confirmFailure.mockRejectedValueOnce(new Error("Private filesystem details"))
+    const privateFailure = await importIdRoute.POST(request(`/imports/${preview.id}`, confirmBody), { params: Promise.resolve({ id: preview.id }) })
+    expect(JSON.stringify(await privateFailure.json())).not.toContain("Private filesystem")
+    confirmFailure.mockRestore()
     let release!: () => void
     const wait = new Promise<void>(resolve => { release = resolve })
     const metadata = vi.spyOn(versions, "checkToolUpdate").mockImplementation(async () => { await wait; throw new Error("offline fixture") })
@@ -224,3 +237,26 @@ it("requires an unexpired discovery grant for import observation but manages own
   expect(owned.connectionRequirements).toContainEqual({ tool: helper, name: "Supporting literature helper", service: "semantic-scholar" })
   await expect(applyToolAction(ctx, toolKey(rootRef), { action: "bind-connection", target: helper, service: "semantic-scholar", operationId: randomUUID() })).resolves.toEqual({ updated: true })
 })
+
+it("discovers the literature catalog only explicitly, requires exact OpenCite, and enables only the root", async () => {
+  const { ctx } = await fixture()
+  expect(ImportRequestSchema.safeParse({ catalogId: "literature-review" }).success).toBe(true)
+  await expect(previewImport(ctx, { catalogId: "literature-review" })).rejects.toThrow("pinned OpenCite")
+  expect((await readProfileTools(ctx))!.enabled).toHaveLength(0)
+  const op = await previewImport(ctx, { catalogId: "opencite" })
+  // Same package/skill with a changed reviewed proposal is not the pinned dependency.
+  await actOnImport(ctx, op.id, { action: "confirm", selected: [op.tools[0].manifest.ref], proposals: [{ ...op.tools[0].proposal, description: "Stale different reviewed recipe" }] })
+  await expect(previewImport(ctx, { catalogId: "literature-review" })).rejects.toThrow("pinned OpenCite")
+  await actOnImport(ctx, op.id, { action: "confirm", selected: [op.tools[0].manifest.ref], proposals: op.tools.map(t => t.proposal) })
+  const preview = await previewImport(ctx, { catalogId: "literature-review" })
+  expect(preview.tools).toHaveLength(5)
+  expect(preview.tools.every(t => !t.reviewed)).toBe(true)
+  const root = preview.tools.find(t => t.manifest.ref.skillId === "host/lit-review/SKILL.md")!
+  await expect(actOnImport(ctx, preview.id, { action: "confirm", selected: preview.tools.map(t => t.manifest.ref), proposals: preview.tools.map(t => t.proposal) })).rejects.toThrow("only top-level")
+  const imported = await actOnImport(ctx, preview.id, { action: "confirm", selected: [root.manifest.ref], proposals: preview.tools.map(t => t.proposal) })
+  const enabled = (await readProfileTools(ctx))!.enabled.filter(b => b.tool.packageId === "neuromechanist.literature-review")
+  expect(enabled).toHaveLength(1); expect(enabled[0].tool.skillId).toBe("host/lit-review/SKILL.md")
+  const finalRoot = imported.preview.tools.find(t => t.manifest.ref.skillId === root.manifest.ref.skillId)!
+  expect((await setup.resolveToolPreparationClosure(ctx, finalRoot.manifest.ref)).dependencies).toHaveLength(5)
+  expect(imported.tools.find(t => t.tool.skillId === root.manifest.ref.skillId)?.readiness.status).not.toBe("ready")
+}, 15000)

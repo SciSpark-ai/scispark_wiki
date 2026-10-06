@@ -19,7 +19,7 @@ export const ToolsActionSchema = z.discriminatedUnion("action", [
 ])
 export const ImportRequestSchema = z.union([
   z.object({ source: ImportSourceSchema.refine(source => source.kind === "github" || (source.kind === "local-folder" && source.path.startsWith("/")), "Choose GitHub or an explicit folder") }).strict(),
-  z.object({ catalogId: z.literal("opencite") }).strict(),
+  z.object({ catalogId: z.enum(["opencite", "literature-review"]) }).strict(),
 ])
 export const ImportActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("confirm"), selected: z.array(ToolRefSchema).min(1).max(1000), proposals: z.array(AdapterProposalSchema).min(1).max(1000) }).strict(),
