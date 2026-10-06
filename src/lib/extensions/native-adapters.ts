@@ -52,6 +52,12 @@ async function executeReview(ctx: WorkflowContext, root: ToolRun, input: Record<
       question: z.string().trim().min(1).parse(input.question ?? input.query), sources: input.sources ?? await readEnabledPaperSources(ctx.storage) }, { conversationId: root.sessionId ?? null })
   }
   let review = await loadReview(ctx.storage, reviewId)
+  // A root request prepares a brief; only the existing explicit native action
+  // may approve it. Helpers retain authority from their approved parent envelope.
+  if (frame === root.id && review.status === "awaiting-approval" && !continuation && !input.action) {
+    await io.emit({ type: "status", status: "waiting_for_choice" })
+    return { summary: "Review the brief and explicitly start the review.", artifactIds: [] }
+  }
   if (!review.brief.model.engine && !review.brief.model.rates) {
     await io.emit({ type: "status", status: "waiting_for_setup" })
     return { summary: "Configure prices in the review brief before continuing.", artifactIds: [] }

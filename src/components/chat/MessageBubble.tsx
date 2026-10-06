@@ -16,6 +16,7 @@ import { ChatMarkdown } from "./ChatMarkdown"
 
 export interface MessageBubbleProps {
   message: ChatMessage
+  standaloneReviewIds?: string[]
   pageTitleById: Record<string, string>
   /** Save-this-answer-as-a-query-page control (SP5 Task 7). Presentational —
    * the caller owns what "save" actually does. */
@@ -49,7 +50,7 @@ function labelFor(id: string, pageTitleById: Record<string, string>): string {
  * answer still came back), the error rides along as a quiet "Reason:" line
  * underneath it — same pattern as the trending dashboard's `surveyError`.
  */
-export function MessageBubble({ message, pageTitleById, onSave, saving }: MessageBubbleProps) {
+export function MessageBubble({ message, pageTitleById, onSave, saving, standaloneReviewIds }: MessageBubbleProps) {
   const isAssistant = message.role === "assistant"
   // Render old brief messages neutrally without rewriting saved transcripts.
   const content = isAssistant && message.blocks?.some((block) => block.type === "review") && message.content === LEGACY_REVIEW_INTRO
@@ -82,7 +83,7 @@ export function MessageBubble({ message, pageTitleById, onSave, saving }: Messag
             {content}
           </p>
         ))}
-        {isAssistant && message.blocks?.map((block, index) => block.type === "review-citations" ? <button key={index} className="mt-3 text-sm text-accent-ink" onClick={() => window.dispatchEvent(new CustomEvent("open-review-report", { detail: { runId: block.runId, versionId: block.versionId } }))}>View saved review sources{block.sourceIds.length ? ` · ${block.sourceIds.join(", ")}` : ""}</button> : block.type === "review" ? <ReviewBlock key={index} id={block.runId} /> : block.type === "tool-choice" ? <ToolChoiceBlock key={index} choice={block.choice} /> : block.type === "tool-run" ? <ToolRunBlock key={index} runId={block.runId} /> : block.type === "paper-results"
+        {isAssistant && message.blocks?.map((block, index) => block.type === "review-citations" ? <button key={index} className="mt-3 text-sm text-accent-ink" onClick={() => window.dispatchEvent(new CustomEvent("open-review-report", { detail: { runId: block.runId, versionId: block.versionId } }))}>View saved review sources{block.sourceIds.length ? ` · ${block.sourceIds.join(", ")}` : ""}</button> : block.type === "review" ? <ReviewBlock key={index} id={block.runId} /> : block.type === "tool-choice" ? <ToolChoiceBlock key={index} choice={block.choice} /> : block.type === "tool-run" ? <ToolRunBlock key={index} runId={block.runId} standaloneReviewIds={standaloneReviewIds} /> : block.type === "paper-results"
           ? <PaperResultsBlock key={index} result={block.result} />
           : <PaperResultsBlock key={index} result={{ query: "", plan: { interpretation: "Cited papers", sort: "relevance", fromDate: null, queries: [] }, items: block.papers.map((paper) => ({ paper, score: 0, whyMatch: "", foundBy: [] })), stats: { retrieved: 0, deduplicated: 0 }, costUsd: 0, warnings: [] }} citationsOnly />)}
 

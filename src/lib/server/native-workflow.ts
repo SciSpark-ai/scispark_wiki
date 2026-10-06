@@ -5,7 +5,7 @@ import { reviewModel } from "../review/budget"
 import { createHash, randomUUID } from "node:crypto"
 import { z } from "zod"
 import { getWorkflowContext, type WorkflowContext } from "../workflows/context"
-import { startRun, observeRun, recoverWorkflowRuns, cancelRun } from "../workflows/coordinator"
+import { startRun, startPreparedNativeReview, observeRun, recoverWorkflowRuns, cancelRun, restoreAndListWorkflowRuns } from "../workflows/coordinator"
 import { readWorkflowJournal, transitionRun, leaseOwnerAlive, hasUncertainWork } from "../workflows/journal"
 import { requireEnabledTool, ToolDisabledError } from "../extensions/require-tool"
 import { toolKey } from "../extensions/contracts"
@@ -83,6 +83,7 @@ async function prepareReviewContinuation(ctx: WorkflowContext, id: string, revie
   const raw = await ctx.storage.read(path)
   const previous = raw ? NativeReviewContinuationSchema.parse(JSON.parse(raw)) : null
   if (previous && previous.reviewId !== reviewId) throw new Error("Native continuation identity mismatch")
+  if (choice === "retry" && review.status === "awaiting-approval" && !action) throw new Error("Review the brief and explicitly start the review")
   const selected = action ?? { action: review.status === "awaiting-approval" ? "approve" as const : "resume" as const, revision: review.revision }
   if (choice === "retry") {
     if (!(selected.action === "approve" || selected.action === "resume") || selected.revision !== review.revision) throw new Error("Review changed; reload before resuming")
@@ -173,15 +174,27 @@ async function observeReviewAdmission(ctx: WorkflowContext, id: string, reviewId
 export async function legacyReviewAction(ctx: WorkflowContext, reviewId: string, raw: unknown) {
   ReviewId.parse(reviewId)
   const action = ReviewActionSchema.parse(raw)
+  if (action.action !== "approve" && action.action !== "resume" && action.action !== "revise" && action.action !== "cancel") throw new Error("Invalid native review workflow action")
   const index = `.scispark/reviews/${reviewId}/workflow.json`
   return withVaultExclusive(ctx.storage, `native-review-${reviewId}`, async () => {
     const previous = await ctx.storage.read(index)
-    const old = previous ? z.object({ id: z.string().uuid() }).parse(JSON.parse(previous)) : null
+    const indexed = previous ? z.object({ id: z.string().uuid() }).parse(JSON.parse(previous)) : null
+    // Direct Tools/chat roots already own their native identity in durable start
+    // records. Resolve that authority instead of creating a competing envelope.
+    const old = await withVaultExclusive(ctx.storage, "workflow-coordinator", async () => {
+      const runs = await restoreAndListWorkflowRuns(ctx)
+      const candidates = runs.filter(run => run.nativeRunRef?.kind === "deep-review" && run.nativeRunRef.id === reviewId)
+      const owner = indexed ? candidates.find(run => run.id === indexed.id) : candidates.at(-1)
+      if (indexed && !owner) throw new Error("Native review owner identity mismatch")
+      await (await import("../workflows/review-ownership")).assertNativeReviewAdmission(ctx, reviewId, owner?.id)
+      return owner ? { id: owner.id } : null
+    })
     if (action.action === "cancel") { if (old) await cancelRun(ctx, old.id, randomUUID()); return actOnReview(ctx.storage, reviewId, action) }
     await requireEnabledTool(ctx, nativeKey("deep-review"))
     const operationId = createHash("sha256").update(JSON.stringify({ reviewId, action })).digest("hex")
     if (old) {
       const run = await observeRun(ctx, old.id)
+      if (run.status === "cancelled" && action.action === "approve") throw new Error("This review workflow was cancelled; start a new review")
       if (CONTINUABLE_REVIEW_STATES.includes(run.status) && (action.action === "approve" || action.action === "resume")) {
         await continueNativeReview(ctx, old.id, nativeStepId(operationId, "resume"), "retry", action)
         return observeReviewAdmission(ctx, old.id, reviewId, action.revision)
@@ -198,7 +211,7 @@ export async function legacyReviewAction(ctx: WorkflowContext, reviewId: string,
     const captured = await resolveRunModel(ctx, manifest.ref)
     const target = reviewModel(await settingsForRunModel(ctx, captured))
     if (target.provider !== brief.model.provider || target.model !== brief.model.model || target.endpoint !== brief.model.endpoint) throw new Error("The approved review model differs from this tool. Review its brief before continuing.")
-    const run = await startNativeWorkflow(ctx, "deep-review", { reviewId, action, operationId })
+    const run = await startPreparedNativeReview(ctx, { reviewId, action, operationId })
     await ctx.storage.write(index, JSON.stringify({ id: run.id }))
     if (action.action === "revise") return observeNativeResult(ctx, run.id)
     if (action.action === "approve" || action.action === "resume") return observeReviewAdmission(ctx, run.id, reviewId, action.revision)

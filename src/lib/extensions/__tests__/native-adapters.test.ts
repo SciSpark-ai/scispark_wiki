@@ -432,3 +432,90 @@ it("routes an explicit Find Papers request through its real native adapter and i
   const replay = await askChat(ctx.storage,{input,workflowContext:ctx})
   expect(replay).toEqual(result); expect(provider.calls).toHaveLength(2)
 })
+
+
+it("keeps a new top-level native review awaiting explicit brief approval even with known prices", async () => {
+  const { ctx } = await nativeFixture()
+  const provider = new MockProvider([])
+  setSkillTestOverrides({ providerOverride: { strong: provider } })
+  const run = await startNativeWorkflow(ctx, "deep-review", { question: "Compare adult decoding methods", sources: ["openalex"] })
+  await waitForWorkflowIdle()
+  const { loadReview } = await import("../../review/store")
+  const review = await loadReview(ctx.storage, run.nativeRunRef!.id)
+  expect(review.brief.model.rates).not.toBeNull()
+  expect(review.status).toBe("awaiting-approval")
+  expect(review.approvedRevision).toBeNull()
+  expect(provider.calls).toHaveLength(0)
+  expect((await getRunUsage(ctx, run.id)).modelCalls).toBe(0)
+  expect((await observeRun(ctx, run.id)).status).toBe("waiting_for_choice")
+})
+
+
+it("routes explicit brief approval through the exact stopped root and refuses generic approval", async () => {
+  const { ctx } = await nativeFixture()
+  const provider = new MockProvider([])
+  setSkillTestOverrides({ providerOverride: { strong: provider } })
+  const run = await startNativeWorkflow(ctx, "deep-review", { question: "Compare adult decoding methods", sources: ["openalex"] })
+  await waitForWorkflowIdle()
+  const { continueNativeReview } = await import("../../server/native-workflow")
+  const { resumeRun, startRun } = await import("../../workflows/coordinator")
+  const { workflowSnapshot } = await import("../../server/workflow-api")
+  const { loadReview } = await import("../../review/store")
+  const reviewId = run.nativeRunRef!.id
+  expect((await workflowSnapshot(ctx, run.id)).observation?.nativeReviewId).toBe(reviewId)
+  expect((await workflowSnapshot(ctx, run.id)).observation?.nativeReview?.retry).toBe(false)
+  await expect(resumeRun(ctx, run.id, randomUUID())).rejects.toThrow()
+  await expect(continueNativeReview(ctx, run.id, randomUUID(), "retry")).rejects.toThrow(/explicitly/)
+  expect(provider.calls).toHaveLength(0)
+  const rootsBefore = (await ctx.storage.list(".scispark/tool-runs/")).filter(path => path.endsWith("/run.json"))
+  const captured = (await observeRun(ctx, run.id)).model
+  for (const input of [{ reviewId }, { reviewId, action: { action: "approve", revision: 0 } }]) {
+    await expect(startRun(ctx, { operationId: randomUUID(), tool: run.tool, input, contextRefs: [], writeIntent: "outputs_only" })).rejects.toThrow(/native review action/i)
+  }
+  expect(provider.calls).toHaveLength(0)
+  const { POST } = await import("../../../app/api/reviews/[id]/route")
+  const result = await POST(new Request("http://fixture/api/reviews", { method: "POST", body: JSON.stringify({ action: "approve", revision: 0 }) }), { params: Promise.resolve({ id: reviewId }) })
+  expect(result.status).toBe(200)
+  await waitForWorkflowIdle()
+  const review = await loadReview(ctx.storage, reviewId)
+  expect(review.approvedRevision).toBe(0)
+  expect(review.approvals).toHaveLength(1)
+  expect(provider.calls.length).toBeGreaterThan(0)
+  expect((await ctx.storage.list(".scispark/tool-runs/")).filter(path => path.endsWith("/run.json"))).toEqual(rootsBefore)
+  expect((await observeRun(ctx, run.id)).model).toEqual(captured)
+  expect((await getRunUsage(ctx, run.id)).modelCalls).toBe(provider.calls.length)
+})
+
+it.each(["cancelled", "competitor", "helper"])("refuses explicit native approval when owner is %s", async mode => {
+  const { ctx } = await nativeFixture()
+  const provider = new MockProvider([])
+  setSkillTestOverrides({ providerOverride: { strong: provider } })
+  const run = await startNativeWorkflow(ctx, "deep-review", { question: "Compare adult decoding methods", sources: ["openalex"] })
+  await waitForWorkflowIdle()
+  if (mode === "cancelled") { await cancelRun(ctx, run.id, randomUUID()); await waitForWorkflowIdle() }
+  else {
+    const competitor = { ...run, id: randomUUID(), operationId: randomUUID(), ...(mode === "helper" ? { nativeRunRef: undefined } : {}) }
+    await writeRun(ctx, competitor)
+    if (mode === "helper") {
+      const { nativePath } = await import("../native-adapters")
+      await ctx.storage.write(nativePath(competitor.id, `review-${randomUUID()}`), JSON.stringify({ reviewId: run.nativeRunRef!.id, action: { action: "approve", revision: 0 }, generation: 0, operationId: competitor.operationId }))
+    }
+  }
+  const { legacyReviewAction } = await import("../../server/native-workflow")
+  await expect(legacyReviewAction(ctx, run.nativeRunRef!.id, { action: "approve", revision: 0 })).rejects.toThrow()
+  expect(provider.calls).toHaveLength(0)
+})
+
+
+it("rejects injected approval at generic start before preparing or dispatching an unseen native brief", async () => {
+  const { ctx } = await nativeFixture()
+  const provider = new MockProvider([])
+  setSkillTestOverrides({ providerOverride: { strong: provider } })
+  const { startRun } = await import("../../workflows/coordinator")
+  const tool = NATIVE_TOOL_MANIFESTS.find(item => item.ref.skillId === "deep-review")!.ref
+  await expect(startRun(ctx, { operationId: randomUUID(), tool, input: { question: "Compare adult decoding methods", sources: ["openalex"], action: { action: "approve", revision: 0 } }, contextRefs: [], writeIntent: "outputs_only" })).rejects.toThrow(/native review action/i)
+  await waitForWorkflowIdle()
+  expect(provider.calls).toHaveLength(0)
+  expect(await ctx.storage.list(".scispark/tool-runs/start-operations/")).toEqual([])
+  expect(await ctx.storage.list(".scispark/reviews/")).toEqual([])
+})

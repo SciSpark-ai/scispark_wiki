@@ -22,12 +22,14 @@ export function MessageList({ messages, pageTitleById, onSaveMessage, savingInde
     return <EmptyState title="No messages yet" hint="Ask a question about your knowledge base to get started." />
   }
 
+  const standaloneReviewIds = messages.filter(message => message.role === "assistant").flatMap(message => message.blocks?.flatMap(block => block.type === "review" ? [block.runId] : []) ?? [])
   return (
     <div className="flex flex-col gap-3">
       {messages.map((message, index) => (
         <MessageBubble
           key={index}
           message={message}
+          standaloneReviewIds={standaloneReviewIds}
           pageTitleById={pageTitleById}
           onSave={() => onSaveMessage(index)}
           saving={savingIndex === index}

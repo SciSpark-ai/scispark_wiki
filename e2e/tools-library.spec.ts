@@ -3,6 +3,23 @@ import { NodeFsVaultStorage } from "../src/lib/vault/node-fs-storage"
 import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 
+test("configured empty default vault has no optional tool scan, provider call or scheduled work", async ({ page, request }, info) => {
+  const { readFile } = await import("node:fs/promises")
+  const baseline = JSON.parse(await readFile(join(process.env.SCISPARK_E2E_RUN_DIR!, "evidence", "fresh-profile.json"), "utf8"))
+  expect(baseline.enabled).toEqual([])
+  expect(baseline.runs).toEqual([])
+  expect(baseline.providerCalls).toBe(0)
+  const storage = new NodeFsVaultStorage(process.env.SCISPARK_E2E_VAULT_PATH!)
+  await storage.write(".scispark/tools/state.json", JSON.stringify({ schemaVersion: 1, enabled: [], pins: [], overrides: [], migrated: true, sidebarPins: [] }))
+  let scans = 0
+  page.on("request", req => { if (req.method() === "POST" && /\/api\/(tools\/discovery|skills\/(trending|spark))/.test(req.url())) scans++ })
+  await page.goto("/tools")
+  await expect(page.getByRole("heading", { name: "No tools installed" })).toBeVisible()
+  await page.screenshot({ path: info.outputPath("empty-profileTools.png"), fullPage: true })
+  expect(scans).toBe(0)
+  expect((await (await request.get("/api/tools?view=library")).json()).result.tools.filter((tool: { enabled: boolean }) => tool.enabled)).toEqual([])
+})
+
 test("Tools empty, installed, explicit local import, consent, setup and errors across desktop and phone", async ({ page, request }, info) => {
   const storage = new NodeFsVaultStorage(process.env.SCISPARK_E2E_VAULT_PATH!)
   await request.post("/api/profile", { data: { name: "Ada", role: "Researcher", fields: "Neuroscience", topics: "Speech", feedPrefs: "Methods" } })
@@ -128,4 +145,31 @@ test("import hands an unbound supporting connection to root Manage without claim
   await expect(card.getByRole("button", { name: "Manage" })).toBeFocused()
   await expect(page.getByRole("heading", { name: "Literature connection helper", exact: true })).toHaveCount(0)
   expect(runs).toBe(0)
+})
+
+
+test("GitHub and ZIP fixture imports use the reviewed UI and network misses fail closed", async ({ page, request }) => {
+  const { zipSync, strToU8 } = await import("fflate")
+  const { skill, resetTools } = await import("./fixtures/modular")
+  await resetTools()
+  const root = process.env.SCISPARK_E2E_RUN_DIR!
+  await writeFile(join(root, "github-fixture.zip"), zipSync({ "fixture-root/SKILL.md": strToU8(skill("GitHub fixture evidence")) }))
+  await page.goto("/tools")
+  await page.getByRole("button", { name: "Add tools", exact: true }).click()
+  const dialog = page.getByRole("dialog")
+  await dialog.getByRole("button", { name: "GitHub", exact: true }).click()
+  await dialog.getByLabel("GitHub repository").fill("https://github.com/scispark-fixture/modular")
+  await dialog.getByRole("button", { name: "Preview import", exact: true }).click()
+  await expect(dialog.getByRole("checkbox", { name: "GitHub fixture evidence", exact: true })).toBeVisible()
+  await dialog.getByLabel(/I reviewed/).check(); await dialog.getByRole("button", { name: "Confirm import" }).click()
+  await expect(dialog.getByText("Import saved.", { exact: true })).toBeVisible()
+  await dialog.getByRole("button", { name: "Close", exact: true }).click()
+  await page.getByRole("button", { name: "Add tools", exact: true }).click()
+  await dialog.getByRole("button", { name: "Local files or folder" }).click()
+  await dialog.getByLabel("Or upload a ZIP file").setInputFiles({ name: "fixture.zip", mimeType: "application/zip", buffer: Buffer.from(zipSync({ "SKILL.md": strToU8(skill("ZIP fixture evidence")) })) })
+  await expect(dialog.getByRole("checkbox", { name: "ZIP fixture evidence", exact: true })).toBeVisible()
+  await dialog.getByLabel(/I reviewed/).check(); await dialog.getByRole("button", { name: "Confirm import" }).click()
+  await expect(dialog.getByText("Import saved.", { exact: true })).toBeVisible()
+  const missing = await request.post("/api/tools/imports", { data: { source: { kind: "github", url: "https://github.com/scispark-fixture/unmatched" } } })
+  expect(missing.status()).toBe(409)
 })

@@ -140,6 +140,7 @@ export const ToolRunDtoSchema = ToolRunSchema.pick({ schemaVersion: true, id: tr
     choice: z.object({ id: UuidSchema, prompt: z.string(), candidates: z.array(z.object({ tool: ToolRefSchema, label: z.string() }).strict()) }).strict().optional(),
     uncertainSteps: z.array(z.object({ id: UuidSchema, kind: StepIntentSchema.shape.kind, retryable: z.boolean(),
       recovery: z.discriminatedUnion("kind", [z.object({ kind: z.literal("wiki_changeset") }).strict(), z.object({ kind: z.literal("native_revision"), reviewId: ReviewId }).strict()]).optional() }).strict()),
+    nativeReviewId: ReviewId.optional(),
     nativeReview: z.object({ retry: z.boolean(), keep: z.boolean() }).strict().optional(),
     saves: z.array(z.object({ changesetId: UuidSchema, artifactIds: ArtifactIdsSchema, state: z.enum(["pending", "saved"]) }).strict()),
     saveableArtifactIds: z.array(UuidSchema), nextSaveArtifactIds: z.array(UuidSchema).optional(), diagnostics: z.array(z.string()),

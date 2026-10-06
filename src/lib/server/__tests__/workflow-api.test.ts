@@ -368,3 +368,44 @@ it("labels supporting choices with retained manifest names and preserves unavail
   const response = await runRoute.GET(request(`/runs/${f.run.id}`), params(f.run.id)), data = (await response.json()).result
   expect(data.observation.choice.candidates.map((candidate: { label: string }) => candidate.label)).toEqual(["Review", "unavailable-helper"])
 })
+
+
+it.each([
+  { action: { action: "approve", revision: 0 } },
+  { action: { action: "resume", revision: 0 } },
+  { action: { action: "revise", parent: "v_fixture", instruction: "Rewrite" } },
+  { reviewId: `review_${"a".repeat(32)}` },
+])("generic public start rejects native review control fields: %j", async control => {
+  const { NATIVE_TOOL_MANIFESTS } = await import("../../extensions/native-catalog")
+  const { registerNativeAdapters } = await import("../../extensions/native-adapters")
+  const { setSkillTestOverrides } = await import("../skill-route")
+  const { MockProvider } = await import("../../llm/mock-provider")
+  const provider = new MockProvider([]), tool = NATIVE_TOOL_MANIFESTS.find(item => item.ref.skillId === "deep-review")!.ref
+  registerNativeAdapters()
+  await writeProfileTools(f.ctx, { schemaVersion: 1, enabled: [{ tool, enabled: true }], pins: [], overrides: [], migrated: true })
+  setSkillTestOverrides({ providerOverride: { strong: provider } })
+  try {
+    const result = await runsRoute.POST(request("/runs", { ...f.request, tool, input: { question: "Compare adult decoding methods", sources: ["openalex"], ...control } }))
+    expect(result.status).toBe(409)
+    await waitForWorkflowIdle()
+    expect(provider.calls).toHaveLength(0)
+    expect(await f.ctx.storage.list(".scispark/tool-runs/start-operations/")).toEqual([])
+    expect(await f.ctx.storage.list(".scispark/reviews/")).toEqual([])
+  } finally { await waitForWorkflowIdle(); setSkillTestOverrides() }
+})
+
+
+it("public generic start cannot consume an existing prepared native brief", async () => {
+  const { NATIVE_TOOL_MANIFESTS } = await import("../../extensions/native-catalog")
+  const { createReview, loadReview } = await import("../../review/store")
+  const tool = NATIVE_TOOL_MANIFESTS.find(item => item.ref.skillId === "deep-review")!.ref
+  await writeProfileTools(f.ctx, { schemaVersion: 1, enabled: [{ tool, enabled: true }], pins: [], overrides: [], migrated: true })
+  const review = await createReview(f.ctx.storage, { sessionId: "prepared-fixture", operationId: "prepared-fixture", question: "Compare adult decoding methods", sources: ["openalex"] }, { conversationId: null })
+  for (const input of [{ reviewId: review.id }, { reviewId: review.id, action: { action: "approve", revision: review.revision } }]) {
+    const result = await runsRoute.POST(request("/runs", { ...f.request, operationId: randomUUID(), tool, input }))
+    expect(result.status).toBe(409)
+  }
+  expect(await loadReview(f.ctx.storage, review.id)).toEqual(review)
+  expect(await f.ctx.storage.list(".scispark/tool-runs/start-operations/")).toEqual([])
+  expect(await f.ctx.storage.read(".scispark/usage/review-attempts.json")).toBeNull()
+})

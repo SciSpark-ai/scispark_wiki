@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import { randomUUID, createHash } from "node:crypto"
+import { appendFileSync, mkdirSync } from "node:fs"
+import { join } from "node:path"
 import { createServer } from "node:http"
 import { reviewResponse } from "./review-responses.mjs"
 
@@ -52,7 +55,23 @@ const server = createServer((request, response) => {
       const reply = onboardingReplies[Math.min(Math.max(0, answers.length - 1), 4)]
       const background = prompt.includes("BACKGROUND-FIXTURE")
       if (background) await new Promise(resolve => setTimeout(resolve, 5000))
-      const output = (background && prompt.includes("You are an expert research analyst.")
+      const modular = /MODULAR:([a-z-]+)/.exec(prompt)?.[1]
+      let modularOutput
+      let phase = "decision"
+      if (modular) {
+        if (prompt.startsWith("Classify the human")) { const data = JSON.parse(body.messages[1].content); modularOutput = { kind: "tools", toolIds: data.candidates.map(c => c.id) }; phase = "classification" }
+        else if (prompt.startsWith("Write the public research answer")) { modularOutput = "# Synthetic evidence report\n\nMethod A improved on the supplied benchmark. [Source](https://doi.org/10.1000/modular-fixture).\n\n**Limitation:** invented evidence; no clinical validation."; phase = "review-synthesis" }
+        else if (prompt.startsWith("You execute a research workflow")) {
+          const data = JSON.parse(body.messages[1].content)
+          modularOutput = data.observations.length === 0
+            ? { type: "publish_artifact", kind: "markdown", title: "Synthetic source-linked report", mediaType: "text/markdown", sourceRefs: ["https://doi.org/10.1000/modular-fixture"], text: "# Synthetic evidence\n\nMethod A improved on the supplied benchmark. [Source](https://doi.org/10.1000/modular-fixture).\n\nInvented evidence; no clinical validation." }
+            : { type: "finish", synthesize: true, summary: "Retain source and synthetic-evidence limitation.", artifactIds: data.artifacts.map(a => a.id) }
+        } else throw new Error("Unrecognized modular provider prompt")
+        const evidence = join(process.env.SCISPARK_E2E_RUN_DIR, "evidence"); mkdirSync(evidence, { recursive: true })
+        appendFileSync(join(evidence, "provider.jsonl"), JSON.stringify({ id: randomUUID(), pid: process.pid, scenario: modular, phase, inputHash: createHash("sha256").update(prompt).digest("hex"), workflowInputHash: createHash("sha256").update(JSON.stringify(body.messages[1].content)).digest("hex"), stream: !!body.stream }) + "\n")
+        if (phase === "review-synthesis" && modular === "restart") { response.on("close", () => response.destroy()); return }
+      }
+      const output = modularOutput ?? (background && prompt.includes("You are an expert research analyst.")
         ? { entities: [], concepts: [], findings: [], connections: [], contradictions: [], recommendations: { pagesToCreate: [], pagesToUpdate: [], emphasis: [] } }
         : background && prompt.includes("You are a wiki maintainer")
         ? { files: [], reviews: [] } : null) ?? reviewResponse(body.messages) ?? (prompt.includes("Help this researcher shape a useful paper feed")
@@ -80,10 +99,10 @@ const server = createServer((request, response) => {
           })
 
       if (body.stream) {
-        const slowStream = prompt.includes("STREAMING-FIXTURE")
+        const slowStream = prompt.includes("STREAMING-FIXTURE") || !!modular
         if (slowStream) await new Promise(resolve => setTimeout(resolve, 2500))
         response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" })
-        const content = JSON.stringify(output)
+        const content = typeof output === "string" ? output : JSON.stringify(output)
         const split = Math.min(content.length, 35)
         response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: content.slice(0, split) } }] })}\n\n`)
         // Hold the real provider response open so E2E proves the UI updates

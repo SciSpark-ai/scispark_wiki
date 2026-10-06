@@ -61,7 +61,7 @@ export async function workflowSnapshot(ctx: WorkflowContext, id: string) {
   const text = events.filter(e => e.seq <= run.eventCursor).filter(e => e.type === "text").map(e => workflowPublicText(e.text)).filter(text => text !== null).at(-1) ?? ""
   const diagnostics = events.filter(e => e.type === "error").map(e => e.message)
   const uncertainSteps = await Promise.all(steps.map(async step => ({ id: step.intent.id, kind: step.intent.kind, ...await checkpointRecovery(ctx, id, step.intent) })))
-  let choice, nativeReview
+  let choice, nativeReview, nativeReviewId
   if (run.status === "waiting_for_choice") {
     const { readHostContinuation, resolveHostManifest } = await import("../workflows/host-tools")
     const continuation = await readHostContinuation(ctx, id)
@@ -72,14 +72,15 @@ export async function workflowSnapshot(ctx: WorkflowContext, id: string) {
       return { tool, label }
     })) }
   }
-  if (!uncertainSteps.some(step => step.recovery?.kind === "native_revision") && run.nativeRunRef?.kind === "deep-review" && ["waiting_for_choice", "needs_attention", "paused_limit", "interrupted", "waiting_for_setup"].includes(run.status)) {
+  if (run.nativeRunRef?.kind === "deep-review" && await ctx.storage.read(`.scispark/reviews/${run.nativeRunRef.id}/run.json`)) {
     const review = await (await import("../review/store")).loadReview(ctx.storage, run.nativeRunRef.id)
+    nativeReviewId = review.id
     const limited = review.status === "partial" && review.versions.at(-1)?.verification === "checked-draft" && review.versions.at(-1)?.answerCoverage?.status === "limited"
-    nativeReview = { retry: ["awaiting-approval", "paused", "interrupted", "failed", "partial"].includes(review.status) && !limited,
+    if (!uncertainSteps.some(step => step.recovery?.kind === "native_revision") && ["waiting_for_choice", "needs_attention", "paused_limit", "interrupted", "waiting_for_setup"].includes(run.status)) nativeReview = { retry: ["paused", "interrupted", "failed", "partial"].includes(review.status) && !limited,
       keep: ["partial", "paused", "interrupted", "failed", "completed"].includes(review.status) && review.versions.length > 0 }
   }
   return ToolRunDtoSchema.strip().parse({ ...run, ...usage, observation: {
-    text, phase: events.filter(e => e.seq <= run.eventCursor && e.type === "text").map(e => e.type === "text" ? workflowPublicPhase(e.text) : undefined).filter(Boolean).at(-1), usage: detailedUsage, choice, nativeReview, ...saves, diagnostics,
+    text, phase: events.filter(e => e.seq <= run.eventCursor && e.type === "text").map(e => e.type === "text" ? workflowPublicPhase(e.text) : undefined).filter(Boolean).at(-1), usage: detailedUsage, choice, nativeReview, nativeReviewId, ...saves, diagnostics,
     uncertainSteps,
   } })
 }

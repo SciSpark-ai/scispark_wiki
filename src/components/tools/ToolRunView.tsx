@@ -9,16 +9,18 @@ import { Button } from "@/components/ui/Button"
 import { BackLink } from "@/components/ui/BackLink"
 import { ChatMarkdown } from "@/components/chat/ChatMarkdown"
 import { StreamingReply } from "@/components/chat/StreamingReply"
+import { ReviewBlock } from "@/components/chat/ReviewBlock"
 import { ReviewReport } from "@/components/chat/ReviewReport"
 import { ToolArtifacts } from "./ToolArtifacts"
 import { workflowHistoryHref } from "@/lib/ui/nav-history"
 const labels: Record<ToolRunDto["status"], string> = { queued: "Queued", running: "Working", waiting_for_choice: "Waiting for your choice", waiting_for_setup: "Setup needed", paused_limit: "Allowance reached", interrupted: "Interrupted", needs_attention: "Action uncertain", completed: "Completed", failed: "Failed", cancelled: "Cancelled" }
 type Action = RunActionInput extends infer T ? T extends RunActionInput ? Omit<T, "operationId"> : never : never
-export function ToolRunView({ runId }: { runId: string }) {
+type NativeReviewSurface = { standaloneReviewIds?: string[]; reportInChat?: boolean }
+export function ToolRunView({ runId, ...nativeSurface }: { runId: string } & NativeReviewSurface) {
   const profile = useLocalProfile()
-  return <RunObserver key={`${profile?.id ?? "local"}:${runId}`} runId={runId} profileId={profile?.id} />
+  return <RunObserver key={`${profile?.id ?? "local"}:${runId}`} runId={runId} profileId={profile?.id} {...nativeSurface} />
 }
-function RunObserver({ runId, profileId }: { runId: string; profileId?: string }) {
+function RunObserver({ runId, profileId, standaloneReviewIds = [], reportInChat = false }: { runId: string; profileId?: string } & NativeReviewSurface) {
   const [run, setRun] = useState<ToolRunDto | null>(null), [text, setText] = useState(""), [error, setError] = useState<string | null>(null)
   const [phase, setPhase] = useState<string | undefined>(), [reportId, setReportId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false), [detached, setDetached] = useState(false)
@@ -92,6 +94,8 @@ function RunObserver({ runId, profileId }: { runId: string; profileId?: string }
   const terminal = ["completed", "cancelled", "failed"].includes(run.status), observation = run.observation
   const active = !run.cancelRequested && !terminal
   const revisionTargets = [...new Set(observation?.uncertainSteps.flatMap(step => step.recovery?.kind === "native_revision" ? [step.recovery.reviewId] : []) ?? [])]
+  const nativeReviewId = observation?.nativeReviewId
+  const nativeSurfaceVisible = nativeReviewId && !standaloneReviewIds.includes(nativeReviewId) && !revisionTargets.includes(nativeReviewId)
   const revisionBlockedReason = !terminal || run.cancelRequested ? "Stop this run and reconcile uncertain usage before requesting a new explicit revision." : observation?.usage.uncertain ? "Reconcile uncertain usage before requesting a new explicit revision." : undefined
   return <section aria-label="Research run" className="min-w-0 space-y-4">
     <div className="flex flex-wrap gap-4"><BackLink fallbackHref={workflowHistoryHref(run.sessionId)}>Back</BackLink><Link href="/history?tab=runs" className="text-sm text-accent-ink">All runs</Link>{run.sessionId && <Link className="text-sm text-accent-ink" href={`/chat/${encodeURIComponent(run.sessionId)}`}>Conversation</Link>}</div>
@@ -102,16 +106,17 @@ function RunObserver({ runId, profileId }: { runId: string; profileId?: string }
     {error && <p role="alert" className="text-sm text-espresso">{error}</p>}
     {active && <div className="space-y-3">
       {run.status === "paused_limit" && <p className="text-sm text-muted-text">Continue adds 30 calls, 60 commands, 30 minutes{run.allowance.costUsd === null ? "" : " and $2"} to this run.</p>}
-      {["paused_limit", "interrupted", "waiting_for_setup"].includes(run.status) && <Button disabled={busy} onClick={() => void continueRun()}>Continue</Button>}
+      {(run.status === "paused_limit" || (!nativeReviewId && ["interrupted", "waiting_for_setup"].includes(run.status))) && <Button disabled={busy} onClick={() => void continueRun()}>Continue</Button>}
       {run.status === "waiting_for_setup" && <Link href="/tools" className="ml-3 text-sm text-accent-ink">Open tool settings</Link>}
       {observation?.choice && <div className="rounded-card border border-border-warm bg-light-surface p-4"><p className="mb-3 text-sm text-espresso">{observation.choice.prompt}</p><div className="space-y-2">{observation.choice.candidates.map(candidate => <button key={JSON.stringify(candidate.tool)} aria-label={candidate.label} disabled={busy} className="block w-full rounded-btn border border-border-warm p-3 text-left text-sm text-espresso hover:bg-card-surface disabled:opacity-50" onClick={() => void act({ action: "choose-helper", choiceId: observation.choice!.id, tool: candidate.tool })}><span className="block">{candidate.label}</span><span className="mt-1 block text-xs text-muted-text">{candidate.tool.packageId} · {candidate.tool.version}</span></button>)}</div></div>}
-      {observation?.nativeReview && <div className="flex flex-wrap gap-2">{observation.nativeReview.retry && <Button disabled={busy} onClick={() => void act({ action: "native-review", resolution: "retry" })}>Resume review</Button>}{observation.nativeReview.keep && <Button variant="secondary" disabled={busy} onClick={() => void act({ action: "native-review", resolution: "keep" })}>Keep saved report</Button>}</div>}
+      {observation?.nativeReview && <div className="flex flex-wrap gap-2">{!nativeReviewId && observation.nativeReview.retry && <Button disabled={busy} onClick={() => void act({ action: "native-review", resolution: "retry" })}>Resume review</Button>}{observation.nativeReview.keep && <Button variant="secondary" disabled={busy} onClick={() => void act({ action: "native-review", resolution: "keep" })}>Keep saved report</Button>}</div>}
       {run.status === "needs_attention" && <div className="rounded-card border border-border-warm bg-light-surface p-4 text-sm text-espresso"><p>An earlier action may have completed. Its usage remains counted.</p><div className="mt-3 flex flex-wrap gap-2"><Button variant="secondary" disabled={busy} onClick={() => void act({ action: "reconcile-accounting", resolution: "reconcile" })}>Check recorded usage</Button><Button variant="secondary" disabled={busy} onClick={() => void act({ action: "reconcile-accounting", resolution: "acknowledge" })}>Acknowledge uncertain usage</Button></div>{observation?.uncertainSteps.map(step => <div key={step.id} className="mt-3"><p>{step.recovery?.kind === "wiki_changeset" ? "Check the saved wiki changes; this write cannot be retried." : step.recovery?.kind === "native_revision" ? "Wording revisions need a new explicit revision. Stop this run, reconcile uncertain usage, then open the report to request one." : `${step.kind} action outcome is uncertain.`}</p>{step.retryable && <Button className="mt-2" disabled={busy} onClick={() => void act({ action: "resolve-uncertain", stepId: step.id, resolution: "retry" })}>Acknowledge and retry action</Button>}<Button className="ml-2" variant="quiet" disabled={busy} onClick={() => void act({ action: "resolve-uncertain", stepId: step.id, resolution: "stop" })}>Stop this run</Button></div>)}{observation?.saves.filter(save => save.state === "pending").map(save => <Button key={save.changesetId} className="mt-3" disabled={busy} onClick={() => void act({ action: "reconcile-wiki", changesetId: save.changesetId })}>Check saved wiki changes</Button>)}</div>}
       <Button variant="quiet" disabled={busy} onClick={() => void act({ action: "cancel" })}>Cancel run</Button>
     </div>}
     {terminal && observation?.usage.uncertain && !run.cancelRequested && <div className="rounded-card border border-border-warm bg-light-surface p-4"><p className="mb-3 text-sm text-muted-text">Reconcile uncertain usage before starting a new revision.</p><div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={busy} onClick={() => void act({ action: "reconcile-accounting", resolution: "reconcile" })}>Check recorded usage</Button><Button variant="secondary" disabled={busy} onClick={() => void act({ action: "reconcile-accounting", resolution: "acknowledge" })}>Acknowledge uncertain usage</Button></div></div>}
+    {nativeSurfaceVisible && <ReviewBlock id={nativeReviewId} onOpenReport={reportInChat ? undefined : () => setReportId(nativeReviewId)} />}
     {revisionTargets.map(id => <Button key={id} variant="secondary" onClick={() => setReportId(id)}>Open review report</Button>)}
-    {reportId && revisionTargets.includes(reportId) && <div className="h-[75dvh] min-h-96 overflow-hidden rounded-card border border-border-warm"><ReviewReport id={reportId} historyLabel="Saved in History" revisionBlockedReason={revisionBlockedReason} onClose={() => setReportId(null)} /></div>}
+    {reportId && (revisionTargets.includes(reportId) || reportId === nativeReviewId) && <div className="h-[75dvh] min-h-96 overflow-hidden rounded-card border border-border-warm"><ReviewReport id={reportId} historyLabel="Saved in History" revisionBlockedReason={revisionTargets.includes(reportId) ? revisionBlockedReason : undefined} onClose={() => setReportId(null)} /></div>}
     <ToolArtifacts runId={runId} artifacts={run.artifacts} saveableArtifactIds={observation?.saveableArtifactIds} nextSaveArtifactIds={observation?.nextSaveArtifactIds} saves={observation?.saves} onSaved={async () => apply(await getToolRunRemote(runId))} />
     <details className="rounded-btn border border-border-warm p-3 text-xs text-muted-text"><summary className="cursor-pointer">Diagnostics</summary><p className="mt-2 break-all">Run {run.id} · {run.tool.packageId} · {run.tool.version}</p>{observation?.diagnostics.map((message, index) => <p key={index} className="mt-2 break-words">{message}</p>)}</details>
   </section>

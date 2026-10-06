@@ -49,7 +49,7 @@ export default defineConfig({
       env: { SCISPARK_E2E_LLM_PORT: String(llmPort) },
     },
     {
-      command: `node ${process.env.SCISPARK_E2E_FEED_FIXTURE === "1" ? "--import ./e2e/fixtures/feed-sources.mjs " : ""}node_modules/next/dist/bin/next ${serverMode} --hostname 127.0.0.1 --port ${appPort}`,
+      command: `node ${process.env.SCISPARK_E2E_MODULAR_FIXTURE === "1" ? "--import ./e2e/fixtures/modular-network.mjs " : ""}${process.env.SCISPARK_E2E_FEED_FIXTURE === "1" ? "--import ./e2e/fixtures/feed-sources.mjs " : ""}node_modules/next/dist/bin/next ${serverMode} --hostname 127.0.0.1 --port ${appPort}`,
       url: `${baseURL}/api/local-profiles/session`,
       reuseExistingServer: false,
       timeout: 120_000,
@@ -58,6 +58,7 @@ export default defineConfig({
         SCISPARK_PROFILES_DIR: join(runDir, "profiles"),
         SCISPARK_LIVE_GATE_DIST_DIR: distDir,
         NEXT_TELEMETRY_DISABLED: "1",
+        SCISPARK_SCHEDULER: "off",
       },
     },
   ],

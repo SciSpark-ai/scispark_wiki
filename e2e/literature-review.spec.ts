@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto"
+import { toolKey } from "../src/lib/extensions/contracts"
 import { expect, test } from "@playwright/test"
 import { z } from "zod"
 import { NodeFsVaultStorage } from "../src/lib/vault/node-fs-storage"
@@ -21,8 +23,18 @@ test("deep review approval, server pipeline, History, editable report, exports a
   await page.setViewportSize({ width: 1440, height: 1000 })
   const errors: string[] = []
   page.on("pageerror", (e) => errors.push(e.message))
-  await page.goto("/chat")
-  await page.getByRole("button", { name: "Deep literature review", exact: true }).click()
+  // Modular profiles start with core only. Explicitly add the native review
+  // through the same authenticated management action as the Tools library.
+  const fixtureSession = await (await request.get("/api/local-profiles/session")).json()
+  expect(fixtureSession.profile.vaultPath).toContain("scispark-e2e-")
+  const library = (await (await request.get("/api/tools?view=library")).json()).result
+  const nativeReview = library.tools.find((tool: { ref: { packageId: string; skillId: string } }) => tool.ref.packageId === "scispark.builtin" && tool.ref.skillId === "deep-review")
+  expect(nativeReview).toBeTruthy()
+  const enabled = await request.post(`/api/tools/${encodeURIComponent(toolKey(nativeReview.ref))}`, { data: { action: "enable", operationId: randomUUID(), enabled: true } })
+  expect(enabled.ok()).toBe(true)
+  expect((await (await request.get("/api/tools?view=library")).json()).result.tools.find((tool: { ref: { skillId: string } }) => tool.ref.skillId === "deep-review").enabled).toBe(true)
+  await page.goto("/chat?new=1")
+  await page.getByRole("button", { name: "Deep review", exact: true }).click()
   await page.locator("summary").filter({ hasText: "Search scope" }).click()
   for (const label of ["arXiv", "Semantic Scholar", "PubMed"]) await page.getByRole("checkbox", { name: label, exact: true }).uncheck()
   await page.getByRole("checkbox", { name: "OpenAlex", exact: true }).check()
@@ -31,6 +43,19 @@ test("deep review approval, server pipeline, History, editable report, exports a
   await expect(page.getByRole("heading", { name: "Your review brief" })).toBeVisible()
   await expect(page).toHaveURL(/\/chat\//)
   const chatUrl = page.url()
+  const roots = (await (await request.get("/api/tools/runs")).json()).result
+  const nativeRoot = roots.find((run: { tool: { skillId: string }; sessionId?: string }) => run.tool.skillId === "deep-review" && chatUrl.endsWith(run.sessionId ?? "never"))
+  expect(nativeRoot).toBeTruthy()
+  const observation = (await (await request.get(`/api/tools/runs/${nativeRoot.id}`)).json()).result
+  expect(observation.usage.modelCalls).toBe(0)
+  const prepared = await loadReview(storage, observation.observation.nativeReviewId)
+  expect(prepared.status).toBe("awaiting-approval"); expect(prepared.approvedRevision).toBeNull()
+  await page.goto(`/tools/runs/${nativeRoot.id}`)
+  await expect(page.getByRole("heading", { name: "Your review brief" })).toHaveCount(1)
+  await expect(page.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0)
+  await page.goto(chatUrl)
+  await expect(page.getByRole("heading", { name: "Your review brief" })).toHaveCount(1)
+  expect((await (await request.get(`/api/tools/runs/${nativeRoot.id}`)).json()).result.usage.modelCalls).toBe(0)
   await page.getByRole("button", { name: "Edit brief", exact: true }).click()
   await page.getByLabel("Input", { exact: true }).fill("0.75")
   await page.getByLabel("Output", { exact: true }).fill("3.75")

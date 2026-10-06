@@ -3,6 +3,7 @@ import { openVault } from "../src/lib/vault/scaffold"
 import { buildPaperPage, composePage } from "../src/lib/wiki/authoring"
 import { saveSettings } from "../src/lib/llm/settings"
 import { request } from "@playwright/test"
+import { mkdir, writeFile, readFile } from "node:fs/promises"
 import { join } from "node:path"
 
 export default async function globalSetup(): Promise<void> {
@@ -29,7 +30,7 @@ export default async function globalSetup(): Promise<void> {
     },
     { today: "2026-08-21", status: "saved", sources: ["e2e:seed"] },
   )
-  await storage.write(paper.path, composePage(paper))
+  if (process.env.SCISPARK_E2E_EMPTY_VAULT !== "1") await storage.write(paper.path, composePage(paper))
 
   await saveSettings(storage, {
     keys: { openai: "e2e-local-only-key" },
@@ -38,7 +39,7 @@ export default async function globalSetup(): Promise<void> {
       strong: { provider: "openai", model: "gpt-5.4-mini" },
     },
     dailyBudgetUsd: 100,
-    baseUrls: { openai: `http://127.0.0.1:${llmPort}/v1` },
+    baseUrls: { openai: process.env.SCISPARK_E2E_MODULAR_FIXTURE === "1" ? "https://api.openai.com/v1" : `http://127.0.0.1:${llmPort}/v1` },
   })
 
   // Exercise the same local login as a user; no authentication bypass for E2E.
@@ -47,6 +48,14 @@ export default async function globalSetup(): Promise<void> {
     const { profiles } = await (await client.get("/api/local-profiles")).json()
     const session = await client.post("/api/local-profiles/session", { data: { profileId: profiles[0].id } })
     if (!session.ok()) throw new Error("Could not open disposable E2E profile")
+    if (process.env.SCISPARK_E2E_MODULAR_FIXTURE === "1") {
+      const headers = { "x-scispark-profile": profiles[0].id }
+      const library = (await (await client.get("/api/tools?view=library", { headers })).json()).result
+      const runs = (await (await client.get("/api/tools/runs", { headers })).json()).result
+      const root = join(process.env.SCISPARK_E2E_RUN_DIR!, "evidence"); await mkdir(root, { recursive: true })
+      const provider = await readFile(join(root, "provider.jsonl"), "utf8").catch(() => "")
+      await writeFile(join(root, "fresh-profile.json"), JSON.stringify({ enabled: library.tools.filter((tool: { enabled: boolean }) => tool.enabled), runs, providerCalls: provider.trim() ? provider.trim().split("\n").length : 0, vault: vaultPath, scheduler: "off" }, null, 2))
+    }
     await client.storageState({ path: join(process.env.SCISPARK_E2E_RUN_DIR!, "browser-session.json") })
   } finally { await client.dispose() }
 }

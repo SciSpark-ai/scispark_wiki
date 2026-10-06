@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test, request as playwrightRequest } from "@playwright/test"
 import { createServer } from "node:http"
 import { spawn, type ChildProcess } from "node:child_process"
 import { join } from "node:path"
@@ -15,6 +15,7 @@ import { PaperSnapshotSchema } from "../src/lib/chat/blocks"
 
 const { reviewResponse } = createRequire(join(process.cwd(), "e2e/review-restart.spec.ts"))("./fixtures/review-responses.mjs")
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+test.use({ storageState: { cookies: [], origins: [] }, extraHTTPHeaders: {} })
 test("production restart retains checkpoints and requires explicit acknowledgement before uncertain replay", async ({ page }) => {
   test.skip(process.env.SCISPARK_E2E_SERVER_MODE !== "start", "Requires the isolated production artifact")
   test.setTimeout(120_000)
@@ -43,23 +44,38 @@ test("production restart retains checkpoints and requires explicit acknowledgeme
   const stop = async () => { if (child?.exitCode === null && child.signalCode === null) { const exited = once(child, "exit"); child.kill("SIGKILL"); await exited }; child = undefined }
   const start = async () => {
     child = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", String(port)], {
-      env: { ...process.env, SCISPARK_VAULT: join(runDir, "restart-vault"), SCISPARK_LIVE_GATE_DIST_DIR: process.env.SCISPARK_E2E_DIST_DIR, NEXT_TELEMETRY_DISABLED: "1" },
+      env: { ...process.env, SCISPARK_VAULT: join(runDir, "restart-vault"), SCISPARK_PROFILES_DIR: join(runDir, "review-restart-profiles"), SCISPARK_SCHEDULER: "off", SCISPARK_LIVE_GATE_DIST_DIR: process.env.SCISPARK_E2E_DIST_DIR, NEXT_TELEMETRY_DISABLED: "1" },
       stdio: ["ignore", "pipe", "pipe"],
     })
     child.stdout?.on("data", (b) => { logs = (logs + b).slice(-6000) }); child.stderr?.on("data", (b) => { logs = (logs + b).slice(-6000) })
     for (let i = 0; i < 100; i++) {
       if (child.exitCode !== null) throw new Error(`Disposable server exited: ${logs}`)
-      try { if ((await fetch(`${base}/api/vault/list`)).ok) return } catch {}
+      try { if ((await fetch(`${base}/api/local-profiles/session`)).ok) return } catch {}
       await wait(100)
     }
     throw new Error(`Disposable server did not start: ${logs}`)
   }
-  const post = (path: string, body: unknown) => fetch(`${base}${path}`, { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify(body) })
+  let api = await playwrightRequest.newContext({ baseURL: base })
+  const post = async (path: string, body: unknown) => {
+    const response = await api.post(path, { headers: { origin: base }, data: body })
+    return new Response(await response.text(), { status: response.status(), headers: response.headers() })
+  }
   try {
     await openVault(storage)
     await saveSettings(storage, { keys: { openai: "fixture-key-no-paid-service" }, dailyBudgetUsd: 100,
       baseUrls: { openai: `http://127.0.0.1:${llmPort}/v1` }, tierModels: { fast: { provider: "openai", model: "gpt-5.4-mini" }, strong: { provider: "openai", model: "gpt-5.4-mini" } } })
     await start()
+    const { profiles } = await (await api.get("/api/local-profiles")).json()
+    expect(profiles).toHaveLength(1)
+    expect(profiles[0].vaultPath).toContain("scispark-e2e-")
+    expect(profiles[0].vaultPath.endsWith("/restart-vault")).toBe(true)
+    expect((await api.post("/api/local-profiles/session", { data: { profileId: profiles[0].id } })).ok()).toBe(true)
+    const browserState = await api.storageState(); await api.dispose()
+    api = await playwrightRequest.newContext({ baseURL: base, storageState: browserState, extraHTTPHeaders: { "x-scispark-profile": profiles[0].id } })
+    await page.context().addCookies(browserState.cookies)
+    await page.context().setExtraHTTPHeaders({ "x-scispark-profile": profiles[0].id })
+    const library = (await (await api.get("/api/tools?view=library")).json()).result
+    expect(library.tools.find((tool: { ref: { skillId: string } }) => tool.ref.skillId === "deep-review").enabled).toBe(true)
     const created = await post("/api/reviews", { sessionId: "restart-chat", operationId: "restart", question: "Compare adult decoding methods", sources: ["openalex"] })
     expect(created.ok).toBe(true)
     const { run } = await created.json()
@@ -75,7 +91,7 @@ test("production restart retains checkpoints and requires explicit acknowledgeme
     await expect.poll(() => requests).toBe(3)
     const checkpointCount = Object.keys((await loadReview(storage, run.id)).checkpoints).length
     await stop(); holdThird = false; await start()
-    const snapshot = await (await fetch(`${base}/api/reviews/${run.id}`)).json()
+    const snapshot = await (await api.get(`/api/reviews/${run.id}`)).json()
     expect(snapshot.run.status).toBe("interrupted")
     expect(snapshot.spending.uncertain).toBe(true)
     expect(Object.keys(snapshot.run.checkpoints)).toHaveLength(checkpointCount)
@@ -87,5 +103,5 @@ test("production restart retains checkpoints and requires explicit acknowledgeme
     await expect.poll(async () => (await loadReview(storage, run.id)).status, { timeout: 40_000 }).toBe("completed")
     expect(planned).toBe(1) // The settled planning call is reused from disk.
     expect((await loadReview(storage, run.id)).approvals).toHaveLength(2)
-  } finally { await stop(); llm.closeAllConnections(); await new Promise<void>((resolve) => llm.close(() => resolve())) }
+  } finally { await stop(); await api.dispose(); llm.closeAllConnections(); await new Promise<void>((resolve) => llm.close(() => resolve())) }
 })

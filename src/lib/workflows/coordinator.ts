@@ -73,6 +73,41 @@ function track(work: Promise<void>): void {
 function schedule(ctx: WorkflowContext): void { track(recoverWorkflowRuns([ctx])) }
 export async function startRun(ctx: WorkflowContext, input: StartRunInput): Promise<ToolRun> {
   const request = StartRunInputSchema.parse(input)
+  if (request.tool.packageId === "scispark.builtin" && request.tool.skillId === "deep-review"
+    && (Object.hasOwn(request.input, "action") || Object.hasOwn(request.input, "reviewId"))) {
+    throw new Error("Use the explicit native review action route for a prepared review")
+  }
+  return startRunInternal(ctx, request)
+}
+
+type NativeReviewStartAction = Extract<import("../review/contracts").ReviewAction, { action: "approve" | "resume" | "revise" }>
+/** Server-only native action bridge. Generic API/chat/choice callers cannot select
+ * this entry through request data. Existing durable start identities are retained. */
+export async function startPreparedNativeReview(ctx: WorkflowContext, input: { reviewId: string; action: NativeReviewStartAction; operationId: string }): Promise<ToolRun> {
+  const { ReviewId, ReviewActionSchema } = await import("../review/contracts")
+  const { nativeStepId } = await import("../extensions/native-adapters")
+  const { requireEnabledTool } = await import("../extensions/require-tool")
+  const reviewId = ReviewId.parse(input.reviewId), action = ReviewActionSchema.parse(input.action)
+  if (action.action !== "approve" && action.action !== "resume" && action.action !== "revise") throw new Error("Invalid native review start action")
+  const operationId = z.string().min(1).parse(input.operationId)
+  const tool = await requireEnabledTool(ctx, toolKey({ packageId: "scispark.builtin", skillId: "deep-review" }))
+  const request = StartRunInputSchema.parse({ operationId: nativeStepId(operationId, "legacy-operation"), tool: tool.ref,
+    input: { reviewId, action, operationId }, contextRefs: [], writeIntent: "outputs_only" })
+  return startRunInternal(ctx, request, async model => {
+    const review = await (await import("../review/store")).loadReview(ctx.storage, reviewId)
+    if (action.action === "revise") {
+      if (["queued", "running", "cancelled"].includes(review.status) || review.versions.at(-1)?.id !== action.parent) throw new Error("The report changed or is busy; reload before revising")
+    } else if (review.revision !== action.revision || (action.action === "approve" ? review.status !== "awaiting-approval" : !["paused", "interrupted", "failed", "partial"].includes(review.status))) {
+      throw new Error("The review changed; reload before approving or resuming")
+    }
+    const { reviewModel, reviewSpend } = await import("../review/budget")
+    const target = reviewModel(await settingsForRunModel(ctx, model))
+    if (target.provider !== review.brief.model.provider || target.model !== review.brief.model.model || target.endpoint !== review.brief.model.endpoint) throw new Error("The approved review model differs from this tool")
+    if ((await reviewSpend(ctx.storage, reviewId)).uncertain && (action.action === "revise" || !action.acknowledgeUncertainCharge)) throw new Error("A previous call has uncertain billing; acknowledge it before continuing")
+  })
+}
+
+async function startRunInternal(ctx: WorkflowContext, request: StartRunInput, validatePrepared?: (model: ToolRun["model"]) => Promise<void>): Promise<ToolRun> {
   const run = await withVaultExclusive(ctx.storage, "workflow-coordinator", async () => {
     await restoreStartRecords(ctx)
     const raw = await ctx.storage.read(operationPath(request.operationId))
@@ -93,6 +128,7 @@ export async function startRun(ctx: WorkflowContext, input: StartRunInput): Prom
     if (!binding || canonicalJson(binding.tool) !== canonicalJson(request.tool) || (pinned && canonicalJson(pinned) !== canonicalJson(request.tool))) throw new Error("Tool is not enabled at the requested version")
     const { dependencies } = await resolveToolPreparationClosure(ctx, request.tool)
     const model = await resolveRunModel(ctx, request.tool)
+    await validatePrepared?.(model)
     const preparedEnvironmentRefs = await resolvePreparedEnvironmentRefs(ctx, [request.tool, ...dependencies], model)
     const connectionConfigurationRefs = await resolveToolConnectionRefs(ctx, [request.tool, ...dependencies])
     const previousRun = (await listRuns(ctx)).at(-1)

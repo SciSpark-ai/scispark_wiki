@@ -1657,3 +1657,59 @@ raw base diff retains only R53's two exact approved upstream trailing spaces.
 Seven intended fix files; bundle/lock/native E2E/adapters unchanged. Important1/2
 and adjacent Minor1 addressed; controller scoped re-review pending. Real worker,
 source/provider/scientific acceptance and actual restart remain open under R31.
+
+
+## Task19 — production navigation, restart and native approval acceptance
+
+The six modular specs exercise real production authenticated profiles, explicit
+imports/choices, default and per-profile settings, background streaming, actual
+browser close/relaunch, positive cumulative allowance extension, manual update
+with retained old snapshots, source-linked results, explicit wiki save and Undo.
+A dedicated owned Next process is SIGKILLed and restarted on its original port:
+completed checkpoint input/response hashes and the whole completed usage journal
+stay unchanged; interrupted synthesis retains three ticket identities and its
+financial hold with no repeated invocation after reopen/navigation/reload.
+Configured empty default and existing-vault migration retain their distinct
+semantics. Fixture folder/agent/ZIP/GitHub imports use actual validators; exact
+fixture transports fail closed for unmatched remote requests. No live provider,
+research-source or imported command execution is claimed.
+
+Required core acceptance exposed a real native integration defect after R56
+fixture authentication/entry migration. R57 makes new top-level Deep review wait
+for explicit brief approval even with known prices, resolves its exact existing
+root from durable records, and reuses native brief/report controls in Tools and
+chat without duplicates after reload. Generic Continue cannot approve. Helper
+parent authority, native checkpoints/receipts/model capture, cumulative accounting,
+partial keep/retry, and uncertain revision behavior remain. Six original core cases
+pass including native review approval/report/edit/export/save/responsive assertions.
+New unit coverage proves zero calls before approval, same-root admission and
+cancelled/competing/helper-owner rejection. The final master has 3,282 passed and 24 gated skips;
+TypeScript and lint pass with only the existing ConnectAiCard warning.
+
+`SCISPARK_E2E_ARTIFACT_DIR` retains bounded, secrets-free process/provider/source
+logs and browser screenshots outside disposable roots. Acceptance uses isolated
+`.next-modular-e2e`; ordinary validation uses `.next-modular-task-19`. Exact current
+tsconfig/next-env bytes are restored after each build; human `.next` is untouched.
+The ignored task-19-report.md records every RED/GREEN command, final evidence map,
+source-versus-fixture boundaries and screenshot paths for Task20. The actual
+macOS sandbox probe remains unsupported (descendant ownership); Linux/Windows
+were unavailable and unrun. Real supported-host worker/install/CLI/source/provider
+and scientific acceptance remain open under the existing explicit gates. CI edits
+are configuration, not evidence of a CI run. No live gates, real installs, human
+profiles/vaults/keys/agent homes, push, merge or PR were used.
+
+
+Task19 independent-review fix1 / R58 closes a generic native-start approval bypass.
+Generic startRun now rejects both action and reviewId for Deep review. The existing
+explicit review route alone calls a typed server-only prepared-review entry, which
+validates the exact existing review, revision/report parent, captured model,
+ownership, cancellation and uncertain accounting before shared durable admission.
+No request flag, new route, owner index or ledger is introduced; helper authority
+is unchanged. RED 5 failed; final focused 114/114 across 3 files. Public fresh/prepared-ID
+injections reject without roots/calls; the real native action POST retains same-root
+approval and cumulative usage. Existing explicit resume/revise/recovery cases pass.
+Final type/lint pass (baseline warning); full suite 3,291 passed and 24 gated skips. Fresh acceptance
+build 27.18s, regular build 27.55s, and affected native browser 2/2 passed in 14.1s. Prior modular11/11
+and four master captures remain applicable because imported execution is unchanged.
+The detailed task19 report retains old evidence, call-site audit and fresh build
+config hashes. All unsupported/unrun OS and live gates remain open under R31.

@@ -32,7 +32,7 @@ export function useReview(id: string) {
   return { snapshot, error, busy, act }
 }
 const inputClass = "mt-1 w-full rounded-xl border border-border-warm bg-page-bg px-3 py-2 text-sm text-espresso focus:outline-orange"
-export function ReviewBlock({ id }: { id: string }) {
+export function ReviewBlock({ id, onOpenReport }: { id: string; onOpenReport?: () => void }) {
   const { snapshot, error, busy, act } = useReview(id)
   const openSettings = useUIStore((state) => state.openSettingsModal)
   const run = snapshot?.run
@@ -41,7 +41,7 @@ export function ReviewBlock({ id }: { id: string }) {
   const coverageLimited = run.versions.at(-1)?.answerCoverage?.status === "limited"
   const sourceChecksPassed = run.versions.at(-1)?.verification === "checked-draft"
   const active = run.status === "running" || run.status === "queued"
-  const open = () => window.dispatchEvent(new CustomEvent("open-review-report", { detail: id }))
+  const open = onOpenReport ?? (() => window.dispatchEvent(new CustomEvent("open-review-report", { detail: id })))
   return <section className="mt-4 border-t border-border-warm pt-4" aria-label="Literature review">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h3 className="font-heading text-xl text-espresso">{run.status === "awaiting-approval" ? "Your review brief" : run.status === "paused" && run.error ? "Review needs attention" : run.stage}</h3>

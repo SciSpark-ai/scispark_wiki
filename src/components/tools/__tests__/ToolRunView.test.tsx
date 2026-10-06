@@ -20,10 +20,11 @@ const fireEvent = { click: async (button: HTMLButtonElement) => { await act(asyn
 import { workflowFixture } from "@/lib/workflows/__tests__/fixtures"
 import { ToolRunDtoSchema, type RunEvent, type ToolRunDto } from "@/lib/workflows/contracts"
 import { ToolRunView } from "../ToolRunView"
-const mocks = vi.hoisted(() => ({ get: vi.fn(), watch: vi.fn(), act: vi.fn(), start: vi.fn(), report: vi.fn(), profile: "11111111-1111-4111-8111-111111111111" }))
+const mocks = vi.hoisted(() => ({ get: vi.fn(), watch: vi.fn(), act: vi.fn(), start: vi.fn(), report: vi.fn(), brief: vi.fn(), profile: "11111111-1111-4111-8111-111111111111" }))
 vi.mock("@/components/layout/ProfileGate", () => ({ useLocalProfile: () => ({ id: mocks.profile }) }))
 vi.mock("@/lib/workflows/client", () => ({ getToolRunRemote: mocks.get, watchToolRunRemote: mocks.watch, actOnToolRunRemote: mocks.act, startToolRemote: mocks.start }))
 vi.mock("@/components/chat/ReviewReport", () => ({ ReviewReport: (props: unknown) => { mocks.report(props); return <div>Existing review report</div> } }))
+vi.mock("@/components/chat/ReviewBlock", () => ({ ReviewBlock: (props: { id: string; onOpenReport?: () => void }) => { mocks.brief(props); return <button onClick={props.onOpenReport}>Existing native brief</button> } }))
 vi.mock("next/navigation", () => ({ useRouter: () => ({ back: vi.fn(), push: vi.fn() }) }))
 let snapshot: ToolRunDto, observers: { event: (e: RunEvent) => Promise<void>; signal: AbortSignal }[]
 beforeEach(() => {
@@ -119,4 +120,17 @@ it("opens an exact wording-revision report without a conversation, keeps it afte
   expect(mocks.report.mock.calls.at(-1)![0].revisionBlockedReason).toBeUndefined()
   await act(async () => window.dispatchEvent(new StorageEvent("storage", { key: "scispark-profile-changed", newValue: "new-profile" })))
   expect(screen.queryByText("Existing review report")).toBeNull()
+})
+
+it("shows the exact native brief in Tools with a local report, and suppresses a standalone chat duplicate", async () => {
+  const id = `review_${"a".repeat(32)}`
+  snapshot = { ...snapshot, status: "waiting_for_choice", observation: { text: "", usage: { ...snapshot.usage, heldCostUsd: 0, heldActiveSeconds: 0, heldAttempts: 0, uncertain: false }, nativeReviewId: id, uncertainSteps: [], saves: [], saveableArtifactIds: [], diagnostics: [] } }
+  const view = await render(<ToolRunView runId={snapshot.id} />)
+  expect(mocks.brief).toHaveBeenCalledWith(expect.objectContaining({ id }))
+  expect(screen.queryByRole("button", { name: "Continue" })).toBeNull()
+  await fireEvent.click(screen.getByRole("button", { name: "Existing native brief" }))
+  expect(mocks.report).toHaveBeenCalledWith(expect.objectContaining({ id }))
+  await view.rerender(<ToolRunView runId={snapshot.id} standaloneReviewIds={[id]} reportInChat />)
+  expect(screen.queryByRole("button", { name: "Existing native brief" })).toBeNull()
+  expect(mocks.start).not.toHaveBeenCalled(); expect(mocks.act).not.toHaveBeenCalled()
 })
