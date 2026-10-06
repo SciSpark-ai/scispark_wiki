@@ -449,3 +449,14 @@ it("reuses the choice operation after a lost response and component reload", asy
     expect(choose.mock.calls[0][2]).toBe(choose.mock.calls[1][2])
   } finally {choose.mockRestore()}
 })
+
+it("keeps technical choice identity in a sibling disclosure instead of the choice button", async () => {
+  const { ToolChoiceBlock } = await import("../ToolChoiceBlock")
+  const tool = { packageId: "import.opaque", skillId: "SKILL.md", version: "b".repeat(64), digest: "a".repeat(64) }
+  const { host } = mount(<ToolChoiceBlock choice={{ id: "11111111-1111-4111-8111-111111111111", prompt: "Choose", candidates: [{ tool, name: "Evidence Atlas", source: tool.packageId, distinction: "Structured synthesis" }] }} />)
+  expect(host.querySelector("button")!.textContent).toContain("Imported tool")
+  expect(host.querySelector("button")!.textContent).not.toContain(tool.packageId)
+  expect(host.querySelector("button")!.textContent).not.toContain(tool.version)
+  expect(host.querySelector("button details")).toBeNull()
+  expect(host.querySelector("details")!.textContent).toContain(tool.digest)
+})

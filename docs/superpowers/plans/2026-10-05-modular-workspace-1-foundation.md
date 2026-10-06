@@ -1,14 +1,15 @@
 # Modular Workspace Foundation Implementation Plan
 
 
-**Current tracking (Task20):** Checked items record reviewed implementation and
+**Current tracking (consolidated final fix):** Checked items record reviewed implementation and
 executed offline/fixture checks, including explicit unsupported outcomes; they
 are not live/OS/scientific passes. Mixed steps below remain unchecked where their
 actual worker/install/CLI or final-review clause is open. The
 [current requirement/evidence map](../../testing/2026-10-05-modular-workspace.md)
-and [chronological R1–R59 rulings/costs](../../testing/artifacts/modular-workspace-2026-10-05/decisions.md)
-govern current scope. Deferred minors remain in the
-[final-review handoff](../../testing/artifacts/modular-workspace-2026-10-05/review-handoff.md).
+and [chronological R1–R79 rulings/costs](../../testing/artifacts/modular-workspace-2026-10-05/decisions.md)
+govern current scope. F1–F6 and M1–M3 from the single broad review are implemented in the
+[consolidated fix report](../../testing/artifacts/modular-workspace-2026-10-05/final-fix/final-fix-report.md).
+The single scoped re-review passed on `fbb86dd093dee2af9fb3aaf9b452e4aa3244a8ce`; see the [review/finalization summary](../../testing/artifacts/modular-workspace-2026-10-05/final-fix/review-summary.md). The subsequent amend is documentation/evidence only; real execution gates remain open.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 

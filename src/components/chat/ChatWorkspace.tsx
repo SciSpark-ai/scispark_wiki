@@ -244,7 +244,7 @@ export function ChatWorkspace({ sessionId, fresh = false, resume = false, initia
         if (mounted.current) { setQuestion(""); if (sessionId) await reload(); else router.push(`/chat/${run.sessionId}`) }
         return
       }
-      const result = await askChatRemote({ sessionId: id, question: q, readSourcesOnly, mode,
+      const result = await askChatRemote({ sessionId: id, question: q, readSourcesOnly: selectedTool ? false : readSourcesOnly, mode,
         ...(selectedTool ? { explicitTool: selectedTool } : {}),
         ...(usesSourceScope ? { sources } : {}), operationId: crypto.randomUUID(),
         ...(session?.projectId ? { projectId: session.projectId } : {}),
@@ -300,15 +300,15 @@ export function ChatWorkspace({ sessionId, fresh = false, resume = false, initia
           {tools.map(tool => <button key={JSON.stringify(tool.ref)} type="button" aria-pressed={toolSelected(tool.ref)} disabled={busy || tool.readiness.status !== "ready"} onClick={() => selectTool(tool.ref)} className={`rounded-pill border px-3.5 py-2.5 text-[13px] focus-visible:outline-2 focus-visible:outline-accent-ink disabled:opacity-50 ${toolSelected(tool.ref) ? "border-accent-ink bg-light-surface text-accent-ink" : "border-border-warm text-muted-text hover:bg-light-surface hover:text-espresso"}`}>{tool.name}</button>)}
           <Link href="/tools" className="rounded-pill px-3.5 py-2.5 text-[13px] text-accent-ink">Tools</Link>
         </div>
-        <details className="mt-5 text-[13px] text-muted-text">
+        {(!selectedTool || usesSourceScope) && <details className="mt-5 text-[13px] text-muted-text">
           <summary className="mx-auto w-fit cursor-pointer rounded px-2 py-1 focus-visible:outline-2 focus-visible:outline-accent-ink">{usesSourceScope ? "Search scope" : "Conversation options"}</summary>
           <div className="mx-auto mt-3 w-full max-w-[440px]">
-            {!usesSourceScope ? <SourcesToggle value={readSourcesOnly} onChange={(value) => { setReadSourcesOnly(value); saveDraftOptions({ readSourcesOnly: value }) }} /> : <>
+            {!usesSourceScope ? !selectedTool && <SourcesToggle value={readSourcesOnly} onChange={(value) => { setReadSourcesOnly(value); saveDraftOptions({ readSourcesOnly: value }) }} /> : <>
               <div className="flex flex-wrap gap-3">{enabledSources.map((s) => <label key={s} className="flex items-center gap-1.5 text-sm text-espresso"><input type="checkbox" disabled={busy} checked={sources.includes(s)} onChange={() => { const next = sources.includes(s) ? sources.filter((p) => p !== s) : [...sources, s]; setSources(next); saveDraftOptions({ sources: next }) }} />{SOURCE_LABELS[s]}</label>)}</div>
               <button type="button" onClick={() => openSettings("sources")} className="mt-3 text-accent-ink">Manage sources</button>
             </>}
           </div>
-        </details>
+        </details>}
         {usesSourceScope && sourcesError && <p role="alert" className="mt-3 text-sm text-espresso">{sourcesError} <button onClick={() => openSettings("sources")} className="text-accent-ink underline">Manage sources</button></p>}
         <p className="mt-4 text-center text-xs text-muted-text">Enter to send. Shift+Enter for a new line.</p>
         {busy && <div className="mt-6"><StreamingReply text={draft} label={stage ? STAGE_LABELS[stage] : "Thinking…"} /></div>}
@@ -349,7 +349,7 @@ export function ChatWorkspace({ sessionId, fresh = false, resume = false, initia
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <label className="text-sm text-muted-text">Mode <select aria-label="Chat mode" disabled={busy} value={selectedTool ? JSON.stringify(selectedTool) : mode} onChange={e => { if (e.target.value === "chat") selectMode("chat"); else selectTool(parseToolIntent(e.target.value)) }} className="ml-2 rounded-btn border border-border-warm bg-light-surface px-3 py-1.5 text-espresso"><option value="chat">Discuss research</option>{mode !== "chat" && <option value={mode}>{mode === "search" ? "Find papers" : "Deep literature review"}</option>}{tools.map(tool => <option key={JSON.stringify(tool.ref)} value={JSON.stringify(tool.ref)} disabled={tool.readiness.status !== "ready"}>{tool.name}</option>)}</select></label>
         <Link href="/tools" className="text-sm text-accent-ink">Tools</Link>
-        {usesSourceScope ? <><button type="button" className="text-sm text-muted-text hover:text-accent-ink" aria-expanded={showSources} onClick={() => setShowSources(!showSources)}>Search scope</button><button type="button" onClick={() => openSettings("sources")} className="text-sm text-accent-ink">Manage sources</button></> : <SourcesToggle value={readSourcesOnly} onChange={(value) => { setReadSourcesOnly(value); saveDraftOptions({ readSourcesOnly: value }) }} />}
+        {usesSourceScope ? <><button type="button" className="text-sm text-muted-text hover:text-accent-ink" aria-expanded={showSources} onClick={() => setShowSources(!showSources)}>Search scope</button><button type="button" onClick={() => openSettings("sources")} className="text-sm text-accent-ink">Manage sources</button></> : !selectedTool && <SourcesToggle value={readSourcesOnly} onChange={(value) => { setReadSourcesOnly(value); saveDraftOptions({ readSourcesOnly: value }) }} />}
       </div>
       {usesSourceScope && showSources && <div className="mb-3 flex flex-wrap gap-3">{enabledSources.map((s) => <label key={s} className="flex items-center gap-1.5 text-sm text-espresso"><input type="checkbox" disabled={busy} checked={sources.includes(s)} onChange={() => { const next = sources.includes(s) ? sources.filter((p) => p !== s) : [...sources, s]; setSources(next); saveDraftOptions({ sources: next }) }} />{SOURCE_LABELS[s]}</label>)}</div>}
       {usesSourceScope && sourcesError && <p role="alert" className="mb-2 text-sm text-espresso">{sourcesError}</p>}

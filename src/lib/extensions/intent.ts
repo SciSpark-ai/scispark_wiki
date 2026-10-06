@@ -9,6 +9,11 @@ import { listToolLibrary } from "./library"
 import { ToolIntentInputSchema, ToolIntentResolutionSchema, type ToolIntentInput, type ToolIntentResolution } from "./contracts"
 import { classifyToolIntent } from "./classification-attempt"
 import { saveToolChoice } from "./choice-store"
+import { ToolInputBindingError } from "./import-contract"
+import { validateInputSchema } from "./inspect"
+import { getToolManifest } from "./registry"
+import { readImportedTool } from "./store"
+import type { ToolManifest, ToolRef } from "./contracts"
 import type { LibraryTool } from "./ui-contract"
 
 export function intentOperationId(sessionId: string, operationId: string): string {
@@ -45,7 +50,8 @@ async function resolve(ctx: WorkflowContext, input: ToolIntentInput): Promise<To
     if (!run || run.sessionId !== input.sessionId) throw new Error("Run is outside this conversation")
     return { kind: "run", tool: run.tool, existingRunId: run.id }
   }
-  const enabled = (await listToolLibrary(ctx)).tools.filter(t => t.enabled)
+  const known = (await listToolLibrary(ctx)).tools
+  const enabled = known.filter(t => t.enabled)
   const ready = enabled.filter(t => t.readiness.status === "ready")
   if (input.explicitTool) {
     const selected = ready.find(t => exactRef(t.ref) === exactRef(input.explicitTool!))
@@ -54,7 +60,12 @@ async function resolve(ctx: WorkflowContext, input: ToolIntentInput): Promise<To
   // Mentioning a tool is not asking to execute it. Name selection requires an
   // affirmative invocation, and names are data matched literally, never regexes.
   const invoked = /^(?:please\s+)?(?:use|run|start|invoke)\s+(.+)/i.exec(input.question)?.[1]?.toLocaleLowerCase()
-  const named = invoked ? ready.filter(t => invoked.startsWith(t.name.toLocaleLowerCase()) && /^(?:\s|[,:.!?]|$)/.test(invoked.slice(t.name.length))) : []
+  const named = invoked ? known.filter(t => invoked.startsWith(t.name.toLocaleLowerCase()) && /^(?:\s|[,:.!?]|$)/.test(invoked.slice(t.name.length))) : []
+  if (named.some(tool => !tool.enabled || tool.readiness.status !== "ready")) {
+    return named.length > 1
+      ? { kind: "clarify", question: "Several enabled tools share that name. Select the intended tool in Tools; some need setup." }
+      : { kind: "add-tool", message: `${named[0].name} is unavailable. Open Tools to enable it or choose Manage to finish setup.` }
+  }
   if (named.length) return select(ctx, input, named)
   if (/^(?:please\s+)?(?:explain|summarize|describe|what (?:does|is)|how (?:does|did)|why)\b/i.test(input.question) && !/\b(?:run|start|conduct|perform|find|search)\b/i.test(input.question)) return { kind: "chat" }
   if (!ready.length) {
@@ -75,13 +86,26 @@ async function select(ctx: WorkflowContext, input: ToolIntentInput, tools: Libra
   return { kind: "choose", choice }
 }
 
-/** Adapt the human request to native input; imported tools receive the same
- * inert question/context envelope and cannot supply authorization fields. */
-export function toolRunInput(input: ToolIntentInput, tool: import("./contracts").ToolRef): Record<string, unknown> {
+/** Bind only declared human request arguments. Session/source authority stays
+ * in the host envelope. Unknown custom contracts require explicit adapter review. */
+export function toolRunInput(input: ToolIntentInput, tool: ToolRef, manifest?: ToolManifest): Record<string, unknown> {
   const common = { question: input.question, sessionId: input.sessionId, ...(input.sources ? { sources: input.sources } : {}) }
-  if (tool.packageId !== "scispark.builtin") return common
+  if (tool.packageId !== "scispark.builtin" && manifest?.kind === "native") return common
+  if (tool.packageId !== "scispark.builtin") {
+    if (!manifest || exactRef(manifest.ref) !== exactRef(tool)) throw new ToolInputBindingError()
+    const properties = manifest.inputSchema.properties as Record<string, unknown> | undefined
+    const openCite = tool.packageId === "neuromechanist.opencite" && tool.skillId === "SKILL.md" && manifest.entrypoint === "scispark-opencite-v1.py"
+    if (!openCite && (!properties || !Object.hasOwn(properties, "question"))) throw new ToolInputBindingError()
+    const args = openCite ? { query: input.question, limit: 10, fullText: false } : { question: input.question }
+    if (!validateInputSchema(manifest.inputSchema).safeParse(args).success) throw new ToolInputBindingError()
+    return args
+  }
   if (tool.skillId === "find-papers") return { ...common, mode: "search", readSourcesOnly: false, transport: "chat", operationId: intentOperationId(input.sessionId, input.operationId) }
   if (tool.skillId === "idea-spark") return { direction: input.question, mode: "quick" }
   if (tool.skillId === "trending") return { mode: "auto" }
   return common
+}
+
+export async function bindToolRunInput(ctx: WorkflowContext, input: ToolIntentInput, tool: ToolRef) {
+  return toolRunInput(input, tool, getToolManifest(tool) ?? (await readImportedTool(ctx, tool)).manifest)
 }

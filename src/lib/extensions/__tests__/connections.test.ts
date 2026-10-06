@@ -178,7 +178,7 @@ it("bounds document bytes and refuses an already aborted DNS request before disp
   upstreamBody=JSON.stringify({data:[{title:"Paper",isOpenAccess:true,openAccessPdf:{url}}]})
   await client(cap.port,broker.handles[0].handle)
   upstreamBody="%PDF-"+"x".repeat(524288)
-  expect((await client(cap.port,broker.handles[0].handle,"http://semantic-scholar.scispark.invalid/document?url="+encodeURIComponent(url))).status).toBe(502)
+  expect((await client(cap.port,broker.handles[0].handle,"http://semantic-scholar.scispark.invalid/document?url="+encodeURIComponent(url))).status).toBe(413)
 })
 
 it("retains HTTP source provenance without granting document retrieval",async()=>{

@@ -20,9 +20,14 @@ export function ToolChoiceBlock({ choice: initial }: { choice: ToolChoice }) {
   if (runId) return <ToolRunBlock runId={runId} />
   return <section aria-label="Choose a research tool" className="mt-3 rounded-card border border-border-warm bg-light-surface p-4">
     <p className="mb-3 text-sm text-espresso">{choice.prompt}</p>
-    <div className="flex flex-col gap-2">{choice.candidates.map(candidate => <button key={JSON.stringify(candidate.tool)} type="button" disabled={busy} onClick={() => choose(candidate.tool)} className="rounded-btn border border-border-warm p-3 text-left hover:bg-card-surface focus-visible:outline-2 focus-visible:outline-accent-ink disabled:opacity-50">
-      <span className="block text-sm text-espresso">{candidate.name}</span><span className="block text-xs text-muted-text">{candidate.source}</span><span className="mt-1 block text-sm text-muted-text">{candidate.distinction}</span>
-    </button>)}</div>
+    <div className="flex flex-col gap-2">{choice.candidates.map(candidate => <div key={JSON.stringify(candidate.tool)} className="rounded-btn border border-border-warm">
+      <button type="button" disabled={busy} onClick={() => choose(candidate.tool)} className="w-full rounded-btn p-3 text-left hover:bg-card-surface focus-visible:outline-2 focus-visible:outline-accent-ink disabled:opacity-50">
+        <span className="block text-sm text-espresso">{candidate.name}</span>
+        <span className="block text-xs text-muted-text">{candidate.tool.packageId === "scispark.builtin" ? "Built-in tool" : "Imported tool"}</span>
+        <span className="mt-1 block text-sm text-muted-text">{candidate.distinction}</span>
+      </button>
+      <details className="px-3 pb-3 text-xs text-muted-text"><summary className="cursor-pointer">Tool details</summary><p className="mt-2 break-all">{candidate.source} · {candidate.tool.packageId} · {candidate.tool.skillId} · {candidate.tool.version} · {candidate.tool.digest}</p></details>
+    </div>)}</div>
     {!choice.candidates.length && <Link href="/tools" className="text-sm text-accent-ink underline">Open Tools</Link>}
     {error && <p role="alert" className="mt-2 text-sm text-espresso">{error}</p>}
   </section>

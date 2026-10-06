@@ -1,3 +1,4 @@
+import { ToolInputBindingError } from "../extensions/import-contract"
 import { ManagementHistoryFullError } from "../extensions/store"
 import { ChangesetRecoveryConflictError } from "../vault/changesets"
 import { z } from "zod"
@@ -23,6 +24,7 @@ export async function workflowApi(request: NextRequest, work: (ctx: WorkflowCont
     })
     return await work(await resolveWorkflowContext(profile, process.env, request.method === "GET"))
   } catch (error) {
+    if (error instanceof ToolInputBindingError) return Response.json({ error: error.message }, { status: 400, headers: { "cache-control": "no-store" } })
     if (error instanceof ManagementHistoryFullError) return Response.json({ error: error.message, code: error.code }, { status: 409, headers: { "cache-control": "no-store" } })
     if (error instanceof ChangesetRecoveryConflictError) return Response.json({
       error: "A pending wiki save conflicts with edited pages. Review its preserved recovery record before retrying.",
@@ -79,7 +81,9 @@ export async function workflowSnapshot(ctx: WorkflowContext, id: string) {
     if (!uncertainSteps.some(step => step.recovery?.kind === "native_revision") && ["waiting_for_choice", "needs_attention", "paused_limit", "interrupted", "waiting_for_setup"].includes(run.status)) nativeReview = { retry: ["paused", "interrupted", "failed", "partial"].includes(review.status) && !limited,
       keep: ["partial", "paused", "interrupted", "failed", "completed"].includes(review.status) && review.versions.length > 0 }
   }
-  return ToolRunDtoSchema.strip().parse({ ...run, ...usage, observation: {
+  let toolName = run.tool.skillId
+  try { toolName = (await (await import("../workflows/host-tools")).resolveHostManifest(ctx, run.tool)).name } catch { /* Missing retained snapshot does not hide History. */ }
+  return ToolRunDtoSchema.strip().parse({ ...run, ...usage, toolName, observation: {
     text, phase: events.filter(e => e.seq <= run.eventCursor && e.type === "text").map(e => e.type === "text" ? workflowPublicPhase(e.text) : undefined).filter(Boolean).at(-1), usage: detailedUsage, choice, nativeReview, nativeReviewId, ...saves, diagnostics,
     uncertainSteps,
   } })

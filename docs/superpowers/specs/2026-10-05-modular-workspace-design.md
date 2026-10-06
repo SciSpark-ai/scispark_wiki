@@ -2,13 +2,13 @@
 
 Date: 2026-10-05
 
-Status: Confirmed product contract with Tasks1–19 implementation reviewed on
-`codex/modular-research-workspace`; Task20 documentation and final whole-branch
-review are pending. Offline/unit and production browser gates passed. Real
+Status: Confirmed product contract with all 20 task commits reviewed on
+`codex/modular-research-workspace`. The single broad review findings F1–F6 and
+M1–M3 are implemented and passed the single scoped re-review; see the [review/finalization summary](../../testing/artifacts/modular-workspace-2026-10-05/final-fix/review-summary.md). Offline/unit and production browser gates passed. Real
 imported-command, OS/provider/source and scientific acceptance remain OPEN.
 The proposal/interview wording retained below records original intent; the
 [current requirement/evidence map](../../testing/2026-10-05-modular-workspace.md)
-and [R1–R59 rulings with costs](../../testing/artifacts/modular-workspace-2026-10-05/decisions.md)
+and [R1–R79 rulings with costs](../../testing/artifacts/modular-workspace-2026-10-05/decisions.md)
 identify implemented boundaries, superseded proposals and current limits.
 
 Implementation planning: [master plan and three linked delivery plans](../plans/2026-10-05-modular-workspace.md).
@@ -343,18 +343,20 @@ accessible interaction. A tools system is not authorization for a brand redesign
 
 ## 9. Current implementation and acceptance boundary
 
-The requirement map covers every confirmed decision, all20 tasks, source callers,
-reviewed commits and final3291passed/24gatedskips. It retains production modular11,
-core6 and the fresh R58 native2 scopes separately. Browser close/relaunch and a real
-owned production Next SIGKILL/restart passed; model/GitHub/source fixtures are not
-live transport. Both fresh builds passed and restored exact config bytes.
+The requirement map covers every confirmed decision, all 20 reviewed task commits,
+source callers and the consolidated F1–F6/M1–M3 fix wave. Historical Task19 gates
+(3291 passed/24 gated skips, modular11/core6/native2) remain retained separately
+from the current checks in the linked evidence. The single scoped re-review passed; its later documentation-only finalization preserves historical review states.
+Production browser close/relaunch and owned Next SIGKILL/restart use deterministic
+model/GitHub/source fixtures and do not establish live transport. Fresh isolated
+builds restore exact configuration bytes.
 
 R31 preserves fail-closed unsupported execution on this Mac: the actual probe
 failed descendant lifetime ownership. Linux/Windows are unrun, and real worker,
 install, CLI, broker, OpenCite retrieval, provider and scientific gates remain open.
 The full phase acceptance described in §5–6 is not complete. R21's Unix-socket
 proposal is superseded by R22's inspected authenticated runtime HTTP proxy; all
-59 rulings and costs remain chronological in the durable decision ledger.
+79 rulings and costs remain chronological in the durable decision ledger.
 
 R41–45 preserve native revision ownership, retained reports and explicit recovery;
 R42 preserves retry generations and prior billing; R46 saves only still-unsaved
@@ -363,9 +365,7 @@ and per-turn immutable prompts. R54 uses in-memory-only live credential bindings
 R56–58 preserve core browser behavior, explicit brief approval and a server-only
 validated native action bridge: generic run admission rejects action/reviewId.
 
-Deferred minor observations remain in the [final-review handoff](../../testing/artifacts/modular-workspace-2026-10-05/review-handoff.md).
-Final whole-branch review and publication remain pending; these documentation
-updates do not imply a live or scientific compatibility pass.
+The [original review handoff](../../testing/artifacts/modular-workspace-2026-10-05/review-handoff.md) is preserved as historical evidence. The broad review found F1–F6/M1–M3; R60–R79 adjudicate declined items and costs. The single scoped re-review passed for the implemented fixes; the subsequent amend only finalizes documentation/evidence. These checks do not imply a live or scientific compatibility pass; publication is not authorized.
 
 R59 preserves all 19 accidentally tracked Task12 scratch report/log files as lossless
 gzip evidence with original paths and hashes, then removes only their Git index

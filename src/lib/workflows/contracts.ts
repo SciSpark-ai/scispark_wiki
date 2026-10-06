@@ -134,7 +134,7 @@ export type UsageJournal = z.infer<typeof UsageJournalSchema>
 /** Public observation deliberately excludes input, captured configuration and internal references. */
 export const ToolRunDtoSchema = ToolRunSchema.pick({ schemaVersion: true, id: true, profileId: true, operationId: true,
   tool: true, dependencies: true, sessionId: true, contextRefs: true, writeIntent: true, allowance: true, usage: true,
-  status: true, createdAt: true, updatedAt: true, eventCursor: true, artifacts: true }).extend({ cancelRequested: z.boolean().default(false),
+  status: true, createdAt: true, updatedAt: true, eventCursor: true, artifacts: true }).extend({ toolName: z.string().min(1).max(1000).optional(), cancelRequested: z.boolean().default(false),
   observation: z.object({
     text: z.string(), phase: z.string().optional(), usage: RunUsageSchema,
     choice: z.object({ id: UuidSchema, prompt: z.string(), candidates: z.array(z.object({ tool: ToolRefSchema, label: z.string() }).strict()) }).strict().optional(),

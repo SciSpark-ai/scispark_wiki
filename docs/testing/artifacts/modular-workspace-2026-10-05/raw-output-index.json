@@ -281,5 +281,636 @@
     "originalRepositoryPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/task-12/vitest.log",
     "rawSha256": "23d9d2b68bad78ae47960d131c3c08fe050ca0a47baca3f76c975c4ded81876d",
     "rawBytes": 277
+  },
+  {
+    "path": "final-fix/review-repro/final-review-handoff.md.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/final-review-handoff.md",
+    "rawSha256": "163aa00bb88d99f2c84c25de219c6c06d8ac0d283f4648c73350b2687d407e06",
+    "rawBytes": 4756
+  },
+  {
+    "path": "final-fix/review-repro/final-review-ordinary-import.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/final-review-ordinary-import.log",
+    "rawSha256": "9179c2e1e9874c59ae37f781b54a99f0a6ec061eeb9e51ee9437b5a4b728eb68",
+    "rawBytes": 1474
+  },
+  {
+    "path": "final-fix/review-repro/final-review-repro.config.mts.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/final-review-repro.config.mts",
+    "rawSha256": "aaa28bc80c8f75ebcfb397175c4e188c8d3a173f5b4e662c9c41adb25b1fb79b",
+    "rawBytes": 289
+  },
+  {
+    "path": "final-fix/review-repro/final-review-repro.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/final-review-repro.log",
+    "rawSha256": "07daf152a91d23a7aab6cc1ae8bc0d3650b813321fde8b729fd316c8520da5e3",
+    "rawBytes": 7673
+  },
+  {
+    "path": "final-fix/review-repro/final-review-repro.test.ts.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/final-review-repro.test.ts",
+    "rawSha256": "19f0f13dc1404cec04346279d529645bd5bea5b55905c32de5ae3737228aac3b",
+    "rawBytes": 6271
+  },
+  {
+    "path": "final-fix/verification/branch-diff-check.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/branch-diff-check.log",
+    "rawSha256": "efa925c63598a60bfb97fade9bd20a41e13c583d7c77034189dc0cd5e78a0f4d",
+    "rawBytes": 384,
+    "command": [
+      "git",
+      "diff",
+      "--cached",
+      "435afcd886d810b66258aaae83734c5868f721cf",
+      "--check"
+    ]
+  },
+  {
+    "path": "final-fix/verification/browser-choice-final.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/browser-choice-final.log",
+    "rawSha256": "93dccf0408dd45f01e186e63952ad5036284096913891fc7039b9a2195e405b9",
+    "rawBytes": 953
+  },
+  {
+    "path": "final-fix/verification/browser-core-initial.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/browser-core-initial.log",
+    "rawSha256": "c451fd4b8240ca8612eade51c226f3e8abeb6ef7d8182ae378cc088cb5f706be",
+    "rawBytes": 5494
+  },
+  {
+    "path": "final-fix/verification/browser-core.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/browser-core.log",
+    "rawSha256": "c94bb1ce944d0120cd2c0f591d88185f6cdc1a4cf0b81ef3d88d586b8551eabc",
+    "rawBytes": 1875
+  },
+  {
+    "path": "final-fix/verification/browser-modular-before-visual.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/browser-modular-before-visual.log",
+    "rawSha256": "8e6cbf069aadda3819c63d520af7031c3c0eafbdb2fc0469af293c8c8ab41665",
+    "rawBytes": 2949
+  },
+  {
+    "path": "final-fix/verification/browser-modular-final-suite.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/browser-modular-final-suite.log",
+    "rawSha256": "e7d79121d1e30c69f326a4fbaa676887d710335b02ab0e554540f8c0654c6f65",
+    "rawBytes": 7004
+  },
+  {
+    "path": "final-fix/verification/browser-modular-initial.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/browser-modular-initial.log",
+    "rawSha256": "6dfc16ab5b17529750ab6e01ebde9d45a52eae2f19a9439a86880dbb58b69b9b",
+    "rawBytes": 15947
+  },
+  {
+    "path": "final-fix/verification/browser-modular-targeted.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/browser-modular-targeted.log",
+    "rawSha256": "2fe7ac3ecf2a399f2de8acdaf987d27af9f5a4274ceef7001900fa77652361d9",
+    "rawBytes": 960
+  },
+  {
+    "path": "final-fix/verification/browser-modular.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/browser-modular.log",
+    "rawSha256": "e7d79121d1e30c69f326a4fbaa676887d710335b02ab0e554540f8c0654c6f65",
+    "rawBytes": 7004
+  },
+  {
+    "path": "final-fix/verification/build-acceptance/build.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance/build.log",
+    "rawSha256": "3e2de407df627e734b68d18c21deddec951779c601e05c62cfc872cd3cf88d6a",
+    "rawBytes": 3566
+  },
+  {
+    "path": "final-fix/verification/build-acceptance/next-env.d.ts.after.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance/next-env.d.ts.after",
+    "rawSha256": "28a737477eac2a67ec2209b415ec15da881efc3bf97d7a74c8002e23d3f28407",
+    "rawBytes": 352
+  },
+  {
+    "path": "final-fix/verification/build-acceptance/next-env.d.ts.before.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance/next-env.d.ts.before",
+    "rawSha256": "8cbc590bb64cc54d760ec9f67367fa949aca86a4798214bd34353f4102f70a34",
+    "rawBytes": 332
+  },
+  {
+    "path": "final-fix/verification/build-acceptance/next-env.d.ts.diff.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance/next-env.d.ts.diff",
+    "rawSha256": "dc8a4a4ab30b1e066defc890b844aeb6439fe5ee3341359e33789062bbd11bfb",
+    "rawBytes": 547
+  },
+  {
+    "path": "final-fix/verification/build-acceptance/tsconfig.json.after.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance/tsconfig.json.after",
+    "rawSha256": "6e175c732a3a251b474fe0d3fe15c9876c893ca8e4bde228e3e6e220436bdc4e",
+    "rawBytes": 3136
+  },
+  {
+    "path": "final-fix/verification/build-acceptance/tsconfig.json.before.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance/tsconfig.json.before",
+    "rawSha256": "3696b0511f5b817eefd35d07dffc3c659b14d17e1207a66e96bc89c9f76484c0",
+    "rawBytes": 3014
+  },
+  {
+    "path": "final-fix/verification/build-acceptance/tsconfig.json.diff.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance/tsconfig.json.diff",
+    "rawSha256": "2c76574709eb19adf1999892ed888de23df86cd400d6706984670f16656c4ed2",
+    "rawBytes": 434
+  },
+  {
+    "path": "final-fix/verification/build-acceptance-before-hash-label/build.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance-before-hash-label/build.log",
+    "rawSha256": "93bac700be4966678c8eb6cfbc96f18885fe06177fdd10f932b90f5ea6b7928e",
+    "rawBytes": 3566
+  },
+  {
+    "path": "final-fix/verification/build-acceptance-before-hash-label/next-env.d.ts.after.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance-before-hash-label/next-env.d.ts.after",
+    "rawSha256": "602b6e1e73dc4a4d2d24a9b733f2e9ec046c2ab102ef597582e13277faac66a2",
+    "rawBytes": 352
+  },
+  {
+    "path": "final-fix/verification/build-acceptance-before-hash-label/next-env.d.ts.before.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance-before-hash-label/next-env.d.ts.before",
+    "rawSha256": "8cbc590bb64cc54d760ec9f67367fa949aca86a4798214bd34353f4102f70a34",
+    "rawBytes": 332
+  },
+  {
+    "path": "final-fix/verification/build-acceptance-before-hash-label/next-env.d.ts.diff.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance-before-hash-label/next-env.d.ts.diff",
+    "rawSha256": "8af658e8aaff2303306bffc4d8285c04c51099bc0f00177ac88138e712d50e99",
+    "rawBytes": 547
+  },
+  {
+    "path": "final-fix/verification/build-acceptance-before-hash-label/tsconfig.json.after.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance-before-hash-label/tsconfig.json.after",
+    "rawSha256": "b50d84b088ef594a411ca3c2b9e5161fc257531c97cd36727e4134be7c1d0c77",
+    "rawBytes": 3136
+  },
+  {
+    "path": "final-fix/verification/build-acceptance-before-hash-label/tsconfig.json.before.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance-before-hash-label/tsconfig.json.before",
+    "rawSha256": "3696b0511f5b817eefd35d07dffc3c659b14d17e1207a66e96bc89c9f76484c0",
+    "rawBytes": 3014
+  },
+  {
+    "path": "final-fix/verification/build-acceptance-before-hash-label/tsconfig.json.diff.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance-before-hash-label/tsconfig.json.diff",
+    "rawSha256": "dc4d9c67ad4dcdb30601bc5dbc6d6299639711040d520cd1e697bcee37cca2a2",
+    "rawBytes": 434
+  },
+  {
+    "path": "final-fix/verification/build-acceptance-before-visual/build.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance-before-visual/build.log",
+    "rawSha256": "9b82f2cd612c1086d99ff07d853529e308192c605130596b3440c4872353ad67",
+    "rawBytes": 3560
+  },
+  {
+    "path": "final-fix/verification/build-acceptance-before-visual/next-env.d.ts.after.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance-before-visual/next-env.d.ts.after",
+    "rawSha256": "8cd035094f77934b765ee4025a36ca720059932ccfcd72bf8ef1c0bb86054958",
+    "rawBytes": 346
+  },
+  {
+    "path": "final-fix/verification/build-acceptance-before-visual/next-env.d.ts.before.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance-before-visual/next-env.d.ts.before",
+    "rawSha256": "8cbc590bb64cc54d760ec9f67367fa949aca86a4798214bd34353f4102f70a34",
+    "rawBytes": 332
+  },
+  {
+    "path": "final-fix/verification/build-acceptance-before-visual/next-env.d.ts.diff.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance-before-visual/next-env.d.ts.diff",
+    "rawSha256": "1fda5b7da407126fa9fc1b498aa6db0d3befe9c5f7cf42a10f0bce339cc30717",
+    "rawBytes": 541
+  },
+  {
+    "path": "final-fix/verification/build-acceptance-before-visual/tsconfig.json.after.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance-before-visual/tsconfig.json.after",
+    "rawSha256": "359cdfe437470ec7301152b329ae0a7c59dddc2eeda88a70912fd1bcf7962628",
+    "rawBytes": 3130
+  },
+  {
+    "path": "final-fix/verification/build-acceptance-before-visual/tsconfig.json.before.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance-before-visual/tsconfig.json.before",
+    "rawSha256": "3696b0511f5b817eefd35d07dffc3c659b14d17e1207a66e96bc89c9f76484c0",
+    "rawBytes": 3014
+  },
+  {
+    "path": "final-fix/verification/build-acceptance-before-visual/tsconfig.json.diff.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-acceptance-before-visual/tsconfig.json.diff",
+    "rawSha256": "d0d6c2e46b2f9f383479e9046ea22d882c141bd534d48c98a12777c04f155b0b",
+    "rawBytes": 428
+  },
+  {
+    "path": "final-fix/verification/build-regular/build.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular/build.log",
+    "rawSha256": "3af5edf2e4a81fcc9926f466a7ee5d9a835485ef9344915b792198720258e324",
+    "rawBytes": 3560
+  },
+  {
+    "path": "final-fix/verification/build-regular/next-env.d.ts.after.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular/next-env.d.ts.after",
+    "rawSha256": "651d7e945f21b5679cbabdf9944e92832dd624bdfe1a9dd6b6b8b9574d8f8929",
+    "rawBytes": 346
+  },
+  {
+    "path": "final-fix/verification/build-regular/next-env.d.ts.before.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular/next-env.d.ts.before",
+    "rawSha256": "8cbc590bb64cc54d760ec9f67367fa949aca86a4798214bd34353f4102f70a34",
+    "rawBytes": 332
+  },
+  {
+    "path": "final-fix/verification/build-regular/next-env.d.ts.diff.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular/next-env.d.ts.diff",
+    "rawSha256": "a284e7c8c96b111e35160794051393f93e6f9f85cccde64121c5c51c681575c3",
+    "rawBytes": 541
+  },
+  {
+    "path": "final-fix/verification/build-regular/tsconfig.json.after.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular/tsconfig.json.after",
+    "rawSha256": "15fa2404d3cdc189ac952feb6da0bac9fc7d8e11f7ad36a26976f385f52bd73f",
+    "rawBytes": 3130
+  },
+  {
+    "path": "final-fix/verification/build-regular/tsconfig.json.before.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular/tsconfig.json.before",
+    "rawSha256": "3696b0511f5b817eefd35d07dffc3c659b14d17e1207a66e96bc89c9f76484c0",
+    "rawBytes": 3014
+  },
+  {
+    "path": "final-fix/verification/build-regular/tsconfig.json.diff.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular/tsconfig.json.diff",
+    "rawSha256": "04dbab9b4ba3999c27354576a7f3414030acaa39b3d4c19ce9bb81584e67eaab",
+    "rawBytes": 428
+  },
+  {
+    "path": "final-fix/verification/build-regular-before-hash-label/build.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular-before-hash-label/build.log",
+    "rawSha256": "62650bcdea45618a973c81be4330fe7a7161f61cdcef9bf6c85df9f6dc97d486",
+    "rawBytes": 3560
+  },
+  {
+    "path": "final-fix/verification/build-regular-before-hash-label/next-env.d.ts.after.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular-before-hash-label/next-env.d.ts.after",
+    "rawSha256": "9bc14767473f303daacb81082f0ddb1ead734385b96e2b54d47b325ec0b0a20b",
+    "rawBytes": 346
+  },
+  {
+    "path": "final-fix/verification/build-regular-before-hash-label/next-env.d.ts.before.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular-before-hash-label/next-env.d.ts.before",
+    "rawSha256": "8cbc590bb64cc54d760ec9f67367fa949aca86a4798214bd34353f4102f70a34",
+    "rawBytes": 332
+  },
+  {
+    "path": "final-fix/verification/build-regular-before-hash-label/next-env.d.ts.diff.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular-before-hash-label/next-env.d.ts.diff",
+    "rawSha256": "4b1da4672c11854ee3cc2dd7003d74a0abe0d0e34bc1ad8fcc98efa1b6d7e228",
+    "rawBytes": 541
+  },
+  {
+    "path": "final-fix/verification/build-regular-before-hash-label/tsconfig.json.after.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular-before-hash-label/tsconfig.json.after",
+    "rawSha256": "4da9653bef89dfa8f454cf8159d60c4947eac25cca339d9980205afa028a0cf9",
+    "rawBytes": 3130
+  },
+  {
+    "path": "final-fix/verification/build-regular-before-hash-label/tsconfig.json.before.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular-before-hash-label/tsconfig.json.before",
+    "rawSha256": "3696b0511f5b817eefd35d07dffc3c659b14d17e1207a66e96bc89c9f76484c0",
+    "rawBytes": 3014
+  },
+  {
+    "path": "final-fix/verification/build-regular-before-hash-label/tsconfig.json.diff.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular-before-hash-label/tsconfig.json.diff",
+    "rawSha256": "15724dca8c8e3e46e4c732d80cc8cc7be813b403def7a4c5c94cbd8c91671af7",
+    "rawBytes": 428
+  },
+  {
+    "path": "final-fix/verification/build-regular-before-visual/build.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular-before-visual/build.log",
+    "rawSha256": "8e0eb401409119208223dc24ffc86da8cb0841e05d4f0c42ea91c7c197686a2d",
+    "rawBytes": 3555
+  },
+  {
+    "path": "final-fix/verification/build-regular-before-visual/next-env.d.ts.after.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular-before-visual/next-env.d.ts.after",
+    "rawSha256": "d70f5df4dfdd0c81fc5ac7935ae14124d6c6a49f36994a4a9a40935e68de32bf",
+    "rawBytes": 340
+  },
+  {
+    "path": "final-fix/verification/build-regular-before-visual/next-env.d.ts.before.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular-before-visual/next-env.d.ts.before",
+    "rawSha256": "8cbc590bb64cc54d760ec9f67367fa949aca86a4798214bd34353f4102f70a34",
+    "rawBytes": 332
+  },
+  {
+    "path": "final-fix/verification/build-regular-before-visual/next-env.d.ts.diff.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular-before-visual/next-env.d.ts.diff",
+    "rawSha256": "a58fe2f713852f590c5fbbf9b69698dc60dcf9a595f59650e19be9e285c4474d",
+    "rawBytes": 535
+  },
+  {
+    "path": "final-fix/verification/build-regular-before-visual/tsconfig.json.after.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular-before-visual/tsconfig.json.after",
+    "rawSha256": "acf1baa4356fc766d310d386c5300dece19d7cf8497e3458747dbf411c04de09",
+    "rawBytes": 3124
+  },
+  {
+    "path": "final-fix/verification/build-regular-before-visual/tsconfig.json.before.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular-before-visual/tsconfig.json.before",
+    "rawSha256": "3696b0511f5b817eefd35d07dffc3c659b14d17e1207a66e96bc89c9f76484c0",
+    "rawBytes": 3014
+  },
+  {
+    "path": "final-fix/verification/build-regular-before-visual/tsconfig.json.diff.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/build-regular-before-visual/tsconfig.json.diff",
+    "rawSha256": "8e7cf26411dc2f10f1cd44c5f4e19685c86b0832bd0c465d6e654fd80e2e5756",
+    "rawBytes": 422
+  },
+  {
+    "path": "final-fix/verification/catalog-regeneration.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/catalog-regeneration.log",
+    "rawSha256": "684ce12824e3086f57a7433ba1a62e6c8ffda910580053157c1d33523d840376",
+    "rawBytes": 231
+  },
+  {
+    "path": "final-fix/verification/choice-details-green-final.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/choice-details-green-final.log",
+    "rawSha256": "b36d964a1547709ee0ebafefc6262b6547b5f3cdb58c8e42926d0a0ea41f8ef6",
+    "rawBytes": 237
+  },
+  {
+    "path": "final-fix/verification/choice-details-green.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/choice-details-green.log",
+    "rawSha256": "69e183c9d6b0388581b6e01c2f4f69632a4406023dd32ee06d387d6e82aed018",
+    "rawBytes": 15951
+  },
+  {
+    "path": "final-fix/verification/choice-details-red.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/choice-details-red.log",
+    "rawSha256": "20e891e4173718e3ff55f6bcb0710d7d72641f07a748b4bd9c2be83082ee9798",
+    "rawBytes": 973
+  },
+  {
+    "path": "final-fix/verification/choice-hash-version-green.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/choice-hash-version-green.log",
+    "rawSha256": "1f62a82ec0d7b3d33cdb5c7ac677d1e3a20d5440f49c251e182fbe7b8aecd717",
+    "rawBytes": 236
+  },
+  {
+    "path": "final-fix/verification/choice-hash-version-red.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/choice-hash-version-red.log",
+    "rawSha256": "0f05621e4cd0b153cf979c7f63e03f5a59a0da4a3e5f08f0cccdfec5ef6bfc37",
+    "rawBytes": 1597
+  },
+  {
+    "path": "final-fix/verification/command-resume-red-valid.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/command-resume-red-valid.log",
+    "rawSha256": "56e0b9f4c4eb07be295e6cd6d6af94deafd7c3ebdd07af5265e8f65e2a1e3a12",
+    "rawBytes": 1676
+  },
+  {
+    "path": "final-fix/verification/command-resume-red.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/command-resume-red.log",
+    "rawSha256": "f6229d0fbb87aa011715258bf9b99605011a2e2fb834b353a0071a45aaf84faf",
+    "rawBytes": 2763
+  },
+  {
+    "path": "final-fix/verification/evidence-tools/check-final-evidence.py.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/evidence-tools/check-final-evidence.py",
+    "rawSha256": "9778ecc7cbb30cd04c118fa9a012b2187861a6d122cc8155a4b6d69ce5d0e384",
+    "rawBytes": 1469
+  },
+  {
+    "path": "final-fix/verification/evidence-tools/finalize-fix-docs.py.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/evidence-tools/finalize-fix-docs.py",
+    "rawSha256": "81d689dd2176f523ec1f64ed50282a3eaa96d3fd85a27c7d36da32e2b391542d",
+    "rawBytes": 5875
+  },
+  {
+    "path": "final-fix/verification/evidence-tools/preserve-final-fix.py.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/evidence-tools/preserve-final-fix.py",
+    "rawSha256": "5d69cdd0d358ebe779944069d55ba6e383db6c0c2f572ac4684a73ca76c250f2",
+    "rawBytes": 3588
+  },
+  {
+    "path": "final-fix/verification/final-visual-tools-library-import-hands-86913--without-claiming-readiness-chromium.md.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/final-visual-tools-library-import-hands-86913--without-claiming-readiness-chromium.md",
+    "rawSha256": "46e2652938587ed778268c683315863a4fc6aa6ba309b32b483d0d2b805c35b6",
+    "rawBytes": 20958
+  },
+  {
+    "path": "final-fix/verification/fixture-corrections-green.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/fixture-corrections-green.log",
+    "rawSha256": "c886adab14ca99efdab2fc1849a42a67fc3045b13e9fa2138b15558264d876c6",
+    "rawBytes": 3916
+  },
+  {
+    "path": "final-fix/verification/focused-green-1.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/focused-green-1.log",
+    "rawSha256": "5a6644539934bab30027240f8833e81eeb340d0181328451131fb11428558c0b",
+    "rawBytes": 237
+  },
+  {
+    "path": "final-fix/verification/focused-red.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/focused-red.log",
+    "rawSha256": "2eef1fe8f4d0faeb08b63d57fb4c5592f4c5ccc29cc63db0b73043ad1c0ae88e",
+    "rawBytes": 7179
+  },
+  {
+    "path": "final-fix/verification/fulltext-red.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/fulltext-red.log",
+    "rawSha256": "20221b1e1499ef84b69a724a59320990b6151c8149361098ca874c2357cc518b",
+    "rawBytes": 3386
+  },
+  {
+    "path": "final-fix/verification/initial-browser-tool-choice-selected-impor-0af4a-ut-of-both-composer-layouts-chromium.md.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/initial-browser-tool-choice-selected-impor-0af4a-ut-of-both-composer-layouts-chromium.md",
+    "rawSha256": "44ca46251e9352db146a7fb645577f1eed57900f05bb85fc62160820f0592705",
+    "rawBytes": 10300
+  },
+  {
+    "path": "final-fix/verification/initial-browser-tool-review-OpenCite-norma-5546a-access-on-desktop-and-phone-chromium.md.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/initial-browser-tool-review-OpenCite-norma-5546a-access-on-desktop-and-phone-chromium.md",
+    "rawSha256": "a29f095ac5d5ca73a33e2956756e667ebb4442e979619e57f336781a87d5a9a9",
+    "rawBytes": 539
+  },
+  {
+    "path": "final-fix/verification/initial-browser-tools-library-configured-e-14856-ider-call-or-scheduled-work-chromium.md.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/initial-browser-tools-library-configured-e-14856-ider-call-or-scheduled-work-chromium.md",
+    "rawSha256": "7a4a5a6e0c0ee088a24ba738fb56d981473b749d34967ac2f46ed4efafc57e0c",
+    "rawBytes": 14295
+  },
+  {
+    "path": "final-fix/verification/initial-core-chat-markdown-Sparky-forma-0962a-e-paper-popup-and-full-chat-chromium.md.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/initial-core-chat-markdown-Sparky-forma-0962a-e-paper-popup-and-full-chat-chromium.md",
+    "rawSha256": "b0e345006903d37ec9f53f7e5c0478689454c59a4ccfef0ab1ac31bc9f5fe422",
+    "rawBytes": 5715
+  },
+  {
+    "path": "final-fix/verification/initial-gate/lint.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/initial-gate/lint.log",
+    "rawSha256": "2076eaa2da2c56f0382e38c37a78f73b257255900c03a841c5e8c836d4714819",
+    "rawBytes": 1765
+  },
+  {
+    "path": "final-fix/verification/initial-gate/tsc.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/initial-gate/tsc.log",
+    "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rawBytes": 0
+  },
+  {
+    "path": "final-fix/verification/initial-gate/vitest.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/initial-gate/vitest.log",
+    "rawSha256": "277c3781325814bd4854e71415e5545d6c5ea3f2e669b2da6e2f2c3c6ecd9005",
+    "rawBytes": 7821
+  },
+  {
+    "path": "final-fix/verification/interim-green.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/interim-green.log",
+    "rawSha256": "cc4824d3f0a9333fe583c97960a8cb2f5b055752697683d6cea4bcbb33052f2a",
+    "rawBytes": 3267
+  },
+  {
+    "path": "final-fix/verification/interim-tsc.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/interim-tsc.log",
+    "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rawBytes": 0
+  },
+  {
+    "path": "final-fix/verification/lint.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/lint.log",
+    "rawSha256": "ce95cdc64b0b5bf2a79f082c4f933ee6352c1155acec748fe68c918c4de8164d",
+    "rawBytes": 526
+  },
+  {
+    "path": "final-fix/verification/new-diff-check.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/new-diff-check.log",
+    "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rawBytes": 0,
+    "command": [
+      "git",
+      "diff",
+      "--cached",
+      "--check"
+    ]
+  },
+  {
+    "path": "final-fix/verification/pre-visual-gate/lint.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/pre-visual-gate/lint.log",
+    "rawSha256": "ce95cdc64b0b5bf2a79f082c4f933ee6352c1155acec748fe68c918c4de8164d",
+    "rawBytes": 526
+  },
+  {
+    "path": "final-fix/verification/pre-visual-gate/tsc.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/pre-visual-gate/tsc.log",
+    "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rawBytes": 0
+  },
+  {
+    "path": "final-fix/verification/pre-visual-gate/vitest.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/pre-visual-gate/vitest.log",
+    "rawSha256": "a33d3be93e2b06d89112a1961ad4b53cc7a792eafad3ef3945dc2d1e0d879362",
+    "rawBytes": 276
+  },
+  {
+    "path": "final-fix/verification/public-ui-green-1.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/public-ui-green-1.log",
+    "rawSha256": "125e0b6dcbe04c1eb916a114a5585206b787554745483290971c91c7b7375617",
+    "rawBytes": 1387
+  },
+  {
+    "path": "final-fix/verification/tsc.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/tsc.log",
+    "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rawBytes": 0
+  },
+  {
+    "path": "final-fix/verification/visual-correction-gate/lint.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/visual-correction-gate/lint.log",
+    "rawSha256": "5d393b8b7ce73348e9e95e00e8b01163ba173bc9686c546286aab9cb9a2fb215",
+    "rawBytes": 697
+  },
+  {
+    "path": "final-fix/verification/visual-correction-gate/tsc.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/visual-correction-gate/tsc.log",
+    "rawSha256": "a205cef45d4d78c55ea9c539769c7049fc49761e90de099223b5f8dcb486d28c",
+    "rawBytes": 1492
+  },
+  {
+    "path": "final-fix/verification/visual-correction-gate/vitest.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/visual-correction-gate/vitest.log",
+    "rawSha256": "ce2bfb9684d213643eda723cf87b04d987ade2d403c1ee91ece3765b6c608b21",
+    "rawBytes": 276
+  },
+  {
+    "path": "final-fix/verification/vitest.log.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/verification/final-fix/vitest.log",
+    "rawSha256": "ce2bfb9684d213643eda723cf87b04d987ade2d403c1ee91ece3765b6c608b21",
+    "rawBytes": 276
+  },
+  {
+    "path": "final-fix/harness/build-final-fix.py.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/build-final-fix.py",
+    "rawSha256": "2c9d032ae68df69382dfa4d8f5e0675323e9e345ca98606bfe8e373a8a4c74a9",
+    "rawBytes": 2792
+  },
+  {
+    "path": "final-fix/harness/regenerate-owned-catalog.ts.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/regenerate-owned-catalog.ts",
+    "rawSha256": "26e00a2f76c25624e9aa285df649550a2af460e067764c3013514dcaba9adb62",
+    "rawBytes": 3970
+  },
+  {
+    "path": "final-fix/harness/regenerate-owned-catalog.test.ts.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/regenerate-owned-catalog.test.ts",
+    "rawSha256": "70f89036486e3a20ce978e75aca004e961dc925c6e4bfea53bbeb7c9bfc61d1d",
+    "rawBytes": 646
+  },
+  {
+    "path": "final-fix/harness/regenerate-owned-catalog.config.mts.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/regenerate-owned-catalog.config.mts",
+    "rawSha256": "36e365bbb1874fc7c7fa25e38e414b8d38dabb16c996161d3f63ea51074e5273",
+    "rawBytes": 262
+  },
+  {
+    "path": "final-fix/browser/modular-initial/evidence/restart-server.log.gz",
+    "originalPath": "/tmp/scispark-modular-final-fix-evidence/acceptance-zkgPsP/evidence/restart-server.log",
+    "rawSha256": "a1778996eaf9d20d76e7ed7cb49f6c59baf3873890bf686b0ebbeff2698d62f0",
+    "rawBytes": 638
+  },
+  {
+    "path": "final-fix/browser/modular-before-visual/evidence/restart-server.log.gz",
+    "originalPath": "/tmp/scispark-modular-final-fix-evidence/acceptance-KEdQVx/evidence/restart-server.log",
+    "rawSha256": "9ffff4c88131ef4c38c41587499362a27795f85e0675847740631589ebb0662b",
+    "rawBytes": 638
+  },
+  {
+    "path": "final-fix/browser/modular-final-suite/evidence/restart-server.log.gz",
+    "originalPath": "/tmp/scispark-modular-final-fix-evidence/acceptance-YMPJiP/evidence/restart-server.log",
+    "rawSha256": "d0a1fbad62df87d1a2ce6f89466f1f166cd629b30d619b90cbdb8aacc9d7a014",
+    "rawBytes": 638
+  },
+  {
+    "path": "final-fix/historical-decisions.md.gz",
+    "originalPath": "docs/testing/artifacts/modular-workspace-2026-10-05/decisions.md",
+    "rawSha256": "eb73f31f1613a756cebb55fc85de5e322b6d94ce2460fb45c27cd6004fb1af05",
+    "rawBytes": 49656
+  },
+  {
+    "path": "final-fix/historical-pins/modular-workspace-live-check.md.gz",
+    "originalPath": "docs/testing/modular-workspace-live-check.md",
+    "rawSha256": "d36c446623749ac9b9852e404ac71e2333263c2ea449795b1ef95c6f914ae082",
+    "rawBytes": 12165
+  },
+  {
+    "path": "final-fix/progress.md.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/progress.md",
+    "rawSha256": "8eaeaba60faf9454d6b13828b54f19294b413f6d5d0e784072d5adba0e8b56a1",
+    "rawBytes": 175725
+  },
+  {
+    "path": "final-fix/final-fix-report-before-review.md.gz",
+    "originalPath": ".superpowers/sdd/2026-10-05-modular-workspace/final-fix-report.md",
+    "rawSha256": "ebb71244b2f1e1142e36edd6f9ad9a3077d064acdae15d926ffde2cb7bf78851",
+    "rawBytes": 15204
   }
 ]

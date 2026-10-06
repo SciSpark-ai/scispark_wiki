@@ -1,14 +1,15 @@
 # Modular Research Workspace Implementation Plan
 
 
-**Current tracking (Task20):** Checked items record reviewed implementation and
+**Current tracking (consolidated final fix):** Checked items record reviewed implementation and
 executed offline/fixture checks, including explicit unsupported outcomes; they
 are not live/OS/scientific passes. Mixed steps below remain unchecked where their
 actual worker/install/CLI or final-review clause is open. The
 [current requirement/evidence map](../../testing/2026-10-05-modular-workspace.md)
-and [chronological R1–R59 rulings/costs](../../testing/artifacts/modular-workspace-2026-10-05/decisions.md)
-govern current scope. Deferred minors remain in the
-[final-review handoff](../../testing/artifacts/modular-workspace-2026-10-05/review-handoff.md).
+and [chronological R1–R79 rulings/costs](../../testing/artifacts/modular-workspace-2026-10-05/decisions.md)
+govern current scope. F1–F6 and M1–M3 from the single broad review are implemented in the
+[consolidated fix report](../../testing/artifacts/modular-workspace-2026-10-05/final-fix/final-fix-report.md).
+The single scoped re-review passed on `fbb86dd093dee2af9fb3aaf9b452e4aa3244a8ce`; see the [review/finalization summary](../../testing/artifacts/modular-workspace-2026-10-05/final-fix/review-summary.md). The subsequent amend is documentation/evidence only; real execution gates remain open.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
@@ -201,11 +202,11 @@ and completed source-linked results. Missing live or OS evidence is a specific
 open gate, not proof of compatibility. Do not label a prototype or simulated
 review as a fully verified external workflow.
 
-Current tracking: implementation Tasks1–19 have reviewed commits and completed
-offline/production browser gates. Task20 docs/evidence are ready for review.
+Current tracking: all 20 task commits are reviewed. The single broad final
+review is complete; F1–F6/M1–M3 are implemented in one consolidated fix wave.
 The requirement map checks actual source callers and preserves every confirmed
 decision. Real command isolation/install/CLI/broker, real sources/providers and
-scientific acceptance remain OPEN; final whole-branch review is pending.
+scientific acceptance remain OPEN; the single scoped re-review passed for the fixes.
 
 ## Execution preflight clarifications — 2026-10-05
 
@@ -229,9 +230,10 @@ These engineering rulings repair cross-task contracts without changing the agree
 
 - [ ] Actual supported-host imported-command/OpenCite phase gate; Mac unsupported (descendant ownership), Linux/Windows unrun.
 - [ ] Real source acquisition, selected API/Codex/Claude Code compatibility and human claim/coverage validation under the exact [live-check protocol](../../testing/modular-workspace-live-check.md).
-- [ ] Task20 review and one separate final whole-branch review; deferred minors remain recorded.
+- [x] Task20 review and one separate final whole-branch review.
+- [x] One scoped re-review of consolidated F1–F6/M1–M3 fixes; R60–R79 retain decisions/costs.
 
-Final code gate:3291passed/24gatedskips (baseline2710/19), type/lint0 with one
+Historical Task19 code gate:3291passed/24gatedskips (baseline2710/19), type/lint0 with one
 baseline warning; fresh regular27.55s/acceptance27.18s builds restore exact config
 bytes. Production modular11/core6 remain valid for unchanged scopes; fresh R58
 native2 covers the prepared native admission correction. No full live phase claim.

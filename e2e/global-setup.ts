@@ -11,6 +11,15 @@ export default async function globalSetup(): Promise<void> {
   const llmPort = Number(process.env.SCISPARK_E2E_LLM_PORT)
   if (!vaultPath || !Number.isInteger(llmPort)) throw new Error("disposable E2E environment is missing")
 
+  // Register a genuinely empty profile before fixture scaffolding can look like a legacy vault.
+  if (process.env.SCISPARK_E2E_EMPTY_VAULT === "1") {
+    const bootstrap = await request.newContext({ baseURL: `http://127.0.0.1:${process.env.SCISPARK_E2E_APP_PORT}` })
+    try {
+      const response = await bootstrap.get("/api/local-profiles")
+      if (!response.ok()) throw new Error("Could not register empty disposable E2E profile")
+    } finally { await bootstrap.dispose() }
+  }
+
   const storage = new NodeFsVaultStorage(vaultPath)
   await openVault(storage, {
     purpose: "Disposable SciSpark developer-preview acceptance vault.",

@@ -1,0 +1,116 @@
+{
+  "enabled": [
+    {
+      "ref": {
+        "packageId": "scispark.builtin",
+        "skillId": "trending",
+        "version": "1.0.0",
+        "digest": "0b37ff1d81c355c033f79b9b6a84cf1e2cb7f3e435e9b9a553c318a8ee12792d"
+      },
+      "name": "Trending",
+      "description": "Discover trends in your research fields.",
+      "capabilities": [
+        "field-trends"
+      ],
+      "kind": "native",
+      "engines": [],
+      "outputKinds": [
+        "markdown"
+      ],
+      "enabled": true,
+      "connections": [],
+      "installed": true,
+      "pinned": true,
+      "readiness": {
+        "status": "ready",
+        "reasons": []
+      },
+      "connectionRequirements": []
+    },
+    {
+      "ref": {
+        "packageId": "scispark.builtin",
+        "skillId": "find-papers",
+        "version": "1.0.0",
+        "digest": "0d7f3c175d55cc447971b616c4a01301c3d89ee2bda586eaafe1ffe3c04f0afb"
+      },
+      "name": "Find papers",
+      "description": "Find literature for a research question.",
+      "capabilities": [
+        "paper-search"
+      ],
+      "kind": "native",
+      "engines": [],
+      "outputKinds": [
+        "papers"
+      ],
+      "enabled": true,
+      "connections": [],
+      "installed": true,
+      "pinned": false,
+      "readiness": {
+        "status": "ready",
+        "reasons": []
+      },
+      "connectionRequirements": []
+    },
+    {
+      "ref": {
+        "packageId": "scispark.builtin",
+        "skillId": "deep-review",
+        "version": "1.0.0",
+        "digest": "8b69fc2e4f55afe4a6e4a70439dbedaff27dbd31480267e0d59c05f9b46283b5"
+      },
+      "name": "Deep review",
+      "description": "Review literature with grounded sources.",
+      "capabilities": [
+        "literature-review"
+      ],
+      "kind": "native",
+      "engines": [],
+      "outputKinds": [
+        "markdown"
+      ],
+      "enabled": true,
+      "connections": [],
+      "installed": true,
+      "pinned": false,
+      "readiness": {
+        "status": "ready",
+        "reasons": []
+      },
+      "connectionRequirements": []
+    },
+    {
+      "ref": {
+        "packageId": "scispark.builtin",
+        "skillId": "idea-spark",
+        "version": "1.0.0",
+        "digest": "ce1bd085aeeb4439c6d46f695c3481c7491a287b1b11e4416bfa1fe0c630057a"
+      },
+      "name": "Idea Spark",
+      "description": "Develop research ideas from your knowledge base.",
+      "capabilities": [
+        "research-ideas"
+      ],
+      "kind": "native",
+      "engines": [],
+      "outputKinds": [
+        "markdown"
+      ],
+      "enabled": true,
+      "connections": [],
+      "installed": true,
+      "pinned": true,
+      "readiness": {
+        "status": "ready",
+        "reasons": []
+      },
+      "connectionRequirements": []
+    }
+  ],
+  "runs": [],
+  "providerCalls": 0,
+  "vault": "/var/folders/0w/f8xqj5c94mn10yt1h51zr99r0000gp/T/scispark-e2e-vcvAFq/vault",
+  "scheduler": "off"
+}

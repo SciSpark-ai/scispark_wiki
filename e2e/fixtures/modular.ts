@@ -7,7 +7,7 @@ import { NodeFsVaultStorage } from "../../src/lib/vault/node-fs-storage"
 
 export const runDir = () => process.env.SCISPARK_E2E_RUN_DIR!
 export const vaultDir = () => process.env.SCISPARK_E2E_VAULT_PATH!
-export const skill = (name: string, extra = "") => `---\nname: ${name}\ndescription: Compare supplied synthetic evidence and preserve limitations.\nscispark:\n  engines: [api]\n  inputSchema: {type: object, additionalProperties: true}\n---\nMODULAR-FIXTURE: Compare the supplied synthetic evidence. ${extra}`
+export const skill = (name: string, extra = "") => `---\nname: ${name}\ndescription: Compare supplied synthetic evidence and preserve limitations.\nscispark:\n  engines: [api]\n  inputSchema: {type: object, properties: {question: {type: string}}, required: [question], additionalProperties: false}\n---\nMODULAR-FIXTURE: Compare the supplied synthetic evidence. ${extra}`
 export async function resetTools() {
   const storage = new NodeFsVaultStorage(vaultDir())
   await storage.write(".scispark/tools/state.json", JSON.stringify({ schemaVersion: 1, enabled: [], pins: [], overrides: [], migrated: true, sidebarPins: [] }))

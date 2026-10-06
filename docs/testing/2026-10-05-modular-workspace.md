@@ -1,10 +1,52 @@
 # Modular workspace validation evidence
 
-Status: Tasks 1–19 implementation passed per-task review; Task20 documentation is ready for review. Final whole-branch review is **pending**. Offline implementation and production browser gates passed; real imported-command and scientific acceptance remain **OPEN**. No release, push, merge or PR is claimed.
+Status: All 20 task commits have been reviewed. The single broad final review found F1–F6 and M1–M3; the consolidated fix wave is implemented. The single scoped re-review **passed** on `fbb86dd093dee2af9fb3aaf9b452e4aa3244a8ce`; the later amend is documentation/evidence only. Real imported-command, platform/provider/source and scientific acceptance remain **OPEN**. No release, push, merge or PR is claimed.
 
-Branch: `codex/modular-research-workspace`. Reviewed base: `435afcd886d810b66258aaae83734c5868f721cf`. Final code: `d1a4e1c8994ed411b2b7a9373bde4757fceeebd7` (Task19, R58 correction).
+Branch: `codex/modular-research-workspace`. Reviewed base: `435afcd886d810b66258aaae83734c5868f721cf`. Fix-wave parent: `96d0785d96ba19f662ca3d8b4a6148f84d24f434`; all 20 task commits remain intact. The additional commit is identified by the exact subject `fix: close modular workspace integration gaps`.
 
-## Current gates and provenance
+[Passing scoped review and finalization summary](artifacts/modular-workspace-2026-10-05/final-fix/review-summary.md) links the exact review, recovery ledger and mechanical docs-only proof. Historical pending-review statements in earlier reports remain unchanged.
+
+## Consolidated fix wave
+
+[Final broad review](artifacts/modular-workspace-2026-10-05/final-fix/final-review.md), [fix report](artifacts/modular-workspace-2026-10-05/final-fix/final-fix-report.md), and [R1–R79 decisions and costs](artifacts/modular-workspace-2026-10-05/decisions.md) record the findings, implementation, verification and remaining limits.
+
+- Plain instruction imports declare a strict human `question` input and compatibility with the host's API/Codex/Claude Code instruction adapters. Reviewed custom schemas and explicit engine restrictions remain authoritative. Direct selection, named selection and chooser starts bind actual catalog/import inputs before run admission. Session/source metadata stays outside imported arguments. OpenCite binds `query` with its existing `limit: 10`, `fullText: false` defaults; explicit typed helper/API options remain supported. Unsupported custom schemas require explicit adapter review; no paid argument parsing or silent request discard is added.
+- Named unavailable tools stop before classification can choose an alternative. Selected-tool composers omit discussion-only Saved papers scope in both layouts while preserving the server guard.
+- Version restoration uses the latest saved per-version preferences. Original history entries and already captured run/tool/model/allowance snapshots remain unchanged.
+- Command allowance is reserved before fresh invocation directories are allocated. The offline supported-readiness/worker fixture proves limit → extend → Continue dispatches once with cumulative counters; existing uncertain output directories are never reused. This is not platform acceptance.
+- Captured human names appear in run and shared History views; subscription cost meaning, safe setup actions, supporting names and a single chooser prompt replace opaque/repeated summaries. OpenCite producer papers render in Results with DOI/URL/access distinctions. Bounded reasons distinguish no location, policy denial, size limit, retrieval, invalid PDF and conversion failure; a retained valid PDF is preserved when text conversion fails. The 512 KiB PDF and 2 MiB command bounds remain unchanged.
+
+| Gate | Current evidence |
+| --- | --- |
+| Typecheck | Exit0, 4.73s; final production builds also typechecked |
+| Lint | Exit0, 18.46s; only the baseline ConnectAiCard hook warning |
+| Full Vitest | **3316 passed / 24 skipped**, 311 passed /8 skipped files; 37.89s suite /38.80s wrapper |
+| Final chooser regression | **40/40**, 1.47s, after strengthening the hash-version case |
+| Regular build | Exit0, **28.26s**, `.next-modular-final-fix-regular-v3` |
+| Acceptance build | Exit0, **25.43s**, `.next-modular-final-fix-acceptance-v3` |
+| Modular six-spec coverage | v2 suite **12 passed/1 locator failure**, then affected import handoff **1/1** (4.2s); final v3 chooser **1/1** (14.6s) |
+| Core six production specs | **6/6**, 49.1s; Markdown, paper context, selection, feed, review and restart |
+
+The last change only removes an opaque version from the collapsed chooser summary. Its strengthened40-test component suite, fresh regular/acceptance builds and production chooser rerun pass. The full offline suite and remaining v2 browser scopes are reused because their product behavior is unchanged; these are not represented as a single fresh full-suite run on v3. All earlier failures and build variants remain retained.
+
+Current raw [gate metadata](artifacts/modular-workspace-2026-10-05/final-fix/verification/results.json), [full Vitest](artifacts/modular-workspace-2026-10-05/final-fix/verification/vitest.log.gz), [regular build](artifacts/modular-workspace-2026-10-05/final-fix/verification/build-regular/build-result.json), [acceptance build](artifacts/modular-workspace-2026-10-05/final-fix/verification/build-acceptance/build-result.json), [modular six-spec log](artifacts/modular-workspace-2026-10-05/final-fix/verification/browser-modular-final-suite.log.gz), [import correction](artifacts/modular-workspace-2026-10-05/final-fix/verification/browser-modular-targeted.log.gz), [final chooser](artifacts/modular-workspace-2026-10-05/final-fix/verification/browser-choice-final.log.gz) and [core six](artifacts/modular-workspace-2026-10-05/final-fix/verification/browser-core.log.gz) preserve exact scopes. R78 fixes truly-empty fixture registration ordering; R79 preserves ordinary explain routing for the synthetic Markdown marker. No product readiness override or live command is used.
+
+Current visually inspected production captures:
+
+| Capture | Evidence |
+| --- | --- |
+| Empty profile Tools | [Empty Tools](artifacts/modular-workspace-2026-10-05/final-fix/screens/empty-tools.png) |
+| Single chooser prompt, human summaries | [Chooser](artifacts/modular-workspace-2026-10-05/final-fix/screens/chooser.png) |
+| Active run after navigation, human title | [Active](artifacts/modular-workspace-2026-10-05/final-fix/screens/active-after-leave.png) |
+| Completed source-linked result | [Completed](artifacts/modular-workspace-2026-10-05/final-fix/screens/completed-source-linked.png) |
+| Supporting names and setup on phone | [Import](artifacts/modular-workspace-2026-10-05/final-fix/screens/supporting-import-phone.png), [Manage](artifacts/modular-workspace-2026-10-05/final-fix/screens/supporting-manage-phone.png) |
+| Selected-tool composer on phone | [Composer](artifacts/modular-workspace-2026-10-05/final-fix/screens/selected-tool-composer-phone.png) |
+| Actual normalized OpenCite fixture | [Desktop](artifacts/modular-workspace-2026-10-05/final-fix/screens/opencite-preview-desktop.png), [phone access/reasons](artifacts/modular-workspace-2026-10-05/final-fix/screens/opencite-preview-phone-access.png) |
+
+The captures retain rounded content surfaces and existing research interactions. Phone content is contained without horizontal overflow; supporting names use separate label/name lines. OpenCite presentation uses the real normalizer with synthetic source/PDF data, not actual command execution. Previous Task19/20 gates below are historical.
+
+
+## Historical Task19/20 gates and provenance
 
 | Gate | Baseline (before Task1) | Final code evidence |
 | --- | --- | --- |
@@ -65,7 +107,7 @@ Each confirmed decision in spec §2 is mapped below; spec §3–8 architecture, 
 | Explicit wiki intent, atomic validated changesets and Undo (§2–4; cycle8) | 6,14,17,19: [wiki-save](../../src/lib/workflows/wiki-save.ts), coordinator completion trigger | outputs_only inert; authorized update/save journals and response-loss reconciliation; new-only artifact selections R46; actual save/read/History Undo routes. No human wiki writes. |
 | Local runtime continues without observers; no cloud (§2–4; cycle5) | 4–5,17,19: [coordinator](../../src/lib/workflows/coordinator.ts), [observation client](../../src/lib/workflows/client.ts), [instrumentation](../../src/instrumentation.ts) | actual browser close/relaunch, leave/return and streamed production partial text; no duplicate synthesis. Runtime must stay running. |
 | Captured model/tier overrides; incompatible/unknown-price setup; no silent provider change (§2–4) | 3,9,14–19: [model capture](../../src/lib/workflows/model.ts), [native adapters](../../src/lib/extensions/native-adapters.ts), [ToolSettings](../../src/components/tools/ToolSettings.tsx) | API and subscription accounting adapters exercised with fixtures; foreign-profile overrides and missing provider blocked; real API/Codex/Claude Code compatibility **OPEN**. CLI dollars remain null. |
-| Manual updates/notification, rollback, immutable active versions (§2–4; cycle9) | 7,13,15,19: [version management](../../src/lib/extensions/versions.ts) | update/check/consent/publication rollback tests; actual manual update during observed run preserves old package/ticket. Rollback first-captured override semantics retained for final triage. |
+| Manual updates/notification, rollback, immutable active versions (§2–4; cycle9) | 7,13,15,19: [version management](../../src/lib/extensions/versions.ts) | update/check/consent/publication rollback tests; actual manual update during observed run preserves old package/ticket. Latest per-version preferences restore separately from immutable History/run captures (F4). |
 | Profile enabled/settings/model separation (§2; cycle9–10) | 2,13,15,19: profile-state, ToolSettings, [profile-isolation E2E](../../e2e/tool-profile-isolation.spec.ts) | authenticated session/routes, captured fast/strong roles and run allowance; disabled tools preserve History/core functionality. |
 | Curated catalog/user imports; no auto import/enable from browsing (§2–3) | 11,15,18: [native catalog](../../src/lib/extensions/native-catalog.ts), [pinned review catalog](../../src/lib/extensions/catalog/literature-review.ts) | imported-literature-review production catalog test proves exact OpenCite prerequisite and only root enablement. Marketplace/ratings/publishing deferred. |
 | Safe restart; no uncertain replay; explicit recovery (§2–4; cycle6,9) | 4,14,17,19: coordinator, [journal](../../src/lib/workflows/journal.ts), [native bridge](../../src/lib/server/native-workflow.ts) | actual owned Next SIGKILL/restart preserves completed input/response hashes and entire completed usage journal; uncertain synthesis holds three tickets without new invocation. Opaque native wording revisions require Stop/reconcile/new explicit revision (R41–45), not generic retry. |
@@ -73,11 +115,11 @@ Each confirmed decision in spec §2 is mapped below; spec §3–8 architecture, 
 | Failure/cancellation/missing dependency/unavailable model (§3–4; cycle9) | 8–10,13–14,17–19: sandbox/setup/host/coordinator | fail-closed command readiness, missing provider zero dispatch, owner/cancellation/reconciliation regressions. Local executor termination does not prove a non-cooperative remote provider stopped (R49). |
 | Native workflows preserve source checks/reservations/results/routes (§1,§6) | 14,17,19: native adapters, [legacyReviewAction](../../src/lib/server/native-workflow.ts) | core6 then fresh native2; explicit new top-level brief approval before any model/research call; shared native controls without duplicate blocks. Generic `startRun` rejects action/reviewId; only validated server bridge calls `startPreparedNativeReview` (R57–58). Helpers retain parent authority. |
 | First OpenCite and multi-skill scientific cycle (§5–6) | 11,18–20: OpenCite adapter, review graph, [live harness](../../src/lib/extensions/__tests__/live-workflow.test.ts) | locked originals/host binding and invented six-paper/two-strand claim/passage/coverage fixtures. Supported-host worker/install/CLI/broker, real OpenCite/source and provider/human claim audit **OPEN**; entire phase acceptance is not complete (R31). |
-| Current design/rounded content, Markdown/streaming/citations/accessibility (§8) | 15–19: existing components/tokens, [design contract](../../design.md) | settled desktop/phone production screens and core browser regressions; no redesign. Copy/labels/readability minors retained for final review. |
+| Current design/rounded content, Markdown/streaming/citations/accessibility (§8) | 15–19: existing components/tokens, [design contract](../../design.md) | settled desktop/phone production screens and core browser regressions; no redesign. F1–F6/M1–M3 are addressed in the consolidated fix wave above; the single scoped re-review passed. |
 
 ## Task commits and reviewed validation
 
-Actual Git history from the base through Task19 has exactly one amended commit per task. The per-task final full-suite counts below are passed/skipped, not live passes. Source/test links identify the task-owned integration surface; later corrections are described in the [historical evidence](artifacts/modular-workspace-2026-10-05/historical-evidence.md), [review ledger](artifacts/modular-workspace-2026-10-05/task-review-summary.md), and complete [R1–R59 decisions with costs](artifacts/modular-workspace-2026-10-05/decisions.md).
+Actual Git history from the base through Task19 has exactly one amended commit per task. The per-task final full-suite counts below are passed/skipped, not live passes. Source/test links identify the task-owned integration surface; later corrections are described in the [historical evidence](artifacts/modular-workspace-2026-10-05/historical-evidence.md), [review ledger](artifacts/modular-workspace-2026-10-05/task-review-summary.md), and complete [R1–R79 decisions with costs](artifacts/modular-workspace-2026-10-05/decisions.md).
 
 | Task | Reviewed final commit | Deliverable / primary regression | Final full suite |
 | --- | --- | --- | --- |
@@ -100,9 +142,9 @@ Actual Git history from the base through Task19 has exactly one amended commit p
 | 17 | `13ce70fac5f9b4dc6c6b3fa67a53fc460bcf1a99` | shared run/History/native report/recovery; [ToolRunView.tsx](../../src/components/tools/ToolRunView.tsx), [ToolRunView.test.tsx](../../src/components/tools/__tests__/ToolRunView.test.tsx) | 3239/21 |
 | 18 | `74dfba3c0de4740bba2eb506b143358820d423e8` | pinned multi-skill review/parallel/artifact reads; [literature-review.ts](../../src/lib/extensions/catalog/literature-review.ts), [literature-review.test.ts](../../src/lib/extensions/__tests__/literature-review.test.ts) | 3270/24 |
 | 19 | `d1a4e1c8994ed411b2b7a9373bde4757fceeebd7` | production navigation/restart/native approval; [run-playwright.mjs](../../scripts/run-playwright.mjs), [tool-restart.spec.ts](../../e2e/tool-restart.spec.ts) | 3291/24 |
-| 20 | Resolve by subject `docs: document the modular workspace and validation evidence` | Documentation, requirement map, gates and durable evidence; local links/whitespace/hash inspection | Reuses 3291/24; no code changes |
+| 20 | `96d0785d96ba19f662ca3d8b4a6148f84d24f434` | Documentation, requirement map, gates and durable evidence; local links/whitespace/hash inspection | Reuses 3291/24; no code changes |
 
-A commit cannot contain its own final immutable SHA. Task20's actual SHA is reported after committing; resolve its table entry with `git log --format='%H %s' --grep='^docs: document the modular workspace and validation evidence$'`. Task20 task review and the separate whole-branch review are still pending, not included in the Task1–19 approvals above.
+Task20 committed as `96d0785d96ba19f662ca3d8b4a6148f84d24f434` and its task review is preserved in the consolidated evidence. The broad final review completed with F1–F6/M1–M3; the single scoped re-review of code commit `fbb86dd093dee2af9fb3aaf9b452e4aa3244a8ce` passed; the later amendment changes documentation/evidence only.
 
 ## Setup, platform and transport limits
 
@@ -112,9 +154,9 @@ The [current macOS probe](artifacts/modular-workspace-2026-10-05/platform/macos-
 
 The real production Next kill/restart is distinct from command isolation: [process actions](artifacts/modular-workspace-2026-10-05/runtime/restart-process.jsonl), [server log](artifacts/modular-workspace-2026-10-05/runtime/restart-server.log.gz), [exact retained checkpoint/usage hashes](artifacts/modular-workspace-2026-10-05/runtime/restart-integrity.json), [provider invocation fixture log](artifacts/modular-workspace-2026-10-05/runtime/provider.jsonl), [source/GitHub fixture log](artifacts/modular-workspace-2026-10-05/runtime/source.jsonl), and [fresh profile no-start evidence](artifacts/modular-workspace-2026-10-05/runtime/fresh-profile.json) retain the distinction. Fixture transport matches exact test-owned requests and rejects unmatched traffic. No live provider, actual installed-agent scan, real research source, human profile/vault/key, install, push/merge/PR occurred. No fixture settings or session cookies are archived.
 
-## Current production screenshots
+## Historical Task19 production screenshots
 
-These four copied originals were visually inspected after preservation. They show settled real production UI with synthetic evidence, not real scientific sources. Deferred chooser duplication, prominent import IDs and SKILL.md headings are preserved in the review handoff.
+These four copied originals were visually inspected after preservation. They show settled real production UI with synthetic evidence, not real scientific sources. The old chooser duplication, import IDs and SKILL.md headings show the pre-fix state; current captures appear in the consolidated section above.
 
 | Required capture | Evidence |
 | --- | --- |
@@ -132,9 +174,9 @@ These four copied originals were visually inspected after preservation. They sho
 3. **OPEN engine/provider acceptance:** explicitly selected API/Codex/Claude Code with captured models, real setup/authentication and cumulative allowance. No paid/provider live call is authorized by this report.
 4. **OPEN scientific acceptance:** every claim in the small real imported review checked by a human against exact validated source passages; requested accuracy/cost comparison coverage and unsupported clinical comparison disclosed. The 26-model+2-command pinned fixture calibrates orchestration only.
 5. **OPEN real remote import transport:** public/private GitHub success with current exact revision/authentication; fixture validators/redirect guards do not prove live transport or human installed-skill compatibility.
-6. **PENDING final whole-branch review:** boundary escapes, duplicate billing/mutations, core behavior, compatibility claims, UI/copy and all [deferred minors](artifacts/modular-workspace-2026-10-05/review-handoff.md) remain controller-owned. Task20 does not silently close them.
+6. **PASSED single scoped re-review:** F1–F6/M1–M3 fixes, regressions and evidence passed at the code-reviewed commit. The original [review handoff](artifacts/modular-workspace-2026-10-05/review-handoff.md) is historical; R60–R79 explicitly adjudicate declined items and costs. The subsequent amend only records the completed review and finalizes evidence.
 
-The [live-check protocol](modular-workspace-live-check.md) defines exact opt-in gates, canonical disposable roots, pinned graph, selected engine/provider/model, nonsecret allowance and key-in-memory-only binding, retained ledger and human audit. Preserve the same root/operation/model/caps across retries; never reset an allowance to manufacture acceptance. All 59 chronological rulings/costs, including superseded R21 and R56–58, survive in [decisions](artifacts/modular-workspace-2026-10-05/decisions.md). [SHA256 manifest](artifacts/modular-workspace-2026-10-05/SHA256SUMS) binds preserved artifact bytes; scratch removal is controller-owned after final review.
+The [live-check protocol](modular-workspace-live-check.md) defines exact opt-in gates, canonical disposable roots, pinned graph, selected engine/provider/model, nonsecret allowance and key-in-memory-only binding, retained ledger and human audit. Preserve the same root/operation/model/caps across retries; never reset an allowance to manufacture acceptance. All 79 chronological rulings/costs, including superseded R21 and R56–58, survive in [decisions](artifacts/modular-workspace-2026-10-05/decisions.md). [SHA256 manifest](artifacts/modular-workspace-2026-10-05/SHA256SUMS) binds preserved artifact bytes; scratch removal is controller-owned after final review.
 
 Task20 local Markdown links, copied JSON/logs/images and manifest are checked; documentation-only `git diff --check` is clean. The unfiltered final staged branch comparison has only R53's two verbatim upstream trailing spaces: `src/lib/extensions/catalog/literature-review/lit-review/references/rigor-checklist.md:70` and `src/lib/extensions/catalog/literature-review/host/lit-review/protocol.md:625`. No broad whitespace ignores are added.
 

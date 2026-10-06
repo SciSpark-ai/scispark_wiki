@@ -13,6 +13,7 @@ import { canonicalJSON } from "./store"
 // Pin the validated DNS address at connect time: no second resolution/rebinding.
 const denied = new BlockList()
 for (const [network,prefix] of [["0.0.0.0",8],["10.0.0.0",8],["100.64.0.0",10],["127.0.0.0",8],["169.254.0.0",16],["172.16.0.0",12],["192.0.0.0",24],["192.168.0.0",16],["192.0.2.0",24],["198.18.0.0",15],["198.51.100.0",24],["203.0.113.0",24],["224.0.0.0",4],["240.0.0.0",4]] as const) denied.addSubnet(network,prefix,"ipv4")
+class DocumentSizeLimitError extends Error {}
 /** Server-owned HTTPS destinations only. No redirect, ambient proxy, or response headers returned. */
 export async function requestPublicHttps(url: URL, headers: Record<string,string>, maxBytes: number, signal: AbortSignal): Promise<{status:number;bytes:Buffer}> {
   if (url.protocol !== "https:" || url.username || url.password || url.port || url.hash) throw new Error("Invalid public destination")
@@ -28,7 +29,7 @@ export async function requestPublicHttps(url: URL, headers: Record<string,string
     const fail = () => reject(new Error("Service request unavailable"))
     const req = request(url,{headers,signal,family:4,lookup:(_host,_options,cb)=>cb(null,addresses[0].address,4)},res=>{
       const chunks:Buffer[]=[]; let size=0
-      res.on("data",(chunk:Buffer)=>{ size+=chunk.length; if(size>maxBytes) {res.destroy();fail()} else chunks.push(chunk) })
+      res.on("data",(chunk:Buffer)=>{ size+=chunk.length; if(size>maxBytes) {reject(new DocumentSizeLimitError());res.destroy()} else chunks.push(chunk) })
       res.on("error",fail)
       res.on("end",()=>resolve({status:res.statusCode??502,bytes:Buffer.concat(chunks)}))
     })
@@ -81,7 +82,9 @@ export async function createConnectionBroker(ctx:WorkflowContext,runId:string,bi
         if (++documentRequests > 4) return deny(429)
         const result=await requestPublicHttps(new URL(target),{Accept:"application/pdf"},524288,AbortSignal.any([abort.signal,AbortSignal.timeout(30000)]))
         if(result.status>=300 && result.status<400)return deny()
-        if(result.status!==200 || !result.bytes.subarray(0,5).equals(Buffer.from("%PDF-")))return deny(502)
+        if(result.status===401 || result.status===403)return deny(403)
+        if(result.status!==200)return deny(502)
+        if(!result.bytes.subarray(0,5).equals(Buffer.from("%PDF-")))return deny(422)
         res.writeHead(200,{"Content-Type":"application/pdf"});res.end(result.bytes);return
       }
       if(url.origin!=="http://semantic-scholar.scispark.invalid" || url.username || url.password || url.hash || url.pathname!=="/graph/v1/paper/search" || url.href.length>4000) return deny()
@@ -106,7 +109,7 @@ export async function createConnectionBroker(ctx:WorkflowContext,runId:string,bi
         }
       }
       res.writeHead(result.status,{"Content-Type":"application/json"});res.end(body)
-    } catch { if(!res.headersSent) deny(502);else res.end() }
+    } catch (error) { if(!res.headersSent) deny(error instanceof DocumentSizeLimitError ? 413 : 502);else res.end() }
   })
   server.on("connect",(_req,socket)=>{socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n")})
   server.requestTimeout=30000;server.headersTimeout=10000

@@ -409,3 +409,11 @@ it("public generic start cannot consume an existing prepared native brief", asyn
   expect(await f.ctx.storage.list(".scispark/tool-runs/start-operations/")).toEqual([])
   expect(await f.ctx.storage.read(".scispark/usage/review-attempts.json")).toBeNull()
 })
+
+it("projects the captured root name into run and shared History DTOs",async()=>{
+ await writeRun(f.ctx,{...f.run,status:"completed"})
+ const detail=await runRoute.GET(request(`/runs/${f.run.id}`),params(f.run.id))
+ expect((await detail.json()).result.toolName).toBe("Review")
+ const history=await runsRoute.GET(request("/runs"))
+ expect((await history.json()).result.find((r:{id:string})=>r.id===f.run.id).toolName).toBe("Review")
+})

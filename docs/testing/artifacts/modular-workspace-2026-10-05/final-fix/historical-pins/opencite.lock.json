@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "researchSkillsRevision": "f0219bde233abb44d8a0c5d73f41ea27073e1493",
+  "packageVersion": "0.5.4",
+  "wheelSha256": "4c8266dc371cd30b894ffbfb78ea642271762cce008f783af63ac884a0dbad84",
+  "wrapperVersion": 1,
+  "python": "3.12",
+  "resolutionTarget": "manylinux_2_28_x86_64",
+  "requirementsSha256": "bdc55065ec93f52f8f53dda16faec3dd8ae444134fedee5884267bb41d52e0b9",
+  "files": [
+    {
+      "path": "SKILL.md",
+      "sha256": "ede5275d562b8b7510e4fab2e76f9f8700ecb40e1c076957c5a2cbfd86cbb974",
+      "bytes": 5423
+    },
+    {
+      "path": "opencite-LICENSE",
+      "sha256": "dc8b5adf40d99b83c049a8a23e5dabf860bf5c05d3aa0e32551755a2f4b2eb01",
+      "bytes": 1076
+    },
+    {
+      "path": "references/api-keys-and-config.md",
+      "sha256": "049e5ec6ba3bc09acae9b71a245614453e3c177c55f446f49df0c12f3bef6b73",
+      "bytes": 1576
+    },
+    {
+      "path": "references/cli-reference.md",
+      "sha256": "488bddfa90ed71b83cd9c9f8688cfce2f8ee8bd2d5b05bf753a54931d8234481",
+      "bytes": 4574
+    },
+    {
+      "path": "references/common-workflows.md",
+      "sha256": "61b4bb484407d7424d4e4edc1ce3e98153ffd10a4b5c69b31acfcbc93435e3ab",
+      "bytes": 1814
+    },
+    {
+      "path": "requirements.lock",
+      "sha256": "bdc55065ec93f52f8f53dda16faec3dd8ae444134fedee5884267bb41d52e0b9",
+      "bytes": 65698
+    },
+    {
+      "path": "research-skills-LICENSE",
+      "sha256": "52c155c8e749654e7c7a67663eabe12eec8b7ccacb09a9bc60e927e31c3ba7b6",
+      "bytes": 1508
+    },
+    {
+      "path": "scispark-opencite-v1.py",
+      "sha256": "bd7ae2153cf727d5f23f2d23ca2dfdf3df647556c9f6eded01f4b5aaeef9191f",
+      "bytes": 4376
+    }
+  ],
+  "bundleDigest": "46c13b76713b36b6ec68a790d3dbd9945a839b18b48bc887e2ae7ce2f2a2580c"
+}

@@ -1,6 +1,7 @@
 import type { WorkflowContext } from "../workflows/context"
 import { currentRunAttemptScope } from "../workflows/attempt-scope"
-import { resolveToolIntent, intentOperationId, deriveWriteIntent, toolRunInput } from "../extensions/intent"
+import { ToolInputBindingError } from "../extensions/import-contract"
+import { resolveToolIntent, intentOperationId, deriveWriteIntent, bindToolRunInput } from "../extensions/intent"
 import { ToolRefSchema, type ToolRef } from "../extensions/contracts"
 import { startRun } from "../workflows/coordinator"
 import { listToolLibrary } from "../extensions/library"
@@ -303,11 +304,14 @@ async function routeToolQuestion(opts: AskChatOpts, session: ChatSession): Promi
   if (resolution.kind === "chat") return null
   if (resolution.kind === "clarify") return { role: "assistant", content: resolution.question }
   if (resolution.kind === "add-tool") return { role: "assistant", content: resolution.message }
-  if (resolution.kind === "choose") return { role: "assistant", content: resolution.choice.prompt, blocks: [{ type: "tool-choice", choice: resolution.choice }] }
+  if (resolution.kind === "choose") return { role: "assistant", content: "", blocks: [{ type: "tool-choice", choice: resolution.choice }] }
   if (resolution.existingRunId) return { role: "assistant", content: "Your existing run is retained. Open it to continue its saved work.", blocks: [{ type: "tool-run", runId: resolution.existingRunId, tool: resolution.tool }] }
   const available = (await listToolLibrary(ctx)).tools.some(t => t.enabled && t.readiness.status === "ready" && exactRef(t.ref) === exactRef(resolution.tool))
   if (!available) return { role: "assistant", content: "This tool changed. Open Tools to enable its current version or finish setup." }
-  const run = await startRun(ctx, { operationId: intentOperationId(session.id, operationId), tool: resolution.tool, input: toolRunInput(intentInput, resolution.tool), sessionId: session.id, contextRefs: intentInput.contextRefs, writeIntent: deriveWriteIntent(input.question) })
+  let declaredInput
+  try { declaredInput = await bindToolRunInput(ctx, intentInput, resolution.tool) }
+  catch (error) { if (error instanceof ToolInputBindingError) return { role: "assistant", content: error.message }; throw error }
+  const run = await startRun(ctx, { operationId: intentOperationId(session.id, operationId), tool: resolution.tool, input: declaredInput, sessionId: session.id, contextRefs: intentInput.contextRefs, writeIntent: deriveWriteIntent(input.question) })
   return { role: "assistant", content: "Your research run is saved.", blocks: [{ type: "tool-run", runId: run.id, tool: run.tool }] }
 }
 

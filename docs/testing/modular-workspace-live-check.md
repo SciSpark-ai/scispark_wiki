@@ -55,15 +55,15 @@ and [opencite.lock.json](../../src/lib/extensions/catalog/opencite.lock.json).
 
 | Package | Skill | Version | Immutable manifest digest |
 | --- | --- | --- | --- |
-| `neuromechanist.opencite` | `SKILL.md` | `0.5.4-scispark.1` | `a58a9f6e1524fed39aa47e90bbd5f8307b155ce45aaef3f1c75cd5fd72a58285` |
-| `neuromechanist.literature-review` | `host/humanizer/SKILL.md` | `0.2.2-scispark.1` | `d7d789b47df9dabd8904bad2f3abe19314fa12d2c75d3f7df53aba49871fe3a0` |
-| `neuromechanist.literature-review` | `host/manuscript-writing/SKILL.md` | `0.2.2-scispark.1` | `ed47d124bd9917118d73bb9bca4c3d4adb954fbbff06ff71581465b0a56b8f57` |
-| `neuromechanist.literature-review` | `host/paper-review/SKILL.md` | `0.2.2-scispark.1` | `69197f9da56796729c19e6e5274df9ed6997fa8ec83cf29cb7a581a462f2cb37` |
-| `neuromechanist.literature-review` | `host/collection/SKILL.md` | `0.2.2-scispark.1` | `ef8e5ef0814a596c7c279ac493e4f0770e30c79e1030c631c4ac8b9d90a77df7` |
-| `neuromechanist.literature-review` | `host/lit-review/SKILL.md` | `0.2.2-scispark.1` | `60e9fe2416cb769b0a0fc88a631edbb662f4a1488051b1582b64de4b71fe9ed4` |
+| `neuromechanist.opencite` | `SKILL.md` | `0.5.4-scispark.1` | `9319f9817fbb9bcaf4d7f82aed656cd87d6181cc42ee970c0a0ccb74022e9f3b` |
+| `neuromechanist.literature-review` | `host/humanizer/SKILL.md` | `0.2.2-scispark.1` | `8d6d691ab9d37c8e2e018d3a84a7cfec757b0a985e61e6bf437ba9201c40a50d` |
+| `neuromechanist.literature-review` | `host/manuscript-writing/SKILL.md` | `0.2.2-scispark.1` | `013fb79b8a222f860feeee721ca2c4ab712fd4e25f735a11d74c934f4aaadfb5` |
+| `neuromechanist.literature-review` | `host/paper-review/SKILL.md` | `0.2.2-scispark.1` | `481872e0b1763cb99240d8cdd1c2b01b775a242e276cf50e98d7724ba748da88` |
+| `neuromechanist.literature-review` | `host/collection/SKILL.md` | `0.2.2-scispark.1` | `389e4b35be828e8eba0c61dad55829ac741978b09c341b3251414cf00706cdce` |
+| `neuromechanist.literature-review` | `host/lit-review/SKILL.md` | `0.2.2-scispark.1` | `0a8a5b77f4bb9929cff0080fcb09d9d285fb4fed622532296c2665d9ae25fcd9` |
 
 Review bundle SHA256: `6db6871c94cdf44516df78325629b26b714f0446ce5838275dc02558b99fe4a5`.
-OpenCite bundle SHA256: `46c13b76713b36b6ec68a790d3dbd9945a839b18b48bc887e2ae7ce2f2a2580c`.
+OpenCite bundle SHA256: `3ee974257d26fca7a67e46c6ad9f7e47b160f9e4c40659eceeb82aa3d42f6c9f`.
 OpenCite released wheel0.5.4 SHA256: `4c8266dc371cd30b894ffbfb78ea642271762cce008f783af63ac884a0dbad84`;
 requirements SHA256: `bdc55065ec93f52f8f53dda16faec3dd8ae444134fedee5884267bb41d52e0b9`;
 Python3.12, manylinux_2_28_x86_64 resolution. Inspect exact CLI help/config and
@@ -181,3 +181,15 @@ No automatic cleanup resets a failed gate. No wiki write, push, merge, PR or
 publication is included. Gate success remains separated into actual isolation,
 install/CLI/broker, source acquisition, provider compatibility and human scientific
 acceptance; none has been run by Task20.
+
+### Consolidated fix-wave contract clarification
+
+These pins include the owned OpenCite reason-status overlay and concise catalog
+metadata. Upstream originals, released wheel and dependency lock bytes are
+unchanged. Public question starts use strict imported arguments only; OpenCite
+preserves query defaults of ten results and no full text, while typed explicit
+helper/API options remain available. Plain instructions default to the three
+host model adapters only after reviewed import; custom engine restrictions and
+all preparation/authority checks still apply. The 512 KiB PDF / 2 MiB command
+bounds are unchanged. Validate actual retrieval and conversion reasons separately
+on a supported host; synthetic normalized-output previews are presentation evidence.

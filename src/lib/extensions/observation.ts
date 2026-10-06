@@ -28,7 +28,18 @@ export async function observeToolPreparation(ctx: WorkflowContext, root: ToolRef
       const checked = await checkToolReadiness(ctx, ref, model)
       const saved = await readToolEnvironmentState(ctx, ref)
       if (checked.status !== "ready") {
-        result.readiness = { status: checked.status, reasons: [checked.status === "unsupported" ? "Required execution support is unavailable." : "Review required setup in Manage."] }
+        const safeReasons: Record<string, string> = {
+          "Required provider/model change needs explicit selection": "Choose a supported engine and model in Manage.",
+          "Review the imported tool": "Review and confirm the import before running it.",
+          "Required service adapter is unavailable": "This service has no supported connection. Review the tool adapter.",
+          "Bind Semantic Scholar and configure its credential": "Connect Semantic Scholar in Manage, then add its key in Settings.",
+          "Prepare a managed environment": "Prepare the required environment in Manage.",
+          "Prepared environment integrity needs repair": "The prepared environment needs repair. Open Manage to prepare it again.",
+          "Command isolation is unavailable": "Command isolation is unavailable on this computer. Use a supported host with a passing isolation check.",
+          "Internal model calls require a metered adapter": "This tool needs a metered model adapter before it can run.",
+        }
+        const specific = checked.reasons.map(reason => safeReasons[reason]).filter(Boolean)
+        result.readiness = { status: checked.status, reasons: specific.length ? [...new Set(specific)] : [saved ? projectToolSetup(saved).reason : checked.status === "unsupported" ? "This tool needs a supported execution adapter. Review its requirements in Manage." : "Prepare the required environment in Manage."] }
         result.blockedTool = { tool: ref, name }
         result.setup = saved ? projectToolSetup(saved) : undefined
       } else if (saved && !result.setup) result.setup = projectToolSetup(saved)

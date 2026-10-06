@@ -134,3 +134,11 @@ it("shows the exact native brief in Tools with a local report, and suppresses a 
   expect(screen.queryByRole("button", { name: "Existing native brief" })).toBeNull()
   expect(mocks.start).not.toHaveBeenCalled(); expect(mocks.act).not.toHaveBeenCalled()
 })
+
+it("shows the retained human root name and explains subscription limits",async()=>{
+ snapshot={...snapshot,toolName:"Evidence Atlas",tool:{...snapshot.tool,skillId:"SKILL.md"}}
+ await render(<ToolRunView runId={snapshot.id}/>)
+ expect(document.querySelector("h1")?.textContent).toBe("Evidence Atlas")
+ expect(document.body.textContent).toContain("This engine does not report dollar cost. Call and time limits still apply.")
+ expect(document.querySelector("details")?.textContent).toContain("SKILL.md")
+})

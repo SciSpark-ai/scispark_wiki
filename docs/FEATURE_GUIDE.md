@@ -50,12 +50,20 @@ Enable a prepared tool for this profile, pin it in the sidebar if useful, and
 choose model tier overrides in its settings. Otherwise it inherits the profile's
 selected fast/strong models. Setup exposes missing connections, prices, runtimes
 or unsupported isolation. Tools never silently change the chosen model/provider.
-Manual update checks produce a preview; apply or roll back deliberately. Saved
+Manual update checks produce a preview; apply or roll back deliberately. Restoring
+a version restores its latest saved preferences, including its allowance. Saved
 active runs retain their original tool graph, model and environment revisions.
+
+Plain instruction imports receive the human request as `question`; reviewed
+custom schemas can require explicit adaptation before use. OpenCite uses that
+request as `query`, with ten results and full-text retrieval off by default.
+Explicit typed calls can select its supported result count and full-text option.
+Conversation identity and source scope are kept outside imported arguments.
 
 Tools and Sparky share a run. Name a ready tool or select it directly; clear intent
 with one eligible implementation starts it, while overlapping tools show a
-chooser with name, source and distinction. Contextual relevance alone does not
+chooser with name, source and distinction. A named unavailable tool offers setup
+instead of substituting another implementation. Contextual relevance alone does not
 start work. One top-level tool owns supporting skills and all cumulative usage.
 New top-level native Deep review first shows its editable brief; only the explicit
 **Start review** action approves it. Generic Continue does not approve a brief.
@@ -73,6 +81,9 @@ Outputs are saved automatically. **Add to wiki** applies a validated, atomic,
 undoable changeset; an original explicit wiki-update request uses the same path.
 Newly arrived artifacts save separately from already-saved notes. Source links
 and abstract/full-text labels describe retained evidence, not independent truth.
+OpenCite paper previews distinguish available PDFs from converted text and show
+bounded reasons when requested full text is unavailable. Subscription engines do
+not report dollar cost; call and time limits still apply.
 
 Node>=22.12 is required for the pinned command runtime. Command tools additionally
 need a successful actual platform probe and a locked managed environment;
@@ -123,7 +134,8 @@ composer or start it from Tools. The question becomes an
 inline, editable brief: confirm the scope, selected indexes, personal context,
 actual model and estimated allowance, then choose **Start review**. Preparing or
 reopening a brief makes no paid call. The question, brief, sources, progress,
-reports and revisions remain in conversation History automatically.
+reports and revisions remain in shared History. Sparky-origin runs also link to
+their conversation; a Tools-origin run may have no conversation.
 
 The reusable pipeline in `src/lib/review/` combines the licensed TypeScript
 adaptation of **ScholarQA's quote → outline → iterative synthesis algorithm**

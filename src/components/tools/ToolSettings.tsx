@@ -36,16 +36,16 @@ export function ToolSettings({ tool, onClose, onChanged }: { tool: LibraryTool; 
     <fieldset disabled={busy} className="min-w-0 space-y-5">
       <p className="text-sm text-muted-text">Changes apply to new runs. Running tasks retain their captured tools, models and allowances.</p>
       {tool.blockedTool && !tool.connectionRequirements?.some(requirement => requirement.tool.digest === tool.blockedTool!.tool.digest) && <p className="text-sm font-medium">
-        {tool.blockedTool.tool.digest === tool.ref.digest ? "Tool" : "Supporting tool"}: {tool.blockedTool.name}
+        <span className="block text-xs text-muted-text">{tool.blockedTool.tool.digest === tool.ref.digest ? "Tool needing setup" : "Supporting tool needing setup"}</span><span className="block text-balance">{tool.blockedTool.name}</span>
       </p>}
       {tool.setup && <p className="text-sm">{tool.setup.reason}</p>}
       {tool.kind !== "native" && <section className="space-y-3" aria-label="Tool setup">
         {(tool.connectionRequirements ?? []).map(requirement => <div key={JSON.stringify(requirement.tool)} className="space-y-2">
-          <p className="text-sm">{requirement.tool.digest === tool.ref.digest ? "Tool" : "Supporting tool"}: {requirement.name}</p>
+          <p className="text-sm"><span className="block text-xs text-muted-text">{requirement.tool.digest === tool.ref.digest ? "Tool connection" : "Supporting tool connection"}</span><span className="block text-balance">{requirement.name}</span></p>
           <Button variant="secondary" onClick={() => void run(() => mutate({
             action: "bind-connection", target: requirement.tool,
             service: requirement.service, operationId: crypto.randomUUID(),
-          }))}>Connect Semantic Scholar for {requirement.name}</Button>
+          }))} aria-label={`Connect Semantic Scholar for ${requirement.name}`}>Connect Semantic Scholar</Button>
         </div>)}
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" disabled={tool.setup?.state === "needs-reconciliation" || tool.setup?.state === "installing"}

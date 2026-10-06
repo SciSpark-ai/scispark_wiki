@@ -108,9 +108,10 @@ export type CatalogEntry = z.infer<typeof CatalogEntrySchema>
 export const OpenCiteSourceReferenceSchema = z.string().max(2048).refine(value => {
   try { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password && !url.hash && !url.port } catch { return false }
 }, "Expected an HTTP or HTTPS source reference")
+export const OpenCiteFullTextStatusSchema = z.enum(["not-requested", "request-limit", "no-location", "policy-denied", "size-limit", "retrieval-failed", "invalid-pdf", "conversion-failed", "available", "unknown"])
 export const OpenCiteResultSchema = z.object({
   sourceStatus: z.enum(["ok", "no-results", "rate-limited", "unavailable"]),
-  papers: z.array(z.object({ title: z.string().min(1).max(2000), doi: z.string().max(1000), url: z.union([OpenCiteSourceReferenceSchema,z.literal("")]), authors: z.array(z.string().max(500)).max(50), year: z.number().int().min(1000).max(9999).nullable(), abstract: z.string().max(16000), access: z.enum(["abstract", "full-text"]), sourceRefs: z.array(z.string().max(2048)).max(20) }).strict()).max(20),
+  papers: z.array(z.object({ title: z.string().min(1).max(2000), doi: z.string().max(1000), url: z.union([OpenCiteSourceReferenceSchema,z.literal("")]), authors: z.array(z.string().max(500)).max(50), year: z.number().int().min(1000).max(9999).nullable(), abstract: z.string().max(16000), access: z.enum(["abstract", "full-text"]), fullTextStatus: OpenCiteFullTextStatusSchema.optional(), sourceRefs: z.array(z.string().max(2048)).max(20) }).strict()).max(20),
   artifacts: z.array(z.object({kind:z.enum(["papers","bibtex","file","markdown"]),title:z.string().max(500),mediaType:z.string(),sourceRefs:z.array(z.string().max(2048)).max(1000),text:z.string().max(500000).optional(),base64:z.string().max(700000).optional()}).strict()).max(8),
 }).strict()
 export type OpenCiteResult = z.infer<typeof OpenCiteResultSchema>
@@ -185,3 +186,8 @@ export const ParallelHostActionSchema = z.object({
   type: z.literal("parallel"),
   branches: z.array(z.object({ tool: ToolRefSchema, input: z.record(z.string(), z.unknown()) }).strict()).length(2),
 }).strict()
+
+/** Fixed host-authored guidance only; never wrap external exception text. */
+export class ToolInputBindingError extends Error {
+  constructor() { super("This request does not fit the tool's reviewed input. Shorten the question or review its question input binding in the import source before starting it.") }
+}

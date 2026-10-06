@@ -358,7 +358,9 @@ Review the selected workflow and its setup requirements before importing it.
 choose what to add; discovering or importing a skill does not run it.
 
 Start an enabled, ready tool in Tools or name it in Sparky. A clear request with
-one matching tool starts directly; several matches show a chooser. Supporting
+one matching tool starts directly; several matches show a chooser. A named
+unavailable tool offers setup instead of choosing a substitute. Plain instruction
+imports receive the human question; custom input schemas require reviewed bindings. Supporting
 skills share the chosen run's scope and usage limit. Results are retained in
 History, with source links and explicit **Add to wiki** and Undo controls.
 
@@ -366,7 +368,8 @@ Keep the local runtime running while work continues. Navigation and closing the
 browser detach the view; they do not cancel work. Reopen the same run to follow
 progress. Continue adds to its allowance while retaining prior usage; uncertain
 work requires a recovery decision. Updates are applied manually, with rollback
-available and active runs pinned to their original versions.
+available and active runs pinned to their original versions. A restored version
+uses its latest saved preferences without changing already captured runs.
 
 Imported commands need verified isolation, a managed environment, and their
 required connections. This validation host's macOS isolation probe is unsupported;

@@ -45,9 +45,9 @@
     },
     {
       "path": "scispark-opencite-v1.py",
-      "sha256": "bd7ae2153cf727d5f23f2d23ca2dfdf3df647556c9f6eded01f4b5aaeef9191f",
-      "bytes": 4376
+      "sha256": "83c3aeab2cb28893b09d524a3a6c231b06ac094c5410adcd89e2c89710149c92",
+      "bytes": 5127
     }
   ],
-  "bundleDigest": "46c13b76713b36b6ec68a790d3dbd9945a839b18b48bc887e2ae7ce2f2a2580c"
+  "bundleDigest": "3ee974257d26fca7a67e46c6ad9f7e47b160f9e4c40659eceeb82aa3d42f6c9f"
 }

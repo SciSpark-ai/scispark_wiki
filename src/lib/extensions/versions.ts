@@ -51,9 +51,18 @@ function wasPublished(state: ProfileTools | null, ref: ToolRef): boolean {
   return state?.managementOperations?.some(operation => operation.toolKey === toolKey(ref)
     && (same(operation.previousTool, ref) || same(operation.result, ref))) ?? false
 }
+const Preference = z.object({ vaultId: DigestSchema, ref: ToolRefSchema, override: ToolOverrideSchema.nullable() }).strict()
+async function latestPreference(ctx: WorkflowContext, ref: ToolRef, fallback?: ToolOverride) {
+  const raw = await (await managementStorage(ctx)).read(`versions/preferences/${ref.digest}.json`)
+  if (!raw) return fallback ?? null
+  const saved = Preference.parse(JSON.parse(raw))
+  if (saved.vaultId !== ctx.vaultId || !same(saved.ref, ref)) throw new Error("Version preference ownership mismatch")
+  return saved.override
+}
 async function remember(ctx: WorkflowContext, ref: ToolRef, override?: ToolOverride) {
   const key = toolKey(ref), history = await readHistory(ctx, key)
-  // First captured per-version configuration stays immutable for rollback.
+  // Preserve the original audit snapshot separately from the latest preference.
+  await (await managementStorage(ctx)).write(`versions/preferences/${ref.digest}.json`, JSON.stringify(Preference.parse({ vaultId: ctx.vaultId, ref, override: override ?? null })))
   if (!history.entries.some(e => same(e.ref, ref))) {
     history.entries.push({ ref, ...(override ? { override } : {}) })
     await (await managementStorage(ctx)).write(historyPath(key), JSON.stringify(History.parse(history)))
@@ -69,7 +78,7 @@ export async function listToolVersions(ctx: WorkflowContext, key: ToolKey) {
   if (current && !entries.some(e => same(e.ref, current))) entries.push({ ref: current, override: state?.overrides.find(o => o.toolKey === key) })
   return Promise.all(entries.map(async entry => {
     try {
-      const model = await resolveRunModel(ctx, entry.ref, same(entry.ref, current) ? state?.overrides.find(o => o.toolKey === key) ?? null : entry.override ?? null)
+      const model = await resolveRunModel(ctx, entry.ref, same(entry.ref, current) ? state?.overrides.find(o => o.toolKey === key) ?? null : await latestPreference(ctx, entry.ref, entry.override))
       const readiness = getToolManifest(entry.ref)?.kind === "native" ? { status: "ready" as const, reasons: [] } : await checkToolReadiness(ctx, entry.ref, model)
       return { ref: entry.ref, current: same(entry.ref, current), readiness: publicReadiness(readiness) }
     } catch { return { ref: entry.ref, current: same(entry.ref, current), readiness: { status: "needs-setup" as const, reasons: ["Restore the retained package and configuration before using this version"] } } }
@@ -330,8 +339,9 @@ export async function applyToolAction(ctx: WorkflowContext, key: ToolKey, input:
     if (action.action === "rollback") {
       const saved = (await readHistory(ctx, key)).entries.find(e => e.ref.digest === action.digest)
       if (!saved || !wasPublished(state, saved.ref)) throw new Error("Retained tool version is unavailable")
-      await prepared(ctx, saved.ref, false, saved.override ?? null)
-      return switchBinding(ctx, key, ref, saved.ref, action, async () => {}, saved.override ?? null)
+      const preference = same(saved.ref, ref) ? state?.overrides.find(o => o.toolKey === key) ?? null : await latestPreference(ctx, saved.ref, saved.override)
+      await prepared(ctx, saved.ref, false, preference)
+      return switchBinding(ctx, key, ref, saved.ref, action, async () => {}, preference)
     }
     if (action.action === "check-update" || action.action === "acknowledge-and-discard-setup") {
       if (action.action === "acknowledge-and-discard-setup") {

@@ -1,3 +1,4 @@
+import { ToolInputBindingError } from "../extensions/import-contract"
 import { getToolManifest } from "../extensions/registry"
 import { createHash, randomUUID } from "node:crypto"
 import { z } from "zod"
@@ -126,7 +127,11 @@ async function startRunInternal(ctx: WorkflowContext, request: StartRunInput, va
     const binding = state?.enabled.find(b => b.enabled && toolKey(b.tool) === toolKey(request.tool))
     const pinned = state?.pins.find(ref => toolKey(ref) === toolKey(request.tool))
     if (!binding || canonicalJson(binding.tool) !== canonicalJson(request.tool) || (pinned && canonicalJson(pinned) !== canonicalJson(request.tool))) throw new Error("Tool is not enabled at the requested version")
-    const { dependencies } = await resolveToolPreparationClosure(ctx, request.tool)
+    const { dependencies, manifest } = await resolveToolPreparationClosure(ctx, request.tool)
+    if (manifest.kind !== "native") {
+      const { validateInputSchema } = await import("../extensions/inspect")
+      if (!validateInputSchema(manifest.inputSchema).safeParse(request.input).success) throw new ToolInputBindingError()
+    }
     const model = await resolveRunModel(ctx, request.tool)
     await validatePrepared?.(model)
     const preparedEnvironmentRefs = await resolvePreparedEnvironmentRefs(ctx, [request.tool, ...dependencies], model)

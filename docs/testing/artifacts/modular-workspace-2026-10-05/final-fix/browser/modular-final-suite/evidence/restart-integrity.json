@@ -1,0 +1,325 @@
+{
+  "completed": {
+    "id": "3ac328d9-cc3c-4d4b-879c-13eb18e8c3f5",
+    "hashes": [
+      {
+        "id": "0f4f8933-bde4-4197-8cfb-a98c5cdcdd06",
+        "inputHash": "35e16801f392a403449208ac4603f7f82f7d8f724cbc90ac8d76eacefae2022f",
+        "responseHash": "aae8288fb96a7aacfa45a91193f207143a3dc8e8cdcb1e7737ee1660af73c160"
+      },
+      {
+        "id": "3779ee3f-b84b-4d03-851e-a7db08a6d738",
+        "inputHash": "123dcec6e9cf0410c4406693f39f4cc5dca6e9014e2622673d2f58b4ac61fa06",
+        "responseHash": "3715700713c5e2772f2330086be1530ff21bc3cdc6d34f72788744feec0e50b9"
+      },
+      {
+        "id": "7e4f0ab3-6b85-47c7-8b86-432f617c1770",
+        "inputHash": "75a1f16dd22a84846198b1c280e1d36ad4ea7d88d311f9c6c2a095640dd269e5",
+        "responseHash": "a8747e5e33707d8d0fd15aa81b3b175854d61f5f6400a0cf4d9a2690f32cdaf1"
+      },
+      {
+        "id": "fc1387c9-7d64-47b1-8aa3-bd2ccb278557",
+        "inputHash": "4a0d292af7f9e9dd1742fa3922a25d178005b1bdb4c470699cc9c3796ba6a223",
+        "responseHash": "b6d7be7b48e492cc5a8338b286b5593ead97a913b44302e890abc336dbcf249a"
+      }
+    ],
+    "usage": {
+      "schemaVersion": 1,
+      "runId": "3ac328d9-cc3c-4d4b-879c-13eb18e8c3f5",
+      "profileId": "5cc0ed9d676da2569a2d7690dc59758c",
+      "vaultId": "5cc0ed9d676da2569a2d7690dc59758ce7e35321d06cca497b56cfa0a999e748",
+      "baseUsage": {
+        "modelCalls": 0,
+        "commandCalls": 0,
+        "activeSeconds": 0,
+        "costUsd": 0
+      },
+      "allowance": {
+        "modelCalls": 30,
+        "commandCalls": 60,
+        "activeSeconds": 1800,
+        "costUsd": 2
+      },
+      "extensions": [],
+      "attempts": [
+        {
+          "ticket": {
+            "id": "50c9169b-3070-4bd4-8b31-ed26c6e53b12",
+            "runId": "3ac328d9-cc3c-4d4b-879c-13eb18e8c3f5",
+            "step": {
+              "id": "fc1387c9-7d64-47b1-8aa3-bd2ccb278557",
+              "kind": "model",
+              "replay": "reconcile",
+              "inputHash": "4a0d292af7f9e9dd1742fa3922a25d178005b1bdb4c470699cc9c3796ba6a223"
+            },
+            "estimate": {
+              "modelCalls": 1,
+              "commandCalls": 0,
+              "activeSeconds": 180,
+              "costUsd": 0.02640825,
+              "accountingOwner": "workflow"
+            },
+            "reservedAt": "2026-10-06T08:53:34.456Z"
+          },
+          "state": "known",
+          "dispatchedAt": "2026-10-06T08:53:34.462Z",
+          "result": {
+            "modelCalls": 1,
+            "commandCalls": 0,
+            "activeSeconds": 0.022,
+            "costUsd": 0.00006,
+            "outcome": "known",
+            "financialLedgerRef": {
+              "ledger": "meter",
+              "attemptId": "50c9169b-3070-4bd4-8b31-ed26c6e53b12"
+            },
+            "usage": {
+              "inputTokens": 20,
+              "outputTokens": 10
+            }
+          }
+        },
+        {
+          "ticket": {
+            "id": "2208a9e1-64a1-43b8-b5c7-8c689aaf9951",
+            "runId": "3ac328d9-cc3c-4d4b-879c-13eb18e8c3f5",
+            "step": {
+              "id": "3779ee3f-b84b-4d03-851e-a7db08a6d738",
+              "kind": "model",
+              "replay": "reconcile",
+              "inputHash": "123dcec6e9cf0410c4406693f39f4cc5dca6e9014e2622673d2f58b4ac61fa06"
+            },
+            "estimate": {
+              "modelCalls": 1,
+              "commandCalls": 0,
+              "activeSeconds": 180,
+              "costUsd": 0.026901,
+              "accountingOwner": "workflow"
+            },
+            "reservedAt": "2026-10-06T08:53:34.568Z"
+          },
+          "state": "known",
+          "dispatchedAt": "2026-10-06T08:53:34.573Z",
+          "result": {
+            "modelCalls": 1,
+            "commandCalls": 0,
+            "activeSeconds": 0.01,
+            "costUsd": 0.00006,
+            "outcome": "known",
+            "financialLedgerRef": {
+              "ledger": "meter",
+              "attemptId": "2208a9e1-64a1-43b8-b5c7-8c689aaf9951"
+            },
+            "usage": {
+              "inputTokens": 20,
+              "outputTokens": 10
+            }
+          }
+        },
+        {
+          "ticket": {
+            "id": "f034d946-735b-4a5b-b2de-de7c87e56c79",
+            "runId": "3ac328d9-cc3c-4d4b-879c-13eb18e8c3f5",
+            "step": {
+              "id": "0f4f8933-bde4-4197-8cfb-a98c5cdcdd06",
+              "kind": "model",
+              "replay": "reconcile",
+              "inputHash": "35e16801f392a403449208ac4603f7f82f7d8f724cbc90ac8d76eacefae2022f"
+            },
+            "estimate": {
+              "modelCalls": 1,
+              "commandCalls": 0,
+              "activeSeconds": 180,
+              "costUsd": 0.022161,
+              "accountingOwner": "workflow"
+            },
+            "reservedAt": "2026-10-06T08:53:34.618Z"
+          },
+          "state": "known",
+          "dispatchedAt": "2026-10-06T08:53:34.622Z",
+          "result": {
+            "modelCalls": 1,
+            "commandCalls": 0,
+            "activeSeconds": 9.023,
+            "costUsd": 0.00006,
+            "outcome": "known",
+            "financialLedgerRef": {
+              "ledger": "meter",
+              "attemptId": "f034d946-735b-4a5b-b2de-de7c87e56c79"
+            },
+            "usage": {
+              "inputTokens": 20,
+              "outputTokens": 10
+            }
+          }
+        }
+      ]
+    }
+  },
+  "uncertain": {
+    "id": "d7cc9d43-3f3b-448d-ad5f-84d69ea489f5",
+    "before": [
+      {
+        "id": "0047b805-9aea-4710-8b21-33ea6255178f",
+        "inputHash": "e11f8bbeaa5bf3c8a6b8e695d9650443048bbb7cc1293d3ab849c4120802b183",
+        "responseHash": "b6d7be7b48e492cc5a8338b286b5593ead97a913b44302e890abc336dbcf249a"
+      },
+      {
+        "id": "40f55543-c4fd-4fcb-81d8-e7105d2c93d0",
+        "inputHash": "ab82ff49b46f15e3e7f5c136844df130cc3c5360f2c8665dd569e5bece6fa11a",
+        "responseHash": "d7b5df0ce122cadee1ae9fe9686b74788f18b116bdda774b763dda3282b0aab5"
+      },
+      {
+        "id": "d921a6b2-d4f7-406d-8498-51be3fc3b40d",
+        "inputHash": "b16d9623223ca07aff0d9bea53d3b9b8ee80c922c09cb6eaa9349d33144d84c2",
+        "responseHash": "f18c4a9df4e4959bac08d201ecaa640e246581faeedb90ec4d3ad121d3e860e9"
+      }
+    ],
+    "after": {
+      "schemaVersion": 1,
+      "runId": "d7cc9d43-3f3b-448d-ad5f-84d69ea489f5",
+      "profileId": "5cc0ed9d676da2569a2d7690dc59758c",
+      "vaultId": "5cc0ed9d676da2569a2d7690dc59758ce7e35321d06cca497b56cfa0a999e748",
+      "baseUsage": {
+        "modelCalls": 0,
+        "commandCalls": 0,
+        "activeSeconds": 0,
+        "costUsd": 0
+      },
+      "allowance": {
+        "modelCalls": 30,
+        "commandCalls": 60,
+        "activeSeconds": 1800,
+        "costUsd": 2
+      },
+      "extensions": [],
+      "attempts": [
+        {
+          "ticket": {
+            "id": "60fcaa88-61fa-490c-8f7a-be673c0fe2ca",
+            "runId": "d7cc9d43-3f3b-448d-ad5f-84d69ea489f5",
+            "step": {
+              "id": "0047b805-9aea-4710-8b21-33ea6255178f",
+              "kind": "model",
+              "replay": "reconcile",
+              "inputHash": "e11f8bbeaa5bf3c8a6b8e695d9650443048bbb7cc1293d3ab849c4120802b183"
+            },
+            "estimate": {
+              "modelCalls": 1,
+              "commandCalls": 0,
+              "activeSeconds": 180,
+              "costUsd": 0.02639325,
+              "accountingOwner": "workflow"
+            },
+            "reservedAt": "2026-10-06T08:53:44.692Z"
+          },
+          "state": "known",
+          "dispatchedAt": "2026-10-06T08:53:44.697Z",
+          "result": {
+            "modelCalls": 1,
+            "commandCalls": 0,
+            "activeSeconds": 0.007,
+            "costUsd": 0.00006,
+            "outcome": "known",
+            "financialLedgerRef": {
+              "ledger": "meter",
+              "attemptId": "60fcaa88-61fa-490c-8f7a-be673c0fe2ca"
+            },
+            "usage": {
+              "inputTokens": 20,
+              "outputTokens": 10
+            }
+          }
+        },
+        {
+          "ticket": {
+            "id": "2bb659d1-0516-45ac-ba00-feee61a101a6",
+            "runId": "d7cc9d43-3f3b-448d-ad5f-84d69ea489f5",
+            "step": {
+              "id": "d921a6b2-d4f7-406d-8498-51be3fc3b40d",
+              "kind": "model",
+              "replay": "reconcile",
+              "inputHash": "b16d9623223ca07aff0d9bea53d3b9b8ee80c922c09cb6eaa9349d33144d84c2"
+            },
+            "estimate": {
+              "modelCalls": 1,
+              "commandCalls": 0,
+              "activeSeconds": 180,
+              "costUsd": 0.026886,
+              "accountingOwner": "workflow"
+            },
+            "reservedAt": "2026-10-06T08:53:44.762Z"
+          },
+          "state": "known",
+          "dispatchedAt": "2026-10-06T08:53:44.767Z",
+          "result": {
+            "modelCalls": 1,
+            "commandCalls": 0,
+            "activeSeconds": 0.009,
+            "costUsd": 0.00006,
+            "outcome": "known",
+            "financialLedgerRef": {
+              "ledger": "meter",
+              "attemptId": "2bb659d1-0516-45ac-ba00-feee61a101a6"
+            },
+            "usage": {
+              "inputTokens": 20,
+              "outputTokens": 10
+            }
+          }
+        },
+        {
+          "ticket": {
+            "id": "6dad0434-1682-49af-8fdc-163c831d046c",
+            "runId": "d7cc9d43-3f3b-448d-ad5f-84d69ea489f5",
+            "step": {
+              "id": "d17446e3-edf2-4e36-8640-62b2d0f8604d",
+              "kind": "model",
+              "replay": "reconcile",
+              "inputHash": "e71a63a419646fe73e220397f2ea0bb4d069102e87728736c31789c7ec915f9c"
+            },
+            "estimate": {
+              "modelCalls": 1,
+              "commandCalls": 0,
+              "activeSeconds": 180,
+              "costUsd": 0.0221535,
+              "accountingOwner": "workflow"
+            },
+            "reservedAt": "2026-10-06T08:53:44.813Z"
+          },
+          "state": "reserved",
+          "dispatchedAt": "2026-10-06T08:53:44.817Z"
+        }
+      ]
+    },
+    "provider": [
+      {
+        "id": "4632749c-4a97-49a1-a45e-06e1ce266d12",
+        "pid": 57271,
+        "scenario": "restart",
+        "phase": "decision",
+        "inputHash": "935ec33fd41d6808d6d21f7fa8ba37e4f633d81d88d918d7339958689f655435",
+        "workflowInputHash": "e11f8bbeaa5bf3c8a6b8e695d9650443048bbb7cc1293d3ab849c4120802b183",
+        "stream": false
+      },
+      {
+        "id": "ee0d29c0-3986-44f6-ba01-c85a8e569e13",
+        "pid": 57271,
+        "scenario": "restart",
+        "phase": "decision",
+        "inputHash": "a7f6a37edf161ee3579be04dabc137e002e9955b6e8a324655b1b1302c7c1dfb",
+        "workflowInputHash": "b16d9623223ca07aff0d9bea53d3b9b8ee80c922c09cb6eaa9349d33144d84c2",
+        "stream": false
+      },
+      {
+        "id": "a29326c8-f390-4b29-b3cc-17645fdabeaf",
+        "pid": 57271,
+        "scenario": "restart",
+        "phase": "review-synthesis",
+        "inputHash": "2413ae68c9fb37b0c677f85cc1f0d88d89d9fa4e63ffa9854a059ff6a0898fe2",
+        "workflowInputHash": "e71a63a419646fe73e220397f2ea0bb4d069102e87728736c31789c7ec915f9c",
+        "stream": true
+      }
+    ]
+  }
+}

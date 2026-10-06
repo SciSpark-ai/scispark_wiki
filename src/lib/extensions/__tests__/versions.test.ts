@@ -132,7 +132,7 @@ describe("retention, acknowledged cancellation and strict API boundaries", () =>
     expect((await readRun(f.ctx, run.id))!.tool.digest).toBe(f.ref.digest)
     for (const path of paths) expect(await (await importStorage(f.ctx)).read(path)).toBe("retained fixture")
     expect(new TextDecoder().decode((await readArtifact(f.ctx, finished.id, artifact.id)).bytes)).toBe("Preserved result")
-    await expect(startRun(f.ctx, { operationId: randomUUID(), tool: f.ref, input: {}, contextRefs: [], writeIntent: "outputs_only" })).rejects.toThrow("not enabled")
+    await expect(startRun(f.ctx, { operationId: randomUUID(), tool: f.ref, input: { question: "Fixture request" }, contextRefs: [], writeIntent: "outputs_only" })).rejects.toThrow("not enabled")
   })
   it("does not complete cancel removal until the actual owning lease acknowledges and releases", async () => {
     const f = await fixture(), fixtureRun = workflowFixture().run
@@ -168,7 +168,7 @@ describe("retention, acknowledged cancellation and strict API boundaries", () =>
       entered = true; await waiting
       observed = (await new NodeFsVaultStorage(extensionObjectPath(ctx, run.tool.digest)).read("files/SKILL.md"))!
     } })
-    const run = await startRun(f.ctx, { operationId: randomUUID(), tool: f.ref, input: {}, contextRefs: [], writeIntent: "outputs_only" })
+    const run = await startRun(f.ctx, { operationId: randomUUID(), tool: f.ref, input: { question: "Fixture request" }, contextRefs: [], writeIntent: "outputs_only" })
     try {
       await vi.waitFor(() => expect(entered).toBe(true))
       const before = await readRun(f.ctx, run.id), { preview } = await changed(f)
@@ -256,7 +256,7 @@ describe("reviewed adapter continuity and consent publication", () => {
     await writeFile(join(f.source, "old.txt"), "old resource")
     // Reacquire so the reviewed resource is part of the bounded stage.
     const p = await inspectPackage(f.ctx, await acquirePackage(f.ctx, { kind: "local-folder", path: f.source }))
-    expect(initial.tools[0].proposal.engines).toEqual([])
+    expect(initial.tools[0].proposal.engines).toEqual(["api", "codex", "claude-code"])
     const reviewed = await reviewImport(f.ctx, p.id, [{ ...p.tools[0].proposal, engines: ["api"], resources: ["old.txt"] }])
     const [ref] = await commitImport(f.ctx, reviewed.id, [reviewed.tools[0].manifest.ref]); f.ref = ref; f.key = toolKey(ref)
     await writeFile(join(f.source, "SKILL.md"), "Changed plain instructions")
@@ -428,4 +428,17 @@ describe("review fixes: publication proof and shared cancellation fence", () => 
       await waitForWorkflowIdle()
     }
   })
+})
+
+it("restores the latest explicitly saved per-version allowance without changing captured runs", async () => {
+  const f=await fixture(), {run}=await retainedRun(f)
+  const set=async(costUsd:number)=>applyToolAction(f.ctx,f.key,{action:"binding",operationId:randomUUID(),patch:{defaultAllowance:{costUsd}}})
+  await set(5)
+  const {preview}=await changed(f), updated=await applyToolUpdate(f.ctx,f.key,preview.id,randomUUID())
+  await rollbackTool(f.ctx,f.key,f.ref.digest,randomUUID())
+  await set(1)
+  await rollbackTool(f.ctx,f.key,updated.digest,randomUUID())
+  await rollbackTool(f.ctx,f.key,f.ref.digest,randomUUID())
+  expect((await readProfileTools(f.ctx))!.overrides[0].defaultAllowance?.costUsd).toBe(1)
+  expect(await readRun(f.ctx,run.id)).toEqual(run)
 })

@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { NodeFsVaultStorage } from "../../vault/node-fs-storage"
+import * as importStore from "../store"
 import * as library from "../library"
 import * as classification from "../classification-attempt"
 import * as runStore from "../../workflows/store"
@@ -22,6 +23,7 @@ async function fixture() {
   const base = NATIVE_TOOL_MANIFESTS.find(t => t.ref.skillId === "deep-review")!
   const candidate = (name: string, packageId: string): LibraryTool => ({ ...base, ref: { ...base.ref, packageId }, name, enabled: true, installed: true, pinned: false, readiness: { status: "ready", reasons: [] }, connectionRequirements: [] })
   const tools = [candidate("Deep literature review", "scispark.builtin"), candidate("Evidence Atlas", "fixture.import")]
+  vi.spyOn(importStore, "readImportedTool").mockImplementation(async (_ctx,ref) => ({manifest:{...base,ref,inputSchema:{type:"object",properties:{question:{type:"string"}},required:["question"],additionalProperties:false}}}) as never)
   vi.spyOn(library, "listToolLibrary").mockImplementation(async () => ({ tools, catalog: [], discoveryDismissed: false }))
   const classify = vi.spyOn(classification, "classifyToolIntent").mockResolvedValue({ kind: "tools", toolIds: [0, 1] })
   const runs = new Map()
@@ -117,4 +119,25 @@ it("keeps empty-profile contextual discussion in core chat", async () => {
     expect(await resolveToolIntent(ctx,{...input,operationId:randomUUID(),question})).toMatchObject({kind:"add-tool"})
   }
   expect(classify).not.toHaveBeenCalled()
+})
+
+it("blocks an explicitly named unavailable implementation before classification", async () => {
+  const {ctx,input,tools,classify}=await fixture()
+  tools[1].readiness={status:"needs-setup",reasons:["Configure the model"]}
+  classify.mockResolvedValue({kind:"tools",toolIds:[0]})
+  expect(await resolveToolIntent(ctx,{...input,question:"Use Evidence Atlas to review speech"})).toMatchObject({kind:"add-tool"})
+  expect(classify).not.toHaveBeenCalled()
+})
+it("keeps ambiguous names explicit even when only one implementation is ready", async () => {
+  const {ctx,input,tools,classify}=await fixture()
+  tools[0].name=tools[1].name
+  tools[1].readiness={status:"needs-setup",reasons:["Configure the model"]}
+  expect(await resolveToolIntent(ctx,{...input,question:"Use Evidence Atlas to review speech"})).toMatchObject({kind:"clarify"})
+  expect(classify).not.toHaveBeenCalled()
+})
+
+it("does not substitute for a named disabled tool",async()=>{
+ const {ctx,input,tools,classify}=await fixture();tools[1].enabled=false
+ expect(await resolveToolIntent(ctx,{...input,question:"Use Evidence Atlas to review speech"})).toMatchObject({kind:"add-tool"})
+ expect(classify).not.toHaveBeenCalled()
 })

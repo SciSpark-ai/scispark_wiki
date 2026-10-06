@@ -1,0 +1,13 @@
+{
+  "exitCode": 0,
+  "mode": "production",
+  "distDir": ".next-modular-final-fix-acceptance-v3",
+  "specs": [
+    "e2e/tool-choice.spec.ts",
+    "--grep",
+    "ambiguous Sparky"
+  ],
+  "files": 4,
+  "bytes": 98365,
+  "liveProviders": false
+}

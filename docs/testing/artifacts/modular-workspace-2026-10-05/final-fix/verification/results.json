@@ -1,0 +1,32 @@
+[
+  {
+    "check": "tsc",
+    "command": [
+      "npx",
+      "tsc",
+      "--noEmit"
+    ],
+    "exitCode": 0,
+    "seconds": 4.73
+  },
+  {
+    "check": "lint",
+    "command": [
+      "npm",
+      "run",
+      "lint"
+    ],
+    "exitCode": 0,
+    "seconds": 18.46
+  },
+  {
+    "check": "vitest",
+    "command": [
+      "npx",
+      "vitest",
+      "run"
+    ],
+    "exitCode": 0,
+    "seconds": 38.8
+  }
+]

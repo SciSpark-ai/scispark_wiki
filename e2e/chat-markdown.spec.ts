@@ -6,7 +6,7 @@ test("Sparky formats streamed and saved Markdown in the paper popup and full cha
   await expect(page.getByRole("heading", { name: "E2E Grounding Paper", exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Open Sparky chat", exact: true }).click()
   const panel = page.getByRole("dialog", { name: "Chat with Sparky" })
-  await panel.getByLabel("Message Sparky").fill("STREAMING-FIXTURE MARKDOWN-FIXTURE: Explain CNNT.")
+  await panel.getByLabel("Message Sparky").fill("Explain CNNT. STREAMING-FIXTURE MARKDOWN-FIXTURE")
   await panel.getByRole("button", { name: "Send", exact: true }).click()
   const draft = panel.locator("[data-streaming-text]")
   await expect(draft.locator("strong")).toHaveText("CNNT")

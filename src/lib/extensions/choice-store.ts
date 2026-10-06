@@ -8,7 +8,7 @@ import { loadSession, saveSession } from "../chat/session"
 import { ToolChoiceSchema, ToolIntentInputSchema, ChooseToolInputSchema, UuidSchema, type ToolChoice, type ToolIntentInput, type ToolRef } from "./contracts"
 import { exactRef } from "./dependencies"
 import { listToolLibrary } from "./library"
-import { candidateSummary, deriveWriteIntent, intentOperationId, toolRunInput } from "./intent"
+import { candidateSummary, deriveWriteIntent, intentOperationId, bindToolRunInput } from "./intent"
 const ChoiceRecordSchema = z.object({ profileId: z.string(), vaultId: z.string(), choice: ToolChoiceSchema, input: ToolIntentInputSchema,
   winner: ChooseToolInputSchema.extend({ runId: UuidSchema.optional() }).strict().optional(),
 }).strict()
@@ -63,7 +63,7 @@ export async function chooseTool(ctx: WorkflowContext, choiceId: string, tool: T
     }
     const run = await startRun(ctx, {
       operationId: intentOperationId(record.input.sessionId, record.input.operationId), tool,
-      input: toolRunInput(record.input, tool),
+      input: await bindToolRunInput(ctx, record.input, tool),
       sessionId: record.input.sessionId, contextRefs: record.input.contextRefs, writeIntent: deriveWriteIntent(record.input.question),
     })
     record.winner!.runId = run.id

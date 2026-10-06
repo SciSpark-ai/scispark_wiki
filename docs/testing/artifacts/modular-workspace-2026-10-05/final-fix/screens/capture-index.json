@@ -1,0 +1,62 @@
+[
+  {
+    "file": "empty-tools.png",
+    "acceptance": "YMPJiP",
+    "originalFilename": "empty-profileTools.png",
+    "visuallyInspected": true
+  },
+  {
+    "file": "chooser.png",
+    "acceptance": "6mrcUz",
+    "originalFilename": "ambiguousSparky.png",
+    "visuallyInspected": true
+  },
+  {
+    "file": "active-after-leave.png",
+    "acceptance": "YMPJiP",
+    "originalFilename": "active-after-navigation.png",
+    "visuallyInspected": true
+  },
+  {
+    "file": "completed-source-linked.png",
+    "acceptance": "YMPJiP",
+    "originalFilename": "completed-source-linked-results.png",
+    "visuallyInspected": true
+  },
+  {
+    "file": "supporting-import-phone.png",
+    "acceptance": "xhgGUp",
+    "originalFilename": "supporting-import-phone.png",
+    "visuallyInspected": true
+  },
+  {
+    "file": "supporting-manage-phone.png",
+    "acceptance": "xhgGUp",
+    "originalFilename": "supporting-manage-phone.png",
+    "visuallyInspected": true
+  },
+  {
+    "file": "selected-tool-composer-phone.png",
+    "acceptance": "YMPJiP",
+    "originalFilename": "selected-tool-composer-phone.png",
+    "visuallyInspected": true
+  },
+  {
+    "file": "opencite-preview-desktop.png",
+    "acceptance": "YMPJiP",
+    "originalFilename": "opencite-preview-desktop.png",
+    "visuallyInspected": true
+  },
+  {
+    "file": "opencite-preview-phone.png",
+    "acceptance": "YMPJiP",
+    "originalFilename": "opencite-preview-phone.png",
+    "visuallyInspected": true
+  },
+  {
+    "file": "opencite-preview-phone-access.png",
+    "acceptance": "YMPJiP",
+    "originalFilename": "opencite-preview-phone-access.png",
+    "visuallyInspected": true
+  }
+]

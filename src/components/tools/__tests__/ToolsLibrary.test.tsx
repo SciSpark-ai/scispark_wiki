@@ -12,7 +12,7 @@ let root: Root, node: HTMLDivElement
 beforeEach(() => { (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; vi.clearAllMocks(); api.list.mockResolvedValue(fixture); api.metadata.mockImplementation(() => new Promise(() => {})); api.mutate.mockResolvedValue({ updated: true }); api.details.mockResolvedValue({ versions: [], update: null, pendingUpdate: null }); api.profile.mockResolvedValue({ updated: true }); node = document.createElement('div'); document.body.append(node); root = createRoot(node) })
 afterEach(async () => { await act(async () => root.unmount()); node.remove() })
 async function render() { await act(async () => root.render(<ToolsLibrary />)) }
-async function click(text: string) { const b = [...node.querySelectorAll('button')].find(b => b.textContent === text); expect(b).toBeTruthy(); await act(async () => b!.click()) }
+async function click(text: string) { const b = [...node.querySelectorAll('button')].find(b => (b.getAttribute('aria-label') ?? b.textContent) === text); expect(b).toBeTruthy(); await act(async () => b!.click()) }
 describe('Tools library', () => {
   it('shows an empty profile immediately while metadata is pending; catalog addition is explicit', async () => { await render(); expect(node.textContent).toContain('No tools installed'); await click('Catalog'); expect(node.textContent).toContain('Trending'); await click('Add tool'); expect(api.mutate).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ action: 'enable', enabled: true })); })
   it('requires root and permission choice before installed-agent discovery', async () => { await render(); await click('Find installed skills'); expect(api.discovery).not.toHaveBeenCalled(); expect(node.textContent).toContain('Folder path'); expect(node.textContent).toContain('Allow access'); })
@@ -89,7 +89,7 @@ it('hands blocked supporting setup from import to root Manage with an explicit c
   await act(async () => [...node.querySelectorAll<HTMLInputElement>('input[type=checkbox]')].at(-1)!.click())
   await click('Confirm import')
   const dialog = node.querySelector('[role=dialog]')!
-  expect(dialog.textContent).toContain('Needs setup'); expect(dialog.textContent).toContain('Supporting tool: Literature helper')
+  expect(dialog.textContent).toContain('Needs setup'); expect(dialog.textContent).toContain('Supporting tool needing setupLiterature helper')
   expect(dialog.textContent).not.toContain('Ready:'); expect(dialog.textContent).not.toContain('Prepare environment')
   await click('Manage setup')
   expect(node.querySelector('[role=dialog]')?.getAttribute('aria-label')).toBe('Research root')

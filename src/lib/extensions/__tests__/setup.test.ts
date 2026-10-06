@@ -109,7 +109,7 @@ describe("managed setup lifecycle (deterministic execution fixtures)",()=>{
     expect((await resolveToolPreparationClosure(ctx,root)).dependencies).toEqual([ref])
     await expect(resolvePreparedEnvironmentRefs(ctx,[root,ref])).rejects.toThrow("needs setup")
     await writeProfileTools(ctx,{schemaVersion:1,enabled:[{tool:root,enabled:true}],pins:[root],overrides:[],migrated:true})
-    const request={operationId:crypto.randomUUID(),tool:root,input:{},contextRefs:[],writeIntent:"outputs_only" as const}
+    const request={operationId:crypto.randomUUID(),tool:root,input:{question:"Setup fixture"},contextRefs:[],writeIntent:"outputs_only" as const}
     await expect(startRun(ctx,request)).rejects.toThrow("needs setup")
     expect(await ctx.storage.list(".scispark/tool-runs/")).toEqual([])
     const ready=await ensureToolEnvironment(ctx,ref,recipe)
@@ -136,7 +136,7 @@ describe("managed setup lifecycle (deterministic execution fixtures)",()=>{
       const [root]=await commitImport(ctx,reviewed.id,[reviewed.tools[0].manifest.ref])
       registerWorkflowAdapter(entrypoint,{execute:async()=>{}}) // No model or source execution.
       await writeProfileTools(ctx,{schemaVersion:1,enabled:[{tool:root,enabled:true}],pins:[root],overrides:[],migrated:true})
-      const request={operationId:crypto.randomUUID(),tool:root,input:{},contextRefs:[],writeIntent:"outputs_only" as const}
+      const request={operationId:crypto.randomUUID(),tool:root,input:{question:"Setup fixture"},contextRefs:[],writeIntent:"outputs_only" as const}
       if(engines.length){
         await expect(resolvePreparedEnvironmentRefs(ctx,[root,native.ref],nativeFixture.run.model)).rejects.toThrow("provider/model")
         await expect(startRun(ctx,request)).rejects.toThrow("provider/model")
@@ -212,7 +212,7 @@ describe("managed setup lifecycle (deterministic execution fixtures)",()=>{
     const {ctx,ref,recipe}=await fixture()
     const ready=await ensureToolEnvironment(ctx,ref,recipe)
     await writeProfileTools(ctx,{schemaVersion:1,enabled:[{tool:ref,enabled:true}],pins:[ref],overrides:[],migrated:true})
-    const run=await startRun(ctx,{operationId:crypto.randomUUID(),tool:ref,input:{},contextRefs:[],writeIntent:"outputs_only"})
+    const run=await startRun(ctx,{operationId:crypto.randomUUID(),tool:ref,input:{question:"Setup fixture"},contextRefs:[],writeIntent:"outputs_only"})
     await waitForWorkflowIdle()
     const captured=await resolveCapturedToolEnvironment(ctx,run,ref)
     const pin=resolveToolchainPin("node22")

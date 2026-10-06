@@ -36,7 +36,7 @@ async def main():
     config.semantic_scholar_api_key = ""
     config.mistral_api_key = ""
     client = SemanticScholarClient(config)
-    result = {"schemaVersion": 1, "packageVersion": "0.5.4", "sourceStatus": "ok", "papers": [], "bibtex": "", "documents": []}
+    result = {"schemaVersion": 1, "packageVersion": "0.5.4", "sourceStatus": "ok", "fullTextRequested": value["fullText"], "papers": [], "bibtex": "", "documents": []}
     async with httpx.AsyncClient(base_url=connection["origin"] + "/graph/v1", proxy=httpx.Proxy(proxy, headers={"Proxy-Authorization": "Bearer " + connection["handle"]}), trust_env=False, follow_redirects=False, timeout=30) as transport:
         # Inject the exact library's HTTP client; all egress still hits the broker.
         client._client = transport
@@ -51,17 +51,26 @@ async def main():
             if value["fullText"]:
                 for index, paper in enumerate(papers[:2]):
                     if not paper.pdf_locations:
+                        result["documents"].append({"paperIndex": index, "status": "unavailable", "reason": "no-location"})
                         continue
                     url = paper.pdf_locations[0].url
-                    document = {"paperIndex": index, "url": url, "status": "unavailable"}
+                    document = {"paperIndex": index, "url": url, "status": "unavailable", "reason": "retrieval-failed"}
                     try:
                         response = await transport.get(connection["origin"] + "/document?" + urlencode({"url": url}))
-                        if response.status_code == 200 and len(response.content) <= 524288 and response.content.startswith(b"%PDF-"):
+                        if response.status_code == 403:
+                            document["reason"] = "policy-denied"
+                        elif response.status_code == 413 or len(response.content) > 524288:
+                            document["reason"] = "size-limit"
+                        elif response.status_code == 422 or response.status_code == 200 and not response.content.startswith(b"%PDF-"):
+                            document["reason"] = "invalid-pdf"
+                        elif response.status_code == 200:
                             path = Path(f"paper-{index}.pdf")
                             path.write_bytes(response.content)
-                            document.update(status="ok", pdfBase64=base64.b64encode(response.content).decode("ascii"))
+                            document.update(status="ok", reason="conversion-failed", pdfBase64=base64.b64encode(response.content).decode("ascii"))
                             try:
-                                document["markdown"] = convert_pdf(path, converter="markitdown", mistral_api_key="")[:32000]
+                                markdown = convert_pdf(path, converter="markitdown", mistral_api_key="")[:32000]
+                                if markdown.strip():
+                                    document.update(markdown=markdown, reason="available")
                             except Exception:
                                 pass  # PDF remains valid; do not invent converted full text.
                     except Exception:

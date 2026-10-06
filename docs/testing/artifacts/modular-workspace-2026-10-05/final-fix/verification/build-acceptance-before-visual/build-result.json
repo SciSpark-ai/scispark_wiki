@@ -1,0 +1,17 @@
+{
+  "command": "npm run build",
+  "exitCode": 0,
+  "seconds": 25.42,
+  "dist": ".next-modular-final-fix-acceptance",
+  "vault": "/var/folders/0w/f8xqj5c94mn10yt1h51zr99r0000gp/T/scispark-modular-final-fix-build-_cvvwz7w/vault",
+  "config": {
+    "tsconfig.json": {
+      "sha256": "3696b0511f5b817eefd35d07dffc3c659b14d17e1207a66e96bc89c9f76484c0",
+      "exactBytesRestored": true
+    },
+    "next-env.d.ts": {
+      "sha256": "8cbc590bb64cc54d760ec9f67367fa949aca86a4798214bd34353f4102f70a34",
+      "exactBytesRestored": true
+    }
+  }
+}

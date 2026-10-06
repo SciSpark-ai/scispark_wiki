@@ -100,3 +100,20 @@ describe("OpenCite production adapter and root helper handoff", () => {
     } finally {vi.restoreAllMocks();await rm(base,{recursive:true,force:true})}
   })
 })
+
+it("retains a valid PDF when conversion fails and preserves a bounded safe reason", () => {
+  const result=normalizeOpenCiteOutput({...fixture,fullTextRequested:true,documents:[{paperIndex:0,url:fixture.papers[0].pdf_locations[0].url,status:"ok",reason:"conversion-failed",pdfBase64:Buffer.from("%PDF-1.4\nfixture").toString("base64")}]})
+  expect(result.papers[0]).toMatchObject({access:"full-text",fullTextStatus:"conversion-failed"})
+  expect(result.artifacts.map(a=>a.kind)).toEqual(["papers","bibtex","file"])
+})
+it.each(["no-location","policy-denied","size-limit","retrieval-failed","invalid-pdf"])("retains safe unavailable full-text reason %s",reason=>{
+  const input=structuredClone(fixture)
+  if(reason==="no-location")input.papers[0].pdf_locations=[]
+  const result=normalizeOpenCiteOutput({...input,fullTextRequested:true,documents:[{paperIndex:0,...(reason==="no-location"?{}:{url:fixture.papers[0].pdf_locations[0].url}),status:"unavailable",reason}]})
+  expect(result.papers[0]).toMatchObject({access:"abstract",fullTextStatus:reason})
+})
+it("rejects raw errors and contradictory content status",()=>{
+ const doc={paperIndex:0,url:fixture.papers[0].pdf_locations[0].url,status:"unavailable",reason:"secret raw exception"}
+ expect(()=>normalizeOpenCiteOutput({...fixture,documents:[doc]})).toThrow()
+ expect(()=>normalizeOpenCiteOutput({...fixture,documents:[{...doc,reason:"conversion-failed"}]})).toThrow()
+})

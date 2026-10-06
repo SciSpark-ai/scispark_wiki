@@ -260,3 +260,24 @@ it("discovers the literature catalog only explicitly, requires exact OpenCite, a
   expect((await setup.resolveToolPreparationClosure(ctx, finalRoot.manifest.ref)).dependencies).toHaveLength(5)
   expect(imported.tools.find(t => t.tool.skillId === root.manifest.ref.skillId)?.readiness.status).not.toBe("ready")
 }, 15000)
+
+it("retains legacy favorites only when the sidebar preference is absent", async () => {
+ const {ctx}=await fixture(), favorites=NATIVE_TOOL_MANIFESTS.filter(m=>["trending","idea-spark"].includes(m.ref.skillId))
+ const state={schemaVersion:1 as const,enabled:favorites.map(m=>({tool:m.ref,enabled:true})),pins:[],overrides:[],migrated:true}
+ await writeProfileTools(ctx,state)
+ expect((await listToolLibrary(ctx)).tools.filter(t=>t.pinned).map(t=>t.ref.skillId).sort()).toEqual(["idea-spark","trending"])
+ await writeProfileTools(ctx,{...state,sidebarPins:[]})
+ expect((await listToolLibrary(ctx)).tools.some(t=>t.pinned)).toBe(false)
+})
+
+it("exposes specific safe setup guidance and never echoes arbitrary setup errors",async()=>{
+ const {ctx,source}=await fixture(),preview=await previewImport(ctx,{source:{kind:"local-folder",path:source}})
+ const saved=await actOnImport(ctx,preview.id,{action:"confirm",selected:[preview.tools[0].manifest.ref],proposals:preview.tools.map(t=>t.proposal)})
+ const check=vi.spyOn(setup,"checkToolReadiness").mockResolvedValue({status:"needs-setup",reasons:["Bind Semantic Scholar and configure its credential"]})
+ let observed=await inspectImportState(ctx,saved.preview.id)
+ expect(observed.tools[0].readiness.reasons).toEqual(["Connect Semantic Scholar in Manage, then add its key in Settings."])
+ check.mockResolvedValue({status:"needs-setup",reasons:["raw /home/person/private sk-fixture-secret-value"]})
+ observed=await inspectImportState(ctx,saved.preview.id)
+ expect(JSON.stringify(observed.tools)).not.toMatch(/raw|home\/person|sk-fixture/)
+ expect(observed.tools[0].readiness.reasons).toEqual(["Prepare the required environment in Manage."])
+})

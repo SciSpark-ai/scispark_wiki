@@ -1,14 +1,15 @@
 # Modular Workspace Product Integration Implementation Plan
 
 
-**Current tracking (Task20):** Checked items record reviewed implementation and
+**Current tracking (consolidated final fix):** Checked items record reviewed implementation and
 executed offline/fixture checks, including explicit unsupported outcomes; they
 are not live/OS/scientific passes. Mixed steps below remain unchecked where their
 actual worker/install/CLI or final-review clause is open. The
 [current requirement/evidence map](../../testing/2026-10-05-modular-workspace.md)
-and [chronological R1–R59 rulings/costs](../../testing/artifacts/modular-workspace-2026-10-05/decisions.md)
-govern current scope. Deferred minors remain in the
-[final-review handoff](../../testing/artifacts/modular-workspace-2026-10-05/review-handoff.md).
+and [chronological R1–R79 rulings/costs](../../testing/artifacts/modular-workspace-2026-10-05/decisions.md)
+govern current scope. F1–F6 and M1–M3 from the single broad review are implemented in the
+[consolidated fix report](../../testing/artifacts/modular-workspace-2026-10-05/final-fix/final-fix-report.md).
+The single scoped re-review passed on `fbb86dd093dee2af9fb3aaf9b452e4aa3244a8ce`; see the [review/finalization summary](../../testing/artifacts/modular-workspace-2026-10-05/final-fix/review-summary.md). The subsequent amend is documentation/evidence only; real execution gates remain open.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
@@ -221,13 +222,12 @@ question, selected provider/model, allowance, output paths and authorization gat
 
 ## Task20 handoff state
 
-The local documentation/link/whitespace/artifact checks are complete; final
-whole-branch review in Task20's mixed verification step remains pending controller
-action. Task20 commit is resolved by its exact subject until its SHA is reported
-after committing (a commit cannot embed its own immutable SHA). Tasks1–19 each
-have one reviewed amended Git commit in the evidence table.
+The Task20 local documentation/link/whitespace/artifact checks and task review are
+complete at `96d0785d96ba19f662ca3d8b4a6148f84d24f434`. The single broad review
+found F1–F6/M1–M3; the consolidated fix wave follows the 20 reviewed task commits.
 
-- [ ] Separate final whole-branch review of boundaries, billing/mutations, core behavior, engine/OS claims and deferred UI/readability minors.
+- [x] Separate final whole-branch review of boundaries, billing/mutations, core behavior, engine/OS claims and deferred UI/readability minors.
+- [x] One controller-owned scoped re-review of the consolidated fixes and evidence, passed on the code-reviewed commit; later amend is documentation/evidence only.
 - [ ] Supported-host real worker/install/CLI/broker, real OpenCite/source and explicit provider/human-scientific checks. The Task18 six-paper26model+2command fixture is calibration only.
 
 R56 migrates obsolete native browser setup while preserving downstream assertions;

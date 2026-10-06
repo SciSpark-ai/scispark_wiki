@@ -4,8 +4,8 @@ import { act } from "react"
 import { createRoot } from "react-dom/client"
 import { ToolArtifacts } from "../ToolArtifacts"
 import type { Artifact } from "@/lib/workflows/contracts"
-const mocks = vi.hoisted(() => ({ save: vi.fn() }))
-vi.mock("@/lib/workflows/client", () => ({ saveToolRunRemote: mocks.save, getToolArtifactRemote: vi.fn() }))
+const mocks = vi.hoisted(() => ({ save: vi.fn(), read: vi.fn() }))
+vi.mock("@/lib/workflows/client", () => ({ saveToolRunRemote: mocks.save, getToolArtifactRemote: mocks.read }))
 vi.mock("@/components/layout/ProfileGate", () => ({ useLocalProfile: () => ({ id: "profile" }) }))
 let root: ReturnType<typeof createRoot>, node: HTMLDivElement
 const artifact = (id: string) => ({ id, kind: "markdown", title: id, sourceRefs: [] }) as unknown as Artifact
@@ -46,4 +46,17 @@ it("keeps the server's pending selection fixed until it settles before offering 
   await act(async () => root.render(<ToolArtifacts {...props} nextSaveArtifactIds={[b]} saves={[{ changesetId: c, artifactIds: [a], state: "saved" }]} />))
   expect(button().textContent).toBe("Add new results to wiki"); await act(async () => button().click())
   expect(mocks.save.mock.calls[1][1]).toEqual([b]); expect(mocks.save.mock.calls[1][2]).not.toBe(mocks.save.mock.calls[0][2])
+})
+
+it("previews actual OpenCite producer papers with access and source distinctions",async()=>{
+ const {normalizeOpenCiteOutput}=await import("@/lib/extensions/catalog/opencite")
+ const {default:fixture}=await import("@/lib/extensions/__tests__/fixtures/opencite-output.json")
+ const produced=normalizeOpenCiteOutput(fixture).artifacts[0]
+ mocks.read.mockResolvedValue({text:async()=>produced.text})
+ await act(async()=>root.render(<ToolArtifacts runId="run" artifacts={[{...artifact(a),...produced} as Artifact]}/>))
+ await act(async()=>[...node.querySelectorAll("button")].find(b=>b.textContent==="Preview")!.click())
+ expect(node.textContent).toContain(fixture.papers[0].title)
+ expect(node.textContent).toContain("Abstract only")
+ expect(node.querySelector(`a[href="${fixture.papers[0].url}"]`)).toBeTruthy()
+ expect(node.textContent).not.toContain("available as a download")
 })

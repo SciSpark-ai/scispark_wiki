@@ -1,0 +1,13 @@
+{
+  "rawRecords": 147,
+  "jsonRecords": 189,
+  "links": 219,
+  "missing": [],
+  "artifactFiles": 332,
+  "rulings": 79,
+  "reviewExactCopy": true,
+  "progressExactGzipCopy": true,
+  "historicalSubmissionPrefixUnchanged": true,
+  "newDiffCheckExit": 0,
+  "sourceTestsScriptsConfigPackageChanged": false
+}

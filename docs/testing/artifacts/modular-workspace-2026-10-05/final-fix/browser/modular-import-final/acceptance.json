@@ -1,0 +1,13 @@
+{
+  "exitCode": 0,
+  "mode": "production",
+  "distDir": ".next-modular-final-fix-acceptance-v2",
+  "specs": [
+    "e2e/tools-library.spec.ts",
+    "--grep",
+    "import hands"
+  ],
+  "files": 5,
+  "bytes": 224354,
+  "liveProviders": false
+}
