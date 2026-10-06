@@ -29,7 +29,7 @@ export async function initializeProfileTools(ctx: WorkflowContext, origin: "new"
         if (!state.enabled.some(({ tool }) => toolKey(tool) === key)) state.enabled.push({ tool: pin, enabled: true })
       }
     }
-    return { ...state, migrated: true }
+    return { ...state, sidebarPins: state.sidebarPins ?? (marker.origin === "legacy" ? state.enabled.filter(b => b.enabled && b.tool.packageId === "scispark.builtin" && ["trending", "idea-spark"].includes(b.tool.skillId)).map(b => toolKey(b.tool)) : []), migrated: true }
   })
 }
 

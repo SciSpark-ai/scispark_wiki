@@ -158,6 +158,8 @@ export const UpdatePreviewSchema = z.object({
 export type UpdatePreview = z.infer<typeof UpdatePreviewSchema>
 export const ActiveRunDispositionSchema = z.enum(["finish", "cancel"])
 export const ToolMutationSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("prepare"), operationId: UuidSchema }).strict(),
+  z.object({ action: z.literal("bind-connection"), operationId: UuidSchema, target: ToolRefSchema, service: z.literal("semantic-scholar") }).strict(),
   z.object({ action: z.literal("enable"), operationId: UuidSchema, enabled: z.boolean(), activeRunDisposition: ActiveRunDispositionSchema.optional() }).strict(),
   z.object({ action: z.literal("binding"), operationId: UuidSchema, patch: ToolOverrideSchema.omit({ toolKey: true }) }).strict(),
   z.object({ action: z.literal("check-update"), operationId: UuidSchema, grantId: UuidSchema.optional() }).strict(),

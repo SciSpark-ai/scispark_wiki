@@ -54,6 +54,8 @@ const FILE_EXTENSIONS = new Set([".ts", ".tsx"])
  * is added, add its path here.
  */
 const CLIENT_LIB_FILES = [
+  "src/lib/extensions/client.ts",
+  "src/lib/extensions/ui-contract.ts",
   "src/lib/extensions/contracts.ts",
   "src/lib/extensions/import-contract.ts",
   "src/lib/workflows/contracts.ts",
@@ -111,6 +113,12 @@ const WHOLE_MODULE_BANS = new Set([
   "lib/workflows/adapters",
   "lib/server/workflow-api",
   "lib/extensions/store",
+  "lib/extensions/library",
+  "lib/extensions/import-ui",
+  "lib/extensions/setup",
+  "lib/extensions/versions",
+  "lib/extensions/discovery",
+  "lib/extensions/connections",
   "lib/extensions/acquire",
   "lib/extensions/inspect",
 ])

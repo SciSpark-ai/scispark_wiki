@@ -1,3 +1,4 @@
+import { bindToolConnection } from "./connections"
 import { randomUUID } from "node:crypto"
 import { z } from "zod"
 import type { WorkflowContext } from "../workflows/context"
@@ -28,7 +29,7 @@ const hash = (v: unknown) => sha256(canonicalJSON(v))
 const sourcePath = (ref: ToolRef) => `versions/sources/${ref.digest}.json`
 const PreviewRecord = z.object({ vaultId: DigestSchema, preview: UpdatePreviewSchema, importPreviewId: UuidSchema.optional(), grantId: UuidSchema.optional(), preparedTool: ToolRefSchema.optional() }).strict()
 const History = z.object({ vaultId: DigestSchema, entries: z.array(z.object({ ref: ToolRefSchema, override: ToolOverrideSchema.optional() }).strict()).max(10000) }).strict()
-const AuxiliaryReceipt = z.object({ hash: DigestSchema, vaultId: DigestSchema, result: z.union([UpdatePreviewSchema.nullable(), EnvironmentRecordSchema]) }).strict()
+const AuxiliaryReceipt = z.object({ hash: DigestSchema, vaultId: DigestSchema, result: z.union([UpdatePreviewSchema.nullable(), EnvironmentRecordSchema, z.object({ updated: z.literal(true) }).strict()]) }).strict()
 const CheckRecord = z.object({ vaultId: DigestSchema, current: ToolRefSchema, checkedAt: z.number(), preview: UpdatePreviewSchema.nullable() }).strict()
 const historyPath = (key: ToolKey) => `versions/history/${hash(ToolKeySchema.parse(key))}.json`
 const same = (a: unknown, b: unknown) => canonicalJSON(a) === canonicalJSON(b)
@@ -73,6 +74,16 @@ export async function listToolVersions(ctx: WorkflowContext, key: ToolKey) {
       return { ref: entry.ref, current: same(entry.ref, current), readiness: publicReadiness(readiness) }
     } catch { return { ref: entry.ref, current: same(entry.ref, current), readiness: { status: "needs-setup" as const, reasons: ["Restore the retained package and configuration before using this version"] } } }
   }))
+}
+
+/** Saved metadata observation has no source/network side effects. */
+export async function readSavedToolMetadata(ctx: WorkflowContext, key: ToolKey): Promise<UpdatePreview | null> {
+  ToolKeySchema.parse(key)
+  const raw = await (await managementStorage(ctx)).read(`versions/checks/${hash(key)}.json`)
+  if (!raw) return null
+  const record = CheckRecord.parse(JSON.parse(raw))
+  if (record.vaultId !== ctx.vaultId) throw new Error("Update metadata owner mismatch")
+  return same(record.current, currentRef(await readProfileTools(ctx), key)) ? record.preview : null
 }
 
 /** Automatic calls only fetch remote commit metadata. Explicit checks stage bytes;
@@ -183,7 +194,7 @@ async function prepared(ctx: WorkflowContext, ref: ToolRef, install: boolean, ov
     }
     if ((await checkToolReadiness(ctx, candidate, model)).status !== "ready") throw new Error("Tool is not ready; review access and setup requirements")
   }
-  if (!manifest.engines.includes(model.engine)) throw new Error("Tool engine needs setup")
+  if (manifest.engines.length && !manifest.engines.includes(model.engine)) throw new Error("Tool engine needs setup")
   await resolvePreparedEnvironmentRefs(ctx, [ref, ...dependencies], model)
   await resolveToolConnectionRefs(ctx, [ref, ...dependencies])
 }
@@ -247,7 +258,7 @@ async function remove(ctx: WorkflowContext, key: ToolKey, action: Extract<ToolMu
     await updateProfileTools(ctx, current => {
       if (!current) throw new Error("Tool is not installed")
       const next = action.action === "remove"
-        ? { ...current, enabled: current.enabled.filter(b => toolKey(b.tool) !== key), pins: current.pins.filter(r => toolKey(r) !== key), overrides: current.overrides.filter(o => o.toolKey !== key) }
+        ? { ...current, enabled: current.enabled.filter(b => toolKey(b.tool) !== key), sidebarPins: current.sidebarPins?.filter(k => k !== key), pins: current.pins.filter(r => toolKey(r) !== key), overrides: current.overrides.filter(o => o.toolKey !== key) }
         : { ...current, enabled: current.enabled.map(b => toolKey(b.tool) === key ? { ...b, enabled: false } : b), pins: installed ? [...current.pins.filter(r => toolKey(r) !== key), installed] : current.pins }
       return withReceipt(next, key, action.operationId, hash({ key, action }), result, installed)
     })
@@ -273,6 +284,30 @@ export async function applyToolAction(ctx: WorkflowContext, key: ToolKey, input:
     if (!previous && (state?.managementOperations?.length ?? 0) >= 10000) throw new ManagementHistoryFullError()
     if (action.action === "remove" || action.action === "enable" && !action.enabled) return remove(ctx, key, action)
     const ref = currentRef(state, key)
+    if (action.action === "prepare" || action.action === "bind-connection") {
+      if (!state?.enabled.some(b => same(b.tool, ref))) throw new Error("Install this tool first")
+      if (state.managementOperations?.some(o => o.toolKey === key && "status" in o.result && o.result.status === "cancellation-pending")) throw new Error("Wait for pending cancellation")
+      const closure = await resolveToolPreparationClosure(ctx, ref)
+      if (action.action === "bind-connection") {
+        if (![ref, ...closure.dependencies].some(candidate => same(candidate, action.target))) throw new Error("Connection target is not in the current tool closure")
+        const targetKey = toolKey(action.target), tool = await readImportedTool(ctx, action.target)
+        if (!tool.manifest.connections.includes(action.service) || tool.requirements.connectionAdapter !== "scispark-http-v1") throw new Error("Connection is not declared by this tool")
+        // Stable per-tool identity replaces the current selection, retaining old revisions.
+        const hex = hash({ profileId: ctx.profileId, vaultId: ctx.vaultId, key: targetKey, service: action.service })
+        const id = `${hex.slice(0,8)}-${hex.slice(8,12)}-4${hex.slice(13,16)}-8${hex.slice(17,20)}-${hex.slice(20,32)}`
+        await bindToolConnection(ctx, targetKey, { id, service: action.service, adapter: "scispark-http-v1", credentialHandle: "settings:paperSources.s2" })
+      } else for (const candidate of [ref, ...closure.dependencies]) {
+        if (getToolManifest(candidate)?.kind === "native") continue
+        const tool = await readImportedTool(ctx, candidate)
+        if (tool.requirements.environment || tool.manifest.kind === "command" || tool.requirements.commands.length || tool.requirements.runtimes.length) {
+          const setup = await ensureToolEnvironment(ctx, candidate, tool.requirements)
+          if (setup.state !== "ready") break
+        }
+      }
+      const result = { updated: true as const }
+      await storage.write(auxiliaryPath, JSON.stringify(AuxiliaryReceipt.parse({ hash: requestHash, vaultId: ctx.vaultId, result })))
+      return result
+    }
     if (action.action === "apply-update") {
       const raw = await storage.read(`versions/previews/${action.previewId}.json`)
       if (!raw) throw new Error("Update preview is unavailable")
@@ -299,7 +334,11 @@ export async function applyToolAction(ctx: WorkflowContext, key: ToolKey, input:
       return switchBinding(ctx, key, ref, saved.ref, action, async () => {}, saved.override ?? null)
     }
     if (action.action === "check-update" || action.action === "acknowledge-and-discard-setup") {
-      if (action.action === "acknowledge-and-discard-setup" && (toolKey(action.tool) !== key || !(await readImportedManifests(ctx)).some(m => same(m.ref, action.tool)))) throw new Error("Setup tool is not owned by this profile")
+      if (action.action === "acknowledge-and-discard-setup") {
+        const closure = await resolveToolPreparationClosure(ctx, ref)
+        const belongs = toolKey(action.tool) === key || closure.dependencies.some(candidate => same(candidate, action.tool))
+        if (!belongs || !(await readImportedManifests(ctx)).some(m => same(m.ref, action.tool))) throw new Error("Setup tool is not owned by this profile")
+      }
       const result = action.action === "check-update" ? await checkUpdate(ctx, key, { force: true, grantId: action.grantId }) : await acknowledgeAndDiscardToolSetup(ctx, action.tool, action.setupId, action.operationId)
       await storage.write(auxiliaryPath, JSON.stringify(AuxiliaryReceipt.parse({ hash: requestHash, vaultId: ctx.vaultId, result })))
       return result

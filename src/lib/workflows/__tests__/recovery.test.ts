@@ -7,7 +7,9 @@ import { spawn, type ChildProcess } from "node:child_process"
 import { once } from "node:events"
 import { NodeFsVaultStorage } from "../../vault/node-fs-storage"
 import { registerToolManifest } from "../../extensions/registry"
-import { writeProfileTools } from "../../extensions/store"
+import { toolKey } from "../../extensions/contracts"
+import { DEFAULT_ENGINES } from "../../engines/contracts"
+import { readProfileTools, updateProfileTools, writeProfileTools } from "../../extensions/store"
 import * as settings from "../../llm/settings"
 import { saveSettings, DEFAULT_SETTINGS } from "../../llm/settings"
 import { workflowFixture } from "./fixtures"
@@ -26,7 +28,7 @@ import type { StepIntent, RunStatus } from "../contracts"
 const cleanups: Array<() => Promise<unknown> | unknown> = []
 afterEach(async () => { await waitForWorkflowIdle(); vi.useRealTimers(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); vi.unstubAllEnvs(); vi.restoreAllMocks() })
 const step = (kind: StepIntent["kind"] = "read"): StepIntent => ({ id: randomUUID(), kind, replay: kind === "read" ? "read_only" : "reconcile", inputHash: "a".repeat(64) })
-async function fixture() {
+async function fixture(engines = ["api"]) {
   const f = workflowFixture()
   const root = await mkdtemp(join(tmpdir(), "workflow-recovery-"))
   cleanups.push(() => rm(root, { recursive: true, force: true }))
@@ -38,6 +40,7 @@ async function fixture() {
   f.tool.entrypoint = randomUUID()
   f.request.tool = f.tool.ref
   f.run.tool = f.tool.ref
+  f.tool.engines = engines
   cleanups.push(registerToolManifest(f.tool))
   await writeProfileTools(f.ctx, { schemaVersion: 1, enabled: [{ tool: f.tool.ref, enabled: true }], pins: [f.tool.ref], overrides: [], migrated: true })
   await saveSettings(f.ctx.storage, { ...DEFAULT_SETTINGS, keys: { anthropic: "fixture-only" } })
@@ -53,6 +56,27 @@ async function child() {
 async function kill(proc: ChildProcess) { if (proc.exitCode === null && proc.signalCode === null) { const exit = once(proc, "exit"); proc.kill("SIGKILL"); await exit } }
 
 describe("durable workflow recovery", () => {
+  it("captures per-tool defaults below explicit input and preserves active model and allowance snapshots on replay", async () => {
+    const f = await fixture(["api", "codex"]), key = toolKey(f.tool.ref)
+    let release!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    registerWorkflowAdapter(f.tool.entrypoint, { execute: async () => { await held } })
+    await updateProfileTools(f.ctx, current => ({ ...current!, overrides: [{ toolKey: key, defaultAllowance: { modelCalls: 7, commandCalls: 8 }, tierModels: { strong: { provider: "anthropic", model: "original-model" } } }] }))
+    const request = { ...f.request, allowance: { commandCalls: 11 } }
+    try {
+      const run = await startRun(f.ctx, request)
+      expect(run.allowance).toMatchObject({ modelCalls: 7, commandCalls: 11, activeSeconds: 1800, costUsd: 2 })
+      await updateProfileTools(f.ctx, current => ({ ...current!, overrides: [{ toolKey: key, defaultAllowance: { modelCalls: 99, commandCalls: 99 }, tierModels: { strong: { provider: "anthropic", model: "replacement-model" } } }] }))
+      const replay = await startRun(f.reopen(), request)
+      expect(replay.id).toBe(run.id); expect(replay.allowance).toEqual(run.allowance); expect(replay.model).toEqual(run.model)
+      expect((await readProfileTools(f.ctx))!.overrides[0].defaultAllowance!.modelCalls).toBe(99)
+    } finally { release(); await waitForWorkflowIdle() }
+    await saveSettings(f.ctx.storage, { ...DEFAULT_SETTINGS, engines: { ...DEFAULT_ENGINES, kind: "codex" } })
+    await updateProfileTools(f.ctx, current => ({ ...current!, overrides: [{ toolKey: key, defaultAllowance: { costUsd: 123, modelCalls: 9 } }] }))
+    const subscription = await startRun(f.ctx, { ...f.request, operationId: randomUUID() })
+    expect(subscription.allowance.costUsd).toBeNull(); expect(subscription.allowance.modelCalls).toBe(9)
+  })
+
   it("starts once with immutable settings and conflicts on changed input, independent of observers", async () => {
     const f = await fixture()
     let calls = 0

@@ -5,11 +5,10 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Home,
-  TrendingUp,
   BookOpen,
   Network,
   FolderOpen,
-  Sparkles,
+  Wrench,
   MessageSquarePlus,
   Clock,
   PanelLeftClose,
@@ -25,6 +24,9 @@ import type { ChatSession } from "@/lib/chat/session";
 import { Chip } from "@/components/ui/Chip";
 import { ThemeToggle } from "./ThemeToggle";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { listToolsRemote, toolHref } from "@/lib/extensions/client";
+import { toolKey } from "@/lib/extensions/contracts";
+import type { LibraryTool } from "@/lib/extensions/ui-contract";
 import { logoutLocalProfile } from "@/lib/local-profile-client";
 
 /** A nav aid, not a second inbox — just enough recent conversations to jump
@@ -63,7 +65,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: "home", label: "Home", href: "/", icon: Home },
       { key: "chat", label: "Sparky", href: "/chat", icon: MessageSquarePlus },
-      { key: "trending", label: "Trending", href: "/trending", icon: TrendingUp },
     ],
   },
   {
@@ -77,7 +78,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     heading: "Tools",
     items: [
-      { key: "spark", label: "Idea Spark", href: "/spark", icon: Sparkles },
+      { key: "tools", label: "Tools", href: "/tools", icon: Wrench },
     ],
   },
 ];
@@ -104,6 +105,14 @@ export function Sidebar({ collapsed = false, onNavigate }: SidebarProps) {
   const isFirstRun = pathname === "/onboarding" || pathname === "/setup";
   const disabled = isFirstRun && !onboardingComplete;
 
+  const [pinnedTools, setPinnedTools] = useState<LibraryTool[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => { void listToolsRemote().then(library => { if (alive) setPinnedTools(library.tools.filter(tool => tool.enabled && tool.pinned)); }, () => {}); };
+    refresh();
+    window.addEventListener("scispark-tools-changed", refresh);
+    return () => { alive = false; window.removeEventListener("scispark-tools-changed", refresh); };
+  }, []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
@@ -224,6 +233,7 @@ export function Sidebar({ collapsed = false, onNavigate }: SidebarProps) {
               {group.heading}
             </div>
             {group.items.map(renderItem)}
+            {group.heading === "Tools" && pinnedTools.map(tool => renderItem({ key: toolKey(tool.ref), label: tool.name, href: toolHref(tool.ref), icon: Wrench }))}
           </div>
         ))}
         <hr className="border-border-warm mx-[10px] my-[14px]" />

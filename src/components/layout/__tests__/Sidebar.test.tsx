@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { createRoot } from "react-dom/client"
 import { act } from "react"
 
+vi.mock("@/lib/extensions/client", () => ({ listToolsRemote: async () => ({ tools: [] }), toolHref: () => "/chat" }))
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }))
 vi.mock("@/lib/vault/get-vault", () => ({ getOpenVault: async () => ({}) }))
 vi.mock("@/lib/wiki/review-queue", () => ({ reviewCount: async () => 2 }))
@@ -25,13 +26,15 @@ const html = () => renderToStaticMarkup(<Sidebar collapsed={false} />)
 describe("Sidebar nav map (SP1)", () => {
   it("shows the grouped real-surface map", () => {
     const out = html()
-    for (const label of ["Discover", "Knowledge", "Tools", "Home", "Sparky", "Trending", "Wiki", "Graph", "Projects", "Idea Spark", "History"]) {
+    for (const label of ["Discover", "Knowledge", "Tools", "Home", "Sparky", "Wiki", "Graph", "Projects", "History"]) {
       expect(out, label).toContain(label)
     }
-    for (const href of ["/wiki", "/viz", "/spark", "/chat", "/projects", "/trending", "/history"]) {
+    for (const href of ["/wiki", "/viz", "/tools", "/chat", "/projects", "/history"]) {
       expect(out, href).toContain(`href="${href}"`)
     }
     expect(out).not.toContain('href="/papers"')
+    expect(out).not.toContain('href="/trending"')
+    expect(out).not.toContain('href="/spark"')
   })
   it("drops the fork-era items and settings from the rail", () => {
     const out = html()

@@ -5,11 +5,8 @@ import { ToolManifestSchema, DigestSchema, ProfileIdSchema, RoleTiersSchema, Tie
 
 const CountSchema = z.number().int().nonnegative().safe()
 const SecondsSchema = z.number().finite().nonnegative()
-const CostSchema = z.number().finite().nonnegative().nullable()
-export const RunAllowanceSchema = z.object({
-  modelCalls: CountSchema, commandCalls: CountSchema, activeSeconds: SecondsSchema, costUsd: CostSchema,
-}).strict()
-export type RunAllowance = z.infer<typeof RunAllowanceSchema>
+export { RunAllowanceSchema, type RunAllowance } from "../extensions/contracts"
+import { RunAllowanceSchema, type RunAllowance } from "../extensions/contracts"
 export const DEFAULT_RUN_ALLOWANCE: Readonly<RunAllowance> = Object.freeze({ modelCalls: 30, commandCalls: 60, activeSeconds: 1800, costUsd: 2 })
 export const RunStatusSchema = z.enum([
   "queued", "running", "waiting_for_choice", "waiting_for_setup", "paused_limit", "interrupted",

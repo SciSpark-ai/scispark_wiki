@@ -213,7 +213,7 @@ async function savePreview(ctx: WorkflowContext, preview: ImportPreview, grantId
   if (grantId) await requireDiscoveryGrant(ctx, grantId)
   await storage.write(`imports/previews/${parsed.id}.json`, JSON.stringify(parsed)); return parsed
 }
-async function readPreview(ctx: WorkflowContext, id: string) {
+export async function readImportPreview(ctx: WorkflowContext, id: string) {
   UuidSchema.parse(id)
   const storage = await importStorage(ctx)
   if (await storage.hasSymlinkTraversal(`imports/previews/${id}.json`)) throw new Error("Import preview symlink traversal")
@@ -271,7 +271,7 @@ export async function reviewImport(ctx: WorkflowContext, previewId: string, prop
 }
 /** Recompute a proposed adapter without claiming user review or publishing it. */
 export async function reviseImportPreview(ctx: WorkflowContext, previewId: string, proposals: AdapterProposal[], reviewed = false): Promise<ImportPreview> {
-  const preview = await readPreview(ctx, previewId), stage = await readStage(ctx, preview.stageId)
+  const preview = await readImportPreview(ctx, previewId), stage = await readStage(ctx, preview.stageId)
   return withDiscoveryGrant(ctx, stage.discoveryGrantId, async () => {
     if (!proposals.length || proposals.length > preview.tools.length || new Set(proposals.map((p) => p.skillId)).size !== proposals.length) throw new Error("Invalid reviewed tool selection")
     const tools: ImportPreview["tools"] = []
@@ -286,7 +286,7 @@ export async function reviseImportPreview(ctx: WorkflowContext, previewId: strin
 
 export async function commitImport(ctx: WorkflowContext, previewId: string, selected: ToolRef[], options: { prepareCatalogOnly?: boolean } = {}): Promise<ToolRef[]> {
   const refs = z.array(ToolRefSchema).min(1).max(1000).parse(selected)
-  const preview = await readPreview(ctx, previewId), stage = await readStage(ctx, preview.stageId)
+  const preview = await readImportPreview(ctx, previewId), stage = await readStage(ctx, preview.stageId)
   return withDiscoveryGrant(ctx, stage.discoveryGrantId, async (check) => {
     const imports = await readImportedManifests(ctx)
     const byRef = new Map(preview.tools.map((tool) => [exactRef(tool.manifest.ref), tool]))
@@ -349,7 +349,7 @@ export async function commitImport(ctx: WorkflowContext, previewId: string, sele
 
 /** Select a discovered candidate without performing the separate human review. */
 export async function selectDiscoveredPreview(ctx: WorkflowContext, previewId: string, skillId: string): Promise<ImportPreview> {
-  const preview = await readPreview(ctx, previewId)
+  const preview = await readImportPreview(ctx, previewId)
   const stage = await readStage(ctx, preview.stageId)
   return withDiscoveryGrant(ctx, stage.discoveryGrantId, async () => {
     const tool = preview.tools.find(tool => tool.proposal.skillId === skillId)

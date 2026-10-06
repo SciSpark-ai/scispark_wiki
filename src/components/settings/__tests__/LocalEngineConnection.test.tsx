@@ -8,6 +8,7 @@ import { LocalEngineConnection } from "../LocalEngineConnection"
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const { checkEngine, patchSettings } = vi.hoisted(() => ({ checkEngine: vi.fn(), patchSettings: vi.fn() }))
+vi.mock("@/lib/extensions/client", () => ({ listToolsRemote: async () => ({ discoveryDismissed: true }) }))
 vi.mock("@/lib/engines/client", () => ({ checkLocalEngine: checkEngine }))
 vi.mock("@/lib/llm/settings-client", () => ({ patchSettings }))
 

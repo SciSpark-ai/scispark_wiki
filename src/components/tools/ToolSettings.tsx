@@ -1,0 +1,74 @@
+"use client"
+import Link from "next/link"
+import { useEffect, useState } from "react"
+import { Button } from "@/components/ui/Button"
+import { LocalModelPicker } from "@/components/settings/LocalModelPicker"
+import { ToolDialog, toolInputClass } from "./ImportToolDialog"
+import { toolKey, type ToolOverride } from "@/lib/extensions/contracts"
+import { DiscoveryGrantDtoSchema, type ToolMutation } from "@/lib/extensions/import-contract"
+import type { LibraryTool, ToolDetail } from "@/lib/extensions/ui-contract"
+import { discoverAgentSkillsRemote, getToolDetailsRemote, updateToolBindingRemote, updateToolVersionRemote } from "@/lib/extensions/client"
+import { loadRedactedSettings } from "@/lib/llm/settings-client"
+import { DEFAULT_ENGINES, type EngineSettings, type EngineModel } from "@/lib/engines/contracts"
+import { checkLocalEngine } from "@/lib/engines/client"
+import { DEFAULT_RUN_ALLOWANCE } from "@/lib/workflows/contracts"
+export function ToolSettings({ tool, onClose, onChanged }: { tool: LibraryTool; onClose: () => void; onChanged: () => Promise<void> }) {
+  const key = toolKey(tool.ref)
+  const [detail, setDetail] = useState<ToolDetail | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false), [message, setMessage] = useState("")
+  const [engine, setEngine] = useState<EngineSettings["kind"]>("api"), [models, setModels] = useState<ToolOverride["tierModels"]>({}), [catalog, setCatalog] = useState<EngineModel[] | undefined>(), [loaded, setLoaded] = useState(false)
+  const [allowance, setAllowance] = useState({ ...DEFAULT_RUN_ALLOWANCE, ...tool.override?.defaultAllowance })
+  const [decision, setDecision] = useState<{ action: "remove" | "disable"; runIds: string[]; operationId: string; pending?: boolean } | null>(tool.pendingManagement ? { ...tool.pendingManagement, pending: true } : null)
+  const [folder, setFolder] = useState(""), [consent, setConsent] = useState(false)
+  async function refresh() { setDetail(await getToolDetailsRemote(key)); await onChanged() }
+  useEffect(() => { let alive = true; void getToolDetailsRemote(key).then(d => { if (alive) setDetail(d) }, () => { if (alive) setError("Could not load saved versions. Close and reopen to retry.") }); void loadRedactedSettings().then(async s => { if (!alive) return; const e = s.engines ?? DEFAULT_ENGINES; setEngine(e.kind); setModels(Object.fromEntries((["fast", "strong"] as const).map(t => [t, tool.override?.tierModels?.[t] ?? (e.kind === "api" ? { ...s.tierModels[t], ...(s.baseUrls?.[s.tierModels[t].provider as "openai" | "openrouter"] ? { baseUrl: s.baseUrls[s.tierModels[t].provider as "openai" | "openrouter"] } : {}) } : { provider: e.kind === "codex" ? "openai" : "anthropic", model: e.models[e.kind][t] })]))); setLoaded(true); if (e.kind !== "api") { const status = await checkLocalEngine(e.kind).catch(() => null); if (alive) { setCatalog(status?.models); if (!status) setError("Could not load available models. Check the connection before saving.") } } }, () => { if (alive) setError("Open AI settings to configure a model.") }); return () => { alive = false } }, [key, tool.override])
+  async function run(work: () => Promise<void>) { setBusy(true); setError(""); setMessage(""); try { await work() } catch (e) { setError(e instanceof Error ? e.message : "Could not apply this change.") } finally { await refresh().catch(() => {}); setBusy(false) } }
+  async function mutate(action: ToolMutation) {
+    const result = await updateToolVersionRemote(key, action)
+    if (result && "status" in result && (result.status === "decision-required" || result.status === "cancellation-pending")) {
+      setDecision({ action: action.action === "remove" ? "remove" : "disable", runIds: result.runIds, operationId: action.operationId, pending: result.status === "cancellation-pending" })
+    } else { setDecision(null); setMessage("Change saved for this profile.") }
+    await refresh()
+  }
+  const pending = detail?.pendingUpdate
+  return <ToolDialog title={tool.name} onClose={onClose}>
+    {error && <p role="alert" className="mb-4 rounded-xl border border-border-warm p-3 text-sm">{error}</p>}
+    {message && <p role="status" className="mb-4 text-sm">{message}</p>}
+    <fieldset disabled={busy} className="min-w-0 space-y-5">
+      <p className="text-sm text-muted-text">Changes apply to new runs. Running tasks retain their captured tools, models and allowances.</p>
+      {tool.blockedTool && !tool.connectionRequirements?.some(requirement => requirement.tool.digest === tool.blockedTool!.tool.digest) && <p className="text-sm font-medium">
+        {tool.blockedTool.tool.digest === tool.ref.digest ? "Tool" : "Supporting tool"}: {tool.blockedTool.name}
+      </p>}
+      {tool.setup && <p className="text-sm">{tool.setup.reason}</p>}
+      {tool.kind !== "native" && <section className="space-y-3" aria-label="Tool setup">
+        {(tool.connectionRequirements ?? []).map(requirement => <div key={JSON.stringify(requirement.tool)} className="space-y-2">
+          <p className="text-sm">{requirement.tool.digest === tool.ref.digest ? "Tool" : "Supporting tool"}: {requirement.name}</p>
+          <Button variant="secondary" onClick={() => void run(() => mutate({
+            action: "bind-connection", target: requirement.tool,
+            service: requirement.service, operationId: crypto.randomUUID(),
+          }))}>Connect Semantic Scholar for {requirement.name}</Button>
+        </div>)}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" disabled={tool.setup?.state === "needs-reconciliation" || tool.setup?.state === "installing"}
+            onClick={() => void run(() => mutate({ action: "prepare", operationId: crypto.randomUUID() }))}>Prepare environment</Button>
+          <Link className="text-sm underline" href="/settings">Source and AI settings</Link>
+        </div>
+      </section>}
+      {tool.setup?.state === "needs-reconciliation" && <Button variant="secondary" onClick={() => void run(() => mutate({
+        action: "acknowledge-and-discard-setup", operationId: crypto.randomUUID(),
+        tool: tool.setup!.tool, setupId: tool.setup!.setupId,
+      }))}>Acknowledge and discard staging</Button>}
+      <details><summary className="cursor-pointer text-sm font-medium">Model overrides</summary><div className="mt-3 space-y-3">{(["strong", "fast"] as const).map(tier => {
+        const model = models?.[tier]
+        if (!model) return null
+        return engine !== "api" ? <LocalModelPicker key={tier} engine={engine} tier={tier} value={model.model} models={catalog} loading={!loaded} onChange={value => setModels({ ...models, [tier]: { ...model, model: value } })} /> : <div key={tier} className="grid gap-2 sm:grid-cols-2"><label className="text-sm">{tier === "strong" ? "Analysis" : "Quick steps"} provider<select className={toolInputClass} value={model.provider} onChange={e => setModels({ ...models, [tier]: { provider: e.target.value as typeof model.provider, model: model.model } })}>{["anthropic", "openai", "google", "openrouter"].map(p => <option key={p}>{p}</option>)}</select></label><label className="text-sm">{tier} model<input className={toolInputClass} value={model.model} onChange={e => setModels({ ...models, [tier]: { ...model, model: e.target.value } })} /></label><label className="text-sm sm:col-span-2">Endpoint (optional)<input className={toolInputClass} value={model.baseUrl ?? ""} onChange={e => { const { baseUrl: ignored, ...base } = model; void ignored; setModels({ ...models, [tier]: { ...base, ...(e.target.value ? { baseUrl: e.target.value } : {}) } }) }} /></label></div>
+      })}{engine !== "api" && <Button variant="secondary" onClick={() => void run(async () => { const status = await checkLocalEngine(engine); setCatalog(status.models); setMessage(status.message) })}>Check connection</Button>}<p className="text-xs text-muted-text">{engine === "api" ? "Unknown endpoint or model prices require a configured rate or a priced model before a run can start. Change the model here or in AI settings; unknown costs are never treated as free." : "Subscription activity is counted in calls and time, not dollars."}</p><Button disabled={!loaded || (engine === "codex" && (!catalog || Object.values(models ?? {}).some(m => !catalog.some(c => c.id === m.model))))} onClick={() => void run(async () => { await updateToolBindingRemote(key, { tierModels: models }); setMessage("Models saved for new runs."); await refresh() })}>Save models</Button><Button variant="secondary" onClick={() => void run(async () => { await updateToolBindingRemote(key, { tierModels: {} }); setMessage("Using profile models for new runs."); await refresh() })}>Use profile models</Button></div></details>
+      <details><summary className="cursor-pointer text-sm font-medium">Advanced</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">{(["modelCalls", "commandCalls", "activeSeconds", "costUsd"] as const).filter(k => engine === "api" || k !== "costUsd").map(k => <label key={k} className="text-sm">{{ modelCalls: "Model calls", commandCalls: "Command calls", activeSeconds: "Active seconds", costUsd: "API cost limit (USD)" }[k]}<input type="number" min="0" step={k === "costUsd" ? "0.01" : "1"} className={toolInputClass} value={allowance[k] ?? ""} onChange={e => setAllowance({ ...allowance, [k]: Number(e.target.value) })} /></label>)}</div><Button className="mt-3" onClick={() => void run(async () => { await updateToolBindingRemote(key, { defaultAllowance: { ...allowance, ...(engine !== "api" ? { costUsd: null } : {}) } }); setMessage("Allowances saved for new runs."); await refresh() })}>Save allowances</Button></details>
+      {tool.kind !== "native" && <section className="space-y-3"><h3 className="font-heading text-lg">Updates</h3><p className="text-sm text-muted-text">Check and review changes before applying. Local and agent sources need renewed permission for the original package folder.</p><details><summary className="cursor-pointer text-sm">Renew local folder access</summary><label className="mt-2 block text-sm">Original package folder<input className={toolInputClass} value={folder} onChange={e => { setFolder(e.target.value); setConsent(false) }} /></label><label className="mt-2 flex gap-2 text-sm"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} />Allow this exact folder for 30 minutes</label></details><Button variant="secondary" onClick={() => void run(async () => { let grantId: string | undefined; if (folder) { if (!consent) throw new Error("Allow access to the original folder before checking."); grantId = DiscoveryGrantDtoSchema.parse(await discoverAgentSkillsRemote({ action: "grant", operationId: crypto.randomUUID(), roots: [{ agent: "custom", layout: "package", path: folder }] })).id }; const result = await updateToolVersionRemote(key, { action: "check-update", operationId: crypto.randomUUID(), ...(grantId ? { grantId } : {}) }); setMessage(result ? "Review the saved update below." : "No update found."); await refresh() })}>Check for updates</Button>
+      {detail?.update && !pending && <p className="text-sm">A source update is available. Check for updates to review the exact changes.</p>}
+      {pending && <div className="rounded-xl border border-border-warm p-4 text-sm"><p>Changed resources: {pending.preview.changedResources.join(", ") || "None"}.</p><p className="mt-2">Dependencies: {pending.preview.dependencies.map(r => r.skillId).join(", ") || "None"}.</p><p className="mt-2">Added access: {pending.preview.addedCapabilities.join(", ") || "None"}. Connections: {pending.preview.addedConnections.join(", ") || "None"}.</p>{pending.preview.proposal && <details className="mt-3"><summary className="cursor-pointer">Proposed setup plan</summary><pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-xl bg-card-surface p-3 text-xs">{JSON.stringify(pending.preview.proposal, null, 2)}</pre></details>}{pending.consent === "renewal-required" && <p className="mt-3">Access expired. Renew the folder permission and check again.</p>}{pending.setup && <p className="mt-3">{pending.setup.reason}</p>}<Button className="mt-3" disabled={pending.consent === "renewal-required" || pending.preview.kind !== "staged" || pending.setup?.state === "needs-reconciliation"} onClick={() => void run(() => mutate({ action: "apply-update", operationId: crypto.randomUUID(), previewId: pending.preview.id }))}>Apply reviewed update</Button>{pending.setup?.state === "needs-reconciliation" && <Button className="mt-3" variant="secondary" onClick={() => void run(() => mutate({ action: "acknowledge-and-discard-setup", operationId: crypto.randomUUID(), tool: pending.setup!.tool, setupId: pending.setup!.setupId }))}>Acknowledge and discard update staging</Button>}</div>}
+      </section>}
+      {!!detail?.versions.some(v => !v.current) && <details><summary className="cursor-pointer text-sm">Retained versions</summary>{detail.versions.filter(v => !v.current).map(v => <div key={v.ref.digest} className="mt-3 flex flex-wrap items-center gap-2 text-sm"><span>Version {v.ref.version} · {v.ref.digest.slice(0, 8)} · {v.readiness.status}</span><Button variant="secondary" onClick={() => void run(() => mutate({ action: "rollback", operationId: crypto.randomUUID(), digest: v.ref.digest }))}>Restore version</Button></div>)}</details>}
+      {decision ? <div role="status" className="space-y-3 rounded-xl border border-border-warm p-4"><p className="text-sm">{decision.pending ? "Stopping tasks. Cancellation must be acknowledged before this change completes." : "This tool has running or recoverable tasks. Choose how to continue."}</p>{decision.runIds.map(id => <Link key={id} className="block break-all text-sm underline" href={`/tools/runs/${id}`}>View task {id.slice(0, 8)}</Link>)}{(decision.pending ? ["cancel"] : ["finish", "cancel"]).map(disposition => <Button key={disposition} variant="secondary" onClick={() => void run(() => mutate(decision.action === "remove" ? { action: "remove", operationId: decision.operationId, activeRunDisposition: disposition as "finish" | "cancel" } : { action: "enable", enabled: false, operationId: decision.operationId, activeRunDisposition: disposition as "finish" | "cancel" }))}>{decision.pending ? "Refresh cancellation" : disposition === "finish" ? "Let tasks finish" : "Cancel tasks"}</Button>)}</div> : <div className="flex flex-wrap gap-2 border-t border-border-warm pt-4"><Button variant="secondary" onClick={() => void run(() => mutate({ action: "enable", operationId: crypto.randomUUID(), enabled: !tool.enabled }))}>{tool.enabled ? "Disable tool" : "Enable tool"}</Button><Button variant="secondary" onClick={() => void run(() => mutate({ action: "remove", operationId: crypto.randomUUID() }))}>Remove from profile</Button></div>}
+    </fieldset>{busy && <p role="status" className="mt-4 text-sm">Saving…</p>}
+  </ToolDialog>
+}

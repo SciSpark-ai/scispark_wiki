@@ -43,8 +43,13 @@ export const ModelSelectionSchema = z.object({
 export const TierSchema = z.enum(["fast", "strong"])
 export const TierModelsSchema = z.object({ fast: ModelSelectionSchema, strong: ModelSelectionSchema }).strict()
 export const RoleTiersSchema = z.record(LabelSchema, TierSchema)
+export const RunAllowanceSchema = z.object({
+  modelCalls: z.number().int().nonnegative().safe(), commandCalls: z.number().int().nonnegative().safe(),
+  activeSeconds: z.number().finite().nonnegative(), costUsd: z.number().finite().nonnegative().nullable(),
+}).strict()
+export type RunAllowance = z.infer<typeof RunAllowanceSchema>
 export const ToolOverrideSchema = z.object({
-  toolKey: ToolKeySchema, tierModels: TierModelsSchema.partial().optional(), roleTiers: RoleTiersSchema.optional(),
+  toolKey: ToolKeySchema, defaultAllowance: RunAllowanceSchema.partial().optional(), tierModels: TierModelsSchema.partial().optional(), roleTiers: RoleTiersSchema.optional(),
 }).strict()
 export type ToolOverride = z.infer<typeof ToolOverrideSchema>
 export const ProfileToolsSchema = z.object({
@@ -54,11 +59,15 @@ export const ProfileToolsSchema = z.object({
     operationId: UuidSchema, toolKey: ToolKeySchema, hash: DigestSchema, previousTool: ToolRefSchema.optional(),
     result: z.union([ToolRefSchema, z.object({ updated: z.literal(true) }).strict(), z.object({ status: z.enum(["removed", "disabled", "cancellation-pending"]), runIds: z.array(UuidSchema) }).strict()]),
   }).strict()).max(10000).optional(),
+  sidebarPins: z.array(ToolKeySchema).max(1000).optional(), discoveryDismissed: z.boolean().optional(),
+  preferenceOperations: z.array(z.object({ operationId: UuidSchema, hash: DigestSchema }).strict()).max(10000).optional(),
   pins: z.array(ToolRefSchema), overrides: z.array(ToolOverrideSchema), migrated: z.boolean(),
 }).strict().superRefine((state, ctx) => {
   for (const [field, keys] of [
     ["enabled", state.enabled.map((binding) => toolKey(binding.tool))],
     ["pins", state.pins.map(toolKey)],
+    ["sidebarPins", state.sidebarPins ?? []],
+    ["preferenceOperations", (state.preferenceOperations ?? []).map(operation => operation.operationId)],
     ["overrides", state.overrides.map((override) => override.toolKey)],
     ["managementOperations", (state.managementOperations ?? []).map(operation => operation.operationId)],
   ] as const) {

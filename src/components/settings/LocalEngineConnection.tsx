@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
+import { listToolsRemote, updateToolsProfileRemote } from "@/lib/extensions/client"
 import { Loader2 } from "lucide-react"
 import { DEFAULT_ENGINES, EngineSettingsSchema, engineLabel, type EngineSettings, type EngineStatus, type LocalEngine } from "@/lib/engines/contracts"
 import { checkLocalEngine } from "@/lib/engines/client"
@@ -18,10 +20,12 @@ export function LocalEngineConnection({ engine, settings, onSaved, onConnected, 
   const [status, setStatus] = useState<EngineStatus | null>(null)
   const [loadingModels, setLoadingModels] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [discoveryDismissed, setDiscoveryDismissed] = useState(true)
   const [message, setMessage] = useState("")
   const selected = current.kind === engine
   useEffect(() => {
     let alive = true
+    void listToolsRemote().then(library => { if (alive) setDiscoveryDismissed(library.discoveryDismissed) }).catch(() => {})
     void checkLocalEngine(engine)
       .then(result => { if (alive) setStatus(result) })
       .catch(() => { if (alive) setMessage("Could not check the connection. Use Check connection to try again.") })
@@ -88,6 +92,7 @@ export function LocalEngineConnection({ engine, settings, onSaved, onConnected, 
       </div>
     </fieldset>
     {status && <p role="status" className="text-sm leading-relaxed text-espresso">{status.version ? `${engineLabel(engine)} ${status.version}. ` : ""}{status.message}</p>}
+    {status?.state === "ready" && !discoveryDismissed && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border-warm p-3"><Link href="/tools" className="rounded-pill border border-border-warm px-4 py-2 text-sm text-espresso">Find installed skills</Link><button type="button" className="rounded-pill px-3 py-2 text-sm text-muted-text" onClick={() => { void updateToolsProfileRemote({ action: "dismiss-discovery", operationId: crypto.randomUUID(), dismissed: true }).then(() => setDiscoveryDismissed(true)).catch(() => setMessage("Could not save this preference. Try again.")) }}>Dismiss</button></div>}
     {message && <p role="status" className="text-sm leading-relaxed text-espresso">{message}</p>}
   </div>
 }

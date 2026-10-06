@@ -1188,3 +1188,114 @@ Babel note only); Vitest exit0/53.88s wrapper,52.54s suite:3101 passed/21 gated 
 Task14 with the original subject, Codex trailer and cffa77d parent preserved.
 No additional broad verification followed success. No approval rejection occurred;
 Task19 boundaries and no-push/no-merge scope remain unchanged.
+
+## Task 15 — Tools library and explicit profile management
+
+Implemented Installed/Catalog, native/imported cards, explicit GitHub/local ZIP or
+folder review, consented installed-agent discovery, per-profile favorites/dismissal,
+model overrides and Advanced new-run allowances, retained update/rollback controls,
+finish/cancel decisions and durable uncertain-setup recovery. Source observations
+are local; metadata checks run separately and never install. Supporting setup is
+scoped to the installed root's pinned declared closure. Public responses omit keys,
+credential handles, runtime paths, private owners and raw EnvironmentRecords.
+
+R36 keeps sidebar favorites separate from version pins; core Graph remains present
+and a new profile has no optional links. startRun centrally captures global defaults
+then tool defaults then explicit input; existing operation replay/active snapshots
+stay unchanged and subscription dollar allowance remains null. R37 selection links
+use `/chat?tool=<encoded exact ToolRef JSON>` through pure toolHref/parseToolIntent;
+Task16 owns validation/submission, Task17 owns `/tools/runs/[id]`. Native Trending
+and Idea Spark retain their existing routes. Opening or enabling starts no run.
+R38 strict prepare/bind-connection operations reuse existing environment/connection
+journals and management exclusion; only declared Semantic Scholar is supported.
+No client-supplied credential handle, endpoint or command is accepted.
+
+Initial focused RED: missing ToolsLibrary before implementation. Expanded UI9/9,
+combined focused154/154 across9files; subsequent closure/modal regression gate17/17
+across3files. Real disposable filesystem/HTTP cases cover ownership, origin, stale
+profile, size/query validation, source redaction, ZIP traversal, missing dependencies,
+slow metadata, native enable, preference replay, declared supporting setup and
+immutable run capture. Existing model tests retain explicit-inference assertions.
+
+Final isolated production build passed18.06s (compile6.0s, TypeScript7.6s,69pages),
+using `.next-modular-task-15`, disposable vault/profile roots and scheduler off.
+Exact pre-build tsconfig.json/next-env.d.ts bytes were restored. Human .next/server
+were preserved. Initial browser evidence caught a real Escape/focus loss after a
+request disabled the focused button; Tools now reuses the existing inert/focus
+modal helper. The initial failure and successful corrective builds are retained.
+
+Final production browser command:
+`SCISPARK_SCHEDULER=off SCISPARK_E2E_PRODUCTION_DIST_DIR=.next-modular-task-15 npm run e2e -- e2e/tools-library.spec.ts`.
+Result:1/1 passed,5.5s. Real empty/catalog add/pin, temporary Codex-layout fixture
+consent/import, bundled OpenCite review/setup-needed, missing-folder error, desktop,
+390px phone, dark theme and focus/Escape return checked; zero run-start POSTs.
+No horizontal overflow. Eight screenshots visually inspected and retained under
+`.superpowers/sdd/2026-10-05-modular-workspace/verification/task-15/browser-final/tools-library-Tools-empty--c9deb-rs-across-desktop-and-phone-chromium/`:
+`tools-empty-desktop.png`, `tools-consent-desktop.png`, `tools-installed-desktop.png`,
+`tools-setup-desktop.png`, `tools-installed-phone.png`, `tools-settings-phone.png`,
+`tools-error-phone.png`, `tools-installed-dark.png`.
+
+Authoritative final master gate ran once after final code changes:
+`python3 .superpowers/sdd/2026-10-05-modular-workspace/verify-task.py task-15`.
+TypeScript exit0/9.11s; lint exit0/17.77s (existing ConnectAiCard warning and generated
+Babel note only); Vitest exit0/36.70s wrapper,35.51s suite:3118 passed/21 gated skips,
+297 passed/8 skipped files. Exact commands/results/build-byte evidence and detailed
+report live under the Task15 handoff folder. No broad verification repeated after
+success. GitHub acquisition/real installed-agent scan/runtime installation/live
+provider/source/sandbox-to-broker acceptance remain unrun, Task19-owned. No human
+vault/profile/keys, source-agent home, unsupported sandbox execution, publishing,
+push, merge or PR. Existing accent contrast exception and Task13 deferred minor
+rollback caveat remain unchanged.
+
+### Task15 review fix 1 — supporting setup (I1/I2)
+
+Supersedes the original Task15 completion assessment for the two review findings.
+Shared `observeToolPreparation` now supplies import/library closure readiness using
+the root candidate model, a named blocked ToolRef/redacted setup record, and named
+supported connection targets. Strict installed-root bind requests require exact
+`target: ToolRef` membership in the current pinned closure under management
+exclusion. Only declared Semantic Scholar and the existing server settings handle
+are supported. Receipt replay and captured immutable connection records persist.
+
+Confirmed imports explicitly hand off to root **Manage setup** for closure-aware
+prepare/acknowledgement; the new redundant root-only import setup actions were
+removed after caller inspection. Import grant expiry still blocks preview
+observation; owned installed management requires no source rescan/renewed grant.
+Uncertain setup identity and cumulative charged usage are not reset on reopen or
+prepare. No active run/default, unrelated Task13 behavior, or brand changes.
+
+Evidence under `.superpowers/sdd/2026-10-05-modular-workspace/verification/task-15-fix-1/`:
+- `red.log`:3 real-service failures for individually ready root with blocked
+  unbound connection/helper environment/root model; `ui-red.log`:1 UI failure.
+- `focused-green.log`:20/20; `focused-loopback-green.log`:95/95 across6files.
+  Earlier `focused-final.log` retains10 fixture-listen EPERM failures; authorized
+  loopback rerun passed. New service fixtures use actual imported snapshots and
+  current management services, including exact/stale/unrelated refs, replay,
+  captured revision stability and expired-grant/owned-management separation.
+- `build-final/{build.log,build-result.json}`:isolated production build exit0,
+  13.46s,69pages; exact tsconfig.json/next-env.d.ts bytes restored. Human .next and
+  server preserved. Initial build26.53s retained under `build/`.
+- `browser-final.log`:2/2 passed5.8s using existing disposable runner and
+  `.next-modular-task-15-fix-1`. Real import→Manage focus/handoff, named helper with
+  no standalone binding, explicit fixed service binding→root Ready, focus trap,
+  Escape/return focus,390px wrapping/overflow, and zero run starts verified.
+  Original empty/populated/consent/setup/error/desktop/phone/dark flow also passed.
+  Initial `browser.log` records only a test locator mismatch after the root became
+  Ready; card text is “Enabled · Ready”, corrected in the test.
+- `results.json`, `tsc.log`, `lint.log`, `vitest.log`:single final
+  `verify-task.py task-15-fix-1` gate:tsc exit0/8.00s; lint exit0/18.25s with existing
+  ConnectAiCard warning/generated Babel note; full Vitest3123 passed/21 skipped,
+  297 passed/8 skipped files,35.30s suite/36.54s wrapper.
+
+Eleven final PNGs retained under `browser-final/`:the eight original Task15 states
+and `tools-library-import-hands-86913--without-claiming-readiness-chromium/`
+`supporting-import-desktop.png`, `supporting-import-phone.png`,
+`supporting-manage-phone.png`. All three new captures visually inspected; desktop
+import includes finishing refresh, phone import is settled. Label duplication was
+removed after rendered inspection; long dependency IDs wrap, and the helper action
+fits across two lines. Browser dummy credentials were fixture-owned and never sent
+to a source. New uncertainty coverage seeds the actual durable state/journal shape;
+existing setup tests cover explicit discard accounting. Real installation,
+platform isolation/broker acceptance, provider/source access, and human agent
+scan remain unrun Task19 gates. Detailed contract/caller/lock notes are appended in
+`task-15-report.md`. No subagents, human state, push, merge or PR.

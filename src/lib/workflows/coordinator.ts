@@ -96,7 +96,7 @@ export async function startRun(ctx: WorkflowContext, input: StartRunInput): Prom
     const id = randomUUID()
     const run = ToolRunSchema.parse({ schemaVersion: 1, id, profileId: ctx.profileId, vaultId: ctx.vaultId,
       ...request, dependencies, model, preparedEnvironmentRefs, connectionConfigurationRefs,
-      allowance: { ...DEFAULT_RUN_ALLOWANCE, ...request.allowance, ...(model.engine !== "api" ? { costUsd: null } : {}) },
+      allowance: { ...DEFAULT_RUN_ALLOWANCE, ...state?.overrides.find(o => o.toolKey === toolKey(request.tool))?.defaultAllowance, ...request.allowance, ...(model.engine !== "api" ? { costUsd: null } : {}) },
       usage: { modelCalls: 0, commandCalls: 0, activeSeconds: 0, costUsd: model.engine === "api" ? 0 : null },
       ...(getToolManifest(request.tool)?.kind === "native" && request.tool.packageId === "scispark.builtin" ? { nativeRunRef: { kind: request.tool.skillId, id: request.tool.skillId === "deep-review" ? request.input.reviewId ?? `review_${createHash("sha256").update(JSON.stringify({ session: request.input.sessionId ?? request.sessionId ?? request.operationId, operation: request.operationId })).digest("hex").slice(0, 32)}` : id } } : {}),
       status: "queued", createdAt: now, updatedAt: now, eventCursor: 0, artifacts: [] })
