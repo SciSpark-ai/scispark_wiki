@@ -75,14 +75,9 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "projects", label: "Projects", href: "/projects", icon: FolderOpen },
     ],
   },
-  {
-    heading: "Tools",
-    items: [
-      { key: "tools", label: "Tools", href: "/tools", icon: Wrench },
-    ],
-  },
 ];
 
+const TOOLS_ITEM: NavItem = { key: "tools", label: "Tools", href: "/tools", icon: Wrench };
 const HISTORY_ITEM: NavItem = { key: "history", label: "History", href: "/history", icon: Clock };
 
 interface SidebarProps {
@@ -233,10 +228,11 @@ export function Sidebar({ collapsed = false, onNavigate }: SidebarProps) {
               {group.heading}
             </div>
             {group.items.map(renderItem)}
-            {group.heading === "Tools" && pinnedTools.map(tool => renderItem({ key: toolKey(tool.ref), label: tool.name, href: toolHref(tool.ref), icon: Wrench }))}
           </div>
         ))}
         <hr className="border-border-warm mx-[10px] my-[14px]" />
+        {renderItem(TOOLS_ITEM)}
+        {pinnedTools.map(tool => renderItem({ key: toolKey(tool.ref), label: tool.name, href: toolHref(tool.ref), icon: Wrench }))}
         {renderItem(HISTORY_ITEM)}
         {!collapsed && recentSessions.length > 0 && (
           <ul aria-label="Recent chats">

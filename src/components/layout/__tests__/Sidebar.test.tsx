@@ -32,6 +32,7 @@ describe("Sidebar nav map (SP1)", () => {
     for (const href of ["/wiki", "/viz", "/tools", "/chat", "/projects", "/history"]) {
       expect(out, href).toContain(`href="${href}"`)
     }
+    expect(out.match(/>Tools</g)).toHaveLength(1)
     expect(out).not.toContain('href="/papers"')
     expect(out).not.toContain('href="/trending"')
     expect(out).not.toContain('href="/spark"')

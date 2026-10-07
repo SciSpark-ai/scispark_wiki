@@ -3,6 +3,54 @@ import { NodeFsVaultStorage } from "../src/lib/vault/node-fs-storage"
 import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 
+test("installed native tools keep core navigation and pinned shortcuts across layouts", async ({ page, request }, info) => {
+  const { resetTools } = await import("./fixtures/modular")
+  await resetTools()
+  await request.post("/api/profile", { data: { name: "Ada", role: "Researcher", fields: "Neuroscience", topics: "Speech", feedPrefs: "Methods" } })
+  let runs = 0
+  page.on("request", req => { if (req.method() === "POST" && /\/api\/tools\/runs$/.test(req.url())) runs++ })
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto("/tools")
+  await page.getByRole("button", { name: "Catalog", exact: true }).click()
+  for (const name of ["Trending", "Find papers", "Deep review", "Idea Spark"]) {
+    const card = page.locator("article").filter({ has: page.getByRole("heading", { name, exact: true }) })
+    await card.getByRole("button", { name: "Add tool", exact: true }).click()
+    await expect(card).toHaveCount(0)
+  }
+  await page.getByRole("button", { name: "Installed", exact: true }).click()
+  await expect(page.locator("article")).toHaveCount(4)
+  for (const name of ["Trending", "Idea Spark"]) {
+    await page.locator("article").filter({ has: page.getByRole("heading", { name, exact: true }) }).getByRole("button", { name: "Pin to sidebar", exact: true }).click()
+    await expect(page.getByRole("navigation").getByRole("link", { name, exact: true })).toBeVisible()
+  }
+  await page.reload()
+  const nav = page.getByRole("navigation")
+  await expect(nav.getByText("Tools", { exact: true })).toHaveCount(1)
+  for (const name of ["Home", "Sparky", "Wiki", "Graph", "Projects", "Tools", "Trending", "Idea Spark", "History"]) {
+    await expect(nav.getByRole("link", { name, exact: true })).toBeVisible()
+  }
+  await expect(page.getByText("Enabled · Ready", { exact: true })).toHaveCount(4)
+  await page.screenshot({ path: info.outputPath("tools-installed-readme.png"), fullPage: true, animations: "disabled" })
+  await page.getByRole("button", { name: "Close sidebar", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Open sidebar", exact: true })).toBeVisible()
+  await expect(nav.getByRole("link", { name: "Tools", exact: true })).toBeInViewport()
+  await page.screenshot({ path: info.outputPath("tools-installed-collapsed.png"), fullPage: true, animations: "disabled" })
+  await page.getByRole("button", { name: "Open sidebar", exact: true }).click()
+  await page.getByRole("button", { name: /dark mode/i }).click()
+  await page.screenshot({ path: info.outputPath("tools-installed-readme-dark.png"), fullPage: true, animations: "disabled" })
+  await page.getByRole("button", { name: /light mode/i }).click()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole("button", { name: "Open menu", exact: true }).click()
+  const menu = page.getByRole("dialog", { name: "Navigation menu" })
+  await expect(menu.getByText("Tools", { exact: true })).toHaveCount(1)
+  await expect(menu.getByRole("link", { name: "Idea Spark", exact: true })).toBeVisible()
+  await page.screenshot({ path: info.outputPath("tools-installed-mobile-nav.png"), fullPage: true, animations: "disabled" })
+  await menu.getByRole("link", { name: "Tools", exact: true }).click()
+  await expect(menu).toBeHidden()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  expect(runs).toBe(0)
+})
+
 test("configured empty default vault has no optional tool scan, provider call or scheduled work", async ({ page, request }, info) => {
   const { readFile } = await import("node:fs/promises")
   const baseline = JSON.parse(await readFile(join(process.env.SCISPARK_E2E_RUN_DIR!, "evidence", "fresh-profile.json"), "utf8"))
